@@ -22,11 +22,16 @@ export async function requestSignInAction(formData: FormData) {
     returnTo
   });
 
-  redirect(
-    `/sign-in?sent=1&returnTo=${encodeURIComponent(returnTo)}&devToken=${encodeURIComponent(
-      token
-    )}` as Route
-  );
+  const params = new URLSearchParams({
+    sent: "1",
+    returnTo
+  });
+
+  if (process.env.NODE_ENV !== "production") {
+    params.set("devToken", token);
+  }
+
+  redirect(`/sign-in?${params.toString()}` as Route);
 }
 
 export async function signOutAction() {

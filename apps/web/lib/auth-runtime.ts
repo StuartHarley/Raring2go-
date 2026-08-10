@@ -11,7 +11,9 @@ import type {
   AuditRecorder,
   AuthInvitation,
   AuthMembership,
+  AuthRepository,
   AuthTerritory,
+  AuthTokenRepository,
   AuthUser
 } from "@raring2go/auth";
 
@@ -61,14 +63,41 @@ const invitations: AuthInvitation[] = [
   }
 ];
 
-export const appAuthRepository = createMemoryAuthRepository({
-  users,
-  memberships,
-  territories,
-  invitations
-});
+type RuntimeAuthRepository = AuthRepository &
+  AuthTokenRepository & {
+    users: AuthUser[];
+    memberships: AuthMembership[];
+    sessions: unknown[];
+    verificationTokens: unknown[];
+  };
 
-export const appAuditRecorder = createMemoryAuditRecorder();
+type RuntimeState = {
+  repository: RuntimeAuthRepository;
+  auditRecorder: ReturnType<typeof createMemoryAuditRecorder>;
+};
+
+const runtimeKey = Symbol.for("raring2go.auth-runtime");
+const globalRuntime = globalThis as typeof globalThis & {
+  [runtimeKey]?: RuntimeState;
+};
+
+function createRuntimeState(): RuntimeState {
+  return {
+    repository: createMemoryAuthRepository({
+      users,
+      memberships,
+      territories,
+      invitations
+    }),
+    auditRecorder: createMemoryAuditRecorder()
+  };
+}
+
+const runtimeState = globalRuntime[runtimeKey] ?? createRuntimeState();
+globalRuntime[runtimeKey] = runtimeState;
+
+export const appAuthRepository = runtimeState.repository;
+export const appAuditRecorder = runtimeState.auditRecorder;
 
 export function isFixtureSessionAllowed(env = process.env.NODE_ENV) {
   return env === "development" || env === "test";
