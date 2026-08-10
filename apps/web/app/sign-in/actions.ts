@@ -8,7 +8,8 @@ import {
   requestSignIn,
   safeReturnTo,
   sessionCookieName,
-  signOut
+  signOut,
+  verifySignIn
 } from "../../lib/auth-runtime";
 
 export async function requestSignInAction(formData: FormData) {
@@ -22,14 +23,29 @@ export async function requestSignInAction(formData: FormData) {
     returnTo
   });
 
+  if (process.env.NODE_ENV !== "production") {
+    const sessionToken = randomUUID();
+    await verifySignIn({
+      token,
+      sessionToken
+    });
+
+    const cookieStore = await cookies();
+    cookieStore.set(sessionCookieName, sessionToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: false,
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60
+    });
+
+    redirect(returnTo as Route);
+  }
+
   const params = new URLSearchParams({
     sent: "1",
     returnTo
   });
-
-  if (process.env.NODE_ENV !== "production") {
-    params.set("devToken", token);
-  }
 
   redirect(`/sign-in?${params.toString()}` as Route);
 }
