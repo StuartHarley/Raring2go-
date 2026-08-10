@@ -29,7 +29,12 @@ export const auditActions = {
   franchiseCreate: "franchise.create",
   franchiseUpdate: "franchise.update",
   franchiseArchive: "franchise.archive",
-  franchiseContactUpdate: "franchise.contact.update"
+  franchiseContactUpdate: "franchise.contact.update",
+  franchiseAgreementGenerate: "franchise.agreement.generate",
+  franchiseAgreementSubmit: "franchise.agreement.submit",
+  franchiseAgreementApprove: "franchise.agreement.approve",
+  franchiseAgreementVoid: "franchise.agreement.void",
+  franchiseAgreementSupersede: "franchise.agreement.supersede"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

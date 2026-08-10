@@ -1,6 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { auditEvents, franchises, organisations, territories, users } from "./schema";
+import {
+  agreementTemplates,
+  agreementVersions,
+  auditEvents,
+  franchiseAgreements,
+  franchises,
+  organisations,
+  territories,
+  users
+} from "./schema";
 
 describe("foundation schema", () => {
   it("uses global unique email for the shared identity model", () => {
@@ -34,5 +43,12 @@ describe("foundation schema", () => {
     expect((franchises as unknown as Record<string, unknown>).legalName).toBeUndefined();
     expect((franchises as unknown as Record<string, unknown>).companyNumber).toBeUndefined();
     expect((franchises as unknown as Record<string, unknown>).vatNumber).toBeUndefined();
+  });
+
+  it("separates agreement templates, versions and generated franchise instances", () => {
+    expect(agreementTemplates.key.name).toBe("key");
+    expect(agreementVersions.templateId.name).toBe("template_id");
+    expect(franchiseAgreements.agreementVersionId.name).toBe("agreement_version_id");
+    expect(franchiseAgreements.mergeVariables.name).toBe("merge_variables");
   });
 });

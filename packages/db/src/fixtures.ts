@@ -23,13 +23,28 @@ export const fixtureIds = {
     rolesView: "00000000-0000-4000-8000-000000000403",
     franchiseView: "00000000-0000-4000-8000-000000000404",
     franchiseCreate: "00000000-0000-4000-8000-000000000405",
-    franchiseEdit: "00000000-0000-4000-8000-000000000406"
+    franchiseEdit: "00000000-0000-4000-8000-000000000406",
+    agreementView: "00000000-0000-4000-8000-000000000407",
+    agreementGenerate: "00000000-0000-4000-8000-000000000408",
+    agreementSubmitApproval: "00000000-0000-4000-8000-000000000409",
+    agreementApprove: "00000000-0000-4000-8000-000000000410",
+    agreementVoid: "00000000-0000-4000-8000-000000000411"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
   },
   franchiseContacts: {
     suttonOwner: "00000000-0000-4000-8000-000000000911"
+  },
+  agreementTemplates: {
+    standardFranchise: "00000000-0000-4000-8000-000000000921"
+  },
+  agreementVersions: {
+    standardFranchiseV1: "00000000-0000-4000-8000-000000000922",
+    standardFranchiseV2: "00000000-0000-4000-8000-000000000923"
+  },
+  franchiseAgreements: {
+    suttonDraft: "00000000-0000-4000-8000-000000000924"
   },
   invitations: {
     franchiseStaff: "00000000-0000-4000-8000-000000000801"
@@ -135,6 +150,36 @@ export const foundationSeed = {
       module: "franchise",
       action: "edit",
       description: "Edit franchise operating records."
+    },
+    {
+      id: fixtureIds.permissions.agreementView,
+      module: "franchise.agreement",
+      action: "view",
+      description: "View franchise agreement records."
+    },
+    {
+      id: fixtureIds.permissions.agreementGenerate,
+      module: "franchise.agreement",
+      action: "generate",
+      description: "Generate franchise agreement records."
+    },
+    {
+      id: fixtureIds.permissions.agreementSubmitApproval,
+      module: "franchise.agreement",
+      action: "submit_approval",
+      description: "Submit franchise agreements for internal approval."
+    },
+    {
+      id: fixtureIds.permissions.agreementApprove,
+      module: "franchise.agreement",
+      action: "approve",
+      description: "Approve franchise agreements internally."
+    },
+    {
+      id: fixtureIds.permissions.agreementVoid,
+      module: "franchise.agreement",
+      action: "void",
+      description: "Void franchise agreements."
     }
   ],
   franchises: [
@@ -159,6 +204,54 @@ export const foundationSeed = {
       userId: fixtureIds.users.franchisee,
       label: "Owner",
       isPrimary: true
+    }
+  ],
+  agreementTemplates: [
+    {
+      id: fixtureIds.agreementTemplates.standardFranchise,
+      key: "standard-franchise-agreement",
+      name: "Standard Franchise Agreement",
+      status: "active"
+    }
+  ],
+  agreementVersions: [
+    {
+      id: fixtureIds.agreementVersions.standardFranchiseV1,
+      templateId: fixtureIds.agreementTemplates.standardFranchise,
+      version: "1.0",
+      status: "approved",
+      controlledMergeFields: [
+        "franchiseOrganisationName",
+        "territoryName",
+        "ownerName",
+        "launchDate",
+        "renewalDate"
+      ],
+      content: {
+        title: "Raring2go Franchise Agreement",
+        body: "Provider-neutral generated agreement content for FRN-002."
+      },
+      approvedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2026-08-10"
+    },
+    {
+      id: fixtureIds.agreementVersions.standardFranchiseV2,
+      templateId: fixtureIds.agreementTemplates.standardFranchise,
+      version: "2.0",
+      status: "approved",
+      controlledMergeFields: [
+        "franchiseOrganisationName",
+        "territoryName",
+        "ownerName",
+        "launchDate",
+        "renewalDate"
+      ],
+      content: {
+        title: "Raring2go Franchise Agreement",
+        body: "Revised provider-neutral agreement content for future drafts."
+      },
+      approvedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2026-08-10"
     }
   ]
 } as const;

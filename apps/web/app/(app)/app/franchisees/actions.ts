@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import {
   createFranchiseFromInput,
+  approveCurrentAgreement,
+  generateAgreementForFranchise,
+  submitCurrentAgreement,
+  voidCurrentAgreement,
   updateFranchiseFromInput
 } from "../../../../lib/franchise-runtime";
 import type { FranchiseActorContext, FranchiseRecord } from "@raring2go/franchise";
@@ -44,5 +48,37 @@ export async function updateFranchiseAction(
     renewalDate: String(formData.get("renewalDate") || "") || null
   });
 
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function generateAgreementAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await generateAgreementForFranchise(context, franchiseId, randomUUID());
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function submitAgreementAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await submitCurrentAgreement(context, franchiseId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function approveAgreementAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await approveCurrentAgreement(context, franchiseId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function voidAgreementAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await voidCurrentAgreement(context, franchiseId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }

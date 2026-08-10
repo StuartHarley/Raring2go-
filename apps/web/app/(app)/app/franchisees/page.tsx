@@ -45,7 +45,7 @@ async function loadFranchisees(request: Awaited<ReturnType<typeof requestFromSea
       module: "franchise",
       action: "view"
     });
-    const franchises = listFranchiseSummaries({
+    const franchises = await listFranchiseSummaries({
       userId: shell.userId,
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId

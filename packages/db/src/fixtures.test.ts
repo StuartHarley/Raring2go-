@@ -16,7 +16,22 @@ describe("foundation fixtures", () => {
       "roles",
       "franchise",
       "franchise",
-      "franchise"
+      "franchise",
+      "franchise.agreement",
+      "franchise.agreement",
+      "franchise.agreement",
+      "franchise.agreement",
+      "franchise.agreement"
+    ]);
+  });
+
+  it("includes deterministic approved agreement template versions", () => {
+    expect(fixtureIds.agreementTemplates.standardFranchise).toBe(
+      "00000000-0000-4000-8000-000000000921"
+    );
+    expect(foundationSeed.agreementVersions.map((version) => version.status)).toEqual([
+      "approved",
+      "approved"
     ]);
   });
 

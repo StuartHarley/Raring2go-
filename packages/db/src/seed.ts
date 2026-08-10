@@ -3,6 +3,8 @@ import { createDb } from "./client";
 import { fixtureIds, foundationSeed } from "./fixtures";
 import {
   auditEvents,
+  agreementTemplates,
+  agreementVersions,
   authInvitations,
   franchiseContacts,
   franchises,
@@ -130,6 +132,42 @@ export async function seedDatabase(databaseUrl?: string) {
         permissionId: fixtureIds.permissions.franchiseView,
         scope: "own_territory",
         constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId: fixtureIds.permissions.agreementView,
+        scope: "network",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId: fixtureIds.permissions.agreementGenerate,
+        scope: "network",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId: fixtureIds.permissions.agreementSubmitApproval,
+        scope: "network",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId: fixtureIds.permissions.agreementApprove,
+        scope: "network",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId: fixtureIds.permissions.agreementVoid,
+        scope: "network",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.agreementView,
+        scope: "own_territory",
+        constraints: {}
       }
     ]).onConflictDoNothing();
 
@@ -221,6 +259,36 @@ export async function seedDatabase(databaseUrl?: string) {
         email: sql`excluded.email`,
         phone: sql`excluded.phone`,
         isPrimary: sql`excluded.is_primary`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(agreementTemplates).values([...foundationSeed.agreementTemplates]).onConflictDoUpdate({
+      target: agreementTemplates.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        status: sql`excluded.status`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(agreementVersions).values(foundationSeed.agreementVersions.map((version) => ({
+      ...version,
+      controlledMergeFields: [...version.controlledMergeFields],
+      approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
+    }))).onConflictDoUpdate({
+      target: agreementVersions.id,
+      set: {
+        templateId: sql`excluded.template_id`,
+        version: sql`excluded.version`,
+        status: sql`excluded.status`,
+        controlledMergeFields: sql`excluded.controlled_merge_fields`,
+        content: sql`excluded.content`,
+        approvedByUserId: sql`excluded.approved_by_user_id`,
+        approvedAt: sql`excluded.approved_at`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

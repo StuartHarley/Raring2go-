@@ -2,9 +2,13 @@ import { auditActions } from "@raring2go/audit";
 import { describe, expect, it } from "vitest";
 import {
   assertNoDuplicatedIdentityData,
+  approveAgreement,
   createFranchise,
+  generateAgreement,
   getFranchise360,
   listActiveFranchises,
+  submitAgreementForApproval,
+  voidAgreement,
   updateFranchise
 } from "./service";
 import type { FranchiseData, FranchiseRecord } from "./types";
@@ -32,14 +36,25 @@ const ids = {
   permissions: {
     view: "permission_franchise_view",
     create: "permission_franchise_create",
-    edit: "permission_franchise_edit"
+    edit: "permission_franchise_edit",
+    agreementView: "permission_agreement_view",
+    agreementGenerate: "permission_agreement_generate",
+    agreementSubmit: "permission_agreement_submit",
+    agreementApprove: "permission_agreement_approve",
+    agreementVoid: "permission_agreement_void"
   },
   franchises: {
     own: "franchise_own",
     other: "franchise_other",
     archived: "franchise_archived"
+  },
+  agreements: {
+    template: "agreement_template",
+    version: "agreement_version",
+    nextVersion: "agreement_version_next",
+    draft: "agreement_draft"
   }
-};
+} as const;
 
 const permissionData: PermissionData = {
   roleAssignments: [
@@ -66,6 +81,20 @@ const permissionData: PermissionData = {
         action: "view"
       },
       scope: "network"
+    },
+    agreementGrant(ids.permissions.agreementView, "view"),
+    agreementGrant(ids.permissions.agreementGenerate, "generate"),
+    agreementGrant(ids.permissions.agreementSubmit, "submit_approval"),
+    agreementGrant(ids.permissions.agreementApprove, "approve"),
+    agreementGrant(ids.permissions.agreementVoid, "void"),
+    {
+      roleId: ids.roles.local,
+      permission: {
+        id: ids.permissions.agreementView,
+        module: "franchise.agreement",
+        action: "view"
+      },
+      scope: "own_territory"
     },
     {
       roleId: ids.roles.hq,
@@ -190,6 +219,37 @@ function data(): FranchiseData {
         displayName: "Owner"
       }
     ],
+    agreementTemplates: [
+      {
+        id: ids.agreements.template,
+        key: "standard",
+        name: "Standard Agreement",
+        status: "active"
+      }
+    ],
+    agreementVersions: [
+      {
+        id: ids.agreements.version,
+        templateId: ids.agreements.template,
+        version: "1.0",
+        status: "approved",
+        controlledMergeFields: ["territoryName", "ownerName"],
+        content: {
+          title: "Agreement v1"
+        }
+      },
+      {
+        id: ids.agreements.nextVersion,
+        templateId: ids.agreements.template,
+        version: "2.0",
+        status: "approved",
+        controlledMergeFields: ["territoryName", "ownerName"],
+        content: {
+          title: "Agreement v2"
+        }
+      }
+    ],
+    franchiseAgreements: [],
     activity: [
       {
         id: "event_1",
@@ -356,14 +416,209 @@ describe("franchise service", () => {
       ).placeholders
     ).toEqual({
       performance: "deferred",
-      agreement: "deferred",
       compliance: "deferred",
       training: "deferred",
       support: "deferred",
       documents: "deferred"
     });
   });
+
+  it("denies agreement generation without permission", async () => {
+    await expect(
+      generateAgreement(
+        {
+          userId: ids.users.owner,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissionData,
+        audit(),
+        data(),
+        {
+          id: ids.agreements.draft,
+          franchiseId: ids.franchises.own,
+          agreementVersionId: ids.agreements.version,
+          mergeVariables: {
+            territoryName: "Sutton Coldfield",
+            ownerName: "Owner"
+          }
+        }
+      )
+    ).rejects.toThrow("No permission grant");
+  });
+
+  it("stores the approved template version and merge-variable snapshot", async () => {
+    const franchiseData = data();
+
+    const agreement = await generateAgreement(
+      hqContext(),
+      permissionData,
+      audit(),
+      franchiseData,
+      {
+        id: ids.agreements.draft,
+        franchiseId: ids.franchises.own,
+        agreementVersionId: ids.agreements.version,
+        mergeVariables: {
+          territoryName: "Sutton Coldfield",
+          ownerName: "Owner"
+        }
+      }
+    );
+
+    expect(agreement.agreementVersionId).toBe(ids.agreements.version);
+    expect(agreement.mergeVariables).toEqual({
+      territoryName: "Sutton Coldfield",
+      ownerName: "Owner"
+    });
+    expect(getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own).agreement?.version.version).toBe("1.0");
+  });
+
+  it("does not allow approval to be skipped and rejects invalid state transitions", async () => {
+    const franchiseData = data();
+    await generateAgreement(hqContext(), permissionData, audit(), franchiseData, {
+      id: ids.agreements.draft,
+      franchiseId: ids.franchises.own,
+      agreementVersionId: ids.agreements.version,
+      mergeVariables: {
+        territoryName: "Sutton Coldfield",
+        ownerName: "Owner"
+      }
+    });
+
+    await expect(
+      approveAgreement(hqContext(), permissionData, audit(), franchiseData, ids.agreements.draft)
+    ).rejects.toThrow("Invalid agreement lifecycle transition");
+
+    await submitAgreementForApproval(
+      hqContext(),
+      permissionData,
+      audit(),
+      franchiseData,
+      ids.agreements.draft
+    );
+    await approveAgreement(hqContext(), permissionData, audit(), franchiseData, ids.agreements.draft);
+
+    await expect(
+      voidAgreement(hqContext(), permissionData, audit(), franchiseData, ids.agreements.draft)
+    ).rejects.toThrow("Invalid agreement lifecycle transition");
+  });
+
+  it("denies agreement approval without approval capability", async () => {
+    const franchiseData = data();
+    await generateAgreement(hqContext(), permissionData, audit(), franchiseData, {
+      id: ids.agreements.draft,
+      franchiseId: ids.franchises.own,
+      agreementVersionId: ids.agreements.version,
+      mergeVariables: {
+        territoryName: "Sutton Coldfield",
+        ownerName: "Owner"
+      }
+    });
+    await submitAgreementForApproval(
+      hqContext(),
+      permissionData,
+      audit(),
+      franchiseData,
+      ids.agreements.draft
+    );
+
+    await expect(
+      approveAgreement(
+        {
+          userId: ids.users.owner,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissionData,
+        audit(),
+        franchiseData,
+        ids.agreements.draft
+      )
+    ).rejects.toThrow("No permission grant");
+  });
+
+  it("keeps approved agreements durable after template updates", async () => {
+    const franchiseData = data();
+    const agreement = await generateAgreement(hqContext(), permissionData, audit(), franchiseData, {
+      id: ids.agreements.draft,
+      franchiseId: ids.franchises.own,
+      agreementVersionId: ids.agreements.version,
+      mergeVariables: {
+        territoryName: "Sutton Coldfield",
+        ownerName: "Owner"
+      }
+    });
+    await submitAgreementForApproval(hqContext(), permissionData, audit(), franchiseData, agreement.id);
+    await approveAgreement(hqContext(), permissionData, audit(), franchiseData, agreement.id);
+    const [firstAgreementVersion] = franchiseData.agreementVersions!;
+    franchiseData.agreementVersions![0] = {
+      ...firstAgreementVersion!,
+      content: { title: "Mutated template" }
+    };
+
+    expect(agreement.generatedContent).toEqual({
+      title: "Agreement v1",
+      mergeVariables: {
+        territoryName: "Sutton Coldfield",
+        ownerName: "Owner"
+      }
+    });
+    await expect(
+      generateAgreement(hqContext(), permissionData, audit(), franchiseData, {
+        id: "agreement_second",
+        franchiseId: ids.franchises.own,
+        agreementVersionId: ids.agreements.nextVersion,
+        mergeVariables: {
+          territoryName: "Sutton Coldfield",
+          ownerName: "Owner"
+        }
+      })
+    ).rejects.toThrow("Approved agreements are durable");
+  });
+
+  it("writes audit events for agreement lifecycle mutations", async () => {
+    const franchiseData = data();
+    const recorder = audit();
+
+    await generateAgreement(hqContext(), permissionData, recorder, franchiseData, {
+      id: ids.agreements.draft,
+      franchiseId: ids.franchises.own,
+      agreementVersionId: ids.agreements.version,
+      mergeVariables: {
+        territoryName: "Sutton Coldfield",
+        ownerName: "Owner"
+      }
+    });
+    await submitAgreementForApproval(hqContext(), permissionData, recorder, franchiseData, ids.agreements.draft);
+    await approveAgreement(hqContext(), permissionData, recorder, franchiseData, ids.agreements.draft);
+
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseAgreementGenerate,
+      auditActions.franchiseAgreementSubmit,
+      auditActions.franchiseAgreementApprove
+    ]);
+  });
 });
+
+function hqContext() {
+  return {
+    userId: ids.users.hq,
+    organisationId: ids.organisations.hq
+  };
+}
+
+function agreementGrant(id: string, action: string) {
+  return {
+    roleId: ids.roles.hq,
+    permission: {
+      id,
+      module: "franchise.agreement",
+      action
+    },
+    scope: "network" as const
+  };
+}
 
 function franchise(input: Partial<FranchiseRecord>): FranchiseRecord {
   return {

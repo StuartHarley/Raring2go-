@@ -2,7 +2,13 @@ import { ShellAccessError, requireShellPermission } from "../../../../../lib/app
 import { canEditFranchise, readFranchise360 } from "../../../../../lib/franchise-runtime";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
-import { updateFranchiseAction } from "../actions";
+import {
+  approveAgreementAction,
+  generateAgreementAction,
+  submitAgreementAction,
+  updateFranchiseAction,
+  voidAgreementAction
+} from "../actions";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -18,7 +24,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     return protectedOutcome(result.error);
   }
 
-  const { update, view, canEdit } = result;
+  const { approve, generate, submit, update, view, voidCurrent, canEdit } = result;
 
   return (
     <AppShell request={request}>
@@ -113,6 +119,53 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             ))}
           </div>
         </section>
+        <section id="agreement" className="app-panel">
+          <p className="eyebrow">Agreement</p>
+          {view.agreement ? (
+            <div className="franchise-agreement">
+              <h3>{view.agreement.template.name}</h3>
+              <dl className="franchise-facts">
+                <div>
+                  <dt>Status</dt>
+                  <dd>{view.agreement.status}</dd>
+                </div>
+                <div>
+                  <dt>Template version</dt>
+                  <dd>{view.agreement.version.version}</dd>
+                </div>
+                <div>
+                  <dt>Submitted</dt>
+                  <dd>{view.agreement.submittedAt ?? "Not submitted"}</dd>
+                </div>
+                <div>
+                  <dt>Approved</dt>
+                  <dd>{view.agreement.approvedAt ?? "Not approved"}</dd>
+                </div>
+              </dl>
+              <details>
+                <summary>Merge variable snapshot</summary>
+                <pre>{JSON.stringify(view.agreement.mergeVariables, null, 2)}</pre>
+              </details>
+              {canEdit ? (
+                <div className="franchise-actions">
+                  <form action={submit}><button type="submit">Submit for approval</button></form>
+                  <form action={approve}><button type="submit">Approve</button></form>
+                  <form action={voidCurrent}><button type="submit">Void</button></form>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="franchise-empty">
+              <h3>No agreement generated yet</h3>
+              <p>Generate a controlled agreement draft from the latest approved template version.</p>
+              {canEdit ? (
+                <form action={generate}>
+                  <button type="submit">Generate agreement draft</button>
+                </form>
+              ) : null}
+            </div>
+          )}
+        </section>
         {Object.entries(view.placeholders).map(([key]) => (
           <section key={key} id={key} className="app-panel">
             <p className="eyebrow">{key}</p>
@@ -157,10 +210,14 @@ async function loadFranchise360(
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
     };
-    const view = readFranchise360(context, id);
+    const view = await readFranchise360(context, id);
     const update = updateFranchiseAction.bind(null, context, id);
+    const generate = generateAgreementAction.bind(null, context, id);
+    const submit = submitAgreementAction.bind(null, context, id);
+    const approve = approveAgreementAction.bind(null, context, id);
+    const voidCurrent = voidAgreementAction.bind(null, context, id);
 
-    return { canEdit: canEditFranchise(context), context, update, view };
+    return { approve, canEdit: canEditFranchise(context), generate, submit, update, view, voidCurrent };
   } catch (error) {
     return { error };
   }
