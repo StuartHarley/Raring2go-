@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: raring2go
+      POSTGRES_USER: raring2go
+      POSTGRES_PASSWORD: raring2go
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raring2go -d raring2go"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - raring2go-db:/var/lib/postgresql/data
+
+volumes:
+  raring2go-db:

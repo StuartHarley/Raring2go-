@@ -9,6 +9,9 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "db:generate": "pnpm --filter @raring2go/db db:generate",
+    "db:migrate": "pnpm --filter @raring2go/db db:migrate",
+    "db:seed": "pnpm --filter @raring2go/db db:seed",
     "dev": "turbo run dev --filter=@raring2go/web",
     "lint": "turbo run lint",
     "test": "turbo run test",
