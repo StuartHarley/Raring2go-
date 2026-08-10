@@ -21,6 +21,9 @@ export const fixtureIds = {
     systemAdminister: "00000000-0000-4000-8000-000000000401",
     territoryView: "00000000-0000-4000-8000-000000000402",
     rolesView: "00000000-0000-4000-8000-000000000403"
+  },
+  invitations: {
+    franchiseStaff: "00000000-0000-4000-8000-000000000801"
   }
 } as const;
 

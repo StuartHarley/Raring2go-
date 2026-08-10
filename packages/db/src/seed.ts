@@ -3,6 +3,7 @@ import { createDb } from "./client";
 import { fixtureIds, foundationSeed } from "./fixtures";
 import {
   auditEvents,
+  authInvitations,
   memberships,
   organisations,
   permissions,
@@ -133,6 +134,18 @@ export async function seedDatabase(databaseUrl?: string) {
         deterministic: true,
         ticket: "FND-003"
       }
+    }).onConflictDoNothing();
+
+    await db.insert(authInvitations).values({
+      id: fixtureIds.invitations.franchiseStaff,
+      email: "staff@example.raring2go.test",
+      organisationId: fixtureIds.organisations.franchise,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      tokenHash:
+        "0000000000000000000000000000000000000000000000000000000000000801",
+      status: "pending",
+      invitedByUserId: fixtureIds.users.superAdmin,
+      expiresAt: new Date("2099-01-01T00:00:00.000Z")
     }).onConflictDoNothing();
 
     return fixtureIds;

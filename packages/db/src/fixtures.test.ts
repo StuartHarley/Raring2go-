@@ -16,4 +16,10 @@ describe("foundation fixtures", () => {
       "roles"
     ]);
   });
+
+  it("includes a deterministic invitation fixture for IAM-001", () => {
+    expect(fixtureIds.invitations.franchiseStaff).toBe(
+      "00000000-0000-4000-8000-000000000801"
+    );
+  });
 });

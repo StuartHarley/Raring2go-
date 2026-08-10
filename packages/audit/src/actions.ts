@@ -10,7 +10,15 @@ export const auditActions = {
   permissionRevoke: "permission.revoke",
   aiGenerate: "ai.generate",
   aiApprove: "ai.approve",
-  systemRun: "system.run"
+  systemRun: "system.run",
+  authSignIn: "auth.sign.in",
+  authSignOut: "auth.sign.out",
+  authInviteSend: "auth.invite.send",
+  authInviteAccept: "auth.invite.accept",
+  authEmailVerify: "auth.email.verify",
+  authAccountRecover: "auth.account.recover",
+  authSessionRevoke: "auth.session.revoke",
+  authSecurityChange: "auth.security.change"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});
