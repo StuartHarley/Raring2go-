@@ -5,6 +5,8 @@ import type {
   AuthRepository,
   AuthSession,
   AuthTerritory,
+  AuthTokenRepository,
+  AuthVerificationToken,
   AuthUser
 } from "./types";
 
@@ -14,21 +16,25 @@ export function createMemoryAuthRepository(input?: {
   territories?: AuthTerritory[];
   invitations?: AuthInvitation[];
   sessions?: AuthSession[];
+  verificationTokens?: AuthVerificationToken[];
 }): AuthRepository & {
   users: AuthUser[];
   memberships: AuthMembership[];
   sessions: AuthSession[];
-} {
+  verificationTokens: AuthVerificationToken[];
+} & AuthTokenRepository {
   const users = [...(input?.users ?? [])];
   const memberships = [...(input?.memberships ?? [])];
   const territories = [...(input?.territories ?? [])];
   const invitations = [...(input?.invitations ?? [])];
   const sessions = [...(input?.sessions ?? [])];
+  const verificationTokens = [...(input?.verificationTokens ?? [])];
 
   return {
     users,
     memberships,
     sessions,
+    verificationTokens,
     async findUserByEmail(email) {
       return users.find((user) => user.email === email) ?? null;
     },
@@ -106,6 +112,30 @@ export function createMemoryAuthRepository(input?: {
       }
 
       session.revokedAt = revokeInput.revokedAt;
+    },
+    async createVerificationToken(tokenInput) {
+      const token: AuthVerificationToken = {
+        id: `verification_${verificationTokens.length + 1}`,
+        ...tokenInput
+      };
+      verificationTokens.push(token);
+      return token;
+    },
+    async findVerificationTokenByHash(tokenHash) {
+      return (
+        verificationTokens.find((token) => token.tokenHash === tokenHash) ?? null
+      );
+    },
+    async markVerificationTokenUsed(markInput) {
+      const token = verificationTokens.find(
+        (candidate) => candidate.id === markInput.tokenId
+      );
+
+      if (!token) {
+        throw new Error("Verification token was not found.");
+      }
+
+      token.usedAt = markInput.usedAt;
     }
   };
 }

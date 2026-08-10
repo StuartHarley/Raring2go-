@@ -1,11 +1,16 @@
-import { fixtureIds } from "@raring2go/db";
-import { describe, expect, it } from "vitest";
+import { createMemoryAuthRepository, hashToken } from "@raring2go/auth";
+import { fixtureIds, foundationSeed } from "@raring2go/db";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ShellAccessError,
   requireShellPermission,
   resolveShell,
   shellNavigation
 } from "./app-shell";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("app shell context and capabilities", () => {
   it("distinguishes unauthenticated shell access", async () => {
@@ -25,6 +30,60 @@ describe("app shell context and capabilities", () => {
       activeContext: {
         organisationId: fixtureIds.organisations.hq
       }
+    });
+  });
+
+  it("resolves a real session token", async () => {
+    const repository = createRepositoryWithSession({
+      userId: fixtureIds.users.superAdmin,
+      token: "real-session-token"
+    });
+
+    await expect(
+      resolveShell(
+        {
+          sessionToken: "real-session-token",
+          organisationId: fixtureIds.organisations.hq
+        },
+        repository
+      )
+    ).resolves.toMatchObject({
+      kind: "authenticated",
+      userId: fixtureIds.users.superAdmin
+    });
+  });
+
+  it("rejects revoked and expired real sessions", async () => {
+    await expect(
+      resolveShell(
+        {
+          sessionToken: "revoked-session",
+          organisationId: fixtureIds.organisations.hq
+        },
+        createRepositoryWithSession({
+          userId: fixtureIds.users.superAdmin,
+          token: "revoked-session",
+          revokedAt: new Date("2026-08-10T12:00:00.000Z")
+        })
+      )
+    ).resolves.toMatchObject({
+      kind: "invalid_context"
+    });
+
+    await expect(
+      resolveShell(
+        {
+          sessionToken: "expired-session",
+          organisationId: fixtureIds.organisations.hq
+        },
+        createRepositoryWithSession({
+          userId: fixtureIds.users.superAdmin,
+          token: "expired-session",
+          expiresAt: new Date("2020-01-01T00:00:00.000Z")
+        })
+      )
+    ).resolves.toMatchObject({
+      kind: "invalid_context"
     });
   });
 
@@ -80,6 +139,19 @@ describe("app shell context and capabilities", () => {
         fixtureIds.organisations.advertiser
       );
     }
+  });
+
+  it("disables fixture sessions outside development and test", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    await expect(
+      resolveShell({
+        sessionKey: "superadmin",
+        organisationId: fixtureIds.organisations.hq
+      })
+    ).resolves.toMatchObject({
+      kind: "unauthenticated"
+    });
   });
 
   it("supports network and system capability behaviour", async () => {
@@ -152,3 +224,45 @@ describe("app shell context and capabilities", () => {
     });
   });
 });
+
+function createRepositoryWithSession(input: {
+  userId: string;
+  token: string;
+  expiresAt?: Date;
+  revokedAt?: Date;
+}) {
+  return createMemoryAuthRepository({
+    users: foundationSeed.users.map((user) => ({
+      ...user,
+      status: "active"
+    })),
+    memberships: [
+      {
+        id: "membership_superadmin",
+        userId: fixtureIds.users.superAdmin,
+        organisationId: fixtureIds.organisations.hq,
+        status: "active"
+      },
+      {
+        id: "membership_franchisee",
+        userId: fixtureIds.users.franchisee,
+        organisationId: fixtureIds.organisations.franchise,
+        status: "active"
+      }
+    ],
+    territories: foundationSeed.territories.map((territory) => ({
+      ...territory,
+      status: "active"
+    })),
+    sessions: [
+      {
+        id: "session_real",
+        userId: input.userId,
+        sessionTokenHash: hashToken(input.token),
+        assuranceLevel: "standard",
+        expiresAt: input.expiresAt ?? new Date("2099-01-01T00:00:00.000Z"),
+        revokedAt: input.revokedAt
+      }
+    ]
+  });
+}

@@ -1,17 +1,12 @@
 import { auditActions } from "@raring2go/audit";
-import { resolveWorkingContext } from "@raring2go/auth";
+import { resolveWorkingContext, hashToken } from "@raring2go/auth";
 import { fixtureIds, foundationSeed } from "@raring2go/db";
 import {
   evaluatePermission,
   requirePermission,
   PermissionDeniedError
 } from "@raring2go/permissions";
-import type {
-  AuthMembership,
-  AuthRepository,
-  AuthSession,
-  AuthTerritory
-} from "@raring2go/auth";
+import type { AuthRepository, AuthSession } from "@raring2go/auth";
 import type {
   PermissionData,
   PermissionDecision,
@@ -26,6 +21,7 @@ export type ShellOutcomeKind =
 
 export type RequestedShellContext = {
   sessionKey?: string;
+  sessionToken?: string;
   organisationId?: string;
   territoryId?: string;
 };
@@ -132,63 +128,6 @@ const sessionsByKey: Record<string, AuthSession> = {
   }
 };
 
-const memberships: AuthMembership[] = [
-  {
-    id: "fixture_membership_superadmin",
-    userId: fixtureIds.users.superAdmin,
-    organisationId: fixtureIds.organisations.hq,
-    status: "active"
-  },
-  {
-    id: "fixture_membership_franchisee",
-    userId: fixtureIds.users.franchisee,
-    organisationId: fixtureIds.organisations.franchise,
-    status: "active"
-  },
-  {
-    id: "fixture_membership_franchisee_advertiser",
-    userId: fixtureIds.users.franchisee,
-    organisationId: fixtureIds.organisations.advertiser,
-    status: "active"
-  }
-];
-
-const territories: AuthTerritory[] = foundationSeed.territories.map((territory) => ({
-  ...territory,
-  status: "active"
-}));
-
-export const fixtureAuthRepository: AuthRepository = {
-  async findUserByEmail() {
-    return null;
-  },
-  async createUser() {
-    throw new Error("Fixture shell repository does not create users.");
-  },
-  async findMembershipsForUser(userId) {
-    return memberships.filter((membership) => membership.userId === userId);
-  },
-  async findTerritoryById(territoryId) {
-    return territories.find((territory) => territory.id === territoryId) ?? null;
-  },
-  async findInvitationByTokenHash() {
-    return null;
-  },
-  async markInvitationAccepted() {},
-  async ensureMembership() {
-    throw new Error("Fixture shell repository does not modify memberships.");
-  },
-  async createSession() {
-    throw new Error("Fixture shell repository does not create sessions.");
-  },
-  async findSessionByTokenHash(tokenHash) {
-    return Object.values(sessionsByKey).find(
-      (session) => session.sessionTokenHash === tokenHash
-    ) ?? null;
-  },
-  async revokeSession() {}
-};
-
 const permissionData: PermissionData = {
   roleAssignments: [
     {
@@ -251,9 +190,9 @@ const permissionData: PermissionData = {
 
 export async function resolveShell(
   request: RequestedShellContext,
-  repository = fixtureAuthRepository
+  repository: AuthRepository = appAuthRepository
 ): Promise<ShellOutcome> {
-  const session = request.sessionKey ? sessionsByKey[request.sessionKey] : undefined;
+  const session = await resolveRequestedSession(request, repository);
 
   if (!session) {
     return {
@@ -297,7 +236,7 @@ export async function resolveShell(
           ? territoryName(context.territoryId)
           : undefined
       },
-      availableContexts: contextsForUser(session.userId),
+      availableContexts: await contextsForUser(repository, session.userId),
       navigation: shellNavigation.filter((item) => decisions[item.id]?.allowed),
       decisions
     };
@@ -306,6 +245,24 @@ export async function resolveShell(
       error instanceof Error ? error.message : "The requested context is invalid."
     );
   }
+}
+
+async function resolveRequestedSession(
+  request: RequestedShellContext,
+  repository: AuthRepository
+): Promise<AuthSession | undefined> {
+  if (request.sessionToken) {
+    return (
+      (await repository.findSessionByTokenHash(hashToken(request.sessionToken))) ??
+      undefined
+    );
+  }
+
+  if (request.sessionKey && isFixtureSessionAllowed()) {
+    return sessionsByKey[request.sessionKey];
+  }
+
+  return undefined;
 }
 
 export async function requireShellPermission(
@@ -393,7 +350,9 @@ function defaultContextForUser(userId: string) {
   return undefined;
 }
 
-function contextsForUser(userId: string) {
+async function contextsForUser(repository: AuthRepository, userId: string) {
+  const memberships = await repository.findMembershipsForUser(userId);
+
   return memberships
     .filter((membership) => membership.userId === userId && membership.status === "active")
     .flatMap((membership) => {
@@ -439,3 +398,4 @@ function territoryName(territoryId: string) {
     "Unknown territory"
   );
 }
+import { appAuthRepository, isFixtureSessionAllowed } from "./auth-runtime";

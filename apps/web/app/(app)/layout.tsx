@@ -1,5 +1,8 @@
 import Link from "next/link";
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 import { resolveShell } from "../../lib/app-shell";
+import { safeReturnTo } from "../../lib/auth-runtime";
 import type { RequestedShellContext } from "../../lib/app-shell";
 
 type AppLayoutProps = {
@@ -17,6 +20,10 @@ export async function AppShell({
   request: RequestedShellContext;
 }) {
   const shell = await resolveShell(request);
+
+  if (shell.kind === "unauthenticated") {
+    redirect(`/sign-in?returnTo=${encodeURIComponent(safeReturnTo("/app"))}` as Route);
+  }
 
   if (shell.kind !== "authenticated") {
     return (

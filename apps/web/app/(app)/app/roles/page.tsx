@@ -1,13 +1,13 @@
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { AppShell } from "../../layout";
-import { requestFromSearchParams } from "../page";
+import { requestFromSearchParamsAndCookies } from "../page";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export default async function RolesPage({ searchParams }: PageProps) {
-  const request = requestFromSearchParams(await searchParams);
+  const request = await requestFromSearchParamsAndCookies(await searchParams);
 
   try {
     await requireShellPermission(request, {

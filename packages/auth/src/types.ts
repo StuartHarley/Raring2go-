@@ -52,6 +52,15 @@ export type AuthSession = {
   revokedAt?: Date | null;
 };
 
+export type AuthVerificationToken = {
+  id: string;
+  identifier: string;
+  tokenHash: string;
+  purpose: "sign_in" | "account_recovery" | string;
+  expiresAt: Date;
+  usedAt?: Date | null;
+};
+
 export type WorkingContext = {
   userId: string;
   organisationId: string;
@@ -83,6 +92,20 @@ export type AuthRepository = {
   }): Promise<AuthSession>;
   findSessionByTokenHash(tokenHash: string): Promise<AuthSession | null>;
   revokeSession(input: { sessionId: string; revokedAt: Date }): Promise<void>;
+};
+
+export type AuthTokenRepository = {
+  createVerificationToken(input: {
+    identifier: string;
+    tokenHash: string;
+    purpose: AuthVerificationToken["purpose"];
+    expiresAt: Date;
+  }): Promise<AuthVerificationToken>;
+  findVerificationTokenByHash(tokenHash: string): Promise<AuthVerificationToken | null>;
+  markVerificationTokenUsed(input: {
+    tokenId: string;
+    usedAt: Date;
+  }): Promise<void>;
 };
 
 export type AuditRecorder = {

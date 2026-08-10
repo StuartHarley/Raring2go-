@@ -1,12 +1,14 @@
+import { cookies } from "next/headers";
 import { AppShell } from "../layout";
 import type { RequestedShellContext } from "../../../lib/app-shell";
+import { sessionCookieName } from "../../../lib/auth-runtime";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export default async function AppHome({ searchParams }: PageProps) {
-  const request = requestFromSearchParams(await searchParams);
+  const request = await requestFromSearchParamsAndCookies(await searchParams);
 
   return (
     <AppShell request={request}>
@@ -27,8 +29,21 @@ export function requestFromSearchParams(
 ): RequestedShellContext {
   return {
     sessionKey: first(params.session),
+    sessionToken: first(params.sessionToken),
     organisationId: first(params.organisationId),
     territoryId: first(params.territoryId)
+  };
+}
+
+export async function requestFromSearchParamsAndCookies(
+  params: Record<string, string | string[] | undefined>
+): Promise<RequestedShellContext> {
+  const request = requestFromSearchParams(params);
+  const cookieStore = await cookies();
+
+  return {
+    ...request,
+    sessionToken: request.sessionToken ?? cookieStore.get(sessionCookieName)?.value
   };
 }
 
