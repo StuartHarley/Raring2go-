@@ -9,6 +9,8 @@ import {
   auditEvents,
   franchiseArtifactReferences,
   franchiseAgreements,
+  franchiseDocumentVersions,
+  franchiseDocuments,
   franchiseDomainEvents,
   franchises,
   organisations,
@@ -64,5 +66,14 @@ describe("foundation schema", () => {
     expect(franchiseArtifactReferences.storageKey.name).toBe("storage_key");
     expect(franchiseDomainEvents.idempotencyKey.name).toBe("idempotency_key");
     expect((franchiseArtifactReferences as unknown as Record<string, unknown>).folderId).toBeUndefined();
+  });
+
+  it("models the franchise document vault through provider-neutral artefact references", () => {
+    expect(franchiseDocuments.franchiseId.name).toBe("franchise_id");
+    expect(franchiseDocuments.currentVersionId.name).toBe("current_version_id");
+    expect(franchiseDocuments.expiryDate.name).toBe("expiry_date");
+    expect(franchiseDocumentVersions.artifactReferenceId.name).toBe("artifact_reference_id");
+    expect((franchiseDocuments as unknown as Record<string, unknown>).storageBucket).toBeUndefined();
+    expect((franchiseDocumentVersions as unknown as Record<string, unknown>).providerDocumentId).toBeUndefined();
   });
 });

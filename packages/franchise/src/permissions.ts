@@ -54,5 +54,21 @@ export const franchiseCapabilities = {
   agreementDownloadExecuted: {
     module: "franchise.agreement",
     action: "download_executed"
+  },
+  documentView: {
+    module: "franchise.document",
+    action: "view"
+  },
+  documentUpload: {
+    module: "franchise.document",
+    action: "upload"
+  },
+  documentDownload: {
+    module: "franchise.document",
+    action: "download"
+  },
+  documentArchive: {
+    module: "franchise.document",
+    action: "archive"
   }
 } as const;

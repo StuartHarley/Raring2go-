@@ -6,7 +6,10 @@ import {
   agreementTemplates,
   agreementVersions,
   authInvitations,
+  franchiseArtifactReferences,
   franchiseContacts,
+  franchiseDocuments,
+  franchiseDocumentVersions,
   franchises,
   memberships,
   organisations,
@@ -193,6 +196,29 @@ export async function seedDatabase(databaseUrl?: string) {
         permissionId: fixtureIds.permissions.agreementDownloadExecuted,
         scope: "own_territory",
         constraints: {}
+      },
+      ...[
+        fixtureIds.permissions.documentView,
+        fixtureIds.permissions.documentUpload,
+        fixtureIds.permissions.documentDownload,
+        fixtureIds.permissions.documentArchive
+      ].map((permissionId) => ({
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId,
+        scope: "network" as const,
+        constraints: {}
+      })),
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.documentView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.documentDownload,
+        scope: "own_territory",
+        constraints: {}
       }
     ]).onConflictDoNothing();
 
@@ -314,6 +340,62 @@ export async function seedDatabase(databaseUrl?: string) {
         content: sql`excluded.content`,
         approvedByUserId: sql`excluded.approved_by_user_id`,
         approvedAt: sql`excluded.approved_at`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(franchiseArtifactReferences).values([...foundationSeed.franchiseArtifactReferences]).onConflictDoUpdate({
+      target: franchiseArtifactReferences.id,
+      set: {
+        franchiseId: sql`excluded.franchise_id`,
+        entityType: sql`excluded.entity_type`,
+        entityId: sql`excluded.entity_id`,
+        category: sql`excluded.category`,
+        label: sql`excluded.label`,
+        storageKey: sql`excluded.storage_key`,
+        contentType: sql`excluded.content_type`,
+        checksum: sql`excluded.checksum`,
+        providerMetadata: sql`excluded.provider_metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(franchiseDocuments).values(foundationSeed.franchiseDocuments.map((document) => ({
+      ...document,
+      expiryDate: null,
+      archivedAt: null
+    }))).onConflictDoUpdate({
+      target: franchiseDocuments.id,
+      set: {
+        franchiseId: sql`excluded.franchise_id`,
+        organisationId: sql`excluded.organisation_id`,
+        territoryId: sql`excluded.territory_id`,
+        category: sql`excluded.category`,
+        documentType: sql`excluded.document_type`,
+        title: sql`excluded.title`,
+        description: sql`excluded.description`,
+        status: sql`excluded.status`,
+        currentVersionId: sql`excluded.current_version_id`,
+        uploadedByUserId: sql`excluded.uploaded_by_user_id`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(franchiseDocumentVersions).values(foundationSeed.franchiseDocumentVersions.map((version) => ({
+      ...version,
+      uploadedAt: version.uploadedAt ? new Date(version.uploadedAt) : null
+    }))).onConflictDoUpdate({
+      target: franchiseDocumentVersions.id,
+      set: {
+        documentId: sql`excluded.document_id`,
+        versionNumber: sql`excluded.version_number`,
+        artifactReferenceId: sql`excluded.artifact_reference_id`,
+        uploadedByUserId: sql`excluded.uploaded_by_user_id`,
+        uploadedAt: sql`excluded.uploaded_at`,
+        notes: sql`excluded.notes`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

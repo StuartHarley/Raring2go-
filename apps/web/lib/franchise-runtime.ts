@@ -1,11 +1,16 @@
 import {
   activeAgreementForFranchise,
+  addFranchiseDocumentVersion,
+  archiveFranchiseDocument,
+  archiveFranchiseDocumentRecord,
   approveAgreement,
   cancelSignatureRequest,
   generateAgreement,
   createFranchise,
   getFranchise360,
   insertFranchiseAgreement,
+  insertFranchiseDocumentGraph,
+  insertFranchiseDocumentVersionGraph,
   insertFranchiseRecord,
   insertSignatureRequest,
   insertSigners,
@@ -20,6 +25,7 @@ import {
   updateFranchiseAgreementState,
   updateFranchiseRecord,
   voidAgreement,
+  uploadFranchiseDocument,
   updateFranchise
 } from "@raring2go/franchise";
 import { recordAuditEvent } from "@raring2go/audit";
@@ -30,6 +36,9 @@ import type {
   ESignProvider,
   Franchise360,
   FranchiseActorContext,
+  FranchiseArtifactReference,
+  FranchiseDocument,
+  FranchiseDocumentVersion,
   FranchiseRecord
 } from "@raring2go/franchise";
 import type { PermissionData } from "@raring2go/permissions";
@@ -127,6 +136,26 @@ export const franchisePermissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.agreementView,
+      scope: "own_territory"
+    },
+    ...[
+      fixtureIds.permissions.documentView,
+      fixtureIds.permissions.documentUpload,
+      fixtureIds.permissions.documentDownload,
+      fixtureIds.permissions.documentArchive
+    ].map((permissionId) => ({
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId,
+      scope: "network" as const
+    })),
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.documentView,
+      scope: "own_territory"
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.documentDownload,
       scope: "own_territory"
     }
   ].map((grant) => {
@@ -383,6 +412,135 @@ export async function declineCurrentAgreementSigning(
   return recordCurrentSignatureEvent(context, franchiseId, eventId, "declined");
 }
 
+export async function uploadDocumentForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  input: {
+    documentId: string;
+    versionId: string;
+    artifactId: string;
+    category: string;
+    documentType: string;
+    title: string;
+    description?: string | null;
+    expiryDate?: string | null;
+  }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      const view = getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const document: FranchiseDocument = {
+        id: input.documentId,
+        franchiseId,
+        organisationId: view.franchise.franchiseOrganisationId,
+        territoryId: view.franchise.primaryTerritoryId,
+        category: input.category,
+        documentType: input.documentType,
+        title: input.title,
+        description: input.description ?? null,
+        status: "active",
+        currentVersionId: input.versionId,
+        expiryDate: input.expiryDate ?? null,
+        uploadedByUserId: context.userId
+      };
+      const version: FranchiseDocumentVersion = {
+        id: input.versionId,
+        documentId: input.documentId,
+        versionNumber: 1,
+        artifactReferenceId: input.artifactId,
+        uploadedByUserId: context.userId,
+        uploadedAt: today()
+      };
+      const artifact: FranchiseArtifactReference = documentArtifact(
+        input.artifactId,
+        franchiseId,
+        input.documentId,
+        input.title
+      );
+      const uploaded = await uploadFranchiseDocument(
+        context,
+        franchisePermissionData,
+        auditFor(tx),
+        data,
+        { document, version, artifact }
+      );
+      await insertFranchiseDocumentGraph(tx, { document, version, artifact });
+      return uploaded;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function addDocumentVersionForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  documentId: string,
+  versionId: string,
+  artifactId: string
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const existingVersions = (data.documentVersions ?? []).filter(
+        (version) => version.documentId === documentId
+      );
+      const version: FranchiseDocumentVersion = {
+        id: versionId,
+        documentId,
+        versionNumber: existingVersions.length + 1,
+        artifactReferenceId: artifactId,
+        uploadedByUserId: context.userId,
+        uploadedAt: today()
+      };
+      const artifact = documentArtifact(artifactId, franchiseId, documentId, "Document version");
+      const document = await addFranchiseDocumentVersion(
+        context,
+        franchisePermissionData,
+        auditFor(tx),
+        data,
+        { documentId, version, artifact }
+      );
+      await insertFranchiseDocumentVersionGraph(tx, { document, version, artifact });
+      return document;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function archiveDocumentForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  documentId: string
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const document = await archiveFranchiseDocument(
+        context,
+        franchisePermissionData,
+        auditFor(tx),
+        data,
+        documentId
+      );
+      await archiveFranchiseDocumentRecord(tx, document);
+      return document;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
 async function recordCurrentSignatureEvent(
   context: FranchiseActorContext,
   franchiseId: string,
@@ -557,4 +715,29 @@ function certificateArtifact(franchiseId: string, eventId: string) {
       provider: "development"
     }
   };
+}
+
+function documentArtifact(
+  artifactId: string,
+  franchiseId: string,
+  documentId: string,
+  title: string
+): FranchiseArtifactReference {
+  return {
+    id: artifactId,
+    franchiseId,
+    entityType: "franchise_document",
+    entityId: documentId,
+    category: "vault_document",
+    label: title,
+    storageKey: `development/franchise-documents/${documentId}/${artifactId}.pdf`,
+    contentType: "application/pdf",
+    providerMetadata: {
+      provider: "development"
+    }
+  };
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
 }

@@ -34,7 +34,11 @@ export const fixtureIds = {
     agreementResendSignature: "00000000-0000-4000-8000-000000000414",
     agreementViewSignatureStatus: "00000000-0000-4000-8000-000000000415",
     agreementRecordSignatureEvent: "00000000-0000-4000-8000-000000000416",
-    agreementDownloadExecuted: "00000000-0000-4000-8000-000000000417"
+    agreementDownloadExecuted: "00000000-0000-4000-8000-000000000417",
+    documentView: "00000000-0000-4000-8000-000000000418",
+    documentUpload: "00000000-0000-4000-8000-000000000419",
+    documentDownload: "00000000-0000-4000-8000-000000000420",
+    documentArchive: "00000000-0000-4000-8000-000000000421"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -51,6 +55,15 @@ export const fixtureIds = {
   },
   franchiseAgreements: {
     suttonDraft: "00000000-0000-4000-8000-000000000924"
+  },
+  franchiseDocuments: {
+    suttonWelcomePack: "00000000-0000-4000-8000-000000000931"
+  },
+  franchiseDocumentVersions: {
+    suttonWelcomePackV1: "00000000-0000-4000-8000-000000000932"
+  },
+  franchiseArtifacts: {
+    suttonWelcomePack: "00000000-0000-4000-8000-000000000933"
   },
   invitations: {
     franchiseStaff: "00000000-0000-4000-8000-000000000801"
@@ -222,6 +235,30 @@ export const foundationSeed = {
       module: "franchise.agreement",
       action: "download_executed",
       description: "Download executed franchise agreement artefact references."
+    },
+    {
+      id: fixtureIds.permissions.documentView,
+      module: "franchise.document",
+      action: "view",
+      description: "View franchise documents."
+    },
+    {
+      id: fixtureIds.permissions.documentUpload,
+      module: "franchise.document",
+      action: "upload",
+      description: "Upload franchise documents and versions."
+    },
+    {
+      id: fixtureIds.permissions.documentDownload,
+      module: "franchise.document",
+      action: "download",
+      description: "Download franchise documents."
+    },
+    {
+      id: fixtureIds.permissions.documentArchive,
+      module: "franchise.document",
+      action: "archive",
+      description: "Archive franchise documents."
     }
   ],
   franchises: [
@@ -294,6 +331,46 @@ export const foundationSeed = {
       },
       approvedByUserId: fixtureIds.users.superAdmin,
       approvedAt: "2026-08-10"
+    }
+  ],
+  franchiseArtifactReferences: [
+    {
+      id: fixtureIds.franchiseArtifacts.suttonWelcomePack,
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      entityType: "franchise_document",
+      entityId: fixtureIds.franchiseDocuments.suttonWelcomePack,
+      category: "company_document",
+      label: "Welcome pack PDF",
+      storageKey: "seed/franchise-documents/sutton-welcome-pack.pdf",
+      contentType: "application/pdf",
+      checksum: "seed-checksum",
+      providerMetadata: {}
+    }
+  ],
+  franchiseDocuments: [
+    {
+      id: fixtureIds.franchiseDocuments.suttonWelcomePack,
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      organisationId: fixtureIds.organisations.franchise,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      category: "company_document",
+      documentType: "welcome_pack",
+      title: "Sutton Coldfield Welcome Pack",
+      description: "Seed document proving the franchise document vault.",
+      status: "active",
+      currentVersionId: fixtureIds.franchiseDocumentVersions.suttonWelcomePackV1,
+      uploadedByUserId: fixtureIds.users.superAdmin
+    }
+  ],
+  franchiseDocumentVersions: [
+    {
+      id: fixtureIds.franchiseDocumentVersions.suttonWelcomePackV1,
+      documentId: fixtureIds.franchiseDocuments.suttonWelcomePack,
+      versionNumber: 1,
+      artifactReferenceId: fixtureIds.franchiseArtifacts.suttonWelcomePack,
+      uploadedByUserId: fixtureIds.users.superAdmin,
+      uploadedAt: "2026-08-10",
+      notes: "Seed version."
     }
   ]
 } as const;

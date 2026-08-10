@@ -265,3 +265,66 @@ export const franchiseDomainEvents = pgTable(
     index("franchise_domain_events_entity_idx").on(table.entityType, table.entityId)
   ]
 );
+
+export const franchiseDocuments = pgTable(
+  "franchise_documents",
+  {
+    id,
+    franchiseId: uuid("franchise_id")
+      .notNull()
+      .references(() => franchises.id),
+    organisationId: uuid("organisation_id")
+      .notNull()
+      .references(() => organisations.id),
+    territoryId: uuid("territory_id")
+      .notNull()
+      .references(() => territories.id),
+    category: text("category").notNull(),
+    documentType: text("document_type").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    status: text("status").notNull().default("active"),
+    currentVersionId: uuid("current_version_id"),
+    expiryDate: date("expiry_date", { mode: "date" }),
+    uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id),
+    archivedAt: date("archived_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("franchise_documents_franchise_id_idx").on(table.franchiseId),
+    index("franchise_documents_territory_id_idx").on(table.territoryId),
+    index("franchise_documents_category_idx").on(table.category),
+    index("franchise_documents_status_idx").on(table.status),
+    index("franchise_documents_expiry_date_idx").on(table.expiryDate),
+    index("franchise_documents_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const franchiseDocumentVersions = pgTable(
+  "franchise_document_versions",
+  {
+    id,
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => franchiseDocuments.id),
+    versionNumber: integer("version_number").notNull(),
+    artifactReferenceId: uuid("artifact_reference_id")
+      .notNull()
+      .references(() => franchiseArtifactReferences.id),
+    uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id),
+    uploadedAt: date("uploaded_at", { mode: "date" }),
+    notes: text("notes"),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("franchise_document_versions_doc_number_uidx").on(
+      table.documentId,
+      table.versionNumber
+    ),
+    index("franchise_document_versions_document_id_idx").on(table.documentId),
+    index("franchise_document_versions_artifact_id_idx").on(table.artifactReferenceId),
+    index("franchise_document_versions_deleted_at_idx").on(table.deletedAt)
+  ]
+);

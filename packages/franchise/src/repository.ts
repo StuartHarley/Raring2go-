@@ -6,6 +6,8 @@ import {
   agreementSignatureRequests,
   agreementSigners,
   franchiseArtifactReferences,
+  franchiseDocumentVersions,
+  franchiseDocuments,
   franchiseDomainEvents,
   franchiseAgreements,
   franchiseContacts,
@@ -33,6 +35,8 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     signerRows,
     signatureEventRows,
     artifactRows,
+    documentRows,
+    documentVersionRows,
     domainEventRows,
     activityRows
   ] = await Promise.all([
@@ -48,6 +52,8 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     db.select().from(agreementSigners),
     db.select().from(agreementSignatureEvents),
     db.select().from(franchiseArtifactReferences),
+    db.select().from(franchiseDocuments),
+    db.select().from(franchiseDocumentVersions),
     db.select().from(franchiseDomainEvents),
     db.select().from(auditEvents).orderBy(desc(auditEvents.createdAt)).limit(50)
   ]);
@@ -89,6 +95,16 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     artifactReferences: artifactRows.map((artifact: any) => ({
       ...artifact,
       lockedAt: dateToString(artifact.lockedAt)
+    })),
+    documents: documentRows.map((document: any) => ({
+      ...document,
+      status: document.status,
+      expiryDate: dateToString(document.expiryDate),
+      archivedAt: dateToString(document.archivedAt)
+    })),
+    documentVersions: documentVersionRows.map((version: any) => ({
+      ...version,
+      uploadedAt: dateToString(version.uploadedAt)
     })),
     domainEvents: domainEventRows.map((event: any) => ({
       ...event,
@@ -218,6 +234,67 @@ export async function syncSignatureRequestGraph(
       processedAt: event.processedAt ? new Date(event.processedAt) : null
     }).onConflictDoNothing();
   }
+}
+
+export async function insertFranchiseDocumentGraph(
+  db: FranchiseDb,
+  input: {
+    document: NonNullable<FranchiseData["documents"]>[number];
+    version: NonNullable<FranchiseData["documentVersions"]>[number];
+    artifact: NonNullable<FranchiseData["artifactReferences"]>[number];
+  }
+) {
+  await db.insert(franchiseArtifactReferences).values({
+    ...input.artifact,
+    lockedAt: input.artifact.lockedAt ? new Date(input.artifact.lockedAt) : null
+  });
+  await db.insert(franchiseDocuments).values({
+    ...input.document,
+    expiryDate: input.document.expiryDate ? new Date(input.document.expiryDate) : null,
+    archivedAt: input.document.archivedAt ? new Date(input.document.archivedAt) : null
+  });
+  await db.insert(franchiseDocumentVersions).values({
+    ...input.version,
+    uploadedAt: input.version.uploadedAt ? new Date(input.version.uploadedAt) : null
+  });
+}
+
+export async function insertFranchiseDocumentVersionGraph(
+  db: FranchiseDb,
+  input: {
+    document: NonNullable<FranchiseData["documents"]>[number];
+    version: NonNullable<FranchiseData["documentVersions"]>[number];
+    artifact: NonNullable<FranchiseData["artifactReferences"]>[number];
+  }
+) {
+  await db.insert(franchiseArtifactReferences).values({
+    ...input.artifact,
+    lockedAt: input.artifact.lockedAt ? new Date(input.artifact.lockedAt) : null
+  });
+  await db.insert(franchiseDocumentVersions).values({
+    ...input.version,
+    uploadedAt: input.version.uploadedAt ? new Date(input.version.uploadedAt) : null
+  });
+  await db
+    .update(franchiseDocuments)
+    .set({
+      currentVersionId: input.document.currentVersionId
+    })
+    .where(eq(franchiseDocuments.id, input.document.id));
+}
+
+export async function archiveFranchiseDocumentRecord(
+  db: FranchiseDb,
+  document: NonNullable<FranchiseData["documents"]>[number]
+) {
+  await db
+    .update(franchiseDocuments)
+    .set({
+      status: document.status,
+      archivedAt: document.archivedAt ? new Date(document.archivedAt) : null,
+      deletedAt: document.deletedAt ?? null
+    })
+    .where(eq(franchiseDocuments.id, document.id));
 }
 
 export async function updateFranchiseRecord(

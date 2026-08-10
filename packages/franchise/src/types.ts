@@ -133,6 +133,42 @@ export type FranchiseArtifactReference = {
   deletedAt?: Date | null;
 };
 
+export type FranchiseDocumentStatus = "active" | "archived";
+
+export type FranchiseDocument = {
+  id: string;
+  franchiseId: string;
+  organisationId: string;
+  territoryId: string;
+  category: string;
+  documentType: string;
+  title: string;
+  description?: string | null;
+  status: FranchiseDocumentStatus;
+  currentVersionId?: string | null;
+  expiryDate?: string | null;
+  uploadedByUserId?: string | null;
+  archivedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseDocumentVersion = {
+  id: string;
+  documentId: string;
+  versionNumber: number;
+  artifactReferenceId: string;
+  uploadedByUserId?: string | null;
+  uploadedAt?: string | null;
+  notes?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseDocumentSummary = FranchiseDocument & {
+  currentVersion?: FranchiseDocumentVersion;
+  artifact?: FranchiseArtifactReference;
+  versions: Array<FranchiseDocumentVersion & { artifact?: FranchiseArtifactReference }>;
+};
+
 export type AgreementSignatureRequest = {
   id: string;
   franchiseAgreementId: string;
@@ -201,12 +237,12 @@ export type Franchise360 = {
   contacts: Array<FranchiseContact & { user?: FranchiseUser }>;
   activity: FranchiseAuditEvent[];
   agreement?: FranchiseAgreementSummary;
+  documents: FranchiseDocumentSummary[];
   placeholders: {
     performance: "deferred";
     compliance: "deferred";
     training: "deferred";
     support: "deferred";
-    documents: "deferred";
   };
 };
 
@@ -223,6 +259,8 @@ export type FranchiseData = {
   signers?: AgreementSigner[];
   signatureEvents?: AgreementSignatureEvent[];
   artifactReferences?: FranchiseArtifactReference[];
+  documents?: FranchiseDocument[];
+  documentVersions?: FranchiseDocumentVersion[];
   domainEvents?: FranchiseDomainEvent[];
   activity?: FranchiseAuditEvent[];
 };

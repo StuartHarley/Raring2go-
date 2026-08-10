@@ -27,7 +27,11 @@ describe("foundation fixtures", () => {
       "franchise.agreement",
       "franchise.agreement",
       "franchise.agreement",
-      "franchise.agreement"
+      "franchise.agreement",
+      "franchise.document",
+      "franchise.document",
+      "franchise.document",
+      "franchise.document"
     ]);
   });
 
@@ -50,6 +54,18 @@ describe("foundation fixtures", () => {
     );
     expect(foundationSeed.franchises[0]?.primaryTerritoryId).toBe(
       fixtureIds.territories.suttonColdfield
+    );
+  });
+
+  it("includes a deterministic franchise document vault fixture", () => {
+    expect(fixtureIds.franchiseDocuments.suttonWelcomePack).toBe(
+      "00000000-0000-4000-8000-000000000931"
+    );
+    expect(foundationSeed.franchiseDocuments[0]?.currentVersionId).toBe(
+      fixtureIds.franchiseDocumentVersions.suttonWelcomePackV1
+    );
+    expect(foundationSeed.franchiseArtifactReferences[0]?.entityType).toBe(
+      "franchise_document"
     );
   });
 

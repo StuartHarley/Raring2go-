@@ -4,6 +4,8 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import {
   approveAgreementAction,
+  addDocumentVersionAction,
+  archiveDocumentAction,
   cancelSignatureAction,
   completeNextSignerAction,
   completeSigningAction,
@@ -13,6 +15,7 @@ import {
   sendAgreementForSignatureAction,
   submitAgreementAction,
   updateFranchiseAction,
+  uploadDocumentAction,
   voidAgreementAction
 } from "../actions";
 
@@ -36,6 +39,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     completeNextSigner,
     completeSigning,
     declineSigning,
+    uploadDocument,
     generate,
     resendSignature,
     sendSignature,
@@ -43,7 +47,8 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     update,
     view,
     voidCurrent,
-    canEdit
+    canEdit,
+    documentActions
   } = result;
 
   return (
@@ -104,6 +109,10 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             <div>
               <dt>Signing</dt>
               <dd>{view.agreement?.signatureRequest?.status ?? "Not sent"}</dd>
+            </div>
+            <div>
+              <dt>Documents</dt>
+              <dd>{view.documents.length} active</dd>
             </div>
           </dl>
           {canEdit ? (
@@ -218,6 +227,70 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             </div>
           )}
         </section>
+        <section id="documents" className="app-panel">
+          <p className="eyebrow">Documents</p>
+          <h3>Franchise document vault</h3>
+          {view.documents.length > 0 ? (
+            <div className="franchise-list">
+              {view.documents.map((document) => (
+                <div key={document.id}>
+                  <strong>{document.title}</strong>
+                  <span>{document.category} - {document.documentType}</span>
+                  <span>
+                    Version {document.currentVersion?.versionNumber ?? "-"} -
+                    {document.expiryDate ? ` expires ${document.expiryDate}` : " no expiry"}
+                  </span>
+                  <span>{document.artifact?.storageKey ?? "No artifact reference"}</span>
+                  {canEdit ? (
+                    <div className="franchise-actions">
+                      <form action={documentActions[document.id]?.version}>
+                        <button type="submit">Add version</button>
+                      </form>
+                      <form action={documentActions[document.id]?.archive}>
+                        <button type="submit">Archive</button>
+                      </form>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="franchise-empty">
+              <h3>No documents yet</h3>
+              <p>Upload franchise documents, agreement references and supporting files.</p>
+            </div>
+          )}
+          {canEdit ? (
+            <form action={uploadDocument} className="franchise-form">
+              <label>
+                Title
+                <input name="title" defaultValue="New franchise document" />
+              </label>
+              <label>
+                Category
+                <select name="category" defaultValue="company_document">
+                  <option value="agreement">Agreement</option>
+                  <option value="insurance_certificate">Insurance certificate</option>
+                  <option value="company_document">Company document</option>
+                  <option value="policy_certificate">Policy/certificate</option>
+                </select>
+              </label>
+              <label>
+                Document type
+                <input name="documentType" defaultValue="general" />
+              </label>
+              <label>
+                Expiry date
+                <input name="expiryDate" type="date" />
+              </label>
+              <label>
+                Description
+                <input name="description" defaultValue="" />
+              </label>
+              <button type="submit">Upload document reference</button>
+            </form>
+          ) : null}
+        </section>
         {Object.entries(view.placeholders).map(([key]) => (
           <section key={key} id={key} className="app-panel">
             <p className="eyebrow">{key}</p>
@@ -274,6 +347,16 @@ async function loadFranchise360(
     const completeNextSigner = completeNextSignerAction.bind(null, context, id);
     const completeSigning = completeSigningAction.bind(null, context, id);
     const declineSigning = declineSigningAction.bind(null, context, id);
+    const uploadDocument = uploadDocumentAction.bind(null, context, id);
+    const documentActions = Object.fromEntries(
+      view.documents.map((document) => [
+        document.id,
+        {
+          version: addDocumentVersionAction.bind(null, context, id, document.id),
+          archive: archiveDocumentAction.bind(null, context, id, document.id)
+        }
+      ])
+    );
 
     return {
       approve,
@@ -282,13 +365,15 @@ async function loadFranchise360(
       completeNextSigner,
       completeSigning,
       declineSigning,
+      uploadDocument,
       generate,
       resendSignature,
       sendSignature,
       submit,
       update,
       view,
-      voidCurrent
+      voidCurrent,
+      documentActions
     };
   } catch (error) {
     return { error };

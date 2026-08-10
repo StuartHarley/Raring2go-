@@ -2,7 +2,9 @@ import { auditActions } from "@raring2go/audit";
 import { describe, expect, it } from "vitest";
 import {
   assertNoDuplicatedIdentityData,
+  addFranchiseDocumentVersion,
   approveAgreement,
+  archiveFranchiseDocument,
   cancelSignatureRequest,
   createFranchise,
   generateAgreement,
@@ -13,6 +15,7 @@ import {
   resendSignatureRequest,
   sendAgreementForSignature,
   submitAgreementForApproval,
+  uploadFranchiseDocument,
   voidAgreement,
   updateFranchise
 } from "./service";
@@ -50,7 +53,11 @@ const ids = {
     agreementSendSignature: "permission_agreement_send_signature",
     agreementCancelSignature: "permission_agreement_cancel_signature",
     agreementResendSignature: "permission_agreement_resend_signature",
-    agreementRecordSignatureEvent: "permission_agreement_record_signature_event"
+    agreementRecordSignatureEvent: "permission_agreement_record_signature_event",
+    documentView: "permission_document_view",
+    documentUpload: "permission_document_upload",
+    documentDownload: "permission_document_download",
+    documentArchive: "permission_document_archive"
   },
   franchises: {
     own: "franchise_own",
@@ -100,6 +107,10 @@ const permissionData: PermissionData = {
     agreementGrant(ids.permissions.agreementCancelSignature, "cancel_signature"),
     agreementGrant(ids.permissions.agreementResendSignature, "resend_signature"),
     agreementGrant(ids.permissions.agreementRecordSignatureEvent, "record_signature_event"),
+    documentGrant(ids.permissions.documentView, "view"),
+    documentGrant(ids.permissions.documentUpload, "upload"),
+    documentGrant(ids.permissions.documentDownload, "download"),
+    documentGrant(ids.permissions.documentArchive, "archive"),
     {
       roleId: ids.roles.local,
       permission: {
@@ -263,6 +274,9 @@ function data(): FranchiseData {
       }
     ],
     franchiseAgreements: [],
+    artifactReferences: [],
+    documents: [],
+    documentVersions: [],
     activity: [
       {
         id: "event_1",
@@ -417,8 +431,7 @@ describe("franchise service", () => {
   });
 
   it("renders deferred tabs without future domain tables", () => {
-    expect(
-      getFranchise360(
+    const view = getFranchise360(
         {
           userId: ids.users.hq,
           organisationId: ids.organisations.hq
@@ -426,14 +439,107 @@ describe("franchise service", () => {
         permissionData,
         data(),
         ids.franchises.own
-      ).placeholders
-    ).toEqual({
+      );
+
+    expect(view.documents).toEqual([]);
+    expect(view.placeholders).toEqual({
       performance: "deferred",
       compliance: "deferred",
       training: "deferred",
-      support: "deferred",
-      documents: "deferred"
+      support: "deferred"
     });
+  });
+
+  it("uploads and displays active document versions in Franchisee 360", async () => {
+    const franchiseData = data();
+    const recorder = audit();
+
+    await uploadFranchiseDocument(hqContext(), permissionData, recorder, franchiseData, {
+      document: documentRecord("document_1", "version_1"),
+      version: documentVersion("version_1", "document_1", 1, "artifact_1"),
+      artifact: documentArtifact("artifact_1", "document_1")
+    });
+    await addFranchiseDocumentVersion(hqContext(), permissionData, recorder, franchiseData, {
+      documentId: "document_1",
+      version: documentVersion("version_2", "document_1", 2, "artifact_2"),
+      artifact: documentArtifact("artifact_2", "document_1")
+    });
+
+    const view = getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own);
+    expect(view.documents).toHaveLength(1);
+    expect(view.documents[0]?.currentVersion?.versionNumber).toBe(2);
+    expect(view.documents[0]?.artifact?.storageKey).toBe("documents/artifact_2.pdf");
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseDocumentUpload,
+      auditActions.franchiseDocumentVersionCreate
+    ]);
+  });
+
+  it("rejects invalid document scope and non-sequential versions", async () => {
+    const franchiseData = data();
+    await expect(
+      uploadFranchiseDocument(hqContext(), permissionData, audit(), franchiseData, {
+        document: {
+          ...documentRecord("document_1", "version_1"),
+          territoryId: ids.territories.other
+        },
+        version: documentVersion("version_1", "document_1", 1, "artifact_1"),
+        artifact: documentArtifact("artifact_1", "document_1")
+      })
+    ).rejects.toThrow("Document scope does not match");
+
+    await uploadFranchiseDocument(hqContext(), permissionData, audit(), franchiseData, {
+      document: documentRecord("document_1", "version_1"),
+      version: documentVersion("version_1", "document_1", 1, "artifact_1"),
+      artifact: documentArtifact("artifact_1", "document_1")
+    });
+    await expect(
+      addFranchiseDocumentVersion(hqContext(), permissionData, audit(), franchiseData, {
+        documentId: "document_1",
+        version: documentVersion("version_3", "document_1", 3, "artifact_3"),
+        artifact: documentArtifact("artifact_3", "document_1")
+      })
+    ).rejects.toThrow("sequential");
+  });
+
+  it("archives documents, hides them from active views and writes audit", async () => {
+    const franchiseData = data();
+    const recorder = audit();
+    await uploadFranchiseDocument(hqContext(), permissionData, audit(), franchiseData, {
+      document: documentRecord("document_1", "version_1"),
+      version: documentVersion("version_1", "document_1", 1, "artifact_1"),
+      artifact: documentArtifact("artifact_1", "document_1")
+    });
+
+    await archiveFranchiseDocument(hqContext(), permissionData, recorder, franchiseData, "document_1");
+
+    expect(franchiseData.documents?.[0]?.status).toBe("archived");
+    expect(getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own).documents).toEqual([]);
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseDocumentArchive
+    ]);
+  });
+
+  it("denies document mutations without capability", async () => {
+    const franchiseData = data();
+
+    await expect(
+      uploadFranchiseDocument(
+        {
+          userId: ids.users.owner,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissionData,
+        audit(),
+        franchiseData,
+        {
+          document: documentRecord("document_1", "version_1"),
+          version: documentVersion("version_1", "document_1", 1, "artifact_1"),
+          artifact: documentArtifact("artifact_1", "document_1")
+        }
+      )
+    ).rejects.toThrow("No permission grant");
   });
 
   it("denies agreement generation without permission", async () => {
@@ -833,6 +939,18 @@ function agreementGrant(id: string, action: string) {
   };
 }
 
+function documentGrant(id: string, action: string) {
+  return {
+    roleId: ids.roles.hq,
+    permission: {
+      id,
+      module: "franchise.document",
+      action
+    },
+    scope: "network" as const
+  };
+}
+
 async function approvedAgreementData() {
   const franchiseData = data();
   await generateAgreement(hqContext(), permissionData, audit(), franchiseData, {
@@ -908,6 +1026,51 @@ function certificateArtifact(id: string) {
     category: "completion_certificate" as const,
     label: "Certificate",
     storageKey: `agreements/${id}-certificate.pdf`
+  };
+}
+
+function documentRecord(id: string, currentVersionId: string) {
+  return {
+    id,
+    franchiseId: ids.franchises.own,
+    organisationId: ids.organisations.franchise,
+    territoryId: ids.territories.own,
+    category: "company_document",
+    documentType: "welcome_pack",
+    title: "Welcome Pack",
+    description: "Franchise document vault seed.",
+    status: "active" as const,
+    currentVersionId,
+    expiryDate: "2027-08-10",
+    uploadedByUserId: ids.users.hq
+  };
+}
+
+function documentVersion(
+  id: string,
+  documentId: string,
+  versionNumber: number,
+  artifactReferenceId: string
+) {
+  return {
+    id,
+    documentId,
+    versionNumber,
+    artifactReferenceId,
+    uploadedByUserId: ids.users.hq,
+    uploadedAt: "2026-08-10"
+  };
+}
+
+function documentArtifact(id: string, documentId: string) {
+  return {
+    id,
+    franchiseId: ids.franchises.own,
+    entityType: "franchise_document",
+    entityId: documentId,
+    category: "vault_document" as const,
+    label: "Franchise document",
+    storageKey: `documents/${id}.pdf`
   };
 }
 

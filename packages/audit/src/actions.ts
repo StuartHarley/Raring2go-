@@ -42,7 +42,12 @@ export const auditActions = {
   franchiseAgreementCancelled: "franchise.agreement.cancelled",
   franchiseAgreementExecuted: "franchise.agreement.executed",
   franchiseAgreementResent: "franchise.agreement.resent",
-  franchiseAgreementReissued: "franchise.agreement.reissued"
+  franchiseAgreementReissued: "franchise.agreement.reissued",
+  franchiseDocumentUpload: "franchise.document.upload",
+  franchiseDocumentVersionCreate: "franchise.document.version.create",
+  franchiseDocumentArchive: "franchise.document.archive",
+  franchiseDocumentView: "franchise.document.view",
+  franchiseDocumentDownload: "franchise.document.download"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

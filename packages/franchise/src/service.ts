@@ -16,7 +16,9 @@ import type {
   FranchiseRecord,
   AgreementSigner,
   ESignProvider,
-  FranchiseArtifactReference
+  FranchiseArtifactReference,
+  FranchiseDocument,
+  FranchiseDocumentVersion
 } from "./types";
 
 type FranchiseAuditRecorder = {
@@ -82,6 +84,7 @@ export function getFranchise360(
     }));
 
   const agreement = currentAgreement(data, franchise.id);
+  const documents = franchiseDocumentsFor(data, franchise);
 
   return {
     franchise,
@@ -90,6 +93,7 @@ export function getFranchise360(
     owner,
     contacts,
     agreement,
+    documents,
     activity: (data.activity ?? []).filter(
       (event) => event.entityType === "franchise" && event.entityId === franchise.id
     ),
@@ -97,8 +101,7 @@ export function getFranchise360(
       performance: "deferred",
       compliance: "deferred",
       training: "deferred",
-      support: "deferred",
-      documents: "deferred"
+      support: "deferred"
     }
   };
 }
@@ -452,6 +455,93 @@ export async function recordSignatureProviderEvent(
   return { request, agreement, duplicate: false };
 }
 
+export async function uploadFranchiseDocument(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  input: {
+    document: FranchiseDocument;
+    version: FranchiseDocumentVersion;
+    artifact: FranchiseArtifactReference;
+  }
+) {
+  const franchise = requireFranchise(data, input.document.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "documentUpload");
+  assertDocumentScope(franchise, input.document);
+
+  data.documents ??= [];
+  data.documentVersions ??= [];
+  data.artifactReferences ??= [];
+  data.documents.push(input.document);
+  data.documentVersions.push(input.version);
+  data.artifactReferences.push({
+    ...input.artifact,
+    franchiseId: franchise.id,
+    entityType: "franchise_document",
+    entityId: input.document.id
+  });
+
+  await audit.record(documentAuditEvent(context, "franchise.document.upload", franchise, input.document));
+  return input.document;
+}
+
+export async function addFranchiseDocumentVersion(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  input: {
+    documentId: string;
+    version: FranchiseDocumentVersion;
+    artifact: FranchiseArtifactReference;
+  }
+) {
+  const document = requireDocument(data, input.documentId);
+  const franchise = requireFranchise(data, document.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "documentUpload");
+  const nextVersion = Math.max(
+    0,
+    ...(data.documentVersions ?? [])
+      .filter((version) => version.documentId === document.id && !version.deletedAt)
+      .map((version) => version.versionNumber)
+  ) + 1;
+
+  if (input.version.versionNumber !== nextVersion) {
+    throw new Error("Document version numbers must be sequential.");
+  }
+
+  data.documentVersions ??= [];
+  data.artifactReferences ??= [];
+  data.documentVersions.push(input.version);
+  data.artifactReferences.push({
+    ...input.artifact,
+    franchiseId: franchise.id,
+    entityType: "franchise_document",
+    entityId: document.id
+  });
+  document.currentVersionId = input.version.id;
+  await audit.record(documentAuditEvent(context, "franchise.document.version.create", franchise, document));
+  return document;
+}
+
+export async function archiveFranchiseDocument(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  documentId: string
+) {
+  const document = requireDocument(data, documentId);
+  const franchise = requireFranchise(data, document.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "documentArchive");
+  document.status = "archived";
+  document.archivedAt = today();
+  document.deletedAt = new Date();
+  await audit.record(documentAuditEvent(context, "franchise.document.archive", franchise, document));
+  return document;
+}
+
 export function assertNoDuplicatedIdentityData(franchise: FranchiseRecord) {
   const forbiddenKeys = ["legalName", "companyNumber", "vatNumber", "territoryName"];
   const record = franchise as unknown as Record<string, unknown>;
@@ -536,6 +626,28 @@ function requireAgreement(data: FranchiseData, agreementId: string) {
   return agreement;
 }
 
+function requireDocument(data: FranchiseData, documentId: string) {
+  const document = (data.documents ?? []).find(
+    (candidate) => candidate.id === documentId && !candidate.deletedAt
+  );
+
+  if (!document) {
+    throw new Error("Document was not found.");
+  }
+
+  return document;
+}
+
+function assertDocumentScope(franchise: FranchiseRecord, document: FranchiseDocument) {
+  if (
+    document.franchiseId !== franchise.id ||
+    document.organisationId !== franchise.franchiseOrganisationId ||
+    document.territoryId !== franchise.primaryTerritoryId
+  ) {
+    throw new Error("Document scope does not match the franchise relationship.");
+  }
+}
+
 function requireApprovedAgreementVersion(data: FranchiseData, versionId: string) {
   const version = (data.agreementVersions ?? []).find(
     (candidate) => candidate.id === versionId && !candidate.deletedAt
@@ -603,6 +715,36 @@ function currentAgreement(data: FranchiseData, franchiseId: string) {
     signedAgreementArtifact,
     completionCertificateArtifact
   };
+}
+
+function franchiseDocumentsFor(data: FranchiseData, franchise: FranchiseRecord) {
+  return (data.documents ?? [])
+    .filter(
+      (document) =>
+        document.franchiseId === franchise.id &&
+        document.status !== "archived" &&
+        !document.deletedAt
+    )
+    .map((document) => {
+      const versions = (data.documentVersions ?? [])
+        .filter((version) => version.documentId === document.id && !version.deletedAt)
+        .sort((left, right) => right.versionNumber - left.versionNumber)
+        .map((version) => ({
+          ...version,
+          artifact: (data.artifactReferences ?? []).find(
+            (artifact) => artifact.id === version.artifactReferenceId
+          )
+        }));
+      const currentVersion =
+        versions.find((version) => version.id === document.currentVersionId) ?? versions[0];
+
+      return {
+        ...document,
+        currentVersion,
+        artifact: currentVersion?.artifact,
+        versions
+      };
+    });
 }
 
 function assertControlledMergeVariables(
@@ -896,6 +1038,42 @@ function agreementAuditEvent(
   };
 }
 
+function documentAuditEvent(
+  context: FranchiseActorContext,
+  action:
+    | "franchise.document.upload"
+    | "franchise.document.version.create"
+    | "franchise.document.archive",
+  franchise: FranchiseRecord,
+  document: FranchiseDocument
+): RecordAuditEventInput {
+  return {
+    action,
+    actor: {
+      type: "human",
+      userId: context.userId
+    },
+    entity: {
+      type: "franchise_document",
+      id: document.id
+    },
+    scope: {
+      organisationId: franchise.franchiseOrganisationId,
+      territoryId: franchise.primaryTerritoryId
+    },
+    after: {
+      status: document.status,
+      category: document.category,
+      documentType: document.documentType,
+      currentVersionId: document.currentVersionId
+    },
+    metadata: {
+      franchiseId: franchise.id,
+      source: "franchise_360"
+    }
+  };
+}
+
 export function createContactLabel(contact: FranchiseContact) {
   return contact.userId ? contact.label : `${contact.label} (external)`;
 }
@@ -912,5 +1090,8 @@ export const franchiseAuditActions = {
   agreementDeclined: auditActions.franchiseAgreementDeclined,
   agreementExpired: auditActions.franchiseAgreementExpired,
   agreementCancelled: auditActions.franchiseAgreementCancelled,
-  agreementExecuted: auditActions.franchiseAgreementExecuted
+  agreementExecuted: auditActions.franchiseAgreementExecuted,
+  documentUpload: auditActions.franchiseDocumentUpload,
+  documentVersionCreate: auditActions.franchiseDocumentVersionCreate,
+  documentArchive: auditActions.franchiseDocumentArchive
 } as const;
