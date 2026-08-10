@@ -18,7 +18,10 @@ import type {
   ESignProvider,
   FranchiseArtifactReference,
   FranchiseDocument,
-  FranchiseDocumentVersion
+  FranchiseDocumentVersion,
+  FranchiseInsurancePolicy,
+  FranchiseComplianceRecord,
+  ComplianceRecordStatus
 } from "./types";
 
 type FranchiseAuditRecorder = {
@@ -85,6 +88,10 @@ export function getFranchise360(
 
   const agreement = currentAgreement(data, franchise.id);
   const documents = franchiseDocumentsFor(data, franchise);
+  const insurancePolicies = (data.insurancePolicies ?? []).filter(
+    (policy) => policy.franchiseId === franchise.id && !policy.deletedAt
+  );
+  const compliance = complianceSummaryFor(data, franchise, documents);
 
   return {
     franchise,
@@ -94,12 +101,13 @@ export function getFranchise360(
     contacts,
     agreement,
     documents,
+    insurancePolicies,
+    compliance,
     activity: (data.activity ?? []).filter(
       (event) => event.entityType === "franchise" && event.entityId === franchise.id
     ),
     placeholders: {
       performance: "deferred",
-      compliance: "deferred",
       training: "deferred",
       support: "deferred"
     }
@@ -542,6 +550,137 @@ export async function archiveFranchiseDocument(
   return document;
 }
 
+export async function upsertInsurancePolicy(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  input: FranchiseInsurancePolicy
+) {
+  const franchise = requireFranchise(data, input.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "complianceSubmitEvidence");
+  assertEvidenceDocumentBelongsToFranchise(data, franchise, input.evidenceDocumentId);
+
+  data.insurancePolicies ??= [];
+  const existingIndex = data.insurancePolicies.findIndex((policy) => policy.id === input.id);
+  if (existingIndex >= 0) {
+    data.insurancePolicies[existingIndex] = input;
+  } else {
+    data.insurancePolicies.push(input);
+  }
+
+  await audit.record(complianceAuditEvent(context, auditActions.franchiseInsuranceUpsert, franchise, "insurance_policy", input.id, {
+    verificationStatus: input.verificationStatus,
+    coverEndDate: input.coverEndDate
+  }));
+  return input;
+}
+
+export async function verifyInsurancePolicy(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  policyId: string,
+  decision: { status: "verified" | "rejected"; rejectedReason?: string | null }
+) {
+  const policy = requireInsurancePolicy(data, policyId);
+  const franchise = requireFranchise(data, policy.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "complianceVerify");
+
+  policy.verificationStatus = decision.status;
+  policy.verifiedByUserId = context.userId;
+  policy.verifiedAt = today();
+  policy.rejectedReason = decision.status === "rejected" ? decision.rejectedReason ?? "Rejected" : null;
+
+  await audit.record(complianceAuditEvent(
+    context,
+    decision.status === "verified" ? auditActions.franchiseInsuranceVerify : auditActions.franchiseInsuranceReject,
+    franchise,
+    "insurance_policy",
+    policy.id,
+    { verificationStatus: policy.verificationStatus, rejectedReason: policy.rejectedReason }
+  ));
+  return policy;
+}
+
+export async function createComplianceRequirement(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  input: NonNullable<FranchiseData["complianceRequirements"]>[number]
+) {
+  requirePermission(permissionRequest(context, context.territoryId, "complianceManageRequirements"), permissions);
+  data.complianceRequirements ??= [];
+  if (data.complianceRequirements.some((requirement) => requirement.key === input.key && !requirement.deletedAt)) {
+    throw new Error("Compliance requirement key already exists.");
+  }
+  data.complianceRequirements.push(input);
+  await audit.record(complianceAuditEvent(context, auditActions.franchiseComplianceRequirementCreate, undefined, "compliance_requirement", input.id, {
+    key: input.key
+  }));
+  return input;
+}
+
+export async function submitComplianceEvidence(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  input: FranchiseComplianceRecord
+) {
+  const franchise = requireFranchise(data, input.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "complianceSubmitEvidence");
+  requireComplianceRequirement(data, input.requirementId);
+  assertEvidenceDocumentBelongsToFranchise(data, franchise, input.evidenceDocumentId);
+
+  input.status = "pending_review";
+  data.complianceRecords ??= [];
+  const existingIndex = data.complianceRecords.findIndex(
+    (record) => record.franchiseId === input.franchiseId && record.requirementId === input.requirementId
+  );
+  if (existingIndex >= 0) {
+    data.complianceRecords[existingIndex] = input;
+  } else {
+    data.complianceRecords.push(input);
+  }
+
+  await audit.record(complianceAuditEvent(context, auditActions.franchiseComplianceEvidenceSubmit, franchise, "franchise_compliance_record", input.id, {
+    requirementId: input.requirementId,
+    evidenceDocumentId: input.evidenceDocumentId
+  }));
+  return input;
+}
+
+export async function verifyComplianceRecord(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  recordId: string,
+  decision: { status: "complete" | "rejected"; rejectedReason?: string | null }
+) {
+  const record = requireComplianceRecord(data, recordId);
+  const franchise = requireFranchise(data, record.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "complianceVerify");
+
+  record.status = decision.status;
+  record.verifiedByUserId = context.userId;
+  record.verifiedAt = today();
+  record.rejectedReason = decision.status === "rejected" ? decision.rejectedReason ?? "Rejected" : null;
+
+  await audit.record(complianceAuditEvent(
+    context,
+    decision.status === "complete" ? auditActions.franchiseComplianceVerify : auditActions.franchiseComplianceReject,
+    franchise,
+    "franchise_compliance_record",
+    record.id,
+    { status: record.status, rejectedReason: record.rejectedReason }
+  ));
+  return record;
+}
+
 export function assertNoDuplicatedIdentityData(franchise: FranchiseRecord) {
   const forbiddenKeys = ["legalName", "companyNumber", "vatNumber", "territoryName"];
   const record = franchise as unknown as Record<string, unknown>;
@@ -588,7 +727,7 @@ function requireFranchiseAccess(
 
 function permissionRequest(
   context: FranchiseActorContext,
-  territoryId: string,
+  territoryId: string | undefined,
   action: FranchiseCapability
 ) {
   return {
@@ -636,6 +775,36 @@ function requireDocument(data: FranchiseData, documentId: string) {
   }
 
   return document;
+}
+
+function requireInsurancePolicy(data: FranchiseData, policyId: string) {
+  const policy = (data.insurancePolicies ?? []).find(
+    (candidate) => candidate.id === policyId && !candidate.deletedAt
+  );
+  if (!policy) {
+    throw new Error("Insurance policy was not found.");
+  }
+  return policy;
+}
+
+function requireComplianceRequirement(data: FranchiseData, requirementId: string) {
+  const requirement = (data.complianceRequirements ?? []).find(
+    (candidate) => candidate.id === requirementId && !candidate.deletedAt && candidate.active
+  );
+  if (!requirement) {
+    throw new Error("Compliance requirement was not found.");
+  }
+  return requirement;
+}
+
+function requireComplianceRecord(data: FranchiseData, recordId: string) {
+  const record = (data.complianceRecords ?? []).find(
+    (candidate) => candidate.id === recordId && !candidate.deletedAt
+  );
+  if (!record) {
+    throw new Error("Compliance record was not found.");
+  }
+  return record;
 }
 
 function assertDocumentScope(franchise: FranchiseRecord, document: FranchiseDocument) {
@@ -745,6 +914,83 @@ function franchiseDocumentsFor(data: FranchiseData, franchise: FranchiseRecord) 
         versions
       };
     });
+}
+
+function complianceSummaryFor(
+  data: FranchiseData,
+  franchise: FranchiseRecord,
+  documents: ReturnType<typeof franchiseDocumentsFor>
+) {
+  const todayDate = new Date(today());
+  const requirements = (data.complianceRequirements ?? [])
+    .filter((requirement) => requirement.active && !requirement.deletedAt)
+    .map((requirement) => {
+      const record = (data.complianceRecords ?? []).find(
+        (candidate) =>
+          candidate.franchiseId === franchise.id &&
+          candidate.requirementId === requirement.id &&
+          !candidate.deletedAt
+      );
+      const status: ComplianceRecordStatus = record
+        ? calculatedComplianceStatus(requirement.expiryWarningDays, record, todayDate)
+        : "missing";
+      return {
+        ...requirement,
+        record: record ? { ...record, status } : undefined,
+        evidence: record?.evidenceDocumentId
+          ? documents.find((document) => document.id === record.evidenceDocumentId)
+          : undefined
+      };
+    });
+
+  const totalCount = requirements.length;
+  const completeCount = requirements.filter((requirement) => requirement.record?.status === "complete").length;
+  const actionsRequired = requirements.filter((requirement) =>
+    ["missing", "expired", "expiring_soon", "rejected"].includes(requirement.record?.status ?? "missing")
+  ).length;
+  const statuses = requirements.map((requirement) => requirement.record?.status ?? "missing");
+  const status: ComplianceRecordStatus = statuses.includes("expired")
+    ? "expired"
+    : statuses.includes("rejected")
+      ? "rejected"
+      : statuses.includes("missing")
+        ? "missing"
+        : statuses.includes("expiring_soon")
+          ? "expiring_soon"
+          : statuses.includes("pending_review")
+            ? "pending_review"
+            : "complete";
+
+  return { requirements, status, completeCount, totalCount, actionsRequired };
+}
+
+function calculatedComplianceStatus(
+  expiryWarningDays: number,
+  record: FranchiseComplianceRecord,
+  todayDate: Date
+): ComplianceRecordStatus {
+  if (record.status !== "complete" || !record.expiresAt) {
+    return record.status;
+  }
+  const expiryDate = new Date(`${record.expiresAt}T00:00:00.000Z`);
+  const warningDate = new Date(todayDate);
+  warningDate.setUTCDate(warningDate.getUTCDate() + expiryWarningDays);
+  if (expiryDate < todayDate) {
+    return "expired";
+  }
+  return expiryDate <= warningDate ? "expiring_soon" : "complete";
+}
+
+function assertEvidenceDocumentBelongsToFranchise(
+  data: FranchiseData,
+  franchise: FranchiseRecord,
+  documentId?: string | null
+) {
+  if (!documentId) {
+    return;
+  }
+  const document = requireDocument(data, documentId);
+  assertDocumentScope(franchise, document);
 }
 
 function assertControlledMergeVariables(
@@ -1069,6 +1315,36 @@ function documentAuditEvent(
     },
     metadata: {
       franchiseId: franchise.id,
+      source: "franchise_360"
+    }
+  };
+}
+
+function complianceAuditEvent(
+  context: FranchiseActorContext,
+  action: string,
+  franchise: FranchiseRecord | undefined,
+  entityType: string,
+  entityId: string,
+  after: Record<string, unknown>
+): RecordAuditEventInput {
+  return {
+    action,
+    actor: {
+      type: "human",
+      userId: context.userId
+    },
+    entity: {
+      type: entityType,
+      id: entityId
+    },
+    scope: {
+      organisationId: franchise?.franchiseOrganisationId ?? context.organisationId,
+      territoryId: franchise?.primaryTerritoryId ?? context.territoryId
+    },
+    after,
+    metadata: {
+      franchiseId: franchise?.id,
       source: "franchise_360"
     }
   };

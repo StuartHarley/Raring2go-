@@ -31,7 +31,11 @@ describe("foundation fixtures", () => {
       "franchise.document",
       "franchise.document",
       "franchise.document",
-      "franchise.document"
+      "franchise.document",
+      "franchise.compliance",
+      "franchise.compliance",
+      "franchise.compliance",
+      "franchise.compliance"
     ]);
   });
 
@@ -66,6 +70,18 @@ describe("foundation fixtures", () => {
     );
     expect(foundationSeed.franchiseArtifactReferences[0]?.entityType).toBe(
       "franchise_document"
+    );
+  });
+
+  it("includes deterministic insurance and compliance fixtures", () => {
+    expect(fixtureIds.insurancePolicies.suttonPublicLiability).toBe(
+      "00000000-0000-4000-8000-000000000937"
+    );
+    expect(foundationSeed.complianceRequirements[0]?.key).toBe(
+      "public-liability-insurance"
+    );
+    expect(foundationSeed.complianceRecords[0]?.evidenceDocumentId).toBe(
+      fixtureIds.franchiseDocuments.suttonInsurance
     );
   });
 

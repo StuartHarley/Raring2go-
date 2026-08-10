@@ -3,15 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   agreementTemplates,
   agreementVersions,
+  complianceRequirements,
   agreementSignatureEvents,
   agreementSignatureRequests,
   agreementSigners,
   auditEvents,
   franchiseArtifactReferences,
   franchiseAgreements,
+  franchiseComplianceRecords,
   franchiseDocumentVersions,
   franchiseDocuments,
   franchiseDomainEvents,
+  franchiseInsurancePolicies,
   franchises,
   organisations,
   territories,
@@ -75,5 +78,15 @@ describe("foundation schema", () => {
     expect(franchiseDocumentVersions.artifactReferenceId.name).toBe("artifact_reference_id");
     expect((franchiseDocuments as unknown as Record<string, unknown>).storageBucket).toBeUndefined();
     expect((franchiseDocumentVersions as unknown as Record<string, unknown>).providerDocumentId).toBeUndefined();
+  });
+
+  it("models insurance and compliance through evidence document references", () => {
+    expect(franchiseInsurancePolicies.evidenceDocumentId.name).toBe("evidence_document_id");
+    expect(franchiseInsurancePolicies.verificationStatus.name).toBe("verification_status");
+    expect(complianceRequirements.requiredDocumentType.name).toBe("required_document_type");
+    expect(franchiseComplianceRecords.requirementId.name).toBe("requirement_id");
+    expect(franchiseComplianceRecords.evidenceDocumentId.name).toBe("evidence_document_id");
+    expect((franchiseInsurancePolicies as unknown as Record<string, unknown>).reminderState).toBeUndefined();
+    expect((franchiseComplianceRecords as unknown as Record<string, unknown>).score).toBeUndefined();
   });
 });

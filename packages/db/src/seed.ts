@@ -6,11 +6,14 @@ import {
   agreementTemplates,
   agreementVersions,
   authInvitations,
+  complianceRequirements,
   franchiseArtifactReferences,
+  franchiseComplianceRecords,
   franchiseContacts,
   franchiseDocuments,
   franchiseDocumentVersions,
   franchises,
+  franchiseInsurancePolicies,
   memberships,
   organisations,
   permissions,
@@ -201,7 +204,11 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.documentView,
         fixtureIds.permissions.documentUpload,
         fixtureIds.permissions.documentDownload,
-        fixtureIds.permissions.documentArchive
+        fixtureIds.permissions.documentArchive,
+        fixtureIds.permissions.complianceView,
+        fixtureIds.permissions.complianceManageRequirements,
+        fixtureIds.permissions.complianceSubmitEvidence,
+        fixtureIds.permissions.complianceVerify
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -217,6 +224,18 @@ export async function seedDatabase(databaseUrl?: string) {
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.documentDownload,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.complianceView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.complianceSubmitEvidence,
         scope: "own_territory",
         constraints: {}
       }
@@ -364,7 +383,7 @@ export async function seedDatabase(databaseUrl?: string) {
 
     await db.insert(franchiseDocuments).values(foundationSeed.franchiseDocuments.map((document) => ({
       ...document,
-      expiryDate: null,
+      expiryDate: "expiryDate" in document && document.expiryDate ? new Date(document.expiryDate) : null,
       archivedAt: null
     }))).onConflictDoUpdate({
       target: franchiseDocuments.id,
@@ -378,6 +397,7 @@ export async function seedDatabase(databaseUrl?: string) {
         description: sql`excluded.description`,
         status: sql`excluded.status`,
         currentVersionId: sql`excluded.current_version_id`,
+        expiryDate: sql`excluded.expiry_date`,
         uploadedByUserId: sql`excluded.uploaded_by_user_id`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
@@ -396,6 +416,65 @@ export async function seedDatabase(databaseUrl?: string) {
         uploadedByUserId: sql`excluded.uploaded_by_user_id`,
         uploadedAt: sql`excluded.uploaded_at`,
         notes: sql`excluded.notes`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(franchiseInsurancePolicies).values(foundationSeed.insurancePolicies.map((policy) => ({
+      ...policy,
+      coverTypes: [...policy.coverTypes],
+      coverStartDate: new Date(policy.coverStartDate),
+      coverEndDate: new Date(policy.coverEndDate),
+      verifiedAt: null
+    }))).onConflictDoUpdate({
+      target: franchiseInsurancePolicies.id,
+      set: {
+        provider: sql`excluded.provider`,
+        policyNumber: sql`excluded.policy_number`,
+        coverTypes: sql`excluded.cover_types`,
+        coverStartDate: sql`excluded.cover_start_date`,
+        coverEndDate: sql`excluded.cover_end_date`,
+        evidenceDocumentId: sql`excluded.evidence_document_id`,
+        verificationStatus: sql`excluded.verification_status`,
+        verifiedByUserId: sql`excluded.verified_by_user_id`,
+        verifiedAt: sql`excluded.verified_at`,
+        rejectedReason: sql`excluded.rejected_reason`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(complianceRequirements).values([...foundationSeed.complianceRequirements]).onConflictDoUpdate({
+      target: complianceRequirements.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        description: sql`excluded.description`,
+        requiredDocumentCategory: sql`excluded.required_document_category`,
+        requiredDocumentType: sql`excluded.required_document_type`,
+        expiryWarningDays: sql`excluded.expiry_warning_days`,
+        active: sql`excluded.active`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(franchiseComplianceRecords).values(foundationSeed.complianceRecords.map((record) => ({
+      ...record,
+      expiresAt: record.expiresAt ? new Date(record.expiresAt) : null,
+      verifiedAt: null
+    }))).onConflictDoUpdate({
+      target: franchiseComplianceRecords.id,
+      set: {
+        franchiseId: sql`excluded.franchise_id`,
+        requirementId: sql`excluded.requirement_id`,
+        evidenceDocumentId: sql`excluded.evidence_document_id`,
+        status: sql`excluded.status`,
+        expiresAt: sql`excluded.expires_at`,
+        verifiedByUserId: sql`excluded.verified_by_user_id`,
+        verifiedAt: sql`excluded.verified_at`,
+        rejectedReason: sql`excluded.rejected_reason`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

@@ -6,7 +6,11 @@ import {
   approveAgreement,
   archiveFranchiseDocument,
   cancelSignatureRequest,
+  submitComplianceEvidence,
+  upsertInsurancePolicy,
   createFranchise,
+  verifyComplianceRecord,
+  verifyInsurancePolicy,
   generateAgreement,
   getFranchise360,
   listActiveFranchises,
@@ -57,7 +61,11 @@ const ids = {
     documentView: "permission_document_view",
     documentUpload: "permission_document_upload",
     documentDownload: "permission_document_download",
-    documentArchive: "permission_document_archive"
+    documentArchive: "permission_document_archive",
+    complianceView: "permission_compliance_view",
+    complianceManageRequirements: "permission_compliance_manage_requirements",
+    complianceSubmitEvidence: "permission_compliance_submit_evidence",
+    complianceVerify: "permission_compliance_verify"
   },
   franchises: {
     own: "franchise_own",
@@ -111,6 +119,10 @@ const permissionData: PermissionData = {
     documentGrant(ids.permissions.documentUpload, "upload"),
     documentGrant(ids.permissions.documentDownload, "download"),
     documentGrant(ids.permissions.documentArchive, "archive"),
+    complianceGrant(ids.permissions.complianceView, "view"),
+    complianceGrant(ids.permissions.complianceManageRequirements, "manage_requirements"),
+    complianceGrant(ids.permissions.complianceSubmitEvidence, "submit_evidence"),
+    complianceGrant(ids.permissions.complianceVerify, "verify"),
     {
       roleId: ids.roles.local,
       permission: {
@@ -144,6 +156,15 @@ const permissionData: PermissionData = {
         id: ids.permissions.view,
         module: "franchise",
         action: "view"
+      },
+      scope: "own_territory"
+    },
+    {
+      roleId: ids.roles.local,
+      permission: {
+        id: ids.permissions.complianceSubmitEvidence,
+        module: "franchise.compliance",
+        action: "submit_evidence"
       },
       scope: "own_territory"
     }
@@ -277,6 +298,19 @@ function data(): FranchiseData {
     artifactReferences: [],
     documents: [],
     documentVersions: [],
+    insurancePolicies: [],
+    complianceRequirements: [
+      {
+        id: "requirement_insurance",
+        key: "public-liability-insurance",
+        name: "Public liability insurance",
+        requiredDocumentCategory: "insurance_certificate",
+        requiredDocumentType: "public_liability",
+        expiryWarningDays: 60,
+        active: true
+      }
+    ],
+    complianceRecords: [],
     activity: [
       {
         id: "event_1",
@@ -444,7 +478,6 @@ describe("franchise service", () => {
     expect(view.documents).toEqual([]);
     expect(view.placeholders).toEqual({
       performance: "deferred",
-      compliance: "deferred",
       training: "deferred",
       support: "deferred"
     });
@@ -540,6 +573,124 @@ describe("franchise service", () => {
         }
       )
     ).rejects.toThrow("No permission grant");
+  });
+
+  it("summarises missing pending complete and expiring compliance state", async () => {
+    const franchiseData = data();
+    expect(getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own).compliance).toMatchObject({
+      status: "missing",
+      completeCount: 0,
+      totalCount: 1,
+      actionsRequired: 1
+    });
+
+    await uploadFranchiseDocument(hqContext(), permissionData, audit(), franchiseData, {
+      document: {
+        ...documentRecord("document_1", "version_1"),
+        category: "insurance_certificate",
+        documentType: "public_liability",
+        expiryDate: "2026-09-21"
+      },
+      version: documentVersion("version_1", "document_1", 1, "artifact_1"),
+      artifact: documentArtifact("artifact_1", "document_1")
+    });
+    await submitComplianceEvidence(
+      {
+        userId: ids.users.owner,
+        organisationId: ids.organisations.franchise,
+        territoryId: ids.territories.own
+      },
+      permissionData,
+      audit(),
+      franchiseData,
+      {
+        id: "record_1",
+        franchiseId: ids.franchises.own,
+        requirementId: "requirement_insurance",
+        evidenceDocumentId: "document_1",
+        status: "missing",
+        expiresAt: "2026-09-21"
+      }
+    );
+    expect(getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own).compliance.status).toBe("pending_review");
+    await verifyComplianceRecord(hqContext(), permissionData, audit(), franchiseData, "record_1", {
+      status: "complete"
+    });
+    expect(getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own).compliance).toMatchObject({
+      status: "expiring_soon",
+      completeCount: 0,
+      actionsRequired: 1
+    });
+  });
+
+  it("upserts and verifies insurance with scoped evidence and audit", async () => {
+    const franchiseData = data();
+    const recorder = audit();
+    await uploadFranchiseDocument(hqContext(), permissionData, audit(), franchiseData, {
+      document: {
+        ...documentRecord("document_1", "version_1"),
+        category: "insurance_certificate",
+        documentType: "public_liability"
+      },
+      version: documentVersion("version_1", "document_1", 1, "artifact_1"),
+      artifact: documentArtifact("artifact_1", "document_1")
+    });
+
+    await upsertInsurancePolicy(
+      {
+        userId: ids.users.owner,
+        organisationId: ids.organisations.franchise,
+        territoryId: ids.territories.own
+      },
+      permissionData,
+      recorder,
+      franchiseData,
+      {
+        id: "policy_1",
+        franchiseId: ids.franchises.own,
+        provider: "Seed Mutual",
+        policyNumber: "PL-001",
+        coverTypes: ["public_liability"],
+        coverStartDate: "2025-09-22",
+        coverEndDate: "2026-09-21",
+        evidenceDocumentId: "document_1",
+        verificationStatus: "pending"
+      }
+    );
+    await verifyInsurancePolicy(hqContext(), permissionData, recorder, franchiseData, "policy_1", {
+      status: "verified"
+    });
+
+    expect(getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own).insurancePolicies[0]).toMatchObject({
+      verificationStatus: "verified",
+      verifiedByUserId: ids.users.hq
+    });
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseInsuranceUpsert,
+      auditActions.franchiseInsuranceVerify
+    ]);
+  });
+
+  it("rejects cross-territory compliance evidence", async () => {
+    const franchiseData = data();
+    franchiseData.documents = [
+      {
+        ...documentRecord("other_document", "other_version"),
+        franchiseId: ids.franchises.other,
+        organisationId: ids.organisations.other,
+        territoryId: ids.territories.other
+      }
+    ];
+
+    await expect(
+      submitComplianceEvidence(hqContext(), permissionData, audit(), franchiseData, {
+        id: "record_1",
+        franchiseId: ids.franchises.own,
+        requirementId: "requirement_insurance",
+        evidenceDocumentId: "other_document",
+        status: "pending_review"
+      })
+    ).rejects.toThrow("Document scope does not match");
   });
 
   it("denies agreement generation without permission", async () => {
@@ -945,6 +1096,18 @@ function documentGrant(id: string, action: string) {
     permission: {
       id,
       module: "franchise.document",
+      action
+    },
+    scope: "network" as const
+  };
+}
+
+function complianceGrant(id: string, action: string) {
+  return {
+    roleId: ids.roles.hq,
+    permission: {
+      id,
+      module: "franchise.compliance",
       action
     },
     scope: "network" as const

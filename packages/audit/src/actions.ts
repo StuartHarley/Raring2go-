@@ -47,7 +47,14 @@ export const auditActions = {
   franchiseDocumentVersionCreate: "franchise.document.version.create",
   franchiseDocumentArchive: "franchise.document.archive",
   franchiseDocumentView: "franchise.document.view",
-  franchiseDocumentDownload: "franchise.document.download"
+  franchiseDocumentDownload: "franchise.document.download",
+  franchiseInsuranceUpsert: "franchise.insurance.upsert",
+  franchiseInsuranceVerify: "franchise.insurance.verify",
+  franchiseInsuranceReject: "franchise.insurance.reject",
+  franchiseComplianceRequirementCreate: "franchise.compliance.requirement.create",
+  franchiseComplianceEvidenceSubmit: "franchise.compliance.evidence.submit",
+  franchiseComplianceVerify: "franchise.compliance.verify",
+  franchiseComplianceReject: "franchise.compliance.reject"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

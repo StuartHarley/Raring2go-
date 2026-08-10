@@ -328,3 +328,77 @@ export const franchiseDocumentVersions = pgTable(
     index("franchise_document_versions_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const franchiseInsurancePolicies = pgTable(
+  "franchise_insurance_policies",
+  {
+    id,
+    franchiseId: uuid("franchise_id").notNull().references(() => franchises.id),
+    provider: text("provider").notNull(),
+    policyNumber: text("policy_number").notNull(),
+    coverTypes: text("cover_types").array().notNull().default([]),
+    coverStartDate: date("cover_start_date", { mode: "date" }).notNull(),
+    coverEndDate: date("cover_end_date", { mode: "date" }).notNull(),
+    evidenceDocumentId: uuid("evidence_document_id").references(() => franchiseDocuments.id),
+    verificationStatus: text("verification_status").notNull().default("pending"),
+    verifiedByUserId: uuid("verified_by_user_id").references(() => users.id),
+    verifiedAt: date("verified_at", { mode: "date" }),
+    rejectedReason: text("rejected_reason"),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("franchise_insurance_policies_franchise_id_idx").on(table.franchiseId),
+    index("franchise_insurance_policies_cover_end_date_idx").on(table.coverEndDate),
+    index("franchise_insurance_policies_verification_status_idx").on(table.verificationStatus),
+    index("franchise_insurance_policies_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const complianceRequirements = pgTable(
+  "compliance_requirements",
+  {
+    id,
+    key: text("key").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description"),
+    requiredDocumentCategory: text("required_document_category"),
+    requiredDocumentType: text("required_document_type"),
+    expiryWarningDays: integer("expiry_warning_days").notNull().default(30),
+    active: boolean("active").notNull().default(true),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("compliance_requirements_key_idx").on(table.key),
+    index("compliance_requirements_active_idx").on(table.active),
+    index("compliance_requirements_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const franchiseComplianceRecords = pgTable(
+  "franchise_compliance_records",
+  {
+    id,
+    franchiseId: uuid("franchise_id").notNull().references(() => franchises.id),
+    requirementId: uuid("requirement_id").notNull().references(() => complianceRequirements.id),
+    evidenceDocumentId: uuid("evidence_document_id").references(() => franchiseDocuments.id),
+    status: text("status").notNull().default("missing"),
+    expiresAt: date("expires_at", { mode: "date" }),
+    verifiedByUserId: uuid("verified_by_user_id").references(() => users.id),
+    verifiedAt: date("verified_at", { mode: "date" }),
+    rejectedReason: text("rejected_reason"),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("franchise_compliance_records_franchise_requirement_uidx").on(
+      table.franchiseId,
+      table.requirementId
+    ),
+    index("franchise_compliance_records_franchise_id_idx").on(table.franchiseId),
+    index("franchise_compliance_records_status_idx").on(table.status),
+    index("franchise_compliance_records_expires_at_idx").on(table.expiresAt),
+    index("franchise_compliance_records_deleted_at_idx").on(table.deletedAt)
+  ]
+);

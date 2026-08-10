@@ -11,11 +11,17 @@ import {
   completeSigningAction,
   declineSigningAction,
   generateAgreementAction,
+  rejectComplianceAction,
+  rejectInsuranceAction,
   resendSignatureAction,
   sendAgreementForSignatureAction,
+  submitComplianceEvidenceAction,
   submitAgreementAction,
   updateFranchiseAction,
+  upsertInsuranceAction,
   uploadDocumentAction,
+  verifyComplianceAction,
+  verifyInsuranceAction,
   voidAgreementAction
 } from "../actions";
 
@@ -48,6 +54,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     view,
     voidCurrent,
     canEdit,
+    complianceActions,
     documentActions
   } = result;
 
@@ -113,6 +120,18 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             <div>
               <dt>Documents</dt>
               <dd>{view.documents.length} active</dd>
+            </div>
+            <div>
+              <dt>Insurance</dt>
+              <dd>{view.insurancePolicies[0]?.coverEndDate ?? "Missing"}</dd>
+            </div>
+            <div>
+              <dt>Compliance</dt>
+              <dd>{view.compliance.completeCount}/{view.compliance.totalCount} complete</dd>
+            </div>
+            <div>
+              <dt>Actions required</dt>
+              <dd>{view.compliance.actionsRequired}</dd>
             </div>
           </dl>
           {canEdit ? (
@@ -291,6 +310,115 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             </form>
           ) : null}
         </section>
+        <section id="compliance" className="app-panel">
+          <p className="eyebrow">Compliance</p>
+          <h3>Insurance and requirements</h3>
+          <dl className="franchise-facts">
+            <div>
+              <dt>Status</dt>
+              <dd>{view.compliance.status}</dd>
+            </div>
+            <div>
+              <dt>Complete</dt>
+              <dd>{view.compliance.completeCount}/{view.compliance.totalCount}</dd>
+            </div>
+            <div>
+              <dt>Actions required</dt>
+              <dd>{view.compliance.actionsRequired}</dd>
+            </div>
+          </dl>
+          <div className="franchise-list">
+            {view.insurancePolicies.map((policy) => (
+              <div key={policy.id}>
+                <strong>{policy.provider}</strong>
+                <span>{policy.policyNumber} - {policy.verificationStatus}</span>
+                <span>{policy.coverTypes.join(", ")} until {policy.coverEndDate}</span>
+                {canEdit ? (
+                  <div className="franchise-actions">
+                    <form action={complianceActions.insurance[policy.id]?.verify}>
+                      <button type="submit">Verify insurance</button>
+                    </form>
+                    <form action={complianceActions.insurance[policy.id]?.reject}>
+                      <button type="submit">Reject insurance</button>
+                    </form>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          <div className="franchise-list">
+            {view.compliance.requirements.map((requirement) => (
+              <div key={requirement.id}>
+                <strong>{requirement.name}</strong>
+                <span>{requirement.record?.status ?? "missing"}</span>
+                <span>{requirement.record?.expiresAt ? `Expires ${requirement.record.expiresAt}` : "No expiry recorded"}</span>
+                <span>{requirement.evidence?.title ?? "No evidence linked"}</span>
+                {canEdit && requirement.record ? (
+                  <div className="franchise-actions">
+                    <form action={complianceActions.records[requirement.record.id]?.verify}>
+                      <button type="submit">Verify evidence</button>
+                    </form>
+                    <form action={complianceActions.records[requirement.record.id]?.reject}>
+                      <button type="submit">Reject evidence</button>
+                    </form>
+                  </div>
+                ) : null}
+                <form action={complianceActions.requirements[requirement.id]?.submit} className="franchise-form">
+                  <input type="hidden" name="recordId" value={requirement.record?.id ?? ""} />
+                  <label>
+                    Evidence document ID
+                    <select name="evidenceDocumentId" defaultValue={requirement.record?.evidenceDocumentId ?? ""}>
+                      <option value="">No document selected</option>
+                      {view.documents.map((document) => (
+                        <option key={document.id} value={document.id}>{document.title}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Expires
+                    <input name="expiresAt" type="date" defaultValue={requirement.record?.expiresAt ?? ""} />
+                  </label>
+                  <button type="submit">Submit evidence</button>
+                </form>
+              </div>
+            ))}
+          </div>
+          {canEdit ? (
+            <form action={complianceActions.upsertInsurance} className="franchise-form">
+              <input type="hidden" name="policyId" value={view.insurancePolicies[0]?.id ?? ""} />
+              <label>
+                Provider
+                <input name="provider" defaultValue={view.insurancePolicies[0]?.provider ?? "Seed Mutual"} />
+              </label>
+              <label>
+                Policy number
+                <input name="policyNumber" defaultValue={view.insurancePolicies[0]?.policyNumber ?? ""} />
+              </label>
+              <label>
+                Cover types
+                <input name="coverTypes" defaultValue={view.insurancePolicies[0]?.coverTypes.join(", ") ?? "public_liability"} />
+              </label>
+              <label>
+                Cover starts
+                <input name="coverStartDate" type="date" defaultValue={view.insurancePolicies[0]?.coverStartDate ?? ""} />
+              </label>
+              <label>
+                Cover ends
+                <input name="coverEndDate" type="date" defaultValue={view.insurancePolicies[0]?.coverEndDate ?? ""} />
+              </label>
+              <label>
+                Evidence
+                <select name="evidenceDocumentId" defaultValue={view.insurancePolicies[0]?.evidenceDocumentId ?? ""}>
+                  <option value="">No document selected</option>
+                  {view.documents.map((document) => (
+                    <option key={document.id} value={document.id}>{document.title}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit">Save insurance</button>
+            </form>
+          ) : null}
+        </section>
         {Object.entries(view.placeholders).map(([key]) => (
           <section key={key} id={key} className="app-panel">
             <p className="eyebrow">{key}</p>
@@ -348,6 +476,7 @@ async function loadFranchise360(
     const completeSigning = completeSigningAction.bind(null, context, id);
     const declineSigning = declineSigningAction.bind(null, context, id);
     const uploadDocument = uploadDocumentAction.bind(null, context, id);
+    const upsertInsurance = upsertInsuranceAction.bind(null, context, id);
     const documentActions = Object.fromEntries(
       view.documents.map((document) => [
         document.id,
@@ -357,6 +486,37 @@ async function loadFranchise360(
         }
       ])
     );
+    const complianceActions = {
+      upsertInsurance,
+      insurance: Object.fromEntries(
+        view.insurancePolicies.map((policy) => [
+          policy.id,
+          {
+            verify: verifyInsuranceAction.bind(null, context, id, policy.id),
+            reject: rejectInsuranceAction.bind(null, context, id, policy.id)
+          }
+        ])
+      ),
+      requirements: Object.fromEntries(
+        view.compliance.requirements.map((requirement) => [
+          requirement.id,
+          {
+            submit: submitComplianceEvidenceAction.bind(null, context, id, requirement.id)
+          }
+        ])
+      ),
+      records: Object.fromEntries(
+        view.compliance.requirements
+          .flatMap((requirement) => requirement.record ? [requirement.record] : [])
+          .map((record) => [
+            record.id,
+            {
+              verify: verifyComplianceAction.bind(null, context, id, record.id),
+              reject: rejectComplianceAction.bind(null, context, id, record.id)
+            }
+          ])
+      )
+    };
 
     return {
       approve,
@@ -373,6 +533,7 @@ async function loadFranchise360(
       update,
       view,
       voidCurrent,
+      complianceActions,
       documentActions
     };
   } catch (error) {

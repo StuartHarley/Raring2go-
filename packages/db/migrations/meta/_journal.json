@@ -43,6 +43,13 @@
       "when": 1786392711285,
       "tag": "0005_loud_brother_voodoo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786393225828,
+      "tag": "0006_conscious_xavin",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,12 @@ import {
   archiveFranchiseDocumentRecord,
   approveAgreement,
   cancelSignatureRequest,
+  submitComplianceEvidence,
+  upsertComplianceRecord,
+  upsertInsurancePolicy,
+  upsertInsurancePolicyRecord,
+  verifyComplianceRecord,
+  verifyInsurancePolicy,
   generateAgreement,
   createFranchise,
   getFranchise360,
@@ -39,6 +45,8 @@ import type {
   FranchiseArtifactReference,
   FranchiseDocument,
   FranchiseDocumentVersion,
+  FranchiseComplianceRecord,
+  FranchiseInsurancePolicy,
   FranchiseRecord
 } from "@raring2go/franchise";
 import type { PermissionData } from "@raring2go/permissions";
@@ -142,7 +150,11 @@ export const franchisePermissionData: PermissionData = {
       fixtureIds.permissions.documentView,
       fixtureIds.permissions.documentUpload,
       fixtureIds.permissions.documentDownload,
-      fixtureIds.permissions.documentArchive
+      fixtureIds.permissions.documentArchive,
+      fixtureIds.permissions.complianceView,
+      fixtureIds.permissions.complianceManageRequirements,
+      fixtureIds.permissions.complianceSubmitEvidence,
+      fixtureIds.permissions.complianceVerify
     ].map((permissionId) => ({
       roleId: fixtureIds.roles.hqAdmin,
       permissionId,
@@ -156,6 +168,16 @@ export const franchisePermissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.documentDownload,
+      scope: "own_territory"
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.complianceView,
+      scope: "own_territory"
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.complianceSubmitEvidence,
       scope: "own_territory"
     }
   ].map((grant) => {
@@ -535,6 +557,138 @@ export async function archiveDocumentForFranchise(
       );
       await archiveFranchiseDocumentRecord(tx, document);
       return document;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function upsertInsuranceForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  input: {
+    policyId: string;
+    provider: string;
+    policyNumber: string;
+    coverTypes: string[];
+    coverStartDate: string;
+    coverEndDate: string;
+    evidenceDocumentId?: string | null;
+  }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const policy: FranchiseInsurancePolicy = {
+        id: input.policyId,
+        franchiseId,
+        provider: input.provider,
+        policyNumber: input.policyNumber,
+        coverTypes: input.coverTypes,
+        coverStartDate: input.coverStartDate,
+        coverEndDate: input.coverEndDate,
+        evidenceDocumentId: input.evidenceDocumentId ?? null,
+        verificationStatus: "pending"
+      };
+      const upserted = await upsertInsurancePolicy(
+        context,
+        franchisePermissionData,
+        auditFor(tx),
+        data,
+        policy
+      );
+      await upsertInsurancePolicyRecord(tx, upserted);
+      return upserted;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function verifyInsuranceForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  policyId: string,
+  status: "verified" | "rejected"
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const policy = await verifyInsurancePolicy(context, franchisePermissionData, auditFor(tx), data, policyId, {
+        status,
+        rejectedReason: status === "rejected" ? "Rejected during HQ review." : null
+      });
+      await upsertInsurancePolicyRecord(tx, policy);
+      return policy;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function submitComplianceEvidenceForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  input: {
+    recordId: string;
+    requirementId: string;
+    evidenceDocumentId?: string | null;
+    expiresAt?: string | null;
+  }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const record: FranchiseComplianceRecord = {
+        id: input.recordId,
+        franchiseId,
+        requirementId: input.requirementId,
+        evidenceDocumentId: input.evidenceDocumentId ?? null,
+        status: "pending_review",
+        expiresAt: input.expiresAt ?? null
+      };
+      const submitted = await submitComplianceEvidence(
+        context,
+        franchisePermissionData,
+        auditFor(tx),
+        data,
+        record
+      );
+      await upsertComplianceRecord(tx, submitted);
+      return submitted;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function verifyComplianceForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  recordId: string,
+  status: "complete" | "rejected"
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const record = await verifyComplianceRecord(context, franchisePermissionData, auditFor(tx), data, recordId, {
+        status,
+        rejectedReason: status === "rejected" ? "Rejected during HQ review." : null
+      });
+      await upsertComplianceRecord(tx, record);
+      return record;
     });
   } finally {
     await sql.end();

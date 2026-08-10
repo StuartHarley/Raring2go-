@@ -15,7 +15,11 @@ import {
   resendCurrentSignatureRequest,
   sendCurrentAgreementForSignature,
   submitCurrentAgreement,
+  submitComplianceEvidenceForFranchise,
+  upsertInsuranceForFranchise,
   uploadDocumentForFranchise,
+  verifyComplianceForFranchise,
+  verifyInsuranceForFranchise,
   voidCurrentAgreement,
   updateFranchiseFromInput
 } from "../../../../lib/franchise-runtime";
@@ -179,5 +183,76 @@ export async function archiveDocumentAction(
   documentId: string
 ) {
   await archiveDocumentForFranchise(context, franchiseId, documentId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function upsertInsuranceAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  formData: FormData
+) {
+  await upsertInsuranceForFranchise(context, franchiseId, {
+    policyId: String(formData.get("policyId") || "") || randomUUID(),
+    provider: String(formData.get("provider") || "Unknown provider"),
+    policyNumber: String(formData.get("policyNumber") || "Unknown policy"),
+    coverTypes: String(formData.get("coverTypes") || "public_liability")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    coverStartDate: String(formData.get("coverStartDate") || ""),
+    coverEndDate: String(formData.get("coverEndDate") || ""),
+    evidenceDocumentId: String(formData.get("evidenceDocumentId") || "") || null
+  });
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function verifyInsuranceAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  policyId: string
+) {
+  await verifyInsuranceForFranchise(context, franchiseId, policyId, "verified");
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function rejectInsuranceAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  policyId: string
+) {
+  await verifyInsuranceForFranchise(context, franchiseId, policyId, "rejected");
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function submitComplianceEvidenceAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  requirementId: string,
+  formData: FormData
+) {
+  await submitComplianceEvidenceForFranchise(context, franchiseId, {
+    recordId: String(formData.get("recordId") || "") || randomUUID(),
+    requirementId,
+    evidenceDocumentId: String(formData.get("evidenceDocumentId") || "") || null,
+    expiresAt: String(formData.get("expiresAt") || "") || null
+  });
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function verifyComplianceAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  recordId: string
+) {
+  await verifyComplianceForFranchise(context, franchiseId, recordId, "complete");
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function rejectComplianceAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  recordId: string
+) {
+  await verifyComplianceForFranchise(context, franchiseId, recordId, "rejected");
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }

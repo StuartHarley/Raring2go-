@@ -38,7 +38,11 @@ export const fixtureIds = {
     documentView: "00000000-0000-4000-8000-000000000418",
     documentUpload: "00000000-0000-4000-8000-000000000419",
     documentDownload: "00000000-0000-4000-8000-000000000420",
-    documentArchive: "00000000-0000-4000-8000-000000000421"
+    documentArchive: "00000000-0000-4000-8000-000000000421",
+    complianceView: "00000000-0000-4000-8000-000000000422",
+    complianceManageRequirements: "00000000-0000-4000-8000-000000000423",
+    complianceSubmitEvidence: "00000000-0000-4000-8000-000000000424",
+    complianceVerify: "00000000-0000-4000-8000-000000000425"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -57,13 +61,25 @@ export const fixtureIds = {
     suttonDraft: "00000000-0000-4000-8000-000000000924"
   },
   franchiseDocuments: {
-    suttonWelcomePack: "00000000-0000-4000-8000-000000000931"
+    suttonWelcomePack: "00000000-0000-4000-8000-000000000931",
+    suttonInsurance: "00000000-0000-4000-8000-000000000934"
   },
   franchiseDocumentVersions: {
-    suttonWelcomePackV1: "00000000-0000-4000-8000-000000000932"
+    suttonWelcomePackV1: "00000000-0000-4000-8000-000000000932",
+    suttonInsuranceV1: "00000000-0000-4000-8000-000000000935"
   },
   franchiseArtifacts: {
-    suttonWelcomePack: "00000000-0000-4000-8000-000000000933"
+    suttonWelcomePack: "00000000-0000-4000-8000-000000000933",
+    suttonInsurance: "00000000-0000-4000-8000-000000000936"
+  },
+  insurancePolicies: {
+    suttonPublicLiability: "00000000-0000-4000-8000-000000000937"
+  },
+  complianceRequirements: {
+    publicLiabilityInsurance: "00000000-0000-4000-8000-000000000938"
+  },
+  complianceRecords: {
+    suttonPublicLiabilityInsurance: "00000000-0000-4000-8000-000000000939"
   },
   invitations: {
     franchiseStaff: "00000000-0000-4000-8000-000000000801"
@@ -259,6 +275,30 @@ export const foundationSeed = {
       module: "franchise.document",
       action: "archive",
       description: "Archive franchise documents."
+    },
+    {
+      id: fixtureIds.permissions.complianceView,
+      module: "franchise.compliance",
+      action: "view",
+      description: "View insurance and compliance status."
+    },
+    {
+      id: fixtureIds.permissions.complianceManageRequirements,
+      module: "franchise.compliance",
+      action: "manage_requirements",
+      description: "Manage configurable compliance requirements."
+    },
+    {
+      id: fixtureIds.permissions.complianceSubmitEvidence,
+      module: "franchise.compliance",
+      action: "submit_evidence",
+      description: "Submit insurance and compliance evidence."
+    },
+    {
+      id: fixtureIds.permissions.complianceVerify,
+      module: "franchise.compliance",
+      action: "verify",
+      description: "Verify or reject insurance and compliance evidence."
     }
   ],
   franchises: [
@@ -345,6 +385,18 @@ export const foundationSeed = {
       contentType: "application/pdf",
       checksum: "seed-checksum",
       providerMetadata: {}
+    },
+    {
+      id: fixtureIds.franchiseArtifacts.suttonInsurance,
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      entityType: "franchise_document",
+      entityId: fixtureIds.franchiseDocuments.suttonInsurance,
+      category: "insurance_certificate",
+      label: "Public liability insurance certificate",
+      storageKey: "seed/franchise-documents/sutton-insurance.pdf",
+      contentType: "application/pdf",
+      checksum: "seed-insurance-checksum",
+      providerMetadata: {}
     }
   ],
   franchiseDocuments: [
@@ -360,6 +412,20 @@ export const foundationSeed = {
       status: "active",
       currentVersionId: fixtureIds.franchiseDocumentVersions.suttonWelcomePackV1,
       uploadedByUserId: fixtureIds.users.superAdmin
+    },
+    {
+      id: fixtureIds.franchiseDocuments.suttonInsurance,
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      organisationId: fixtureIds.organisations.franchise,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      category: "insurance_certificate",
+      documentType: "public_liability",
+      title: "Public Liability Insurance Certificate",
+      description: "Seed evidence for FRN-005 insurance compliance.",
+      status: "active",
+      currentVersionId: fixtureIds.franchiseDocumentVersions.suttonInsuranceV1,
+      expiryDate: "2026-09-21",
+      uploadedByUserId: fixtureIds.users.franchisee
     }
   ],
   franchiseDocumentVersions: [
@@ -371,6 +437,50 @@ export const foundationSeed = {
       uploadedByUserId: fixtureIds.users.superAdmin,
       uploadedAt: "2026-08-10",
       notes: "Seed version."
+    },
+    {
+      id: fixtureIds.franchiseDocumentVersions.suttonInsuranceV1,
+      documentId: fixtureIds.franchiseDocuments.suttonInsurance,
+      versionNumber: 1,
+      artifactReferenceId: fixtureIds.franchiseArtifacts.suttonInsurance,
+      uploadedByUserId: fixtureIds.users.franchisee,
+      uploadedAt: "2026-08-10",
+      notes: "Seed insurance evidence."
+    }
+  ],
+  insurancePolicies: [
+    {
+      id: fixtureIds.insurancePolicies.suttonPublicLiability,
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      provider: "Seed Mutual",
+      policyNumber: "R2G-SUT-PL-001",
+      coverTypes: ["public_liability"],
+      coverStartDate: "2025-09-22",
+      coverEndDate: "2026-09-21",
+      evidenceDocumentId: fixtureIds.franchiseDocuments.suttonInsurance,
+      verificationStatus: "pending"
+    }
+  ],
+  complianceRequirements: [
+    {
+      id: fixtureIds.complianceRequirements.publicLiabilityInsurance,
+      key: "public-liability-insurance",
+      name: "Public liability insurance",
+      description: "Current public liability insurance evidence is required.",
+      requiredDocumentCategory: "insurance_certificate",
+      requiredDocumentType: "public_liability",
+      expiryWarningDays: 60,
+      active: true
+    }
+  ],
+  complianceRecords: [
+    {
+      id: fixtureIds.complianceRecords.suttonPublicLiabilityInsurance,
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      requirementId: fixtureIds.complianceRequirements.publicLiabilityInsurance,
+      evidenceDocumentId: fixtureIds.franchiseDocuments.suttonInsurance,
+      status: "pending_review",
+      expiresAt: "2026-09-21"
     }
   ]
 } as const;

@@ -6,10 +6,13 @@ import {
   agreementSignatureRequests,
   agreementSigners,
   franchiseArtifactReferences,
+  complianceRequirements,
+  franchiseComplianceRecords,
   franchiseDocumentVersions,
   franchiseDocuments,
   franchiseDomainEvents,
   franchiseAgreements,
+  franchiseInsurancePolicies,
   franchiseContacts,
   franchises,
   organisations,
@@ -37,6 +40,9 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     artifactRows,
     documentRows,
     documentVersionRows,
+    insurancePolicyRows,
+    complianceRequirementRows,
+    complianceRecordRows,
     domainEventRows,
     activityRows
   ] = await Promise.all([
@@ -54,6 +60,9 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     db.select().from(franchiseArtifactReferences),
     db.select().from(franchiseDocuments),
     db.select().from(franchiseDocumentVersions),
+    db.select().from(franchiseInsurancePolicies),
+    db.select().from(complianceRequirements),
+    db.select().from(franchiseComplianceRecords),
     db.select().from(franchiseDomainEvents),
     db.select().from(auditEvents).orderBy(desc(auditEvents.createdAt)).limit(50)
   ]);
@@ -105,6 +114,18 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     documentVersions: documentVersionRows.map((version: any) => ({
       ...version,
       uploadedAt: dateToString(version.uploadedAt)
+    })),
+    insurancePolicies: insurancePolicyRows.map((policy: any) => ({
+      ...policy,
+      coverStartDate: dateToString(policy.coverStartDate),
+      coverEndDate: dateToString(policy.coverEndDate),
+      verifiedAt: dateToString(policy.verifiedAt)
+    })),
+    complianceRequirements: complianceRequirementRows,
+    complianceRecords: complianceRecordRows.map((record: any) => ({
+      ...record,
+      expiresAt: dateToString(record.expiresAt),
+      verifiedAt: dateToString(record.verifiedAt)
     })),
     domainEvents: domainEventRows.map((event: any) => ({
       ...event,
@@ -295,6 +316,60 @@ export async function archiveFranchiseDocumentRecord(
       deletedAt: document.deletedAt ?? null
     })
     .where(eq(franchiseDocuments.id, document.id));
+}
+
+export async function upsertInsurancePolicyRecord(
+  db: FranchiseDb,
+  policy: NonNullable<FranchiseData["insurancePolicies"]>[number]
+) {
+  await db.insert(franchiseInsurancePolicies).values({
+    ...policy,
+    coverStartDate: new Date(policy.coverStartDate),
+    coverEndDate: new Date(policy.coverEndDate),
+    verifiedAt: policy.verifiedAt ? new Date(policy.verifiedAt) : null
+  }).onConflictDoUpdate({
+    target: franchiseInsurancePolicies.id,
+    set: {
+      provider: policy.provider,
+      policyNumber: policy.policyNumber,
+      coverTypes: policy.coverTypes,
+      coverStartDate: new Date(policy.coverStartDate),
+      coverEndDate: new Date(policy.coverEndDate),
+      evidenceDocumentId: policy.evidenceDocumentId,
+      verificationStatus: policy.verificationStatus,
+      verifiedByUserId: policy.verifiedByUserId,
+      verifiedAt: policy.verifiedAt ? new Date(policy.verifiedAt) : null,
+      rejectedReason: policy.rejectedReason
+    }
+  });
+}
+
+export async function insertComplianceRequirementRecord(
+  db: FranchiseDb,
+  requirement: NonNullable<FranchiseData["complianceRequirements"]>[number]
+) {
+  await db.insert(complianceRequirements).values(requirement).onConflictDoNothing();
+}
+
+export async function upsertComplianceRecord(
+  db: FranchiseDb,
+  record: NonNullable<FranchiseData["complianceRecords"]>[number]
+) {
+  await db.insert(franchiseComplianceRecords).values({
+    ...record,
+    expiresAt: record.expiresAt ? new Date(record.expiresAt) : null,
+    verifiedAt: record.verifiedAt ? new Date(record.verifiedAt) : null
+  }).onConflictDoUpdate({
+    target: franchiseComplianceRecords.id,
+    set: {
+      evidenceDocumentId: record.evidenceDocumentId,
+      status: record.status,
+      expiresAt: record.expiresAt ? new Date(record.expiresAt) : null,
+      verifiedByUserId: record.verifiedByUserId,
+      verifiedAt: record.verifiedAt ? new Date(record.verifiedAt) : null,
+      rejectedReason: record.rejectedReason
+    }
+  });
 }
 
 export async function updateFranchiseRecord(

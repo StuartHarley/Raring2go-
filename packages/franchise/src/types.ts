@@ -169,6 +169,64 @@ export type FranchiseDocumentSummary = FranchiseDocument & {
   versions: Array<FranchiseDocumentVersion & { artifact?: FranchiseArtifactReference }>;
 };
 
+export type InsuranceVerificationStatus = "pending" | "verified" | "rejected";
+export type ComplianceRecordStatus =
+  | "missing"
+  | "pending_review"
+  | "complete"
+  | "rejected"
+  | "expired"
+  | "expiring_soon";
+
+export type FranchiseInsurancePolicy = {
+  id: string;
+  franchiseId: string;
+  provider: string;
+  policyNumber: string;
+  coverTypes: string[];
+  coverStartDate: string;
+  coverEndDate: string;
+  evidenceDocumentId?: string | null;
+  verificationStatus: InsuranceVerificationStatus;
+  verifiedByUserId?: string | null;
+  verifiedAt?: string | null;
+  rejectedReason?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type ComplianceRequirement = {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  requiredDocumentCategory?: string | null;
+  requiredDocumentType?: string | null;
+  expiryWarningDays: number;
+  active: boolean;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseComplianceRecord = {
+  id: string;
+  franchiseId: string;
+  requirementId: string;
+  evidenceDocumentId?: string | null;
+  status: ComplianceRecordStatus;
+  expiresAt?: string | null;
+  verifiedByUserId?: string | null;
+  verifiedAt?: string | null;
+  rejectedReason?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseComplianceSummary = {
+  requirements: Array<ComplianceRequirement & { record?: FranchiseComplianceRecord; evidence?: FranchiseDocumentSummary }>;
+  status: ComplianceRecordStatus;
+  completeCount: number;
+  totalCount: number;
+  actionsRequired: number;
+};
+
 export type AgreementSignatureRequest = {
   id: string;
   franchiseAgreementId: string;
@@ -238,9 +296,10 @@ export type Franchise360 = {
   activity: FranchiseAuditEvent[];
   agreement?: FranchiseAgreementSummary;
   documents: FranchiseDocumentSummary[];
+  insurancePolicies: FranchiseInsurancePolicy[];
+  compliance: FranchiseComplianceSummary;
   placeholders: {
     performance: "deferred";
-    compliance: "deferred";
     training: "deferred";
     support: "deferred";
   };
@@ -261,6 +320,9 @@ export type FranchiseData = {
   artifactReferences?: FranchiseArtifactReference[];
   documents?: FranchiseDocument[];
   documentVersions?: FranchiseDocumentVersion[];
+  insurancePolicies?: FranchiseInsurancePolicy[];
+  complianceRequirements?: ComplianceRequirement[];
+  complianceRecords?: FranchiseComplianceRecord[];
   domainEvents?: FranchiseDomainEvent[];
   activity?: FranchiseAuditEvent[];
 };
