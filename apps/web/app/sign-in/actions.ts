@@ -8,8 +8,7 @@ import {
   requestSignIn,
   safeReturnTo,
   sessionCookieName,
-  signOut,
-  verifySignIn
+  signOut
 } from "../../lib/auth-runtime";
 
 export async function requestSignInAction(formData: FormData) {
@@ -28,25 +27,6 @@ export async function requestSignInAction(formData: FormData) {
       token
     )}` as Route
   );
-}
-
-export async function verifySignInToken(token: string, returnTo?: string) {
-  const sessionToken = randomUUID();
-  await verifySignIn({
-    token,
-    sessionToken
-  });
-
-  const cookieStore = await cookies();
-  cookieStore.set(sessionCookieName, sessionToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 30 * 24 * 60 * 60
-  });
-
-  redirect(safeReturnTo(returnTo) as Route);
 }
 
 export async function signOutAction() {
