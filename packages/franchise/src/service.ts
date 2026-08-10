@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { auditActions } from "@raring2go/audit";
 import {
   evaluatePermission,
@@ -21,7 +22,10 @@ import type {
   FranchiseDocumentVersion,
   FranchiseInsurancePolicy,
   FranchiseComplianceRecord,
-  ComplianceRecordStatus
+  ComplianceRecordStatus,
+  FranchiseComplianceAction,
+  FranchiseComplianceReminder,
+  NetworkComplianceOverviewRow
 } from "./types";
 
 type FranchiseAuditRecorder = {
@@ -92,6 +96,12 @@ export function getFranchise360(
     (policy) => policy.franchiseId === franchise.id && !policy.deletedAt
   );
   const compliance = complianceSummaryFor(data, franchise, documents);
+  const complianceActions = (data.complianceActions ?? []).filter(
+    (action) => action.franchiseId === franchise.id && !action.deletedAt
+  );
+  const complianceReminders = (data.complianceReminders ?? []).filter(
+    (reminder) => reminder.franchiseId === franchise.id && !reminder.deletedAt
+  );
 
   return {
     franchise,
@@ -103,6 +113,8 @@ export function getFranchise360(
     documents,
     insurancePolicies,
     compliance,
+    complianceActions,
+    complianceReminders,
     activity: (data.activity ?? []).filter(
       (event) => event.entityType === "franchise" && event.entityId === franchise.id
     ),
@@ -112,6 +124,39 @@ export function getFranchise360(
       support: "deferred"
     }
   };
+}
+
+export function listNetworkComplianceOverview(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  data: FranchiseData
+): NetworkComplianceOverviewRow[] {
+  requirePermission(permissionRequest(context, undefined, "complianceViewNetwork"), permissions);
+  return listActiveFranchises(context, permissions, data).map((franchise) => {
+    const documents = franchiseDocumentsFor(data, franchise);
+    const compliance = complianceSummaryFor(data, franchise, documents);
+    const openActions = (data.complianceActions ?? []).filter(
+      (action) =>
+        action.franchiseId === franchise.id &&
+        action.status === "open" &&
+        !action.deletedAt
+    );
+
+    return {
+      franchise,
+      organisation: data.organisations.find((organisation) => organisation.id === franchise.franchiseOrganisationId),
+      territory: data.territories.find((territory) => territory.id === franchise.primaryTerritoryId),
+      status: compliance.status,
+      completeCount: compliance.completeCount,
+      totalCount: compliance.totalCount,
+      actionsRequired: compliance.actionsRequired,
+      openActions: openActions.length,
+      nextDueDate: openActions
+        .map((action) => action.dueDate)
+        .filter(Boolean)
+        .sort()[0] ?? null
+    };
+  });
 }
 
 export async function createFranchise(
@@ -681,6 +726,93 @@ export async function verifyComplianceRecord(
   return record;
 }
 
+export async function ensureComplianceActions(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  franchiseId: string
+) {
+  const franchise = requireFranchise(data, franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "complianceManageActions");
+  const view = getFranchise360(context, permissions, data, franchiseId);
+  data.complianceActions ??= [];
+  data.complianceReminders ??= [];
+  const created: FranchiseComplianceAction[] = [];
+  const reminders: FranchiseComplianceReminder[] = [];
+
+  for (const requirement of view.compliance.requirements) {
+    const status = requirement.record?.status ?? "missing";
+    if (!["missing", "expired", "expiring_soon", "rejected"].includes(status)) {
+      continue;
+    }
+
+    const idempotencyKey = `franchise:${franchise.id}:compliance:${requirement.id}:${status}`;
+    let action = data.complianceActions.find(
+      (candidate) => candidate.idempotencyKey === idempotencyKey && !candidate.deletedAt
+    );
+    if (!action) {
+      action = {
+        id: randomUUID(),
+        franchiseId: franchise.id,
+        complianceRecordId: requirement.record?.id ?? null,
+        status: "open",
+        severity: status === "expired" || status === "missing" ? "critical" : "warning",
+        title: `${requirement.name}: ${status.replace("_", " ")}`,
+        dueDate: requirement.record?.expiresAt ?? today(),
+        idempotencyKey
+      };
+      data.complianceActions.push(action);
+      created.push(action);
+      await audit.record(complianceAuditEvent(context, auditActions.franchiseComplianceActionCreate, franchise, "franchise_compliance_action", action.id, {
+        title: action.title,
+        severity: action.severity,
+        dueDate: action.dueDate
+      }));
+    }
+
+    const reminderKey = `${idempotencyKey}:reminder`;
+    if (!data.complianceReminders.some((candidate) => candidate.idempotencyKey === reminderKey && !candidate.deletedAt)) {
+      const reminder = {
+        id: randomUUID(),
+        franchiseId: franchise.id,
+        complianceActionId: action.id,
+        reminderType: status,
+        scheduledFor: action.dueDate ?? today(),
+        status: "scheduled" as const,
+        idempotencyKey: reminderKey
+      };
+      data.complianceReminders.push(reminder);
+      reminders.push(reminder);
+      await audit.record(complianceAuditEvent(context, auditActions.franchiseComplianceReminderSchedule, franchise, "franchise_compliance_reminder", reminder.id, {
+        reminderType: reminder.reminderType,
+        scheduledFor: reminder.scheduledFor
+      }));
+    }
+  }
+
+  return { actions: created, reminders };
+}
+
+export async function resolveComplianceAction(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  actionId: string
+) {
+  const action = requireComplianceAction(data, actionId);
+  const franchise = requireFranchise(data, action.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "complianceManageActions");
+  action.status = "resolved";
+  action.resolvedAt = today();
+  await audit.record(complianceAuditEvent(context, auditActions.franchiseComplianceActionResolve, franchise, "franchise_compliance_action", action.id, {
+    status: action.status,
+    resolvedAt: action.resolvedAt
+  }));
+  return action;
+}
+
 export function assertNoDuplicatedIdentityData(franchise: FranchiseRecord) {
   const forbiddenKeys = ["legalName", "companyNumber", "vatNumber", "territoryName"];
   const record = franchise as unknown as Record<string, unknown>;
@@ -805,6 +937,16 @@ function requireComplianceRecord(data: FranchiseData, recordId: string) {
     throw new Error("Compliance record was not found.");
   }
   return record;
+}
+
+function requireComplianceAction(data: FranchiseData, actionId: string) {
+  const action = (data.complianceActions ?? []).find(
+    (candidate) => candidate.id === actionId && !candidate.deletedAt
+  );
+  if (!action) {
+    throw new Error("Compliance action was not found.");
+  }
+  return action;
 }
 
 function assertDocumentScope(franchise: FranchiseRecord, document: FranchiseDocument) {

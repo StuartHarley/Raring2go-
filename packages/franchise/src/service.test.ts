@@ -6,6 +6,7 @@ import {
   approveAgreement,
   archiveFranchiseDocument,
   cancelSignatureRequest,
+  ensureComplianceActions,
   submitComplianceEvidence,
   upsertInsurancePolicy,
   createFranchise,
@@ -14,9 +15,11 @@ import {
   generateAgreement,
   getFranchise360,
   listActiveFranchises,
+  listNetworkComplianceOverview,
   recordSignatureProviderEvent,
   reissueSignatureRequest,
   resendSignatureRequest,
+  resolveComplianceAction,
   sendAgreementForSignature,
   submitAgreementForApproval,
   uploadFranchiseDocument,
@@ -65,7 +68,9 @@ const ids = {
     complianceView: "permission_compliance_view",
     complianceManageRequirements: "permission_compliance_manage_requirements",
     complianceSubmitEvidence: "permission_compliance_submit_evidence",
-    complianceVerify: "permission_compliance_verify"
+    complianceVerify: "permission_compliance_verify",
+    complianceManageActions: "permission_compliance_manage_actions",
+    complianceViewNetwork: "permission_compliance_view_network"
   },
   franchises: {
     own: "franchise_own",
@@ -123,6 +128,8 @@ const permissionData: PermissionData = {
     complianceGrant(ids.permissions.complianceManageRequirements, "manage_requirements"),
     complianceGrant(ids.permissions.complianceSubmitEvidence, "submit_evidence"),
     complianceGrant(ids.permissions.complianceVerify, "verify"),
+    complianceGrant(ids.permissions.complianceManageActions, "manage_actions"),
+    complianceGrant(ids.permissions.complianceViewNetwork, "view_network"),
     {
       roleId: ids.roles.local,
       permission: {
@@ -311,6 +318,8 @@ function data(): FranchiseData {
       }
     ],
     complianceRecords: [],
+    complianceActions: [],
+    complianceReminders: [],
     activity: [
       {
         id: "event_1",
@@ -691,6 +700,78 @@ describe("franchise service", () => {
         status: "pending_review"
       })
     ).rejects.toThrow("Document scope does not match");
+  });
+
+  it("creates compliance actions and reminders idempotently", async () => {
+    const franchiseData = data();
+    const recorder = audit();
+
+    const first = await ensureComplianceActions(
+      hqContext(),
+      permissionData,
+      recorder,
+      franchiseData,
+      ids.franchises.own
+    );
+    const second = await ensureComplianceActions(
+      hqContext(),
+      permissionData,
+      recorder,
+      franchiseData,
+      ids.franchises.own
+    );
+
+    expect(first.actions).toHaveLength(1);
+    expect(first.reminders).toHaveLength(1);
+    expect(second.actions).toHaveLength(0);
+    expect(second.reminders).toHaveLength(0);
+    expect(franchiseData.complianceActions?.[0]).toMatchObject({
+      status: "open",
+      severity: "critical"
+    });
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseComplianceActionCreate,
+      auditActions.franchiseComplianceReminderSchedule
+    ]);
+  });
+
+  it("resolves compliance actions with audit", async () => {
+    const franchiseData = data();
+    await ensureComplianceActions(hqContext(), permissionData, audit(), franchiseData, ids.franchises.own);
+    const actionId = franchiseData.complianceActions![0]!.id;
+    const recorder = audit();
+
+    await resolveComplianceAction(hqContext(), permissionData, recorder, franchiseData, actionId);
+
+    expect(franchiseData.complianceActions?.[0]).toMatchObject({
+      status: "resolved",
+      resolvedAt: expect.any(String)
+    });
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseComplianceActionResolve
+    ]);
+  });
+
+  it("lists network compliance overview only with capability", async () => {
+    const franchiseData = data();
+    await ensureComplianceActions(hqContext(), permissionData, audit(), franchiseData, ids.franchises.own);
+
+    expect(listNetworkComplianceOverview(hqContext(), permissionData, franchiseData)[0]).toMatchObject({
+      status: "missing",
+      actionsRequired: 1,
+      openActions: 1
+    });
+    expect(() =>
+      listNetworkComplianceOverview(
+        {
+          userId: ids.users.owner,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissionData,
+        franchiseData
+      )
+    ).toThrow("No permission grant");
   });
 
   it("denies agreement generation without permission", async () => {

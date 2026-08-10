@@ -42,7 +42,9 @@ export const fixtureIds = {
     complianceView: "00000000-0000-4000-8000-000000000422",
     complianceManageRequirements: "00000000-0000-4000-8000-000000000423",
     complianceSubmitEvidence: "00000000-0000-4000-8000-000000000424",
-    complianceVerify: "00000000-0000-4000-8000-000000000425"
+    complianceVerify: "00000000-0000-4000-8000-000000000425",
+    complianceManageActions: "00000000-0000-4000-8000-000000000426",
+    complianceViewNetwork: "00000000-0000-4000-8000-000000000427"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -299,6 +301,18 @@ export const foundationSeed = {
       module: "franchise.compliance",
       action: "verify",
       description: "Verify or reject insurance and compliance evidence."
+    },
+    {
+      id: fixtureIds.permissions.complianceManageActions,
+      module: "franchise.compliance",
+      action: "manage_actions",
+      description: "Create and resolve compliance actions and reminders."
+    },
+    {
+      id: fixtureIds.permissions.complianceViewNetwork,
+      module: "franchise.compliance",
+      action: "view_network",
+      description: "View network compliance overview."
     }
   ],
   franchises: [

@@ -10,9 +10,11 @@ import {
   completeNextSignerAction,
   completeSigningAction,
   declineSigningAction,
+  ensureComplianceActionsAction,
   generateAgreementAction,
   rejectComplianceAction,
   rejectInsuranceAction,
+  resolveComplianceActionAction,
   resendSignatureAction,
   sendAgreementForSignatureAction,
   submitComplianceEvidenceAction,
@@ -132,6 +134,10 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             <div>
               <dt>Actions required</dt>
               <dd>{view.compliance.actionsRequired}</dd>
+            </div>
+            <div>
+              <dt>Open actions</dt>
+              <dd>{view.complianceActions.filter((action) => action.status === "open").length}</dd>
             </div>
           </dl>
           {canEdit ? (
@@ -328,6 +334,27 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             </div>
           </dl>
           <div className="franchise-list">
+            {view.complianceActions
+              .filter((action) => action.status === "open")
+              .map((action) => (
+                <div key={action.id}>
+                  <strong>{action.title}</strong>
+                  <span>{action.severity} - due {action.dueDate ?? "not set"}</span>
+                  <span>{view.complianceReminders.filter((reminder) => reminder.complianceActionId === action.id).length} reminder(s)</span>
+                  {canEdit ? (
+                    <form action={complianceActions.actions[action.id]?.resolve}>
+                      <button type="submit">Resolve action</button>
+                    </form>
+                  ) : null}
+                </div>
+              ))}
+          </div>
+          {canEdit ? (
+            <form action={complianceActions.ensureActions}>
+              <button type="submit">Refresh compliance actions</button>
+            </form>
+          ) : null}
+          <div className="franchise-list">
             {view.insurancePolicies.map((policy) => (
               <div key={policy.id}>
                 <strong>{policy.provider}</strong>
@@ -477,6 +504,7 @@ async function loadFranchise360(
     const declineSigning = declineSigningAction.bind(null, context, id);
     const uploadDocument = uploadDocumentAction.bind(null, context, id);
     const upsertInsurance = upsertInsuranceAction.bind(null, context, id);
+    const ensureActions = ensureComplianceActionsAction.bind(null, context, id);
     const documentActions = Object.fromEntries(
       view.documents.map((document) => [
         document.id,
@@ -515,7 +543,16 @@ async function loadFranchise360(
               reject: rejectComplianceAction.bind(null, context, id, record.id)
             }
           ])
-      )
+      ),
+      actions: Object.fromEntries(
+        view.complianceActions.map((action) => [
+          action.id,
+          {
+            resolve: resolveComplianceActionAction.bind(null, context, id, action.id)
+          }
+        ])
+      ),
+      ensureActions
     };
 
     return {

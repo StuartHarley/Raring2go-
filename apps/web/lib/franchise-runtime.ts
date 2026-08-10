@@ -5,7 +5,10 @@ import {
   archiveFranchiseDocumentRecord,
   approveAgreement,
   cancelSignatureRequest,
+  ensureComplianceActions,
   submitComplianceEvidence,
+  insertComplianceActionRecords,
+  insertComplianceReminderRecords,
   upsertComplianceRecord,
   upsertInsurancePolicy,
   upsertInsurancePolicyRecord,
@@ -22,13 +25,16 @@ import {
   insertSigners,
   latestApprovedAgreementVersionId,
   listActiveFranchises,
+  listNetworkComplianceOverview,
   loadFranchiseData,
   recordSignatureProviderEvent,
   resendSignatureRequest,
+  resolveComplianceAction,
   sendAgreementForSignature,
   submitAgreementForApproval,
   syncSignatureRequestGraph,
   updateFranchiseAgreementState,
+  updateComplianceActionRecord,
   updateFranchiseRecord,
   voidAgreement,
   uploadFranchiseDocument,
@@ -154,7 +160,9 @@ export const franchisePermissionData: PermissionData = {
       fixtureIds.permissions.complianceView,
       fixtureIds.permissions.complianceManageRequirements,
       fixtureIds.permissions.complianceSubmitEvidence,
-      fixtureIds.permissions.complianceVerify
+      fixtureIds.permissions.complianceVerify,
+      fixtureIds.permissions.complianceManageActions,
+      fixtureIds.permissions.complianceViewNetwork
     ].map((permissionId) => ({
       roleId: fixtureIds.roles.hqAdmin,
       permissionId,
@@ -207,6 +215,20 @@ export async function listFranchiseSummaries(context: FranchiseActorContext) {
 
   try {
     return listActiveFranchises(
+      context,
+      franchisePermissionData,
+      await loadFranchiseData(db)
+    );
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function listComplianceOverview(context: FranchiseActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    return listNetworkComplianceOverview(
       context,
       franchisePermissionData,
       await loadFranchiseData(db)
@@ -689,6 +711,57 @@ export async function verifyComplianceForFranchise(
       });
       await upsertComplianceRecord(tx, record);
       return record;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function ensureComplianceActionsForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      const result = await ensureComplianceActions(
+        context,
+        franchisePermissionData,
+        auditFor(tx),
+        data,
+        franchiseId
+      );
+      await insertComplianceActionRecords(tx, result.actions);
+      await insertComplianceReminderRecords(tx, result.reminders);
+      return result;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function resolveComplianceActionForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  actionId: string
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const action = await resolveComplianceAction(
+        context,
+        franchisePermissionData,
+        auditFor(tx),
+        data,
+        actionId
+      );
+      await updateComplianceActionRecord(tx, action);
+      return action;
     });
   } finally {
     await sql.end();

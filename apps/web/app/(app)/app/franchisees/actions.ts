@@ -11,8 +11,10 @@ import {
   completeCurrentAgreementSigning,
   completeNextSignerForCurrentAgreement,
   declineCurrentAgreementSigning,
+  ensureComplianceActionsForFranchise,
   generateAgreementForFranchise,
   resendCurrentSignatureRequest,
+  resolveComplianceActionForFranchise,
   sendCurrentAgreementForSignature,
   submitCurrentAgreement,
   submitComplianceEvidenceForFranchise,
@@ -255,4 +257,23 @@ export async function rejectComplianceAction(
 ) {
   await verifyComplianceForFranchise(context, franchiseId, recordId, "rejected");
   revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function ensureComplianceActionsAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await ensureComplianceActionsForFranchise(context, franchiseId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees");
+}
+
+export async function resolveComplianceActionAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  actionId: string
+) {
+  await resolveComplianceActionForFranchise(context, franchiseId, actionId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees");
 }

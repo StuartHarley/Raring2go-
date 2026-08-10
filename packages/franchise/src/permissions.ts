@@ -86,5 +86,13 @@ export const franchiseCapabilities = {
   complianceVerify: {
     module: "franchise.compliance",
     action: "verify"
+  },
+  complianceManageActions: {
+    module: "franchise.compliance",
+    action: "manage_actions"
+  },
+  complianceViewNetwork: {
+    module: "franchise.compliance",
+    action: "view_network"
   }
 } as const;

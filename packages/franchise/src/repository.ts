@@ -7,6 +7,8 @@ import {
   agreementSigners,
   franchiseArtifactReferences,
   complianceRequirements,
+  franchiseComplianceActions,
+  franchiseComplianceReminders,
   franchiseComplianceRecords,
   franchiseDocumentVersions,
   franchiseDocuments,
@@ -43,6 +45,8 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     insurancePolicyRows,
     complianceRequirementRows,
     complianceRecordRows,
+    complianceActionRows,
+    complianceReminderRows,
     domainEventRows,
     activityRows
   ] = await Promise.all([
@@ -63,6 +67,8 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     db.select().from(franchiseInsurancePolicies),
     db.select().from(complianceRequirements),
     db.select().from(franchiseComplianceRecords),
+    db.select().from(franchiseComplianceActions),
+    db.select().from(franchiseComplianceReminders),
     db.select().from(franchiseDomainEvents),
     db.select().from(auditEvents).orderBy(desc(auditEvents.createdAt)).limit(50)
   ]);
@@ -126,6 +132,16 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
       ...record,
       expiresAt: dateToString(record.expiresAt),
       verifiedAt: dateToString(record.verifiedAt)
+    })),
+    complianceActions: complianceActionRows.map((action: any) => ({
+      ...action,
+      dueDate: dateToString(action.dueDate),
+      resolvedAt: dateToString(action.resolvedAt)
+    })),
+    complianceReminders: complianceReminderRows.map((reminder: any) => ({
+      ...reminder,
+      scheduledFor: dateToString(reminder.scheduledFor),
+      sentAt: dateToString(reminder.sentAt)
     })),
     domainEvents: domainEventRows.map((event: any) => ({
       ...event,
@@ -370,6 +386,46 @@ export async function upsertComplianceRecord(
       rejectedReason: record.rejectedReason
     }
   });
+}
+
+export async function insertComplianceActionRecords(
+  db: FranchiseDb,
+  actions: NonNullable<FranchiseData["complianceActions"]>
+) {
+  if (actions.length === 0) {
+    return;
+  }
+
+  await db.insert(franchiseComplianceActions).values(actions.map((action) => ({
+    ...action,
+    dueDate: action.dueDate ? new Date(action.dueDate) : null,
+    resolvedAt: action.resolvedAt ? new Date(action.resolvedAt) : null
+  }))).onConflictDoNothing();
+}
+
+export async function insertComplianceReminderRecords(
+  db: FranchiseDb,
+  reminders: NonNullable<FranchiseData["complianceReminders"]>
+) {
+  if (reminders.length === 0) {
+    return;
+  }
+
+  await db.insert(franchiseComplianceReminders).values(reminders.map((reminder) => ({
+    ...reminder,
+    scheduledFor: new Date(reminder.scheduledFor),
+    sentAt: reminder.sentAt ? new Date(reminder.sentAt) : null
+  }))).onConflictDoNothing();
+}
+
+export async function updateComplianceActionRecord(
+  db: FranchiseDb,
+  action: NonNullable<FranchiseData["complianceActions"]>[number]
+) {
+  await db.update(franchiseComplianceActions).set({
+    status: action.status,
+    resolvedAt: action.resolvedAt ? new Date(action.resolvedAt) : null
+  }).where(eq(franchiseComplianceActions.id, action.id));
 }
 
 export async function updateFranchiseRecord(

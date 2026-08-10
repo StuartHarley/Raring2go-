@@ -35,6 +35,8 @@ describe("foundation fixtures", () => {
       "franchise.compliance",
       "franchise.compliance",
       "franchise.compliance",
+      "franchise.compliance",
+      "franchise.compliance",
       "franchise.compliance"
     ]);
   });

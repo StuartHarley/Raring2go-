@@ -11,6 +11,8 @@ import {
   franchiseArtifactReferences,
   franchiseAgreements,
   franchiseComplianceRecords,
+  franchiseComplianceActions,
+  franchiseComplianceReminders,
   franchiseDocumentVersions,
   franchiseDocuments,
   franchiseDomainEvents,
@@ -88,5 +90,13 @@ describe("foundation schema", () => {
     expect(franchiseComplianceRecords.evidenceDocumentId.name).toBe("evidence_document_id");
     expect((franchiseInsurancePolicies as unknown as Record<string, unknown>).reminderState).toBeUndefined();
     expect((franchiseComplianceRecords as unknown as Record<string, unknown>).score).toBeUndefined();
+  });
+
+  it("models compliance action and reminder foundations with idempotency", () => {
+    expect(franchiseComplianceActions.idempotencyKey.name).toBe("idempotency_key");
+    expect(franchiseComplianceActions.dueDate.name).toBe("due_date");
+    expect(franchiseComplianceReminders.complianceActionId.name).toBe("compliance_action_id");
+    expect(franchiseComplianceReminders.scheduledFor.name).toBe("scheduled_for");
+    expect((franchiseComplianceActions as unknown as Record<string, unknown>).workflowDefinitionId).toBeUndefined();
   });
 });

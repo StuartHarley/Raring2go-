@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
-import { listFranchiseSummaries } from "../../../../lib/franchise-runtime";
+import { listComplianceOverview, listFranchiseSummaries } from "../../../../lib/franchise-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
@@ -35,6 +35,19 @@ export default async function FranchiseesPage({ searchParams }: PageProps) {
           ))}
         </div>
       </section>
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">HQ compliance overview</p>
+        <h2>Network exceptions</h2>
+        <div className="franchise-list">
+          {result.complianceOverview.map((row) => (
+            <Link key={row.franchise.id} href={`/app/franchisees/${row.franchise.id}` as Route}>
+              <strong>{row.territory?.name ?? row.franchise.primaryTerritoryId}</strong>
+              <span>{row.status} - {row.completeCount}/{row.totalCount} complete</span>
+              <span>{row.openActions} open action(s), next due {row.nextDueDate ?? "not set"}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
     </AppShell>
   );
 }
@@ -50,8 +63,14 @@ async function loadFranchisees(request: Awaited<ReturnType<typeof requestFromSea
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
     });
+    const context = {
+      userId: shell.userId,
+      organisationId: shell.activeContext.organisationId,
+      territoryId: shell.activeContext.territoryId
+    };
+    const complianceOverview = await listComplianceOverview(context).catch(() => []);
 
-    return { franchises };
+    return { franchises, complianceOverview };
   } catch (error) {
     return { error };
   }

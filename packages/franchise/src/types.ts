@@ -227,6 +227,47 @@ export type FranchiseComplianceSummary = {
   actionsRequired: number;
 };
 
+export type ComplianceActionStatus = "open" | "resolved";
+export type ComplianceActionSeverity = "info" | "warning" | "critical";
+export type ComplianceReminderStatus = "scheduled" | "sent" | "cancelled";
+
+export type FranchiseComplianceAction = {
+  id: string;
+  franchiseId: string;
+  complianceRecordId?: string | null;
+  status: ComplianceActionStatus;
+  severity: ComplianceActionSeverity;
+  title: string;
+  dueDate?: string | null;
+  idempotencyKey: string;
+  resolvedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseComplianceReminder = {
+  id: string;
+  franchiseId: string;
+  complianceActionId: string;
+  reminderType: string;
+  scheduledFor: string;
+  status: ComplianceReminderStatus;
+  idempotencyKey: string;
+  sentAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type NetworkComplianceOverviewRow = {
+  franchise: FranchiseRecord;
+  organisation?: FranchiseOrganisation;
+  territory?: FranchiseTerritory;
+  status: ComplianceRecordStatus;
+  completeCount: number;
+  totalCount: number;
+  actionsRequired: number;
+  openActions: number;
+  nextDueDate?: string | null;
+};
+
 export type AgreementSignatureRequest = {
   id: string;
   franchiseAgreementId: string;
@@ -298,6 +339,8 @@ export type Franchise360 = {
   documents: FranchiseDocumentSummary[];
   insurancePolicies: FranchiseInsurancePolicy[];
   compliance: FranchiseComplianceSummary;
+  complianceActions: FranchiseComplianceAction[];
+  complianceReminders: FranchiseComplianceReminder[];
   placeholders: {
     performance: "deferred";
     training: "deferred";
@@ -323,6 +366,8 @@ export type FranchiseData = {
   insurancePolicies?: FranchiseInsurancePolicy[];
   complianceRequirements?: ComplianceRequirement[];
   complianceRecords?: FranchiseComplianceRecord[];
+  complianceActions?: FranchiseComplianceAction[];
+  complianceReminders?: FranchiseComplianceReminder[];
   domainEvents?: FranchiseDomainEvent[];
   activity?: FranchiseAuditEvent[];
 };

@@ -208,7 +208,9 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.complianceView,
         fixtureIds.permissions.complianceManageRequirements,
         fixtureIds.permissions.complianceSubmitEvidence,
-        fixtureIds.permissions.complianceVerify
+        fixtureIds.permissions.complianceVerify,
+        fixtureIds.permissions.complianceManageActions,
+        fixtureIds.permissions.complianceViewNetwork
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,

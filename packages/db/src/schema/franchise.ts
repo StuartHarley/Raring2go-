@@ -402,3 +402,52 @@ export const franchiseComplianceRecords = pgTable(
     index("franchise_compliance_records_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const franchiseComplianceActions = pgTable(
+  "franchise_compliance_actions",
+  {
+    id,
+    franchiseId: uuid("franchise_id").notNull().references(() => franchises.id),
+    complianceRecordId: uuid("compliance_record_id").references(() => franchiseComplianceRecords.id),
+    status: text("status").notNull().default("open"),
+    severity: text("severity").notNull().default("warning"),
+    title: text("title").notNull(),
+    dueDate: date("due_date", { mode: "date" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    resolvedAt: date("resolved_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("franchise_compliance_actions_idempotency_uidx").on(table.idempotencyKey),
+    index("franchise_compliance_actions_franchise_id_idx").on(table.franchiseId),
+    index("franchise_compliance_actions_status_idx").on(table.status),
+    index("franchise_compliance_actions_due_date_idx").on(table.dueDate),
+    index("franchise_compliance_actions_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const franchiseComplianceReminders = pgTable(
+  "franchise_compliance_reminders",
+  {
+    id,
+    franchiseId: uuid("franchise_id").notNull().references(() => franchises.id),
+    complianceActionId: uuid("compliance_action_id")
+      .notNull()
+      .references(() => franchiseComplianceActions.id),
+    reminderType: text("reminder_type").notNull(),
+    scheduledFor: date("scheduled_for", { mode: "date" }).notNull(),
+    status: text("status").notNull().default("scheduled"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    sentAt: date("sent_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("franchise_compliance_reminders_idempotency_uidx").on(table.idempotencyKey),
+    index("franchise_compliance_reminders_action_id_idx").on(table.complianceActionId),
+    index("franchise_compliance_reminders_scheduled_for_idx").on(table.scheduledFor),
+    index("franchise_compliance_reminders_status_idx").on(table.status),
+    index("franchise_compliance_reminders_deleted_at_idx").on(table.deletedAt)
+  ]
+);
