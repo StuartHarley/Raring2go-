@@ -1,0 +1,259 @@
+:root {
+  --r2-brand-purple: #852890;
+  --r2-brand-plum: #400044;
+  --r2-brand-gradient: linear-gradient(135deg, #852890 0%, #400044 100%);
+  --r2-season-spring: #93c83e;
+  --r2-season-summer: #56cbf5;
+  --r2-season-autumn: #fbad18;
+  --r2-season-winter: #e01a36;
+  --r2-text-primary: #201827;
+  --r2-text-muted: #635b6b;
+  --r2-surface: #ffffff;
+  --r2-surface-subtle: #faf8fb;
+  --r2-surface-tint: #f4edf7;
+  --r2-border-default: #d8d1dd;
+  --r2-focus-ring: #852890;
+  --r2-status-success: #2e7d4f;
+  --r2-status-warning: #a86100;
+  --r2-status-danger: #b4233a;
+  --r2-status-info: #16689a;
+  --r2-radius-sm: 6px;
+  --r2-radius-md: 8px;
+  --r2-shadow-raised: 0 10px 30px rgba(32, 24, 39, 0.08);
+  --r2-shadow-overlay: 0 22px 60px rgba(32, 24, 39, 0.18);
+  --r2-font-ui: Avenir Next, Avenir, Inter, Segoe UI, Arial, sans-serif;
+  --r2-font-editorial: VAG Rounded, Nunito Sans, Arial Rounded MT Bold, Avenir Next, Arial, sans-serif;
+  --r2-density-control: 44px;
+  --r2-density-padding-x: 16px;
+  --r2-density-padding-y: 12px;
+  --r2-density-gap: 16px;
+}
+
+[data-density="compact"] {
+  --r2-density-control: 34px;
+  --r2-density-padding-x: 12px;
+  --r2-density-padding-y: 8px;
+  --r2-density-gap: 10px;
+}
+
+.r2-button,
+.r2-icon-button,
+.r2-input,
+.r2-tab {
+  min-height: var(--r2-density-control);
+  border-radius: var(--r2-radius-sm);
+  font: inherit;
+}
+
+.r2-button,
+.r2-icon-button,
+.r2-tab {
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.r2-button {
+  padding: var(--r2-density-padding-y) var(--r2-density-padding-x);
+}
+
+.r2-button--primary {
+  background: var(--r2-brand-gradient);
+  color: white;
+}
+
+.r2-button--secondary,
+.r2-button--quiet {
+  background: var(--r2-surface);
+  border-color: var(--r2-border-default);
+  color: var(--r2-text-primary);
+}
+
+.r2-button--quiet {
+  background: transparent;
+}
+
+.r2-button--danger {
+  background: var(--r2-status-danger);
+  color: white;
+}
+
+.r2-icon-button {
+  width: var(--r2-density-control);
+  background: var(--r2-surface);
+  border-color: var(--r2-border-default);
+  color: var(--r2-brand-plum);
+}
+
+.r2-input {
+  width: 100%;
+  border: 1px solid var(--r2-border-default);
+  color: var(--r2-text-primary);
+  padding: 0 var(--r2-density-padding-x);
+  background: var(--r2-surface);
+}
+
+.r2-button:focus-visible,
+.r2-icon-button:focus-visible,
+.r2-input:focus-visible,
+.r2-tab:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--r2-focus-ring), white 65%);
+  outline-offset: 2px;
+}
+
+.r2-field {
+  display: grid;
+  gap: 6px;
+}
+
+.r2-field__label {
+  color: var(--r2-text-primary);
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.r2-field__hint,
+.r2-field__error {
+  color: var(--r2-text-muted);
+  font-size: 0.8125rem;
+}
+
+.r2-field__error {
+  color: var(--r2-status-danger);
+}
+
+.r2-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid var(--r2-border-default);
+  border-radius: 999px;
+  color: var(--r2-text-primary);
+  background: var(--r2-surface);
+  font-size: 0.75rem;
+  font-weight: 800;
+  gap: 6px;
+  padding: 4px 9px;
+}
+
+.r2-badge--success { border-color: var(--r2-status-success); color: var(--r2-status-success); }
+.r2-badge--warning { border-color: var(--r2-status-warning); color: var(--r2-status-warning); }
+.r2-badge--danger { border-color: var(--r2-status-danger); color: var(--r2-status-danger); }
+.r2-badge--info { border-color: var(--r2-status-info); color: var(--r2-status-info); }
+.r2-badge--spring { border-color: var(--r2-season-spring); }
+.r2-badge--summer { border-color: var(--r2-season-summer); }
+.r2-badge--autumn { border-color: var(--r2-season-autumn); }
+.r2-badge--winter { border-color: var(--r2-season-winter); }
+
+.r2-card {
+  background: var(--r2-surface);
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-md);
+  padding: calc(var(--r2-density-padding-x) * 1.25);
+}
+
+.r2-card--brand { border-top: 4px solid var(--r2-brand-purple); }
+.r2-card--spring { border-top: 4px solid var(--r2-season-spring); }
+.r2-card--summer { border-top: 4px solid var(--r2-season-summer); }
+.r2-card--autumn { border-top: 4px solid var(--r2-season-autumn); }
+.r2-card--winter { border-top: 4px solid var(--r2-season-winter); }
+
+.r2-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--r2-border-default);
+}
+
+.r2-tab {
+  background: transparent;
+  color: var(--r2-text-muted);
+  padding: 0 14px;
+}
+
+.r2-tab--selected {
+  color: var(--r2-brand-plum);
+  box-shadow: inset 0 -3px 0 var(--r2-brand-purple);
+}
+
+.r2-kpi {
+  display: grid;
+  gap: 10px;
+}
+
+.r2-kpi strong {
+  color: var(--r2-text-primary);
+  font-size: 2rem;
+}
+
+.r2-kpi span,
+.r2-state p,
+.r2-content-card p {
+  color: var(--r2-text-muted);
+}
+
+.r2-content-card {
+  display: grid;
+  gap: 10px;
+}
+
+.r2-content-card__media {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r2-radius-sm);
+  background: linear-gradient(135deg, var(--r2-surface-tint), #fff4dc);
+}
+
+.r2-page-thumb {
+  display: grid;
+  gap: 10px;
+}
+
+.r2-page-thumb__sheet {
+  aspect-ratio: 3 / 4;
+  border: 1px solid var(--r2-border-default);
+  border-radius: 4px;
+  background: white;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.r2-zone {
+  border: 1px dashed var(--r2-border-default);
+  border-radius: 4px;
+  color: var(--r2-text-muted);
+  font-size: 0.75rem;
+  padding: 8px;
+}
+
+.r2-zone--locked {
+  background: var(--r2-surface-tint);
+}
+
+.r2-zone--editable {
+  border-color: var(--r2-brand-purple);
+}
+
+.r2-page-thumb__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--r2-text-muted);
+  font-size: 0.8125rem;
+}
+
+.r2-alert {
+  border: 1px solid var(--r2-status-info);
+  border-radius: var(--r2-radius-md);
+  padding: 14px 16px;
+  background: #f0f8fc;
+}
+
+.r2-alert p {
+  margin-bottom: 0;
+}
+
+.r2-alert--success { border-color: var(--r2-status-success); background: #f0faf4; }
+.r2-alert--warning { border-color: var(--r2-status-warning); background: #fff8eb; }
+.r2-alert--danger { border-color: var(--r2-status-danger); background: #fff2f4; }

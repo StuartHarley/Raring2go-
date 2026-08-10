@@ -1,8 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "baseUrl": ".",
     "jsx": "preserve",
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "paths": {
+      "@raring2go/ui": ["../../packages/ui/src/index.ts"]
+    },
     "plugins": [
       {
         "name": "next"
