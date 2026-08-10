@@ -21,6 +21,12 @@ describe("foundation fixtures", () => {
       "franchise.agreement",
       "franchise.agreement",
       "franchise.agreement",
+      "franchise.agreement",
+      "franchise.agreement",
+      "franchise.agreement",
+      "franchise.agreement",
+      "franchise.agreement",
+      "franchise.agreement",
       "franchise.agreement"
     ]);
   });

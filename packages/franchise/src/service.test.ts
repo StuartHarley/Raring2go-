@@ -3,10 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   assertNoDuplicatedIdentityData,
   approveAgreement,
+  cancelSignatureRequest,
   createFranchise,
   generateAgreement,
   getFranchise360,
   listActiveFranchises,
+  recordSignatureProviderEvent,
+  reissueSignatureRequest,
+  resendSignatureRequest,
+  sendAgreementForSignature,
   submitAgreementForApproval,
   voidAgreement,
   updateFranchise
@@ -41,7 +46,11 @@ const ids = {
     agreementGenerate: "permission_agreement_generate",
     agreementSubmit: "permission_agreement_submit",
     agreementApprove: "permission_agreement_approve",
-    agreementVoid: "permission_agreement_void"
+    agreementVoid: "permission_agreement_void",
+    agreementSendSignature: "permission_agreement_send_signature",
+    agreementCancelSignature: "permission_agreement_cancel_signature",
+    agreementResendSignature: "permission_agreement_resend_signature",
+    agreementRecordSignatureEvent: "permission_agreement_record_signature_event"
   },
   franchises: {
     own: "franchise_own",
@@ -87,6 +96,10 @@ const permissionData: PermissionData = {
     agreementGrant(ids.permissions.agreementSubmit, "submit_approval"),
     agreementGrant(ids.permissions.agreementApprove, "approve"),
     agreementGrant(ids.permissions.agreementVoid, "void"),
+    agreementGrant(ids.permissions.agreementSendSignature, "send_signature"),
+    agreementGrant(ids.permissions.agreementCancelSignature, "cancel_signature"),
+    agreementGrant(ids.permissions.agreementResendSignature, "resend_signature"),
+    agreementGrant(ids.permissions.agreementRecordSignatureEvent, "record_signature_event"),
     {
       roleId: ids.roles.local,
       permission: {
@@ -599,6 +612,206 @@ describe("franchise service", () => {
       auditActions.franchiseAgreementApprove
     ]);
   });
+
+  it("denies sending without permission and blocks non-approved agreements", async () => {
+    const franchiseData = data();
+    await expect(
+      sendAgreementForSignature(
+        {
+          userId: ids.users.owner,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissionData,
+        audit(),
+        franchiseData,
+        provider(),
+        {
+          requestId: "request_1",
+          agreementId: ids.agreements.draft,
+          signers: signerPlan("request_1")
+        }
+      )
+    ).rejects.toThrow("Agreement was not found");
+
+    await generateAgreement(hqContext(), permissionData, audit(), franchiseData, {
+      id: ids.agreements.draft,
+      franchiseId: ids.franchises.own,
+      agreementVersionId: ids.agreements.version,
+      mergeVariables: {
+        territoryName: "Sutton Coldfield",
+        ownerName: "Owner"
+      }
+    });
+
+    await expect(
+      sendAgreementForSignature(hqContext(), permissionData, audit(), franchiseData, provider(), {
+        requestId: "request_1",
+        agreementId: ids.agreements.draft,
+        signers: signerPlan("request_1")
+      })
+    ).rejects.toThrow("Only approved agreements");
+  });
+
+  it("enforces signer order and required signer completion", async () => {
+    const franchiseData = await approvedAgreementData();
+    await sendAgreementForSignature(hqContext(), permissionData, audit(), franchiseData, provider(), {
+      requestId: "request_1",
+      agreementId: ids.agreements.draft,
+      signers: signerPlan("request_1")
+    });
+
+    await expect(
+      recordSignatureProviderEvent(hqContext(), permissionData, audit(), franchiseData, {
+        eventId: "event_wrong_order",
+        requestId: "request_1",
+        eventType: "signer.completed",
+        signerId: "request_1-franchisor"
+      })
+    ).rejects.toThrow("Signer order");
+
+    await recordSignatureProviderEvent(hqContext(), permissionData, audit(), franchiseData, {
+      eventId: "event_1",
+      requestId: "request_1",
+      eventType: "signer.completed",
+      signerId: "request_1-franchisee"
+    });
+    await expect(
+      recordSignatureProviderEvent(hqContext(), permissionData, audit(), franchiseData, {
+        eventId: "event_complete_early",
+        requestId: "request_1",
+        eventType: "completed",
+        signedAgreementArtifact: signedArtifact("signed_1"),
+        completionCertificateArtifact: certificateArtifact("cert_1")
+      })
+    ).rejects.toThrow("Every required signer");
+  });
+
+  it("supports send resend cancel declined expired and idempotent provider events", async () => {
+    const franchiseData = await approvedAgreementData();
+    const recorder = audit();
+    await sendAgreementForSignature(hqContext(), permissionData, recorder, franchiseData, provider(), {
+      requestId: "request_1",
+      agreementId: ids.agreements.draft,
+      signers: signerPlan("request_1")
+    });
+    await resendSignatureRequest(hqContext(), permissionData, recorder, franchiseData, provider(), "request_1");
+    await recordSignatureProviderEvent(hqContext(), permissionData, recorder, franchiseData, {
+      eventId: "event_declined",
+      requestId: "request_1",
+      eventType: "declined"
+    });
+    const duplicate = await recordSignatureProviderEvent(hqContext(), permissionData, recorder, franchiseData, {
+      eventId: "event_declined",
+      requestId: "request_1",
+      eventType: "declined"
+    });
+
+    expect(duplicate.duplicate).toBe(true);
+    expect(franchiseData.signatureRequests?.[0]?.status).toBe("declined");
+
+    const expiredData = await approvedAgreementData();
+    await sendAgreementForSignature(hqContext(), permissionData, audit(), expiredData, provider(), {
+      requestId: "request_expired",
+      agreementId: ids.agreements.draft,
+      signers: signerPlan("request_expired")
+    });
+    await recordSignatureProviderEvent(hqContext(), permissionData, audit(), expiredData, {
+      eventId: "event_expired",
+      requestId: "request_expired",
+      eventType: "expired"
+    });
+    expect(expiredData.signatureRequests?.[0]?.status).toBe("expired");
+
+    const cancelledData = await approvedAgreementData();
+    await sendAgreementForSignature(hqContext(), permissionData, audit(), cancelledData, provider(), {
+      requestId: "request_cancelled",
+      agreementId: ids.agreements.draft,
+      signers: signerPlan("request_cancelled")
+    });
+    await cancelSignatureRequest(hqContext(), permissionData, audit(), cancelledData, provider(), "request_cancelled");
+    expect(cancelledData.signatureRequests?.[0]?.status).toBe("cancelled");
+  });
+
+  it("executes exactly once, locks artefact references and emits one domain event", async () => {
+    const franchiseData = await approvedAgreementData();
+    const recorder = audit();
+    await sendAgreementForSignature(hqContext(), permissionData, recorder, franchiseData, provider(), {
+      requestId: "request_1",
+      agreementId: ids.agreements.draft,
+      signers: signerPlan("request_1")
+    });
+    await recordSignatureProviderEvent(hqContext(), permissionData, recorder, franchiseData, {
+      eventId: "event_1",
+      requestId: "request_1",
+      eventType: "signer.completed",
+      signerId: "request_1-franchisee"
+    });
+    await recordSignatureProviderEvent(hqContext(), permissionData, recorder, franchiseData, {
+      eventId: "event_2",
+      requestId: "request_1",
+      eventType: "signer.completed",
+      signerId: "request_1-franchisor"
+    });
+    await recordSignatureProviderEvent(hqContext(), permissionData, recorder, franchiseData, {
+      eventId: "event_completed",
+      requestId: "request_1",
+      eventType: "completed",
+      signedAgreementArtifact: signedArtifact("signed_1"),
+      completionCertificateArtifact: certificateArtifact("cert_1")
+    });
+    await recordSignatureProviderEvent(hqContext(), permissionData, recorder, franchiseData, {
+      eventId: "event_completed",
+      requestId: "request_1",
+      eventType: "completed",
+      signedAgreementArtifact: signedArtifact("signed_2"),
+      completionCertificateArtifact: certificateArtifact("cert_2")
+    });
+
+    const agreement = franchiseData.franchiseAgreements?.[0];
+    expect(agreement?.status).toBe("executed");
+    expect(franchiseData.domainEvents?.filter((event) => event.eventType === "franchise.agreement.executed")).toHaveLength(1);
+    expect(franchiseData.artifactReferences?.map((artifact) => artifact.lockedAt)).toEqual([
+      expect.any(String),
+      expect.any(String)
+    ]);
+    expect(recorder.events.map((event) => event.action)).toContain(
+      auditActions.franchiseAgreementExecuted
+    );
+  });
+
+  it("preserves historical signing request when reissued", async () => {
+    const franchiseData = await approvedAgreementData();
+    await sendAgreementForSignature(hqContext(), permissionData, audit(), franchiseData, provider(), {
+      requestId: "request_old",
+      agreementId: ids.agreements.draft,
+      signers: signerPlan("request_old")
+    });
+    await cancelSignatureRequest(hqContext(), permissionData, audit(), franchiseData, provider(), "request_old");
+    await reissueSignatureRequest(hqContext(), permissionData, audit(), franchiseData, provider(), {
+      oldRequestId: "request_old",
+      newRequestId: "request_new",
+      signers: signerPlan("request_new")
+    });
+
+    expect(franchiseData.signatureRequests?.map((request) => request.id)).toEqual([
+      "request_old",
+      "request_new"
+    ]);
+  });
+
+  it("displays live signing state in Franchisee 360", async () => {
+    const franchiseData = await approvedAgreementData();
+    await sendAgreementForSignature(hqContext(), permissionData, audit(), franchiseData, provider(), {
+      requestId: "request_1",
+      agreementId: ids.agreements.draft,
+      signers: signerPlan("request_1")
+    });
+
+    const view = getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own);
+    expect(view.agreement?.signatureRequest?.status).toBe("sent");
+    expect(view.agreement?.signers).toHaveLength(2);
+  });
 });
 
 function hqContext() {
@@ -617,6 +830,84 @@ function agreementGrant(id: string, action: string) {
       action
     },
     scope: "network" as const
+  };
+}
+
+async function approvedAgreementData() {
+  const franchiseData = data();
+  await generateAgreement(hqContext(), permissionData, audit(), franchiseData, {
+    id: ids.agreements.draft,
+    franchiseId: ids.franchises.own,
+    agreementVersionId: ids.agreements.version,
+    mergeVariables: {
+      territoryName: "Sutton Coldfield",
+      ownerName: "Owner"
+    }
+  });
+  await submitAgreementForApproval(hqContext(), permissionData, audit(), franchiseData, ids.agreements.draft);
+  await approveAgreement(hqContext(), permissionData, audit(), franchiseData, ids.agreements.draft);
+  return franchiseData;
+}
+
+function signerPlan(requestId: string) {
+  return [
+    {
+      id: `${requestId}-franchisee`,
+      role: "franchisee" as const,
+      userId: ids.users.owner,
+      name: "Owner",
+      email: "owner@example.com",
+      signingOrder: 1,
+      required: true
+    },
+    {
+      id: `${requestId}-franchisor`,
+      role: "franchisor" as const,
+      userId: ids.users.hq,
+      name: "HQ",
+      email: "hq@example.com",
+      signingOrder: 2,
+      required: true
+    }
+  ];
+}
+
+function provider() {
+  return {
+    key: "test",
+    async send(input: { agreementId: string }) {
+      return { providerRequestId: `provider-${input.agreementId}` };
+    },
+    async resend() {
+      return {};
+    },
+    async cancel() {
+      return {};
+    }
+  };
+}
+
+function signedArtifact(id: string) {
+  return {
+    id,
+    franchiseId: ids.franchises.own,
+    entityType: "franchise_agreement",
+    entityId: ids.agreements.draft,
+    category: "signed_agreement" as const,
+    label: "Signed agreement",
+    storageKey: `agreements/${id}.pdf`
+  };
+}
+
+function certificateArtifact(id: string) {
+  return {
+    id,
+    franchiseId: ids.franchises.own,
+    entityType: "franchise_agreement",
+    entityId: ids.agreements.draft,
+    category: "completion_certificate" as const,
+    label: "Certificate",
+    storageKey: `agreements/${id}-certificate.pdf`
   };
 }
 

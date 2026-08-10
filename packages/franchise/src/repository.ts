@@ -2,6 +2,11 @@ import {
   agreementTemplates,
   agreementVersions,
   auditEvents,
+  agreementSignatureEvents,
+  agreementSignatureRequests,
+  agreementSigners,
+  franchiseArtifactReferences,
+  franchiseDomainEvents,
   franchiseAgreements,
   franchiseContacts,
   franchises,
@@ -24,6 +29,11 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     templateRows,
     versionRows,
     agreementRows,
+    signatureRequestRows,
+    signerRows,
+    signatureEventRows,
+    artifactRows,
+    domainEventRows,
     activityRows
   ] = await Promise.all([
     db.select().from(franchises),
@@ -34,6 +44,11 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     db.select().from(agreementTemplates),
     db.select().from(agreementVersions),
     db.select().from(franchiseAgreements),
+    db.select().from(agreementSignatureRequests),
+    db.select().from(agreementSigners),
+    db.select().from(agreementSignatureEvents),
+    db.select().from(franchiseArtifactReferences),
+    db.select().from(franchiseDomainEvents),
     db.select().from(auditEvents).orderBy(desc(auditEvents.createdAt)).limit(50)
   ]);
 
@@ -52,7 +67,32 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
       ...agreement,
       submittedAt: dateToString(agreement.submittedAt),
       approvedAt: dateToString(agreement.approvedAt),
-      voidedAt: dateToString(agreement.voidedAt)
+      voidedAt: dateToString(agreement.voidedAt),
+      executedAt: dateToString(agreement.executedAt)
+    })),
+    signatureRequests: signatureRequestRows.map((request: any) => ({
+      ...request,
+      sentAt: dateToString(request.sentAt),
+      cancelledAt: dateToString(request.cancelledAt),
+      expiredAt: dateToString(request.expiredAt),
+      declinedAt: dateToString(request.declinedAt),
+      completedAt: dateToString(request.completedAt)
+    })),
+    signers: signerRows.map((signer: any) => ({
+      ...signer,
+      completedAt: dateToString(signer.completedAt)
+    })),
+    signatureEvents: signatureEventRows.map((event: any) => ({
+      ...event,
+      processedAt: dateToString(event.processedAt)
+    })),
+    artifactReferences: artifactRows.map((artifact: any) => ({
+      ...artifact,
+      lockedAt: dateToString(artifact.lockedAt)
+    })),
+    domainEvents: domainEventRows.map((event: any) => ({
+      ...event,
+      processedAt: dateToString(event.processedAt)
     })),
     activity: activityRows.map((event: any) => ({
       id: event.id,
@@ -97,9 +137,87 @@ export async function updateFranchiseAgreementState(
       submittedAt: agreement.submittedAt ? new Date(agreement.submittedAt) : null,
       approvedByUserId: agreement.approvedByUserId,
       approvedAt: agreement.approvedAt ? new Date(agreement.approvedAt) : null,
-      voidedAt: agreement.voidedAt ? new Date(agreement.voidedAt) : null
+      voidedAt: agreement.voidedAt ? new Date(agreement.voidedAt) : null,
+      executedAt: agreement.executedAt ? new Date(agreement.executedAt) : null,
+      signedAgreementArtifactId: agreement.signedAgreementArtifactId,
+      completionCertificateArtifactId: agreement.completionCertificateArtifactId
     })
     .where(eq(franchiseAgreements.id, agreement.id));
+}
+
+export async function insertSignatureRequest(
+  db: FranchiseDb,
+  request: NonNullable<FranchiseData["signatureRequests"]>[number]
+) {
+  await db.insert(agreementSignatureRequests).values({
+    ...request,
+    sentAt: request.sentAt ? new Date(request.sentAt) : null,
+    cancelledAt: request.cancelledAt ? new Date(request.cancelledAt) : null,
+    expiredAt: request.expiredAt ? new Date(request.expiredAt) : null,
+    declinedAt: request.declinedAt ? new Date(request.declinedAt) : null,
+    completedAt: request.completedAt ? new Date(request.completedAt) : null
+  });
+}
+
+export async function insertSigners(
+  db: FranchiseDb,
+  signers: NonNullable<FranchiseData["signers"]>
+) {
+  if (signers.length === 0) {
+    return;
+  }
+
+  await db.insert(agreementSigners).values(signers.map((signer) => ({
+    ...signer,
+    completedAt: signer.completedAt ? new Date(signer.completedAt) : null
+  })));
+}
+
+export async function syncSignatureRequestGraph(
+  db: FranchiseDb,
+  data: FranchiseData,
+  requestId: string
+) {
+  const request = data.signatureRequests?.find((candidate) => candidate.id === requestId);
+
+  if (request) {
+    await db.update(agreementSignatureRequests).set({
+      status: request.status,
+      providerMetadata: request.providerMetadata ?? {},
+      cancelledAt: request.cancelledAt ? new Date(request.cancelledAt) : null,
+      expiredAt: request.expiredAt ? new Date(request.expiredAt) : null,
+      declinedAt: request.declinedAt ? new Date(request.declinedAt) : null,
+      completedAt: request.completedAt ? new Date(request.completedAt) : null
+    }).where(eq(agreementSignatureRequests.id, request.id));
+  }
+
+  for (const signer of data.signers?.filter((candidate) => candidate.signatureRequestId === requestId) ?? []) {
+    await db.update(agreementSigners).set({
+      status: signer.status,
+      completedAt: signer.completedAt ? new Date(signer.completedAt) : null
+    }).where(eq(agreementSigners.id, signer.id));
+  }
+
+  for (const event of data.signatureEvents ?? []) {
+    await db.insert(agreementSignatureEvents).values({
+      ...event,
+      processedAt: event.processedAt ? new Date(event.processedAt) : null
+    }).onConflictDoNothing();
+  }
+
+  for (const artifact of data.artifactReferences ?? []) {
+    await db.insert(franchiseArtifactReferences).values({
+      ...artifact,
+      lockedAt: artifact.lockedAt ? new Date(artifact.lockedAt) : null
+    }).onConflictDoNothing();
+  }
+
+  for (const event of data.domainEvents ?? []) {
+    await db.insert(franchiseDomainEvents).values({
+      ...event,
+      processedAt: event.processedAt ? new Date(event.processedAt) : null
+    }).onConflictDoNothing();
+  }
 }
 
 export async function updateFranchiseRecord(

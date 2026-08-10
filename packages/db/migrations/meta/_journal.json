@@ -29,6 +29,13 @@
       "when": 1786390930748,
       "tag": "0003_round_chimera",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786391823384,
+      "tag": "0004_freezing_leo",
+      "breakpoints": true
     }
   ]
 }

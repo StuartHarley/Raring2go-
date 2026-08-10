@@ -168,6 +168,31 @@ export async function seedDatabase(databaseUrl?: string) {
         permissionId: fixtureIds.permissions.agreementView,
         scope: "own_territory",
         constraints: {}
+      },
+      ...[
+        fixtureIds.permissions.agreementSendSignature,
+        fixtureIds.permissions.agreementCancelSignature,
+        fixtureIds.permissions.agreementResendSignature,
+        fixtureIds.permissions.agreementViewSignatureStatus,
+        fixtureIds.permissions.agreementRecordSignatureEvent,
+        fixtureIds.permissions.agreementDownloadExecuted
+      ].map((permissionId) => ({
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId,
+        scope: "network" as const,
+        constraints: {}
+      })),
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.agreementViewSignatureStatus,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.agreementDownloadExecuted,
+        scope: "own_territory",
+        constraints: {}
       }
     ]).onConflictDoNothing();
 

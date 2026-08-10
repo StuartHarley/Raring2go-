@@ -4,7 +4,13 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import {
   approveAgreementAction,
+  cancelSignatureAction,
+  completeNextSignerAction,
+  completeSigningAction,
+  declineSigningAction,
   generateAgreementAction,
+  resendSignatureAction,
+  sendAgreementForSignatureAction,
   submitAgreementAction,
   updateFranchiseAction,
   voidAgreementAction
@@ -24,7 +30,21 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     return protectedOutcome(result.error);
   }
 
-  const { approve, generate, submit, update, view, voidCurrent, canEdit } = result;
+  const {
+    approve,
+    cancelSignature,
+    completeNextSigner,
+    completeSigning,
+    declineSigning,
+    generate,
+    resendSignature,
+    sendSignature,
+    submit,
+    update,
+    view,
+    voidCurrent,
+    canEdit
+  } = result;
 
   return (
     <AppShell request={request}>
@@ -76,6 +96,14 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             <div>
               <dt>Onboarding</dt>
               <dd>{view.franchise.onboardingStatus}</dd>
+            </div>
+            <div>
+              <dt>Agreement</dt>
+              <dd>{view.agreement?.status ?? "Not generated"}</dd>
+            </div>
+            <div>
+              <dt>Signing</dt>
+              <dd>{view.agreement?.signatureRequest?.status ?? "Not sent"}</dd>
             </div>
           </dl>
           {canEdit ? (
@@ -141,7 +169,25 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
                   <dt>Approved</dt>
                   <dd>{view.agreement.approvedAt ?? "Not approved"}</dd>
                 </div>
+                <div>
+                  <dt>Signing</dt>
+                  <dd>{view.agreement.signatureRequest?.status ?? "Not sent"}</dd>
+                </div>
+                <div>
+                  <dt>Executed</dt>
+                  <dd>{view.agreement.executedAt ?? "Not executed"}</dd>
+                </div>
               </dl>
+              {view.agreement.signers.length > 0 ? (
+                <ol className="franchise-activity">
+                  {view.agreement.signers.map((signer) => (
+                    <li key={signer.id}>
+                      <strong>{signer.signingOrder}. {signer.role}</strong>
+                      <span>{signer.name} - {signer.status}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
               <details>
                 <summary>Merge variable snapshot</summary>
                 <pre>{JSON.stringify(view.agreement.mergeVariables, null, 2)}</pre>
@@ -150,6 +196,12 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
                 <div className="franchise-actions">
                   <form action={submit}><button type="submit">Submit for approval</button></form>
                   <form action={approve}><button type="submit">Approve</button></form>
+                  <form action={sendSignature}><button type="submit">Send for signature</button></form>
+                  <form action={resendSignature}><button type="submit">Resend</button></form>
+                  <form action={completeNextSigner}><button type="submit">Complete next signer</button></form>
+                  <form action={completeSigning}><button type="submit">Complete signing</button></form>
+                  <form action={declineSigning}><button type="submit">Decline</button></form>
+                  <form action={cancelSignature}><button type="submit">Cancel signing</button></form>
                   <form action={voidCurrent}><button type="submit">Void</button></form>
                 </div>
               ) : null}
@@ -216,8 +268,28 @@ async function loadFranchise360(
     const submit = submitAgreementAction.bind(null, context, id);
     const approve = approveAgreementAction.bind(null, context, id);
     const voidCurrent = voidAgreementAction.bind(null, context, id);
+    const sendSignature = sendAgreementForSignatureAction.bind(null, context, id);
+    const resendSignature = resendSignatureAction.bind(null, context, id);
+    const cancelSignature = cancelSignatureAction.bind(null, context, id);
+    const completeNextSigner = completeNextSignerAction.bind(null, context, id);
+    const completeSigning = completeSigningAction.bind(null, context, id);
+    const declineSigning = declineSigningAction.bind(null, context, id);
 
-    return { approve, canEdit: canEditFranchise(context), generate, submit, update, view, voidCurrent };
+    return {
+      approve,
+      cancelSignature,
+      canEdit: canEditFranchise(context),
+      completeNextSigner,
+      completeSigning,
+      declineSigning,
+      generate,
+      resendSignature,
+      sendSignature,
+      submit,
+      update,
+      view,
+      voidCurrent
+    };
   } catch (error) {
     return { error };
   }

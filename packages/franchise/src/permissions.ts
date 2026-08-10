@@ -30,5 +30,29 @@ export const franchiseCapabilities = {
   agreementVoid: {
     module: "franchise.agreement",
     action: "void"
+  },
+  agreementSendSignature: {
+    module: "franchise.agreement",
+    action: "send_signature"
+  },
+  agreementCancelSignature: {
+    module: "franchise.agreement",
+    action: "cancel_signature"
+  },
+  agreementResendSignature: {
+    module: "franchise.agreement",
+    action: "resend_signature"
+  },
+  agreementViewSignatureStatus: {
+    module: "franchise.agreement",
+    action: "view_signature_status"
+  },
+  agreementRecordSignatureEvent: {
+    module: "franchise.agreement",
+    action: "record_signature_event"
+  },
+  agreementDownloadExecuted: {
+    module: "franchise.agreement",
+    action: "download_executed"
   }
 } as const;

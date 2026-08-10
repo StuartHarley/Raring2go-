@@ -28,7 +28,13 @@ export const fixtureIds = {
     agreementGenerate: "00000000-0000-4000-8000-000000000408",
     agreementSubmitApproval: "00000000-0000-4000-8000-000000000409",
     agreementApprove: "00000000-0000-4000-8000-000000000410",
-    agreementVoid: "00000000-0000-4000-8000-000000000411"
+    agreementVoid: "00000000-0000-4000-8000-000000000411",
+    agreementSendSignature: "00000000-0000-4000-8000-000000000412",
+    agreementCancelSignature: "00000000-0000-4000-8000-000000000413",
+    agreementResendSignature: "00000000-0000-4000-8000-000000000414",
+    agreementViewSignatureStatus: "00000000-0000-4000-8000-000000000415",
+    agreementRecordSignatureEvent: "00000000-0000-4000-8000-000000000416",
+    agreementDownloadExecuted: "00000000-0000-4000-8000-000000000417"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -180,6 +186,42 @@ export const foundationSeed = {
       module: "franchise.agreement",
       action: "void",
       description: "Void franchise agreements."
+    },
+    {
+      id: fixtureIds.permissions.agreementSendSignature,
+      module: "franchise.agreement",
+      action: "send_signature",
+      description: "Send approved franchise agreements for signature."
+    },
+    {
+      id: fixtureIds.permissions.agreementCancelSignature,
+      module: "franchise.agreement",
+      action: "cancel_signature",
+      description: "Cancel franchise agreement signature requests."
+    },
+    {
+      id: fixtureIds.permissions.agreementResendSignature,
+      module: "franchise.agreement",
+      action: "resend_signature",
+      description: "Resend franchise agreement signature requests."
+    },
+    {
+      id: fixtureIds.permissions.agreementViewSignatureStatus,
+      module: "franchise.agreement",
+      action: "view_signature_status",
+      description: "View franchise agreement signing status."
+    },
+    {
+      id: fixtureIds.permissions.agreementRecordSignatureEvent,
+      module: "franchise.agreement",
+      action: "record_signature_event",
+      description: "Record provider-neutral franchise agreement signature events."
+    },
+    {
+      id: fixtureIds.permissions.agreementDownloadExecuted,
+      module: "franchise.agreement",
+      action: "download_executed",
+      description: "Download executed franchise agreement artefact references."
     }
   ],
   franchises: [

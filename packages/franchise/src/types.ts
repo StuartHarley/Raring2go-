@@ -6,8 +6,21 @@ export type FranchiseAgreementStatus =
   | "draft"
   | "pending_internal_approval"
   | "approved"
+  | "sent_for_signature"
+  | "executed"
   | "void"
   | "superseded";
+export type SigningRequestStatus =
+  | "draft"
+  | "sent"
+  | "partially_signed"
+  | "completed"
+  | "declined"
+  | "expired"
+  | "cancelled"
+  | "reissued";
+export type SignerRole = "franchisee" | "guarantor" | "witness" | "franchisor";
+export type SignerStatus = "pending" | "sent" | "completed" | "declined" | "skipped";
 export type AgreementMergeVariables = Record<string, string | number | boolean | null>;
 
 export type FranchiseRecord = {
@@ -99,12 +112,85 @@ export type FranchiseAgreement = {
   approvedAt?: string | null;
   voidedAt?: string | null;
   supersededByAgreementId?: string | null;
+  executedAt?: string | null;
+  signedAgreementArtifactId?: string | null;
+  completionCertificateArtifactId?: string | null;
   deletedAt?: Date | null;
+};
+
+export type FranchiseArtifactReference = {
+  id: string;
+  franchiseId: string;
+  entityType: string;
+  entityId: string;
+  category: "signed_agreement" | "completion_certificate" | (string & {});
+  label: string;
+  storageKey: string;
+  contentType?: string | null;
+  checksum?: string | null;
+  providerMetadata?: Record<string, unknown>;
+  lockedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type AgreementSignatureRequest = {
+  id: string;
+  franchiseAgreementId: string;
+  status: SigningRequestStatus;
+  providerKey: string;
+  providerRequestId?: string | null;
+  providerMetadata?: Record<string, unknown>;
+  sentAt?: string | null;
+  cancelledAt?: string | null;
+  expiredAt?: string | null;
+  declinedAt?: string | null;
+  completedAt?: string | null;
+  reissuedFromRequestId?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type AgreementSigner = {
+  id: string;
+  signatureRequestId: string;
+  role: SignerRole;
+  userId?: string | null;
+  name: string;
+  email: string;
+  signingOrder: number;
+  required: boolean;
+  status: SignerStatus;
+  completedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type AgreementSignatureEvent = {
+  id: string;
+  signatureRequestId: string;
+  providerEventId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  processedAt?: string | null;
+};
+
+export type FranchiseDomainEvent = {
+  id: string;
+  eventType: string;
+  entityType: string;
+  entityId: string;
+  organisationId?: string | null;
+  territoryId?: string | null;
+  idempotencyKey: string;
+  payload: Record<string, unknown>;
+  processedAt?: string | null;
 };
 
 export type FranchiseAgreementSummary = FranchiseAgreement & {
   template: AgreementTemplate;
   version: AgreementVersion;
+  signatureRequest?: AgreementSignatureRequest;
+  signers: AgreementSigner[];
+  signedAgreementArtifact?: FranchiseArtifactReference;
+  completionCertificateArtifact?: FranchiseArtifactReference;
 };
 
 export type Franchise360 = {
@@ -133,5 +219,24 @@ export type FranchiseData = {
   agreementTemplates?: AgreementTemplate[];
   agreementVersions?: AgreementVersion[];
   franchiseAgreements?: FranchiseAgreement[];
+  signatureRequests?: AgreementSignatureRequest[];
+  signers?: AgreementSigner[];
+  signatureEvents?: AgreementSignatureEvent[];
+  artifactReferences?: FranchiseArtifactReference[];
+  domainEvents?: FranchiseDomainEvent[];
   activity?: FranchiseAuditEvent[];
+};
+
+export type ESignProvider = {
+  key: string;
+  send(input: {
+    agreementId: string;
+    signers: AgreementSigner[];
+  }): Promise<{ providerRequestId: string; metadata?: Record<string, unknown> }>;
+  resend(input: {
+    providerRequestId: string;
+  }): Promise<{ metadata?: Record<string, unknown> }>;
+  cancel(input: {
+    providerRequestId?: string | null;
+  }): Promise<{ metadata?: Record<string, unknown> }>;
 };

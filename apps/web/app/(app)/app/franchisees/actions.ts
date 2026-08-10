@@ -5,7 +5,13 @@ import { revalidatePath } from "next/cache";
 import {
   createFranchiseFromInput,
   approveCurrentAgreement,
+  cancelCurrentSignatureRequest,
+  completeCurrentAgreementSigning,
+  completeNextSignerForCurrentAgreement,
+  declineCurrentAgreementSigning,
   generateAgreementForFranchise,
+  resendCurrentSignatureRequest,
+  sendCurrentAgreementForSignature,
   submitCurrentAgreement,
   voidCurrentAgreement,
   updateFranchiseFromInput
@@ -80,5 +86,53 @@ export async function voidAgreementAction(
   franchiseId: string
 ) {
   await voidCurrentAgreement(context, franchiseId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function sendAgreementForSignatureAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await sendCurrentAgreementForSignature(context, franchiseId, randomUUID());
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function resendSignatureAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await resendCurrentSignatureRequest(context, franchiseId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function cancelSignatureAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await cancelCurrentSignatureRequest(context, franchiseId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function completeNextSignerAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await completeNextSignerForCurrentAgreement(context, franchiseId, randomUUID());
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function completeSigningAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await completeCurrentAgreementSigning(context, franchiseId, randomUUID());
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+}
+
+export async function declineSigningAction(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  await declineCurrentAgreementSigning(context, franchiseId, randomUUID());
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }

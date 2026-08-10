@@ -1,15 +1,22 @@
 import {
   activeAgreementForFranchise,
   approveAgreement,
+  cancelSignatureRequest,
   generateAgreement,
   createFranchise,
   getFranchise360,
   insertFranchiseAgreement,
   insertFranchiseRecord,
+  insertSignatureRequest,
+  insertSigners,
   latestApprovedAgreementVersionId,
   listActiveFranchises,
   loadFranchiseData,
+  recordSignatureProviderEvent,
+  resendSignatureRequest,
+  sendAgreementForSignature,
   submitAgreementForApproval,
+  syncSignatureRequestGraph,
   updateFranchiseAgreementState,
   updateFranchiseRecord,
   voidAgreement,
@@ -19,6 +26,8 @@ import { recordAuditEvent } from "@raring2go/audit";
 import { evaluatePermission } from "@raring2go/permissions";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import type {
+  AgreementSigner,
+  ESignProvider,
   Franchise360,
   FranchiseActorContext,
   FranchiseRecord
@@ -87,6 +96,28 @@ export const franchisePermissionData: PermissionData = {
       roleId: fixtureIds.roles.hqAdmin,
       permissionId: fixtureIds.permissions.agreementVoid,
       scope: "network"
+    },
+    ...[
+      fixtureIds.permissions.agreementSendSignature,
+      fixtureIds.permissions.agreementCancelSignature,
+      fixtureIds.permissions.agreementResendSignature,
+      fixtureIds.permissions.agreementViewSignatureStatus,
+      fixtureIds.permissions.agreementRecordSignatureEvent,
+      fixtureIds.permissions.agreementDownloadExecuted
+    ].map((permissionId) => ({
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId,
+      scope: "network" as const
+    })),
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.agreementViewSignatureStatus,
+      scope: "own_territory"
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.agreementDownloadExecuted,
+      scope: "own_territory"
     },
     {
       roleId: fixtureIds.roles.franchisee,
@@ -257,6 +288,163 @@ export async function voidCurrentAgreement(
   return mutateCurrentAgreement(context, franchiseId, voidAgreement);
 }
 
+export async function sendCurrentAgreementForSignature(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  requestId: string
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const current = await activeAgreementForFranchise(tx, franchiseId);
+
+      if (!current) {
+        throw new Error("No active agreement is available.");
+      }
+
+      const data = await loadFranchiseData(tx);
+      const view = getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const request = await sendAgreementForSignature(
+        context,
+        franchisePermissionData,
+        auditFor(tx),
+        data,
+        developmentESignProvider,
+        {
+          requestId,
+          agreementId: current.id,
+          signers: defaultSigners(requestId, view)
+        }
+      );
+      await updateFranchiseAgreementState(tx, data.franchiseAgreements!.find((agreement) => agreement.id === current.id)!);
+      await insertSignatureRequest(tx, request);
+      await insertSigners(tx, data.signers!.filter((signer) => signer.signatureRequestId === request.id));
+      return request;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function resendCurrentSignatureRequest(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  return mutateCurrentSignatureRequest(context, franchiseId, (data, requestId, tx) =>
+    resendSignatureRequest(
+      context,
+      franchisePermissionData,
+      auditFor(tx),
+      data,
+      developmentESignProvider,
+      requestId
+    )
+  );
+}
+
+export async function cancelCurrentSignatureRequest(
+  context: FranchiseActorContext,
+  franchiseId: string
+) {
+  return mutateCurrentSignatureRequest(context, franchiseId, (data, requestId, tx) =>
+    cancelSignatureRequest(
+      context,
+      franchisePermissionData,
+      auditFor(tx),
+      data,
+      developmentESignProvider,
+      requestId
+    )
+  );
+}
+
+export async function completeNextSignerForCurrentAgreement(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  eventId: string
+) {
+  return recordCurrentSignatureEvent(context, franchiseId, eventId, "signer.completed");
+}
+
+export async function completeCurrentAgreementSigning(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  eventId: string
+) {
+  return recordCurrentSignatureEvent(context, franchiseId, eventId, "completed");
+}
+
+export async function declineCurrentAgreementSigning(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  eventId: string
+) {
+  return recordCurrentSignatureEvent(context, franchiseId, eventId, "declined");
+}
+
+async function recordCurrentSignatureEvent(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  eventId: string,
+  eventType: "signer.completed" | "declined" | "expired" | "cancelled" | "completed"
+) {
+  return mutateCurrentSignatureRequest(context, franchiseId, (data, requestId, tx) =>
+    recordSignatureProviderEvent(
+      context,
+      franchisePermissionData,
+      auditFor(tx),
+      data,
+      {
+        eventId,
+        requestId,
+        eventType,
+        signedAgreementArtifact:
+          eventType === "completed" ? signedArtifact(franchiseId, eventId) : undefined,
+        completionCertificateArtifact:
+          eventType === "completed" ? certificateArtifact(franchiseId, eventId) : undefined,
+        payload: {
+          source: "development_esign_provider"
+        }
+      }
+    )
+  );
+}
+
+async function mutateCurrentSignatureRequest<T>(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  mutation: (data: Awaited<ReturnType<typeof loadFranchiseData>>, requestId: string, tx: Parameters<typeof recordAuditEvent>[0]) => Promise<T>
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const current = await activeAgreementForFranchise(tx, franchiseId);
+
+      if (!current) {
+        throw new Error("No active agreement is available.");
+      }
+
+      const data = await loadFranchiseData(tx);
+      const view = getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const requestId = view.agreement?.signatureRequest?.id;
+
+      if (!requestId) {
+        throw new Error("No active signature request is available.");
+      }
+
+      const result = await mutation(data, requestId, tx);
+      const agreement = data.franchiseAgreements!.find((candidate) => candidate.id === current.id)!;
+      await updateFranchiseAgreementState(tx, agreement);
+      await syncSignatureRequestGraph(tx, data, requestId);
+      return result;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
 async function mutateCurrentAgreement(
   context: FranchiseActorContext,
   franchiseId: string,
@@ -292,5 +480,81 @@ function auditFor(db: Parameters<typeof recordAuditEvent>[0]) {
   return {
     record: (input: Parameters<typeof recordAuditEvent>[1]) =>
       recordAuditEvent(db, input).then(() => undefined)
+  };
+}
+
+const developmentESignProvider: ESignProvider = {
+  key: "development",
+  async send(input) {
+    return {
+      providerRequestId: `dev-${input.agreementId}`,
+      metadata: {
+        signerCount: input.signers.length
+      }
+    };
+  },
+  async resend() {
+    return { metadata: { resent: true } };
+  },
+  async cancel() {
+    return { metadata: { cancelled: true } };
+  }
+};
+
+function defaultSigners(
+  requestId: string,
+  view: Franchise360
+): Array<Omit<AgreementSigner, "signatureRequestId" | "status">> {
+  return [
+    {
+      id: `${requestId}-franchisee`,
+      role: "franchisee",
+      userId: view.owner?.id,
+      name: view.owner?.displayName ?? "Franchisee",
+      email: view.owner?.email ?? "franchisee@example.raring2go.test",
+      signingOrder: 1,
+      required: true
+    },
+    {
+      id: `${requestId}-franchisor`,
+      role: "franchisor",
+      userId: fixtureIds.users.superAdmin,
+      name: "Raring2go Head Office",
+      email: "superadmin@example.raring2go.test",
+      signingOrder: 2,
+      required: true
+    }
+  ];
+}
+
+function signedArtifact(franchiseId: string, eventId: string) {
+  return {
+    id: `${eventId}-signed`,
+    franchiseId,
+    entityType: "franchise_agreement",
+    entityId: fixtureIds.franchiseAgreements.suttonDraft,
+    category: "signed_agreement" as const,
+    label: "Signed franchise agreement",
+    storageKey: `development/franchise-agreements/${eventId}/signed.pdf`,
+    contentType: "application/pdf",
+    providerMetadata: {
+      provider: "development"
+    }
+  };
+}
+
+function certificateArtifact(franchiseId: string, eventId: string) {
+  return {
+    id: `${eventId}-certificate`,
+    franchiseId,
+    entityType: "franchise_agreement",
+    entityId: fixtureIds.franchiseAgreements.suttonDraft,
+    category: "completion_certificate" as const,
+    label: "Completion certificate",
+    storageKey: `development/franchise-agreements/${eventId}/certificate.pdf`,
+    contentType: "application/pdf",
+    providerMetadata: {
+      provider: "development"
+    }
   };
 }

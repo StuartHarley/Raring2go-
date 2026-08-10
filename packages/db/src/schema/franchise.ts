@@ -1,4 +1,4 @@
-import { boolean, date, index, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
 import { users } from "./identity";
 import { organisations, territories } from "./tenancy";
@@ -122,6 +122,9 @@ export const franchiseAgreements = pgTable(
     approvedAt: date("approved_at", { mode: "date" }),
     voidedAt: date("voided_at", { mode: "date" }),
     supersededByAgreementId: uuid("superseded_by_agreement_id"),
+    executedAt: date("executed_at", { mode: "date" }),
+    signedAgreementArtifactId: uuid("signed_agreement_artifact_id"),
+    completionCertificateArtifactId: uuid("completion_certificate_artifact_id"),
     ...timestamps,
     ...softDelete
   },
@@ -130,5 +133,135 @@ export const franchiseAgreements = pgTable(
     index("franchise_agreements_version_id_idx").on(table.agreementVersionId),
     index("franchise_agreements_status_idx").on(table.status),
     index("franchise_agreements_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const franchiseArtifactReferences = pgTable(
+  "franchise_artifact_references",
+  {
+    id,
+    franchiseId: uuid("franchise_id")
+      .notNull()
+      .references(() => franchises.id),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    category: text("category").notNull(),
+    label: text("label").notNull(),
+    storageKey: text("storage_key").notNull(),
+    contentType: text("content_type"),
+    checksum: text("checksum"),
+    providerMetadata: jsonb("provider_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    lockedAt: date("locked_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("franchise_artifacts_franchise_id_idx").on(table.franchiseId),
+    index("franchise_artifacts_entity_idx").on(table.entityType, table.entityId),
+    index("franchise_artifacts_category_idx").on(table.category),
+    index("franchise_artifacts_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const agreementSignatureRequests = pgTable(
+  "agreement_signature_requests",
+  {
+    id,
+    franchiseAgreementId: uuid("franchise_agreement_id")
+      .notNull()
+      .references(() => franchiseAgreements.id),
+    status: text("status").notNull().default("draft"),
+    providerKey: text("provider_key").notNull(),
+    providerRequestId: text("provider_request_id"),
+    providerMetadata: jsonb("provider_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    sentAt: date("sent_at", { mode: "date" }),
+    cancelledAt: date("cancelled_at", { mode: "date" }),
+    expiredAt: date("expired_at", { mode: "date" }),
+    declinedAt: date("declined_at", { mode: "date" }),
+    completedAt: date("completed_at", { mode: "date" }),
+    reissuedFromRequestId: uuid("reissued_from_request_id"),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("agreement_signature_requests_agreement_id_idx").on(table.franchiseAgreementId),
+    index("agreement_signature_requests_status_idx").on(table.status),
+    index("agreement_signature_requests_provider_request_id_idx").on(table.providerRequestId),
+    index("agreement_signature_requests_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const agreementSigners = pgTable(
+  "agreement_signers",
+  {
+    id,
+    signatureRequestId: uuid("signature_request_id")
+      .notNull()
+      .references(() => agreementSignatureRequests.id),
+    role: text("role").notNull(),
+    userId: uuid("user_id").references(() => users.id),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    signingOrder: integer("signing_order").notNull(),
+    required: boolean("required").notNull().default(true),
+    status: text("status").notNull().default("pending"),
+    completedAt: date("completed_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("agreement_signers_request_id_idx").on(table.signatureRequestId),
+    index("agreement_signers_status_idx").on(table.status),
+    index("agreement_signers_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const agreementSignatureEvents = pgTable(
+  "agreement_signature_events",
+  {
+    id,
+    signatureRequestId: uuid("signature_request_id")
+      .notNull()
+      .references(() => agreementSignatureRequests.id),
+    providerEventId: text("provider_event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    processedAt: date("processed_at", { mode: "date" }),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("agreement_signature_events_provider_event_uidx").on(
+      table.signatureRequestId,
+      table.providerEventId
+    ),
+    index("agreement_signature_events_request_id_idx").on(table.signatureRequestId),
+    index("agreement_signature_events_type_idx").on(table.eventType)
+  ]
+);
+
+export const franchiseDomainEvents = pgTable(
+  "franchise_domain_events",
+  {
+    id,
+    eventType: text("event_type").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    organisationId: uuid("organisation_id").references(() => organisations.id),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    processedAt: date("processed_at", { mode: "date" }),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("franchise_domain_events_idempotency_uidx").on(table.idempotencyKey),
+    index("franchise_domain_events_type_idx").on(table.eventType),
+    index("franchise_domain_events_entity_idx").on(table.entityType, table.entityId)
   ]
 );

@@ -13,7 +13,10 @@ import type {
   FranchiseAgreementStatus,
   FranchiseContact,
   FranchiseData,
-  FranchiseRecord
+  FranchiseRecord,
+  AgreementSigner,
+  ESignProvider,
+  FranchiseArtifactReference
 } from "./types";
 
 type FranchiseAuditRecorder = {
@@ -247,6 +250,208 @@ export async function voidAgreement(
   return agreement;
 }
 
+export async function sendAgreementForSignature(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  provider: ESignProvider,
+  input: {
+    requestId: string;
+    agreementId: string;
+    signers: Array<Omit<AgreementSigner, "signatureRequestId" | "status">>;
+  }
+) {
+  const agreement = requireAgreement(data, input.agreementId);
+  const franchise = requireFranchise(data, agreement.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "agreementSendSignature");
+
+  if (agreement.status !== "approved") {
+    throw new Error("Only approved agreements can be sent for signature.");
+  }
+
+  const signers = input.signers
+    .map((signer) => ({
+      ...signer,
+      signatureRequestId: input.requestId,
+      status: "pending" as const
+    }))
+    .sort((left, right) => left.signingOrder - right.signingOrder);
+
+  assertSignerPlan(signers);
+  const providerResult = await provider.send({ agreementId: agreement.id, signers });
+  const request = {
+    id: input.requestId,
+    franchiseAgreementId: agreement.id,
+    status: "sent" as const,
+    providerKey: provider.key,
+    providerRequestId: providerResult.providerRequestId,
+    providerMetadata: providerResult.metadata ?? {},
+    sentAt: today()
+  };
+
+  transitionAgreement(agreement, "sent_for_signature");
+  data.signatureRequests ??= [];
+  data.signers ??= [];
+  data.signatureRequests.push(request);
+  data.signers.push(...signers.map((signer, index) => ({
+    ...signer,
+    status: index === 0 ? "sent" as const : "pending" as const
+  })));
+  await audit.record(agreementAuditEvent(context, "franchise.agreement.sent", franchise, agreement));
+  addDomainEvent(data, "franchise.agreement.sent", franchise, agreement);
+  return request;
+}
+
+export async function resendSignatureRequest(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  provider: ESignProvider,
+  requestId: string
+) {
+  const request = requireSignatureRequest(data, requestId);
+  const agreement = requireAgreement(data, request.franchiseAgreementId);
+  const franchise = requireFranchise(data, agreement.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "agreementResendSignature");
+
+  if (!["sent", "partially_signed"].includes(request.status)) {
+    throw new Error("Only active signature requests can be resent.");
+  }
+
+  const result = await provider.resend({ providerRequestId: request.providerRequestId ?? "" });
+  request.providerMetadata = { ...(request.providerMetadata ?? {}), resend: result.metadata ?? {} };
+  await audit.record(agreementAuditEvent(context, "franchise.agreement.resent", franchise, agreement));
+  return request;
+}
+
+export async function cancelSignatureRequest(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  provider: ESignProvider,
+  requestId: string
+) {
+  const request = requireSignatureRequest(data, requestId);
+  const agreement = requireAgreement(data, request.franchiseAgreementId);
+  const franchise = requireFranchise(data, agreement.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "agreementCancelSignature");
+
+  if (["completed", "cancelled", "expired", "declined", "reissued"].includes(request.status)) {
+    throw new Error("Signature request is already terminal.");
+  }
+
+  const result = await provider.cancel({ providerRequestId: request.providerRequestId });
+  request.status = "cancelled";
+  request.cancelledAt = today();
+  request.providerMetadata = { ...(request.providerMetadata ?? {}), cancel: result.metadata ?? {} };
+  await audit.record(agreementAuditEvent(context, "franchise.agreement.cancelled", franchise, agreement));
+  addDomainEvent(data, "franchise.agreement.cancelled", franchise, agreement);
+  return request;
+}
+
+export async function reissueSignatureRequest(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  provider: ESignProvider,
+  input: {
+    oldRequestId: string;
+    newRequestId: string;
+    signers: Array<Omit<AgreementSigner, "signatureRequestId" | "status">>;
+  }
+) {
+  const oldRequest = requireSignatureRequest(data, input.oldRequestId);
+  const agreement = requireAgreement(data, oldRequest.franchiseAgreementId);
+
+  if (agreement.status === "executed") {
+    throw new Error("Executed agreements cannot be reissued.");
+  }
+
+  oldRequest.status = "reissued";
+  agreement.status = "approved";
+  return sendAgreementForSignature(context, permissions, audit, data, provider, {
+    requestId: input.newRequestId,
+    agreementId: oldRequest.franchiseAgreementId,
+    signers: input.signers
+  });
+}
+
+export async function recordSignatureProviderEvent(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  input: {
+    eventId: string;
+    requestId: string;
+    eventType: "signer.completed" | "declined" | "expired" | "cancelled" | "completed";
+    signerId?: string;
+    signedAgreementArtifact?: FranchiseArtifactReference;
+    completionCertificateArtifact?: FranchiseArtifactReference;
+    payload?: Record<string, unknown>;
+  }
+) {
+  const request = requireSignatureRequest(data, input.requestId);
+  const agreement = requireAgreement(data, request.franchiseAgreementId);
+  const franchise = requireFranchise(data, agreement.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "agreementRecordSignatureEvent");
+
+  data.signatureEvents ??= [];
+  const existing = data.signatureEvents.find(
+    (event) => event.signatureRequestId === input.requestId && event.providerEventId === input.eventId
+  );
+
+  if (existing) {
+    return { request, agreement, duplicate: true };
+  }
+
+  data.signatureEvents.push({
+    id: input.eventId,
+    signatureRequestId: input.requestId,
+    providerEventId: input.eventId,
+    eventType: input.eventType,
+    payload: input.payload ?? {},
+    processedAt: today()
+  });
+
+  if (input.eventType === "signer.completed") {
+    completeSigner(data, request, input.signerId);
+    await audit.record(agreementAuditEvent(context, "franchise.agreement.signer.completed", franchise, agreement));
+  }
+
+  if (input.eventType === "declined") {
+    request.status = "declined";
+    request.declinedAt = today();
+    await audit.record(agreementAuditEvent(context, "franchise.agreement.declined", franchise, agreement));
+    addDomainEvent(data, "franchise.agreement.declined", franchise, agreement);
+  }
+
+  if (input.eventType === "expired") {
+    request.status = "expired";
+    request.expiredAt = today();
+    await audit.record(agreementAuditEvent(context, "franchise.agreement.expired", franchise, agreement));
+    addDomainEvent(data, "franchise.agreement.expired", franchise, agreement);
+  }
+
+  if (input.eventType === "cancelled") {
+    request.status = "cancelled";
+    request.cancelledAt = today();
+    await audit.record(agreementAuditEvent(context, "franchise.agreement.cancelled", franchise, agreement));
+    addDomainEvent(data, "franchise.agreement.cancelled", franchise, agreement);
+  }
+
+  if (input.eventType === "completed") {
+    executeAgreement(data, request, agreement, franchise, input);
+    await audit.record(agreementAuditEvent(context, "franchise.agreement.executed", franchise, agreement));
+  }
+
+  return { request, agreement, duplicate: false };
+}
+
 export function assertNoDuplicatedIdentityData(franchise: FranchiseRecord) {
   const forbiddenKeys = ["legalName", "companyNumber", "vatNumber", "territoryName"];
   const record = franchise as unknown as Record<string, unknown>;
@@ -367,7 +572,37 @@ function currentAgreement(data: FranchiseData, franchiseId: string) {
     return undefined;
   }
 
-  return { ...agreement, template, version };
+  const signatureRequest = (data.signatureRequests ?? []).find(
+    (candidate) =>
+      candidate.franchiseAgreementId === agreement.id &&
+      !candidate.deletedAt &&
+      candidate.status !== "reissued"
+  );
+  const signers = signatureRequest
+    ? (data.signers ?? []).filter(
+        (signer) => signer.signatureRequestId === signatureRequest.id && !signer.deletedAt
+      )
+    : [];
+  const signedAgreementArtifact = agreement.signedAgreementArtifactId
+    ? (data.artifactReferences ?? []).find(
+        (artifact) => artifact.id === agreement.signedAgreementArtifactId
+      )
+    : undefined;
+  const completionCertificateArtifact = agreement.completionCertificateArtifactId
+    ? (data.artifactReferences ?? []).find(
+        (artifact) => artifact.id === agreement.completionCertificateArtifactId
+      )
+    : undefined;
+
+  return {
+    ...agreement,
+    template,
+    version,
+    signatureRequest,
+    signers,
+    signedAgreementArtifact,
+    completionCertificateArtifact
+  };
 }
 
 function assertControlledMergeVariables(
@@ -400,7 +635,9 @@ function transitionAgreement(
   const allowed: Record<FranchiseAgreementStatus, FranchiseAgreementStatus[]> = {
     draft: ["pending_internal_approval", "void"],
     pending_internal_approval: ["approved", "void"],
-    approved: ["superseded"],
+    approved: ["sent_for_signature", "superseded"],
+    sent_for_signature: ["executed", "void", "superseded"],
+    executed: ["superseded"],
     void: [],
     superseded: []
   };
@@ -414,6 +651,164 @@ function transitionAgreement(
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function requireSignatureRequest(data: FranchiseData, requestId: string) {
+  const request = (data.signatureRequests ?? []).find(
+    (candidate) => candidate.id === requestId && !candidate.deletedAt
+  );
+
+  if (!request) {
+    throw new Error("Signature request was not found.");
+  }
+
+  return request;
+}
+
+function assertSignerPlan(signers: AgreementSigner[]) {
+  if (signers.length === 0 || !signers.some((signer) => signer.required)) {
+    throw new Error("At least one required signer is needed.");
+  }
+
+  const orders = signers.map((signer) => signer.signingOrder).sort((a, b) => a - b);
+  const hasInvalidOrder = orders.some((order, index) => order !== index + 1);
+
+  if (hasInvalidOrder) {
+    throw new Error("Signer order must be contiguous and start at 1.");
+  }
+}
+
+function completeSigner(
+  data: FranchiseData,
+  request: NonNullable<FranchiseData["signatureRequests"]>[number],
+  signerId?: string
+) {
+  const signers = (data.signers ?? []).filter(
+    (signer) => signer.signatureRequestId === request.id && !signer.deletedAt
+  );
+  const signer = signerId
+    ? signers.find((candidate) => candidate.id === signerId)
+    : signers.find((candidate) => candidate.status !== "completed");
+
+  if (!signer) {
+    throw new Error("Signer was not found.");
+  }
+
+  const earlierIncomplete = signers.some(
+    (candidate) =>
+      candidate.required &&
+      candidate.signingOrder < signer.signingOrder &&
+      candidate.status !== "completed"
+  );
+
+  if (earlierIncomplete) {
+    throw new Error("Signer order must be completed before later signers.");
+  }
+
+  signer.status = "completed";
+  signer.completedAt = today();
+  request.status = requiredSignersComplete(data, request.id) ? "completed" : "partially_signed";
+  request.completedAt = request.status === "completed" ? today() : request.completedAt;
+
+  const nextSigner = signers.find(
+    (candidate) =>
+      candidate.required &&
+      candidate.signingOrder > signer.signingOrder &&
+      candidate.status === "pending"
+  );
+
+  if (nextSigner) {
+    nextSigner.status = "sent";
+  }
+}
+
+function requiredSignersComplete(data: FranchiseData, requestId: string) {
+  const signers = (data.signers ?? []).filter(
+    (signer) => signer.signatureRequestId === requestId && !signer.deletedAt
+  );
+
+  return signers.length > 0 && signers.every(
+    (signer) => !signer.required || signer.status === "completed"
+  );
+}
+
+function executeAgreement(
+  data: FranchiseData,
+  request: NonNullable<FranchiseData["signatureRequests"]>[number],
+  agreement: FranchiseAgreement,
+  franchise: FranchiseRecord,
+  input: {
+    signedAgreementArtifact?: FranchiseArtifactReference;
+    completionCertificateArtifact?: FranchiseArtifactReference;
+  }
+) {
+  if (agreement.status === "executed") {
+    return;
+  }
+
+  if (!requiredSignersComplete(data, request.id)) {
+    throw new Error("Every required signer must complete before execution.");
+  }
+
+  if (!input.signedAgreementArtifact || !input.completionCertificateArtifact) {
+    throw new Error("Signed agreement and completion certificate references are required.");
+  }
+
+  data.artifactReferences ??= [];
+  const signedAgreementArtifact = lockArtifact(input.signedAgreementArtifact, franchise, agreement);
+  const completionCertificateArtifact = lockArtifact(
+    input.completionCertificateArtifact,
+    franchise,
+    agreement
+  );
+  data.artifactReferences.push(signedAgreementArtifact, completionCertificateArtifact);
+  agreement.signedAgreementArtifactId = signedAgreementArtifact.id;
+  agreement.completionCertificateArtifactId = completionCertificateArtifact.id;
+  agreement.executedAt = today();
+  transitionAgreement(agreement, "executed");
+  addDomainEvent(data, "franchise.agreement.executed", franchise, agreement);
+}
+
+function lockArtifact(
+  artifact: FranchiseArtifactReference,
+  franchise: FranchiseRecord,
+  agreement: FranchiseAgreement
+) {
+  return {
+    ...artifact,
+    franchiseId: franchise.id,
+    entityType: "franchise_agreement",
+    entityId: agreement.id,
+    lockedAt: today()
+  };
+}
+
+function addDomainEvent(
+  data: FranchiseData,
+  eventType: string,
+  franchise: FranchiseRecord,
+  agreement: FranchiseAgreement
+) {
+  data.domainEvents ??= [];
+  const idempotencyKey = `${eventType}:${agreement.id}`;
+
+  if (data.domainEvents.some((event) => event.idempotencyKey === idempotencyKey)) {
+    return;
+  }
+
+  data.domainEvents.push({
+    id: idempotencyKey,
+    eventType,
+    entityType: "franchise_agreement",
+    entityId: agreement.id,
+    organisationId: franchise.franchiseOrganisationId,
+    territoryId: franchise.primaryTerritoryId,
+    idempotencyKey,
+    payload: {
+      franchiseId: franchise.id,
+      agreementId: agreement.id
+    }
+  });
 }
 
 function assertRecordTerritory(
@@ -464,7 +859,14 @@ function agreementAuditEvent(
     | "franchise.agreement.generate"
     | "franchise.agreement.submit"
     | "franchise.agreement.approve"
-    | "franchise.agreement.void",
+    | "franchise.agreement.void"
+    | "franchise.agreement.sent"
+    | "franchise.agreement.signer.completed"
+    | "franchise.agreement.declined"
+    | "franchise.agreement.expired"
+    | "franchise.agreement.cancelled"
+    | "franchise.agreement.executed"
+    | "franchise.agreement.resent",
   franchise: FranchiseRecord,
   agreement: FranchiseAgreement
 ): RecordAuditEventInput {
@@ -504,5 +906,11 @@ export const franchiseAuditActions = {
   agreementGenerate: auditActions.franchiseAgreementGenerate,
   agreementSubmit: auditActions.franchiseAgreementSubmit,
   agreementApprove: auditActions.franchiseAgreementApprove,
-  agreementVoid: auditActions.franchiseAgreementVoid
+  agreementVoid: auditActions.franchiseAgreementVoid,
+  agreementSent: auditActions.franchiseAgreementSent,
+  agreementSignerCompleted: auditActions.franchiseAgreementSignerCompleted,
+  agreementDeclined: auditActions.franchiseAgreementDeclined,
+  agreementExpired: auditActions.franchiseAgreementExpired,
+  agreementCancelled: auditActions.franchiseAgreementCancelled,
+  agreementExecuted: auditActions.franchiseAgreementExecuted
 } as const;

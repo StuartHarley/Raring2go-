@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   agreementTemplates,
   agreementVersions,
+  agreementSignatureEvents,
+  agreementSignatureRequests,
+  agreementSigners,
   auditEvents,
+  franchiseArtifactReferences,
   franchiseAgreements,
+  franchiseDomainEvents,
   franchises,
   organisations,
   territories,
@@ -50,5 +55,14 @@ describe("foundation schema", () => {
     expect(agreementVersions.templateId.name).toBe("template_id");
     expect(franchiseAgreements.agreementVersionId.name).toBe("agreement_version_id");
     expect(franchiseAgreements.mergeVariables.name).toBe("merge_variables");
+  });
+
+  it("models provider-neutral signing artefacts and events without a document vault", () => {
+    expect(agreementSignatureRequests.providerKey.name).toBe("provider_key");
+    expect(agreementSigners.signingOrder.name).toBe("signing_order");
+    expect(agreementSignatureEvents.providerEventId.name).toBe("provider_event_id");
+    expect(franchiseArtifactReferences.storageKey.name).toBe("storage_key");
+    expect(franchiseDomainEvents.idempotencyKey.name).toBe("idempotency_key");
+    expect((franchiseArtifactReferences as unknown as Record<string, unknown>).folderId).toBeUndefined();
   });
 });

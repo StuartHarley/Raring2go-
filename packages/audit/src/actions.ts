@@ -34,7 +34,15 @@ export const auditActions = {
   franchiseAgreementSubmit: "franchise.agreement.submit",
   franchiseAgreementApprove: "franchise.agreement.approve",
   franchiseAgreementVoid: "franchise.agreement.void",
-  franchiseAgreementSupersede: "franchise.agreement.supersede"
+  franchiseAgreementSupersede: "franchise.agreement.supersede",
+  franchiseAgreementSent: "franchise.agreement.sent",
+  franchiseAgreementSignerCompleted: "franchise.agreement.signer.completed",
+  franchiseAgreementDeclined: "franchise.agreement.declined",
+  franchiseAgreementExpired: "franchise.agreement.expired",
+  franchiseAgreementCancelled: "franchise.agreement.cancelled",
+  franchiseAgreementExecuted: "franchise.agreement.executed",
+  franchiseAgreementResent: "franchise.agreement.resent",
+  franchiseAgreementReissued: "franchise.agreement.reissued"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});
