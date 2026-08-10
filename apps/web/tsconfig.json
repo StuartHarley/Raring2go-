@@ -8,6 +8,7 @@
       "@raring2go/audit": ["../../packages/audit/src/index.ts"],
       "@raring2go/auth": ["../../packages/auth/src/index.ts"],
       "@raring2go/db": ["../../packages/db/src/index.ts"],
+      "@raring2go/franchise": ["../../packages/franchise/src/index.ts"],
       "@raring2go/permissions": ["../../packages/permissions/src/index.ts"],
       "@raring2go/ui": ["../../packages/ui/src/index.ts"]
     },

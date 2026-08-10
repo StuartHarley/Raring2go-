@@ -15,6 +15,7 @@
     "@raring2go/auth": "workspace:*",
     "@raring2go/config": "workspace:*",
     "@raring2go/db": "workspace:*",
+    "@raring2go/franchise": "workspace:*",
     "@raring2go/permissions": "workspace:*",
     "next": "16.3.0",
     "react": "19.2.8",

@@ -163,7 +163,11 @@ describe("app shell context and capabilities", () => {
     expect(shell.kind).toBe("authenticated");
 
     if (shell.kind === "authenticated") {
-      expect(shell.navigation.map((item) => item.id)).toEqual(["roles", "system"]);
+      expect(shell.navigation.map((item) => item.id)).toEqual([
+        "franchisees",
+        "roles",
+        "system"
+      ]);
     }
   });
 

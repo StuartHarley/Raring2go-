@@ -90,6 +90,16 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory"
   },
   {
+    id: "franchisees",
+    label: "Franchisees",
+    href: "/app/franchisees",
+    capability: {
+      module: "franchise",
+      action: "view"
+    },
+    contextLevel: "territory"
+  },
+  {
     id: "roles",
     label: "Roles & Permissions",
     href: "/app/roles",
@@ -166,6 +176,30 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.territoryView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.franchiseView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.franchiseCreate,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.franchiseEdit,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.franchiseView,
       scope: "own_territory",
       constraints: {}
     }

@@ -25,7 +25,11 @@ export const auditActions = {
   authEmailVerify: "auth.email.verify",
   authAccountRecover: "auth.account.recover",
   authSessionRevoke: "auth.session.revoke",
-  authSecurityChange: "auth.security.change"
+  authSecurityChange: "auth.security.change",
+  franchiseCreate: "franchise.create",
+  franchiseUpdate: "franchise.update",
+  franchiseArchive: "franchise.archive",
+  franchiseContactUpdate: "franchise.contact.update"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

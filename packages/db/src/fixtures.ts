@@ -20,7 +20,16 @@ export const fixtureIds = {
   permissions: {
     systemAdminister: "00000000-0000-4000-8000-000000000401",
     territoryView: "00000000-0000-4000-8000-000000000402",
-    rolesView: "00000000-0000-4000-8000-000000000403"
+    rolesView: "00000000-0000-4000-8000-000000000403",
+    franchiseView: "00000000-0000-4000-8000-000000000404",
+    franchiseCreate: "00000000-0000-4000-8000-000000000405",
+    franchiseEdit: "00000000-0000-4000-8000-000000000406"
+  },
+  franchises: {
+    suttonColdfield: "00000000-0000-4000-8000-000000000901"
+  },
+  franchiseContacts: {
+    suttonOwner: "00000000-0000-4000-8000-000000000911"
   },
   invitations: {
     franchiseStaff: "00000000-0000-4000-8000-000000000801"
@@ -108,6 +117,48 @@ export const foundationSeed = {
       module: "roles",
       action: "view",
       description: "View roles and permission assignments."
+    },
+    {
+      id: fixtureIds.permissions.franchiseView,
+      module: "franchise",
+      action: "view",
+      description: "View franchise operating records."
+    },
+    {
+      id: fixtureIds.permissions.franchiseCreate,
+      module: "franchise",
+      action: "create",
+      description: "Create franchise operating records."
+    },
+    {
+      id: fixtureIds.permissions.franchiseEdit,
+      module: "franchise",
+      action: "edit",
+      description: "Edit franchise operating records."
+    }
+  ],
+  franchises: [
+    {
+      id: fixtureIds.franchises.suttonColdfield,
+      franchiseOrganisationId: fixtureIds.organisations.franchise,
+      primaryTerritoryId: fixtureIds.territories.suttonColdfield,
+      primaryOwnerUserId: fixtureIds.users.franchisee,
+      status: "active",
+      lifecycleStage: "trading",
+      launchDate: "2024-09-01",
+      renewalDate: "2027-09-01",
+      onboardingStatus: "complete",
+      supportStatus: "standard",
+      tags: ["fixture", "midlands"]
+    }
+  ],
+  franchiseContacts: [
+    {
+      id: fixtureIds.franchiseContacts.suttonOwner,
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      userId: fixtureIds.users.franchisee,
+      label: "Owner",
+      isPrimary: true
     }
   ]
 } as const;

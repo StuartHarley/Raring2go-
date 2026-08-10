@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { auditEvents, organisations, territories, users } from "./schema";
+import { auditEvents, franchises, organisations, territories, users } from "./schema";
 
 describe("foundation schema", () => {
   it("uses global unique email for the shared identity model", () => {
@@ -25,5 +25,14 @@ describe("foundation schema", () => {
     expect(territories.franchiseOrganisationId.name).toBe(
       "franchise_organisation_id"
     );
+  });
+
+  it("models franchise relationships through existing organisation and territory records", () => {
+    expect(franchises.franchiseOrganisationId.name).toBe("franchise_organisation_id");
+    expect(franchises.primaryTerritoryId.name).toBe("primary_territory_id");
+    expect(franchises.primaryOwnerUserId.name).toBe("primary_owner_user_id");
+    expect((franchises as unknown as Record<string, unknown>).legalName).toBeUndefined();
+    expect((franchises as unknown as Record<string, unknown>).companyNumber).toBeUndefined();
+    expect((franchises as unknown as Record<string, unknown>).vatNumber).toBeUndefined();
   });
 });

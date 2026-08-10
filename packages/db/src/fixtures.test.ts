@@ -13,8 +13,23 @@ describe("foundation fixtures", () => {
     expect(foundationSeed.permissions.map((permission) => permission.module)).toEqual([
       "system",
       "territory",
-      "roles"
+      "roles",
+      "franchise",
+      "franchise",
+      "franchise"
     ]);
+  });
+
+  it("includes a deterministic franchise relationship fixture", () => {
+    expect(fixtureIds.franchises.suttonColdfield).toBe(
+      "00000000-0000-4000-8000-000000000901"
+    );
+    expect(foundationSeed.franchises[0]?.franchiseOrganisationId).toBe(
+      fixtureIds.organisations.franchise
+    );
+    expect(foundationSeed.franchises[0]?.primaryTerritoryId).toBe(
+      fixtureIds.territories.suttonColdfield
+    );
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

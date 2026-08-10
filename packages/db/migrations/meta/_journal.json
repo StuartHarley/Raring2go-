@@ -15,6 +15,13 @@
       "when": 1786386439337,
       "tag": "0001_skinny_tyger_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786389954415,
+      "tag": "0002_jazzy_blonde_phantom",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,8 @@ import { fixtureIds, foundationSeed } from "./fixtures";
 import {
   auditEvents,
   authInvitations,
+  franchiseContacts,
+  franchises,
   memberships,
   organisations,
   permissions,
@@ -104,6 +106,30 @@ export async function seedDatabase(databaseUrl?: string) {
         permissionId: fixtureIds.permissions.territoryView,
         scope: "own_territory",
         constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId: fixtureIds.permissions.franchiseView,
+        scope: "network",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId: fixtureIds.permissions.franchiseCreate,
+        scope: "network",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.hqAdmin,
+        permissionId: fixtureIds.permissions.franchiseEdit,
+        scope: "network",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.franchiseView,
+        scope: "own_territory",
+        constraints: {}
       }
     ]).onConflictDoNothing();
 
@@ -112,6 +138,12 @@ export async function seedDatabase(databaseUrl?: string) {
         id: "00000000-0000-4000-8000-000000000601",
         userId: fixtureIds.users.superAdmin,
         roleId: fixtureIds.roles.superAdmin,
+        organisationId: fixtureIds.organisations.hq
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000603",
+        userId: fixtureIds.users.superAdmin,
+        roleId: fixtureIds.roles.hqAdmin,
         organisationId: fixtureIds.organisations.hq
       },
       {
@@ -147,6 +179,52 @@ export async function seedDatabase(databaseUrl?: string) {
       invitedByUserId: fixtureIds.users.superAdmin,
       expiresAt: new Date("2099-01-01T00:00:00.000Z")
     }).onConflictDoNothing();
+
+    const franchiseSeed = foundationSeed.franchises.map((franchise) => {
+      const endDate = (franchise as { endDate?: string }).endDate;
+
+      return {
+        ...franchise,
+        launchDate: franchise.launchDate ? new Date(franchise.launchDate) : null,
+        renewalDate: franchise.renewalDate ? new Date(franchise.renewalDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        tags: [...franchise.tags]
+      };
+    });
+
+    await db.insert(franchises).values(franchiseSeed).onConflictDoUpdate({
+      target: franchises.id,
+      set: {
+        franchiseOrganisationId: sql`excluded.franchise_organisation_id`,
+        primaryTerritoryId: sql`excluded.primary_territory_id`,
+        primaryOwnerUserId: sql`excluded.primary_owner_user_id`,
+        status: sql`excluded.status`,
+        lifecycleStage: sql`excluded.lifecycle_stage`,
+        launchDate: sql`excluded.launch_date`,
+        renewalDate: sql`excluded.renewal_date`,
+        endDate: sql`excluded.end_date`,
+        onboardingStatus: sql`excluded.onboarding_status`,
+        supportStatus: sql`excluded.support_status`,
+        tags: sql`excluded.tags`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(franchiseContacts).values([...foundationSeed.franchiseContacts]).onConflictDoUpdate({
+      target: franchiseContacts.id,
+      set: {
+        franchiseId: sql`excluded.franchise_id`,
+        userId: sql`excluded.user_id`,
+        label: sql`excluded.label`,
+        name: sql`excluded.name`,
+        email: sql`excluded.email`,
+        phone: sql`excluded.phone`,
+        isPrimary: sql`excluded.is_primary`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
 
     return fixtureIds;
   } finally {
