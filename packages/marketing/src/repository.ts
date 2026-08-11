@@ -12,6 +12,9 @@ import {
   emailDeliveryRecords,
   emailRecipientSnapshots,
   emailTemplates,
+  networkNewsletterMasters,
+  newsletterFactoryRuns,
+  territoryNewsletterEditions,
   territories
 } from "@raring2go/db";
 import type { MarketingData } from "./types";
@@ -37,6 +40,9 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     campaignVersionRows,
     recipientSnapshotRows,
     deliveryRows,
+    newsletterMasterRows,
+    newsletterEditionRows,
+    newsletterRunRows,
     territoryRows
   ] = await Promise.all([
     db.select().from(audienceContacts),
@@ -52,6 +58,9 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     db.select().from(emailCampaignVersions),
     db.select().from(emailRecipientSnapshots),
     db.select().from(emailDeliveryRecords),
+    db.select().from(networkNewsletterMasters),
+    db.select().from(territoryNewsletterEditions),
+    db.select().from(newsletterFactoryRuns),
     db.select().from(territories)
   ]);
 
@@ -69,6 +78,9 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     emailCampaignVersions: campaignVersionRows.map(dateRows(["approvedAt"])) as MarketingData["emailCampaignVersions"],
     emailRecipientSnapshots: recipientSnapshotRows.map(dateRows(["generatedAt"])) as MarketingData["emailRecipientSnapshots"],
     emailDeliveryRecords: deliveryRows.map(dateRows(["eventAt"])) as MarketingData["emailDeliveryRecords"],
+    networkNewsletterMasters: newsletterMasterRows.map(dateRows(["approvedAt"])) as MarketingData["networkNewsletterMasters"],
+    territoryNewsletterEditions: newsletterEditionRows.map(dateRows(["generatedAt", "approvedAt"])) as MarketingData["territoryNewsletterEditions"],
+    newsletterFactoryRuns: newsletterRunRows.map(dateRows(["generatedAt"])) as MarketingData["newsletterFactoryRuns"],
     territories: territoryRows as MarketingData["territories"]
   };
 }

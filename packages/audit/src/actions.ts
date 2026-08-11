@@ -125,7 +125,11 @@ export const auditActions = {
   marketingEmailCampaignSchedule: "marketing.email.campaign.schedule",
   marketingEmailCampaignSend: "marketing.email.campaign.send",
   marketingEmailRecipientSnapshotCreate: "marketing.email.recipient_snapshot.create",
-  marketingEmailDeliveryRecord: "marketing.email.delivery.record"
+  marketingEmailDeliveryRecord: "marketing.email.delivery.record",
+  marketingNewsletterMasterCreate: "marketing.newsletter_factory.master.create",
+  marketingNewsletterMasterApprove: "marketing.newsletter_factory.master.approve",
+  marketingNewsletterFactoryGenerate: "marketing.newsletter_factory.generate",
+  marketingNewsletterLocalOverride: "marketing.newsletter_factory.local_override"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

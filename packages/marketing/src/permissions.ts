@@ -10,7 +10,11 @@ export const marketingCapabilities = {
   emailApprove: { module: "marketing.email", action: "approve" },
   emailSchedule: { module: "marketing.email", action: "schedule" },
   emailSend: { module: "marketing.email", action: "send" },
-  emailRecordDelivery: { module: "marketing.email", action: "record_delivery" }
+  emailRecordDelivery: { module: "marketing.email", action: "record_delivery" },
+  newsletterFactoryView: { module: "marketing.newsletter_factory", action: "view" },
+  newsletterFactoryManage: { module: "marketing.newsletter_factory", action: "manage" },
+  newsletterFactoryApprove: { module: "marketing.newsletter_factory", action: "approve" },
+  newsletterFactoryContribute: { module: "marketing.newsletter_factory", action: "contribute" }
 } as const;
 
 export type MarketingCapability = keyof typeof marketingCapabilities;

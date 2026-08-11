@@ -107,7 +107,11 @@ describe("foundation fixtures", () => {
       "marketing.email",
       "marketing.email",
       "marketing.email",
-      "marketing.email"
+      "marketing.email",
+      "marketing.newsletter_factory",
+      "marketing.newsletter_factory",
+      "marketing.newsletter_factory",
+      "marketing.newsletter_factory"
     ]);
   });
 
@@ -290,6 +294,13 @@ describe("foundation fixtures", () => {
     expect(foundationSeed.emailTemplates[0]?.requiredBlocks).toContain("unsubscribe");
     expect(foundationSeed.emailCampaigns).toEqual([]);
     expect(foundationSeed.emailDeliveryRecords).toEqual([]);
+    expect(foundationSeed.networkNewsletterMasters[0]).toMatchObject({
+      id: fixtureIds.networkNewsletterMasters.autumnFamilyGuide,
+      status: "approved",
+      seasonKey: "autumn"
+    });
+    expect(foundationSeed.territoryNewsletterEditions).toEqual([]);
+    expect(foundationSeed.newsletterFactoryRuns).toEqual([]);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

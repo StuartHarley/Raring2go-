@@ -4,11 +4,16 @@ import { describe, expect, it } from "vitest";
 import {
   listAudienceContacts,
   approveEmailCampaignVersion,
+  approveNetworkNewsletterMaster,
   createEmailCampaign,
+  createNetworkNewsletterMaster,
   createRecipientSnapshot,
+  generateTerritoryNewsletterEditions,
+  listNewsletterFactory,
   previewSegment,
   recordConsentEvent,
   recordEmailDeliveryEvent,
+  recordTerritoryNewsletterOverride,
   scheduleEmailCampaign,
   subscribeContactToTerritory,
   suppressContact,
@@ -42,6 +47,10 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "marketing.email", "schedule", "network"),
     grant(ids.roles.hq, "marketing.email", "send", "network"),
     grant(ids.roles.hq, "marketing.email", "record_delivery", "network"),
+    grant(ids.roles.hq, "marketing.newsletter_factory", "view", "network"),
+    grant(ids.roles.hq, "marketing.newsletter_factory", "manage", "network"),
+    grant(ids.roles.hq, "marketing.newsletter_factory", "approve", "network"),
+    grant(ids.roles.hq, "marketing.newsletter_factory", "contribute", "network"),
     grant(ids.roles.local, "marketing.audience", "view", "own_territory"),
     grant(ids.roles.local, "marketing.audience", "manage", "own_territory"),
     grant(ids.roles.local, "marketing.consent", "manage", "own_territory"),
@@ -52,7 +61,9 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "marketing.email", "approve", "own_territory"),
     grant(ids.roles.local, "marketing.email", "schedule", "own_territory"),
     grant(ids.roles.local, "marketing.email", "send", "own_territory"),
-    grant(ids.roles.local, "marketing.email", "record_delivery", "own_territory")
+    grant(ids.roles.local, "marketing.email", "record_delivery", "own_territory"),
+    grant(ids.roles.local, "marketing.newsletter_factory", "view", "own_territory"),
+    grant(ids.roles.local, "marketing.newsletter_factory", "contribute", "own_territory")
   ],
   territories: [
     { id: ids.territories.own, franchiseOrganisationId: ids.organisations.franchise },
@@ -198,6 +209,108 @@ describe("marketing audience foundation", () => {
       auditActions.marketingEmailDeliveryRecord
     ]);
   });
+
+  it("generates territory newsletter editions idempotently and preserves local overrides", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createNetworkNewsletterMaster(hqContext(), permissions, recorder, data, {
+      id: "master_1",
+      templateId: "template_1",
+      title: "Autumn ideas",
+      status: "draft",
+      seasonKey: "autumn",
+      lockedBlocks: [{ key: "brand-header" }],
+      optionalBlocks: [{ key: "days-out" }],
+      localEditableBlocks: [{ key: "local-picks" }],
+      contentRules: { requiredLocalBlocks: ["local-picks"] },
+      createdByUserId: ids.users.hq,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveNetworkNewsletterMaster(hqContext(), permissions, recorder, data, "master_1", "2026-08-11T09:00:00.000Z");
+    const run = await generateTerritoryNewsletterEditions(hqContext(), permissions, recorder, data, {
+      id: "run_1",
+      masterId: "master_1",
+      territoryIds: [ids.territories.own, ids.territories.other],
+      generatedAt: "2026-08-11T09:05:00.000Z",
+      idempotencyKey: "master_1:initial"
+    });
+    const duplicate = await generateTerritoryNewsletterEditions(hqContext(), permissions, recorder, data, {
+      ...run,
+      territoryIds: [ids.territories.own, ids.territories.other]
+    });
+    const ownEdition = data.territoryNewsletterEditions.find((edition) => edition.territoryId === ids.territories.own);
+    if (!ownEdition) throw new Error("Expected own territory edition.");
+
+    await recordTerritoryNewsletterOverride(localContext(), permissions, recorder, data, ownEdition.id, {
+      "local-picks": [{ title: "Sutton Park picnic trail" }]
+    });
+    await generateTerritoryNewsletterEditions(hqContext(), permissions, recorder, data, {
+      id: "run_2",
+      masterId: "master_1",
+      territoryIds: [ids.territories.own],
+      generatedAt: "2026-08-11T10:00:00.000Z",
+      idempotencyKey: "master_1:refresh"
+    });
+
+    expect(run).toMatchObject({ totalTerritories: 2, blockedCount: 2 });
+    expect(duplicate.id).toBe("run_1");
+    expect(data.territoryNewsletterEditions).toHaveLength(2);
+    expect(ownEdition.localOverrides).toMatchObject({
+      "local-picks": [{ title: "Sutton Park picnic trail" }]
+    });
+    expect(listNewsletterFactory(localContext(), permissions, data).editions.map((edition) => edition.territoryId)).toEqual([ids.territories.own]);
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.marketingNewsletterMasterCreate,
+      auditActions.marketingNewsletterMasterApprove,
+      auditActions.marketingNewsletterFactoryGenerate,
+      auditActions.marketingNewsletterLocalOverride,
+      auditActions.marketingNewsletterFactoryGenerate
+    ]);
+  });
+
+  it("fails closed for draft masters and cross-territory local newsletter overrides", async () => {
+    const data = seededData();
+    const recorder = audit();
+    data.networkNewsletterMasters.push({
+      id: "draft_master",
+      templateId: "template_1",
+      title: "Draft",
+      status: "draft",
+      seasonKey: null,
+      lockedBlocks: [],
+      optionalBlocks: [],
+      localEditableBlocks: [],
+      contentRules: {},
+      createdByUserId: ids.users.hq,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    data.territoryNewsletterEditions.push({
+      id: "other_edition",
+      masterId: "draft_master",
+      territoryId: ids.territories.other,
+      emailCampaignId: null,
+      status: "ready",
+      inheritedBlocks: [],
+      localOverrides: {},
+      warnings: [],
+      generatedAt: "2026-08-11T09:00:00.000Z",
+      approvedAt: null
+    });
+
+    await expect(generateTerritoryNewsletterEditions(hqContext(), permissions, recorder, data, {
+      id: "run_draft",
+      masterId: "draft_master",
+      territoryIds: [ids.territories.own],
+      generatedAt: "2026-08-11T09:00:00.000Z",
+      idempotencyKey: "draft"
+    })).rejects.toThrow("Only approved newsletter masters");
+    await expect(recordTerritoryNewsletterOverride(localContext(), permissions, recorder, data, "other_edition", {
+      local: true
+    })).rejects.toThrow("outside the active territory");
+  });
 });
 
 function seededData(): MarketingData {
@@ -252,6 +365,9 @@ function emptyData(): MarketingData {
     emailCampaignVersions: [],
     emailRecipientSnapshots: [],
     emailDeliveryRecords: [],
+    networkNewsletterMasters: [],
+    territoryNewsletterEditions: [],
+    newsletterFactoryRuns: [],
     territories: [
       { id: ids.territories.own, franchiseOrganisationId: ids.organisations.franchise, name: "Own" },
       { id: ids.territories.other, franchiseOrganisationId: "org_other", name: "Other" }

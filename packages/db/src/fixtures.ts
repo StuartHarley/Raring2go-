@@ -114,7 +114,11 @@ export const fixtureIds = {
     emailApprove: "00000000-0000-4000-8000-000000000494",
     emailSchedule: "00000000-0000-4000-8000-000000000495",
     emailSend: "00000000-0000-4000-8000-000000000496",
-    emailRecordDelivery: "00000000-0000-4000-8000-000000000497"
+    emailRecordDelivery: "00000000-0000-4000-8000-000000000497",
+    newsletterFactoryView: "00000000-0000-4000-8000-000000000498",
+    newsletterFactoryManage: "00000000-0000-4000-8000-000000000499",
+    newsletterFactoryApprove: "00000000-0000-4000-8000-000000000500",
+    newsletterFactoryContribute: "00000000-0000-4000-8000-000000000501"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -189,6 +193,9 @@ export const fixtureIds = {
   },
   emailTemplates: {
     standardNewsletter: "00000000-0000-4000-8000-000000000746"
+  },
+  networkNewsletterMasters: {
+    autumnFamilyGuide: "00000000-0000-4000-8000-000000000747"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -913,6 +920,30 @@ export const foundationSeed = {
       module: "marketing.email",
       action: "record_delivery",
       description: "Record provider-neutral email delivery events idempotently."
+    },
+    {
+      id: fixtureIds.permissions.newsletterFactoryView,
+      module: "marketing.newsletter_factory",
+      action: "view",
+      description: "View HQ newsletter factory masters and generated territory editions."
+    },
+    {
+      id: fixtureIds.permissions.newsletterFactoryManage,
+      module: "marketing.newsletter_factory",
+      action: "manage",
+      description: "Create and generate HQ newsletter factory masters."
+    },
+    {
+      id: fixtureIds.permissions.newsletterFactoryApprove,
+      module: "marketing.newsletter_factory",
+      action: "approve",
+      description: "Approve HQ newsletter masters for territory generation."
+    },
+    {
+      id: fixtureIds.permissions.newsletterFactoryContribute,
+      module: "marketing.newsletter_factory",
+      action: "contribute",
+      description: "Contribute permitted local overrides to territory newsletter editions."
     }
   ],
   advertisers: [
@@ -1290,6 +1321,24 @@ export const foundationSeed = {
   emailCampaignVersions: [],
   emailRecipientSnapshots: [],
   emailDeliveryRecords: [],
+  networkNewsletterMasters: [
+    {
+      id: fixtureIds.networkNewsletterMasters.autumnFamilyGuide,
+      templateId: fixtureIds.emailTemplates.standardNewsletter,
+      title: "Autumn family guide",
+      status: "approved",
+      seasonKey: "autumn",
+      lockedBlocks: [{ key: "brand-header", type: "header", locked: true }, { key: "unsubscribe", type: "footer", locked: true }],
+      optionalBlocks: [{ key: "half-term-ideas", type: "article_collection" }],
+      localEditableBlocks: [{ key: "local-picks", type: "local_article_collection" }],
+      contentRules: { requiredLocalBlocks: ["local-picks"] },
+      createdByUserId: fixtureIds.users.superAdmin,
+      approvedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2026-08-11T09:00:00.000Z"
+    }
+  ],
+  territoryNewsletterEditions: [],
+  newsletterFactoryRuns: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

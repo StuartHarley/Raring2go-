@@ -1,4 +1,4 @@
-import { listAudienceContacts, listEmailCampaigns, loadMarketingData } from "@raring2go/marketing";
+import { listAudienceContacts, listEmailCampaigns, listNewsletterFactory, loadMarketingData } from "@raring2go/marketing";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import type { PermissionData } from "@raring2go/permissions";
@@ -23,9 +23,11 @@ export const marketingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.audienceView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.segmentView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.audienceView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.segmentView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailView, "own_territory")
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryView, "own_territory")
   ],
   territories: foundationSeed.territories.map((territory) => ({
     id: territory.id,
@@ -48,6 +50,16 @@ export async function readEmailCampaignOverview(context: MarketingActorContext) 
 
   try {
     return listEmailCampaigns(context, marketingPermissionData, await loadMarketingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readNewsletterFactoryOverview(context: MarketingActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    return listNewsletterFactory(context, marketingPermissionData, await loadMarketingData(db));
   } finally {
     await sql.end();
   }

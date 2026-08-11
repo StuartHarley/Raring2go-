@@ -24,6 +24,9 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
           Raring2go-owned campaign, version, recipient snapshot and delivery
           foundations. Delivery providers are transport only.
         </p>
+        <p>
+          <a href="/app/newsletters/factory">Open HQ newsletter factory</a>
+        </p>
         <div className="franchise-metrics">
           <article>
             <span>Campaigns</span>

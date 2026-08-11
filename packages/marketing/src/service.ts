@@ -15,8 +15,12 @@ import type {
   EmailDeliveryRecord,
   EmailRecipientSnapshot,
   EmailTemplate,
+  NetworkNewsletterMaster,
+  NewsletterFactoryOverview,
+  NewsletterFactoryRun,
   MarketingActorContext,
-  MarketingData
+  MarketingData,
+  TerritoryNewsletterEdition
 } from "./types";
 
 type MarketingAuditRecorder = {
@@ -87,6 +91,38 @@ export function listEmailCampaigns(
       draft: campaigns.filter((view) => view.campaign.status === "draft").length,
       scheduled: campaigns.filter((view) => view.campaign.status === "scheduled").length,
       sent: campaigns.filter((view) => view.campaign.status === "sent").length
+    }
+  };
+}
+
+export function listNewsletterFactory(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData
+): NewsletterFactoryOverview {
+  requireMarketingPermission(context, permissions, "newsletterFactoryView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  const editions = data.territoryNewsletterEditions
+    .filter((edition) => !edition.deletedAt)
+    .filter((edition) => visibleTerritoryIds == null || visibleTerritoryIds.has(edition.territoryId));
+  const masterIds = new Set(editions.map((edition) => edition.masterId));
+  const masters = data.networkNewsletterMasters
+    .filter((master) => !master.deletedAt)
+    .filter((master) => visibleTerritoryIds == null || masterIds.has(master.id));
+  const runs = data.newsletterFactoryRuns
+    .filter((run) => masters.some((master) => master.id === run.masterId))
+    .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt));
+
+  return {
+    masters,
+    editions,
+    runs,
+    totals: {
+      masters: masters.length,
+      editions: editions.length,
+      ready: editions.filter((edition) => edition.status === "ready").length,
+      needsReview: editions.filter((edition) => edition.status === "needs_review").length,
+      blocked: editions.filter((edition) => edition.status === "blocked").length
     }
   };
 }
@@ -414,6 +450,153 @@ export async function recordEmailDeliveryEvent(
   return delivery;
 }
 
+export async function createNetworkNewsletterMaster(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  master: NetworkNewsletterMaster
+) {
+  requireMarketingPermission(context, permissions, "newsletterFactoryManage");
+  const template = data.emailTemplates.find((candidate) => candidate.id === master.templateId && !candidate.deletedAt);
+  if (!template || template.status !== "approved") {
+    throw new Error("Newsletter master requires an approved email template.");
+  }
+  data.networkNewsletterMasters.push(master);
+  await audit.record(marketingAuditEvent(context, auditActions.marketingNewsletterMasterCreate, "network_newsletter_master", master.id, {
+    templateId: master.templateId,
+    seasonKey: master.seasonKey ?? null
+  }, null));
+  return master;
+}
+
+export async function approveNetworkNewsletterMaster(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  masterId: string,
+  approvedAt: string
+) {
+  requireMarketingPermission(context, permissions, "newsletterFactoryApprove");
+  const master = requireNewsletterMaster(data, masterId);
+  master.status = "approved";
+  master.approvedByUserId = context.userId;
+  master.approvedAt = approvedAt;
+  await audit.record(marketingAuditEvent(context, auditActions.marketingNewsletterMasterApprove, "network_newsletter_master", master.id, {
+    approvedAt
+  }, null));
+  return master;
+}
+
+export async function generateTerritoryNewsletterEditions(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  input: {
+    id: string;
+    masterId: string;
+    territoryIds: string[];
+    generatedAt: string;
+    idempotencyKey: string;
+  }
+) {
+  requireMarketingPermission(context, permissions, "newsletterFactoryManage");
+  const existingRun = data.newsletterFactoryRuns.find((run) => run.idempotencyKey === input.idempotencyKey);
+  if (existingRun) {
+    return existingRun;
+  }
+  const master = requireNewsletterMaster(data, input.masterId);
+  if (master.status !== "approved" && master.status !== "generated") {
+    throw new Error("Only approved newsletter masters can generate territory editions.");
+  }
+  const uniqueTerritoryIds = [...new Set(input.territoryIds)];
+  let readyCount = 0;
+  let reviewCount = 0;
+  let blockedCount = 0;
+
+  for (const territoryId of uniqueTerritoryIds) {
+    ensureKnownTerritory(data, territoryId);
+    const warnings = newsletterWarnings(master, territoryId);
+    const status = warnings.some((warning) => warning.severity === "blocking") ? "blocked" : warnings.length > 0 ? "needs_review" : "ready";
+    if (status === "ready") readyCount += 1;
+    if (status === "needs_review") reviewCount += 1;
+    if (status === "blocked") blockedCount += 1;
+    const existingEdition = data.territoryNewsletterEditions.find((edition) => edition.masterId === master.id && edition.territoryId === territoryId && !edition.deletedAt);
+    if (existingEdition) {
+      existingEdition.inheritedBlocks = [...master.lockedBlocks, ...master.optionalBlocks];
+      existingEdition.warnings = warnings;
+      existingEdition.generatedAt = input.generatedAt;
+      if (existingEdition.status !== "approved" && existingEdition.status !== "scheduled") {
+        existingEdition.status = existingEdition.localOverrides && Object.keys(existingEdition.localOverrides).length > 0 && status === "blocked" ? "needs_review" : status;
+      }
+    } else {
+      data.territoryNewsletterEditions.push({
+        id: `${input.id}:${territoryId}`,
+        masterId: master.id,
+        territoryId,
+        emailCampaignId: null,
+        status,
+        inheritedBlocks: [...master.lockedBlocks, ...master.optionalBlocks],
+        localOverrides: {},
+        warnings,
+        generatedAt: input.generatedAt,
+        approvedAt: null
+      });
+    }
+  }
+
+  master.status = "generated";
+  const run: NewsletterFactoryRun = {
+    id: input.id,
+    masterId: master.id,
+    status: "completed",
+    totalTerritories: uniqueTerritoryIds.length,
+    readyCount,
+    reviewCount,
+    blockedCount,
+    generatedAt: input.generatedAt,
+    idempotencyKey: input.idempotencyKey,
+    metadata: {}
+  };
+  data.newsletterFactoryRuns.push(run);
+  await audit.record(marketingAuditEvent(context, auditActions.marketingNewsletterFactoryGenerate, "newsletter_factory_run", run.id, {
+    masterId: master.id,
+    totalTerritories: run.totalTerritories,
+    readyCount,
+    reviewCount,
+    blockedCount
+  }, null));
+  return run;
+}
+
+export async function recordTerritoryNewsletterOverride(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  editionId: string,
+  overrides: Record<string, unknown>
+) {
+  requireMarketingPermission(context, permissions, "newsletterFactoryContribute");
+  const edition = requireNewsletterEdition(data, editionId);
+  ensureContextCanAccessTerritory(context, edition.territoryId);
+  if (edition.status === "scheduled") {
+    throw new Error("Scheduled newsletter editions cannot be locally edited.");
+  }
+  edition.localOverrides = { ...edition.localOverrides, ...overrides };
+  if (edition.status === "blocked") {
+    edition.status = "needs_review";
+  }
+  await audit.record(marketingAuditEvent(context, auditActions.marketingNewsletterLocalOverride, "territory_newsletter_edition", edition.id, {
+    masterId: edition.masterId,
+    territoryId: edition.territoryId,
+    overrideKeys: Object.keys(overrides)
+  }, edition.territoryId));
+  return edition;
+}
+
 function contactMatchesSegment(
   view: AudienceContactView,
   segment: AudienceSegment,
@@ -510,6 +693,40 @@ function requireCampaignVersion(data: MarketingData, versionId: string) {
     throw new Error("Email campaign version was not found.");
   }
   return version;
+}
+
+function requireNewsletterMaster(data: MarketingData, masterId: string) {
+  const master = data.networkNewsletterMasters.find((candidate) => candidate.id === masterId && !candidate.deletedAt);
+  if (!master) {
+    throw new Error("Newsletter master was not found.");
+  }
+  return master;
+}
+
+function requireNewsletterEdition(data: MarketingData, editionId: string) {
+  const edition = data.territoryNewsletterEditions.find((candidate) => candidate.id === editionId && !candidate.deletedAt);
+  if (!edition) {
+    throw new Error("Territory newsletter edition was not found.");
+  }
+  return edition;
+}
+
+function ensureKnownTerritory(data: MarketingData, territoryId: string) {
+  if (!data.territories.some((territory) => territory.id === territoryId)) {
+    throw new Error("Newsletter generation references an unknown territory.");
+  }
+}
+
+function newsletterWarnings(master: NetworkNewsletterMaster, territoryId: string) {
+  const requiredLocalBlocks = Array.isArray(master.contentRules.requiredLocalBlocks)
+    ? master.contentRules.requiredLocalBlocks
+    : [];
+  return requiredLocalBlocks.map((block) => ({
+    code: "required_local_content",
+    severity: "blocking",
+    territoryId,
+    block
+  }));
 }
 
 function auditEvent(

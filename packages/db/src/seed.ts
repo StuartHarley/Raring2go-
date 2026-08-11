@@ -18,6 +18,7 @@ import {
   commercialProposalItems,
   commercialProposals,
   emailTemplates,
+  networkNewsletterMasters,
   agreementTemplates,
   agreementVersions,
   authInvitations,
@@ -308,7 +309,11 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.emailApprove,
         fixtureIds.permissions.emailSchedule,
         fixtureIds.permissions.emailSend,
-        fixtureIds.permissions.emailRecordDelivery
+        fixtureIds.permissions.emailRecordDelivery,
+        fixtureIds.permissions.newsletterFactoryView,
+        fixtureIds.permissions.newsletterFactoryManage,
+        fixtureIds.permissions.newsletterFactoryApprove,
+        fixtureIds.permissions.newsletterFactoryContribute
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -489,7 +494,9 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.emailApprove,
         fixtureIds.permissions.emailSchedule,
         fixtureIds.permissions.emailSend,
-        fixtureIds.permissions.emailRecordDelivery
+        fixtureIds.permissions.emailRecordDelivery,
+        fixtureIds.permissions.newsletterFactoryView,
+        fixtureIds.permissions.newsletterFactoryContribute
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,
@@ -924,6 +931,32 @@ export async function seedDatabase(databaseUrl?: string) {
         blocks: sql`excluded.blocks`,
         requiredBlocks: sql`excluded.required_blocks`,
         metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(networkNewsletterMasters).values(foundationSeed.networkNewsletterMasters.map((master) => ({
+      ...master,
+      lockedBlocks: [...master.lockedBlocks],
+      optionalBlocks: [...master.optionalBlocks],
+      localEditableBlocks: [...master.localEditableBlocks],
+      contentRules: { ...master.contentRules },
+      approvedAt: master.approvedAt ? new Date(master.approvedAt) : null
+    }))).onConflictDoUpdate({
+      target: networkNewsletterMasters.id,
+      set: {
+        templateId: sql`excluded.template_id`,
+        title: sql`excluded.title`,
+        status: sql`excluded.status`,
+        seasonKey: sql`excluded.season_key`,
+        lockedBlocks: sql`excluded.locked_blocks`,
+        optionalBlocks: sql`excluded.optional_blocks`,
+        localEditableBlocks: sql`excluded.local_editable_blocks`,
+        contentRules: sql`excluded.content_rules`,
+        createdByUserId: sql`excluded.created_by_user_id`,
+        approvedByUserId: sql`excluded.approved_by_user_id`,
+        approvedAt: sql`excluded.approved_at`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

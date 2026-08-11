@@ -117,6 +117,9 @@ export type MarketingData = {
   emailCampaignVersions: EmailCampaignVersion[];
   emailRecipientSnapshots: EmailRecipientSnapshot[];
   emailDeliveryRecords: EmailDeliveryRecord[];
+  networkNewsletterMasters: NetworkNewsletterMaster[];
+  territoryNewsletterEditions: TerritoryNewsletterEdition[];
+  newsletterFactoryRuns: NewsletterFactoryRun[];
   territories: MarketingTerritory[];
 };
 
@@ -232,5 +235,61 @@ export type EmailCampaignOverview = {
     draft: number;
     scheduled: number;
     sent: number;
+  };
+};
+
+export type NetworkNewsletterMaster = {
+  id: string;
+  templateId: string;
+  title: string;
+  status: "draft" | "approved" | "generated" | (string & {});
+  seasonKey?: string | null;
+  lockedBlocks: Array<Record<string, unknown>>;
+  optionalBlocks: Array<Record<string, unknown>>;
+  localEditableBlocks: Array<Record<string, unknown>>;
+  contentRules: Record<string, unknown>;
+  createdByUserId?: string | null;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type TerritoryNewsletterEdition = {
+  id: string;
+  masterId: string;
+  territoryId: string;
+  emailCampaignId?: string | null;
+  status: "draft" | "ready" | "needs_review" | "blocked" | "approved" | "scheduled" | (string & {});
+  inheritedBlocks: Array<Record<string, unknown>>;
+  localOverrides: Record<string, unknown>;
+  warnings: Array<Record<string, unknown>>;
+  generatedAt: string;
+  approvedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type NewsletterFactoryRun = {
+  id: string;
+  masterId: string;
+  status: string;
+  totalTerritories: number;
+  readyCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  generatedAt: string;
+  idempotencyKey: string;
+  metadata: Record<string, unknown>;
+};
+
+export type NewsletterFactoryOverview = {
+  masters: NetworkNewsletterMaster[];
+  editions: TerritoryNewsletterEdition[];
+  runs: NewsletterFactoryRun[];
+  totals: {
+    masters: number;
+    editions: number;
+    ready: number;
+    needsReview: number;
+    blocked: number;
   };
 };

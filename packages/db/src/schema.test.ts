@@ -17,6 +17,9 @@ import {
   emailDeliveryRecords,
   emailRecipientSnapshots,
   emailTemplates,
+  networkNewsletterMasters,
+  newsletterFactoryRuns,
+  territoryNewsletterEditions,
   advertiserActivityEvents,
   advertiserContacts,
   advertiserDomainEvents,
@@ -245,6 +248,17 @@ describe("foundation schema", () => {
     expect(emailDeliveryRecords.providerKey.name).toBe("provider_key");
     expect(emailDeliveryRecords.providerMessageId.name).toBe("provider_message_id");
     expect((emailCampaigns as unknown as Record<string, unknown>).mailchimpCampaignId).toBeUndefined();
+  });
+
+  it("models HQ newsletter factory masters separately from territory editions", () => {
+    expect(networkNewsletterMasters.lockedBlocks.name).toBe("locked_blocks");
+    expect(networkNewsletterMasters.localEditableBlocks.name).toBe("local_editable_blocks");
+    expect(networkNewsletterMasters.contentRules.name).toBe("content_rules");
+    expect(territoryNewsletterEditions.masterId.name).toBe("master_id");
+    expect(territoryNewsletterEditions.territoryId.name).toBe("territory_id");
+    expect(territoryNewsletterEditions.localOverrides.name).toBe("local_overrides");
+    expect(newsletterFactoryRuns.idempotencyKey.name).toBe("idempotency_key");
+    expect((networkNewsletterMasters as unknown as Record<string, unknown>).mailchimpTemplateId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

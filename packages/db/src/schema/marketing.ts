@@ -288,3 +288,74 @@ export const emailDeliveryRecords = pgTable(
     index("email_delivery_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const networkNewsletterMasters = pgTable(
+  "network_newsletter_masters",
+  {
+    id,
+    templateId: uuid("template_id").notNull().references(() => emailTemplates.id),
+    title: text("title").notNull(),
+    status: text("status").notNull().default("draft"),
+    seasonKey: text("season_key"),
+    lockedBlocks: jsonb("locked_blocks").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    optionalBlocks: jsonb("optional_blocks").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    localEditableBlocks: jsonb("local_editable_blocks").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    contentRules: jsonb("content_rules").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("network_newsletter_masters_template_id_idx").on(table.templateId),
+    index("network_newsletter_masters_status_idx").on(table.status),
+    index("network_newsletter_masters_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const territoryNewsletterEditions = pgTable(
+  "territory_newsletter_editions",
+  {
+    id,
+    masterId: uuid("master_id").notNull().references(() => networkNewsletterMasters.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    emailCampaignId: uuid("email_campaign_id").references(() => emailCampaigns.id),
+    status: text("status").notNull().default("draft"),
+    inheritedBlocks: jsonb("inherited_blocks").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    localOverrides: jsonb("local_overrides").$type<Record<string, unknown>>().notNull().default({}),
+    warnings: jsonb("warnings").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("territory_newsletter_editions_master_territory_uidx").on(table.masterId, table.territoryId),
+    index("territory_newsletter_editions_master_id_idx").on(table.masterId),
+    index("territory_newsletter_editions_territory_id_idx").on(table.territoryId),
+    index("territory_newsletter_editions_status_idx").on(table.status),
+    index("territory_newsletter_editions_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const newsletterFactoryRuns = pgTable(
+  "newsletter_factory_runs",
+  {
+    id,
+    masterId: uuid("master_id").notNull().references(() => networkNewsletterMasters.id),
+    status: text("status").notNull().default("completed"),
+    totalTerritories: integer("total_territories").notNull().default(0),
+    readyCount: integer("ready_count").notNull().default(0),
+    reviewCount: integer("review_count").notNull().default(0),
+    blockedCount: integer("blocked_count").notNull().default(0),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("newsletter_factory_runs_idempotency_uidx").on(table.idempotencyKey),
+    index("newsletter_factory_runs_master_id_idx").on(table.masterId)
+  ]
+);

@@ -183,6 +183,13 @@
       "when": 1786440841072,
       "tag": "0025_rapid_nextwave",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786441395210,
+      "tag": "0026_wealthy_drax",
+      "breakpoints": true
     }
   ]
 }

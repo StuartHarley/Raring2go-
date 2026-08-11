@@ -308,8 +308,20 @@ const permissionData: PermissionData = {
       constraints: {}
     },
     {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.newsletterFactoryView,
+      scope: "network",
+      constraints: {}
+    },
+    {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.emailView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.newsletterFactoryView,
       scope: "own_territory",
       constraints: {}
     }
