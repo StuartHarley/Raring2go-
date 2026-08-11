@@ -179,7 +179,8 @@ describe("app shell context and capabilities", () => {
         "commercial-command",
         "editions",
         "roles",
-        "system"
+        "system",
+        "activity"
       ]);
     }
   });

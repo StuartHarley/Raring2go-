@@ -1,6 +1,7 @@
 import { AppShell } from "../../layout";
 import { resolveShell } from "../../../../lib/app-shell";
 import { buildMyToday } from "../../../../lib/my-today";
+import { ProtectedOutcome } from "../../../../lib/protected-outcome";
 import { requestFromSearchParamsAndCookies } from "../page";
 
 type PageProps = {
@@ -12,15 +13,7 @@ export default async function ActionCentrePage({ searchParams }: PageProps) {
   const shell = await resolveShell(request);
 
   if (shell.kind !== "authenticated") {
-    return (
-      <main className={`app-outcome app-outcome-${shell.kind}`}>
-        <section>
-          <p className="eyebrow">{shell.kind.replace("_", " ")}</p>
-          <h1>{shell.kind === "unauthenticated" ? "Sign in required" : shell.title}</h1>
-          <p>{shell.message}</p>
-        </section>
-      </main>
-    );
+    return <ProtectedOutcome outcome={shell} />;
   }
 
   const today = await buildMyToday(shell);

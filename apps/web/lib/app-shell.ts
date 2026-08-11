@@ -267,6 +267,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     },
     contextLevel: "system",
     group: "administration"
+  },
+  {
+    id: "activity",
+    label: "Audit Activity",
+    href: "/app/activity",
+    capability: {
+      module: "system",
+      action: "administer"
+    },
+    contextLevel: "system",
+    group: "administration"
   }
 ];
 

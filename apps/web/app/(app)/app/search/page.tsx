@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppShell } from "../../layout";
 import { resolveShell } from "../../../../lib/app-shell";
 import { globalSearch } from "../../../../lib/global-search";
+import { ProtectedOutcome } from "../../../../lib/protected-outcome";
 import { requestFromSearchParamsAndCookies } from "../page";
 
 type PageProps = {
@@ -15,15 +16,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const query = first(params.q) ?? "";
 
   if (shell.kind !== "authenticated") {
-    return (
-      <main className={`app-outcome app-outcome-${shell.kind}`}>
-        <section>
-          <p className="eyebrow">{shell.kind.replace("_", " ")}</p>
-          <h1>{shell.kind === "unauthenticated" ? "Sign in required" : shell.title}</h1>
-          <p>{shell.message}</p>
-        </section>
-      </main>
-    );
+    return <ProtectedOutcome outcome={shell} />;
   }
 
   const results = await globalSearch(shell, query);

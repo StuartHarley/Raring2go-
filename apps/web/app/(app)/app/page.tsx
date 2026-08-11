@@ -4,6 +4,7 @@ import type { RequestedShellContext } from "../../../lib/app-shell";
 import { resolveShell } from "../../../lib/app-shell";
 import { sessionCookieName } from "../../../lib/auth-runtime";
 import { buildMyToday } from "../../../lib/my-today";
+import { ProtectedOutcome } from "../../../lib/protected-outcome";
 import { RelatedRecords } from "../../../lib/workflow-ui";
 
 type PageProps = {
@@ -15,15 +16,7 @@ export default async function AppHome({ searchParams }: PageProps) {
   const shell = await resolveShell(request);
 
   if (shell.kind !== "authenticated") {
-    return (
-      <main className={`app-outcome app-outcome-${shell.kind}`}>
-        <section>
-          <p className="eyebrow">{shell.kind.replace("_", " ")}</p>
-          <h1>{shell.kind === "unauthenticated" ? "Sign in required" : shell.title}</h1>
-          <p>{shell.message}</p>
-        </section>
-      </main>
-    );
+    return <ProtectedOutcome outcome={shell} />;
   }
 
   const today = await buildMyToday(shell);

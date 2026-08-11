@@ -646,6 +646,35 @@ p {
   text-transform: capitalize;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+
+.audit-table table {
+  border-collapse: collapse;
+  min-width: 680px;
+  width: 100%;
+}
+
+.audit-table th,
+.audit-table td {
+  border-bottom: 1px solid var(--r2-border-default);
+  padding: 12px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.audit-table th {
+  color: var(--r2-text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.audit-table td {
+  color: var(--r2-text-primary);
+  font-size: 0.9rem;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
