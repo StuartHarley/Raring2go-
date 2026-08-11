@@ -3,13 +3,15 @@ import { requirePermission, type PermissionData } from "@raring2go/permissions";
 import { publishingCapabilities, type PublishingCapability } from "./permissions";
 import type {
   EditionSummary,
+  EditionContentItem,
   MagazineTemplate,
   MagazineTemplateVersion,
   MasterEdition,
   PublishingActorContext,
   PublishingData,
   Season,
-  TerritoryEdition
+  TerritoryEdition,
+  TerritoryEditionContent
 } from "./types";
 
 type PublishingAuditRecorder = {
@@ -246,6 +248,129 @@ export async function publishTemplateVersion(
   return version;
 }
 
+export async function createCentralContentItem(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  content: EditionContentItem
+) {
+  requirePublishingPermission(context, permissions, content.locked ? "lockedContentManage" : "localContentEdit");
+  if (data.editionContentItems.some((item) => item.id === content.id && !item.deletedAt)) {
+    throw new Error("Content item already exists.");
+  }
+  data.editionContentItems.push(content);
+  await audit.record(auditEvent(context, auditActions.publishingContentOverride, "edition_content_item", content.id, {
+    action: "create",
+    inheritanceMode: content.inheritanceMode,
+    sourceLevel: content.sourceLevel
+  }));
+  return content;
+}
+
+export async function distributeContentToTerritoryEditions(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  contentItemId: string,
+  sourceVersion = 1
+) {
+  requirePublishingPermission(context, permissions, "lockedContentManage");
+  const item = requireContentItem(data, contentItemId);
+  const created: TerritoryEditionContent[] = [];
+  for (const edition of data.territoryEditions.filter((candidate) => !candidate.deletedAt)) {
+    if (!contentTargetsTerritory(item, edition.territoryId)) {
+      continue;
+    }
+    const existing = data.territoryEditionContent.find(
+      (content) => content.territoryEditionId === edition.id && content.sourceContentItemId === item.id && !content.deletedAt
+    );
+    if (existing) {
+      continue;
+    }
+    const content: TerritoryEditionContent = {
+      id: crypto.randomUUID(),
+      territoryEditionId: edition.id,
+      sourceContentItemId: item.id,
+      sourceVersion,
+      inheritanceState: "inherited",
+      localOverride: {},
+      effectiveContent: { ...item.body },
+      locked: item.locked
+    };
+    data.territoryEditionContent.push(content);
+    created.push(content);
+  }
+  await audit.record(auditEvent(context, auditActions.publishingContentOverride, "edition_content_item", item.id, {
+    action: "distribute",
+    createdCount: created.length,
+    sourceVersion
+  }));
+  return created;
+}
+
+export async function applyLocalContentOverride(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryContentId: string,
+  localOverride: Record<string, unknown>
+) {
+  requirePublishingPermission(context, permissions, "localContentEdit");
+  const content = requireTerritoryContent(data, territoryContentId);
+  const edition = requireTerritoryEdition(data, content.territoryEditionId);
+  if (context.territoryId && context.territoryId !== edition.territoryId) {
+    throw new Error("Territory content is outside the active territory.");
+  }
+  if (content.locked) {
+    throw new Error("Locked inherited content cannot be locally overridden.");
+  }
+  content.localOverride = localOverride;
+  content.effectiveContent = { ...content.effectiveContent, ...localOverride };
+  content.inheritanceState = "overridden";
+  content.localisedByUserId = context.userId;
+  content.localisedAt = today();
+  await audit.record(auditEvent(context, auditActions.publishingContentOverride, "territory_edition_content", content.id, {
+    action: "local_override",
+    sourceContentItemId: content.sourceContentItemId
+  }, edition.territoryId));
+  return content;
+}
+
+export async function propagateMasterContentCorrection(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  contentItemId: string,
+  nextBody: Record<string, unknown>,
+  nextVersion: number
+) {
+  requirePublishingPermission(context, permissions, "lockedContentManage");
+  const item = requireContentItem(data, contentItemId);
+  item.body = nextBody;
+  let updatedCount = 0;
+  let skippedOverrides = 0;
+  for (const content of data.territoryEditionContent.filter((candidate) => candidate.sourceContentItemId === item.id && !candidate.deletedAt)) {
+    if (content.inheritanceState === "overridden" || content.inheritanceState === "detached") {
+      skippedOverrides += 1;
+      continue;
+    }
+    content.effectiveContent = { ...nextBody };
+    content.sourceVersion = nextVersion;
+    updatedCount += 1;
+  }
+  await audit.record(auditEvent(context, auditActions.publishingContentOverride, "edition_content_item", item.id, {
+    action: "propagate_correction",
+    nextVersion,
+    updatedCount,
+    skippedOverrides
+  }));
+  return { updatedCount, skippedOverrides };
+}
+
 function requirePublishingPermission(
   context: PublishingActorContext,
   permissions: PermissionData,
@@ -304,6 +429,40 @@ function requireTemplateVersion(data: PublishingData, versionId: string) {
     throw new Error("Magazine template version was not found.");
   }
   return version;
+}
+
+function requireTerritoryEdition(data: PublishingData, editionId: string) {
+  const edition = data.territoryEditions.find((candidate) => candidate.id === editionId && !candidate.deletedAt);
+  if (!edition) {
+    throw new Error("Territory edition was not found.");
+  }
+  return edition;
+}
+
+function requireContentItem(data: PublishingData, contentItemId: string) {
+  const item = data.editionContentItems.find((candidate) => candidate.id === contentItemId && !candidate.deletedAt);
+  if (!item) {
+    throw new Error("Edition content item was not found.");
+  }
+  return item;
+}
+
+function requireTerritoryContent(data: PublishingData, territoryContentId: string) {
+  const content = data.territoryEditionContent.find((candidate) => candidate.id === territoryContentId && !candidate.deletedAt);
+  if (!content) {
+    throw new Error("Territory edition content was not found.");
+  }
+  return content;
+}
+
+function contentTargetsTerritory(item: EditionContentItem, territoryId: string) {
+  if (item.targeting.excludedTerritoryIds?.includes(territoryId)) {
+    return false;
+  }
+  if (item.targeting.territoryIds && item.targeting.territoryIds.length > 0) {
+    return item.targeting.territoryIds.includes(territoryId);
+  }
+  return item.inheritanceMode !== "territory_only";
 }
 
 function validateTemplateVersion(version: MagazineTemplateVersion) {

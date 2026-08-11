@@ -148,3 +148,56 @@ export const magazineTemplateVersions = pgTable(
     index("magazine_template_versions_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const editionContentItems = pgTable(
+  "edition_content_items",
+  {
+    id,
+    sourceLevel: text("source_level").notNull(),
+    title: text("title").notNull(),
+    contentType: text("content_type").notNull(),
+    status: text("status").notNull().default("draft"),
+    inheritanceMode: text("inheritance_mode").notNull().default("optional"),
+    locked: boolean("locked").notNull().default(false),
+    localisable: boolean("localisable").notNull().default(true),
+    advertiserSpecific: boolean("advertiser_specific").notNull().default(false),
+    body: jsonb("body").$type<Record<string, unknown>>().notNull().default({}),
+    targeting: jsonb("targeting").$type<Record<string, unknown>>().notNull().default({}),
+    availableFrom: date("available_from", { mode: "date" }),
+    expiresAt: date("expires_at", { mode: "date" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("edition_content_items_source_level_idx").on(table.sourceLevel),
+    index("edition_content_items_status_idx").on(table.status),
+    index("edition_content_items_inheritance_mode_idx").on(table.inheritanceMode),
+    index("edition_content_items_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const territoryEditionContent = pgTable(
+  "territory_edition_content",
+  {
+    id,
+    territoryEditionId: uuid("territory_edition_id").notNull().references(() => territoryEditions.id),
+    sourceContentItemId: uuid("source_content_item_id").notNull().references(() => editionContentItems.id),
+    sourceVersion: integer("source_version").notNull().default(1),
+    inheritanceState: text("inheritance_state").notNull().default("inherited"),
+    localOverride: jsonb("local_override").$type<Record<string, unknown>>().notNull().default({}),
+    effectiveContent: jsonb("effective_content").$type<Record<string, unknown>>().notNull().default({}),
+    locked: boolean("locked").notNull().default(false),
+    localisedByUserId: uuid("localised_by_user_id").references(() => users.id),
+    localisedAt: date("localised_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("territory_edition_content_source_uidx").on(table.territoryEditionId, table.sourceContentItemId),
+    index("territory_edition_content_edition_id_idx").on(table.territoryEditionId),
+    index("territory_edition_content_source_id_idx").on(table.sourceContentItemId),
+    index("territory_edition_content_state_idx").on(table.inheritanceState),
+    index("territory_edition_content_deleted_at_idx").on(table.deletedAt)
+  ]
+);

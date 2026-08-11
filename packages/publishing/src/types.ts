@@ -110,6 +110,42 @@ export type MagazineTemplateVersion = {
   deletedAt?: Date | null;
 };
 
+export type EditionContentItem = {
+  id: string;
+  sourceLevel: "hq_master" | "region" | "campaign" | "territory" | "edition" | "channel" | (string & {});
+  title: string;
+  contentType: "article" | "event" | "offer" | "competition" | "advertorial" | "house_page" | (string & {});
+  status: "draft" | "approved" | "retired" | (string & {});
+  inheritanceMode: "mandatory" | "suggested" | "optional" | "regional" | "territory_only" | (string & {});
+  locked: boolean;
+  localisable: boolean;
+  advertiserSpecific: boolean;
+  body: Record<string, unknown>;
+  targeting: {
+    territoryIds?: string[];
+    excludedTerritoryIds?: string[];
+    regionKeys?: string[];
+  };
+  availableFrom?: string | null;
+  expiresAt?: string | null;
+  createdByUserId?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type TerritoryEditionContent = {
+  id: string;
+  territoryEditionId: string;
+  sourceContentItemId: string;
+  sourceVersion: number;
+  inheritanceState: "inherited" | "overridden" | "detached" | (string & {});
+  localOverride: Record<string, unknown>;
+  effectiveContent: Record<string, unknown>;
+  locked: boolean;
+  localisedByUserId?: string | null;
+  localisedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
 export type PublishingTerritory = {
   id: string;
   franchiseOrganisationId?: string | null;
@@ -124,6 +160,8 @@ export type PublishingData = {
   territoryEditions: TerritoryEdition[];
   magazineTemplates: MagazineTemplate[];
   magazineTemplateVersions: MagazineTemplateVersion[];
+  editionContentItems: EditionContentItem[];
+  territoryEditionContent: TerritoryEditionContent[];
   territories: PublishingTerritory[];
 };
 

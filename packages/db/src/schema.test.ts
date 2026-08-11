@@ -21,6 +21,7 @@ import {
   franchiseOnboardingProgrammes,
   franchiseOnboardingTasks,
   franchises,
+  editionContentItems,
   magazineTemplates,
   magazineTemplateVersions,
   masterEditions,
@@ -31,6 +32,7 @@ import {
   seasons,
   territories,
   territoryEditions,
+  territoryEditionContent,
   users
 } from "./schema";
 
@@ -146,5 +148,15 @@ describe("foundation schema", () => {
     expect(magazineTemplateVersions.printRules.name).toBe("print_rules");
     expect(magazineTemplateVersions.digitalEnhancements.name).toBe("digital_enhancements");
     expect((magazineTemplateVersions as unknown as Record<string, unknown>).indesignFilePath).toBeUndefined();
+  });
+
+  it("models inherited and localised edition content without overwriting local overrides", () => {
+    expect(editionContentItems.inheritanceMode.name).toBe("inheritance_mode");
+    expect(editionContentItems.targeting.name).toBe("targeting");
+    expect(territoryEditionContent.sourceContentItemId.name).toBe("source_content_item_id");
+    expect(territoryEditionContent.sourceVersion.name).toBe("source_version");
+    expect(territoryEditionContent.inheritanceState.name).toBe("inheritance_state");
+    expect(territoryEditionContent.localOverride.name).toBe("local_override");
+    expect(territoryEditionContent.effectiveContent.name).toBe("effective_content");
   });
 });

@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   createSeasonWithMasterEdition,
   approveTemplateVersion,
+  applyLocalContentOverride,
   createMagazineTemplate,
+  createCentralContentItem,
   createTemplateRevision,
+  distributeContentToTerritoryEditions,
   generateTerritoryEditions,
   listEditionSummaries,
-  publishTemplateVersion
+  publishTemplateVersion,
+  propagateMasterContentCorrection
 } from "./service";
 import type { PublishingData } from "./types";
 import type { PermissionData } from "@raring2go/permissions";
@@ -35,7 +39,9 @@ const ids = {
   edition: "edition_own",
   template: "template_cover",
   templateVersion: "template_cover_v1",
-  templateVersion2: "template_cover_v2"
+  templateVersion2: "template_cover_v2",
+  content: "content_hq_days_out",
+  territoryContent: "territory_content_own"
 } as const;
 
 const permissions: PermissionData = {
@@ -61,6 +67,9 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "edition.template", "edit", "network"),
     grant(ids.roles.hq, "edition.template", "approve", "network"),
     grant(ids.roles.hq, "edition.template", "publish", "network"),
+    grant(ids.roles.hq, "edition.content", "edit_local", "network"),
+    grant(ids.roles.hq, "edition.content", "manage_locked", "network"),
+    grant(ids.roles.local, "edition.content", "edit_local", "own_territory"),
     grant(ids.roles.local, "edition", "view", "own_territory")
   ],
   territories: [
@@ -217,6 +226,60 @@ describe("publishing edition model", () => {
       })
     ).rejects.toThrow("editable zones");
   });
+
+  it("distributes inherited HQ content and preserves local overrides on correction", async () => {
+    const publishingData = seededData();
+    await generateTerritoryEditions(hqContext(), permissions, audit(), publishingData, ids.master, [
+      ids.territories.own,
+      ids.territories.other
+    ]);
+    await createCentralContentItem(hqContext(), permissions, audit(), publishingData, contentItem());
+    await distributeContentToTerritoryEditions(hqContext(), permissions, audit(), publishingData, ids.content, 1);
+    const ownContent = publishingData.territoryEditionContent.find((content) => {
+      const edition = publishingData.territoryEditions.find((candidate) => candidate.id === content.territoryEditionId);
+      return edition?.territoryId === ids.territories.own;
+    })!;
+    await applyLocalContentOverride(
+      {
+        userId: ids.users.local,
+        organisationId: ids.organisations.franchise,
+        territoryId: ids.territories.own
+      },
+      permissions,
+      audit(),
+      publishingData,
+      ownContent.id,
+      { headline: "Sutton days out" }
+    );
+    const result = await propagateMasterContentCorrection(
+      hqContext(),
+      permissions,
+      audit(),
+      publishingData,
+      ids.content,
+      { headline: "Updated national days out", body: "Corrected HQ copy." },
+      2
+    );
+
+    expect(result).toEqual({ updatedCount: 1, skippedOverrides: 1 });
+    expect(ownContent).toMatchObject({
+      inheritanceState: "overridden",
+      effectiveContent: {
+        headline: "Sutton days out",
+        body: "National copy."
+      },
+      sourceVersion: 1
+    });
+    const inherited = publishingData.territoryEditionContent.find((content) => content.id !== ownContent.id)!;
+    expect(inherited).toMatchObject({
+      inheritanceState: "inherited",
+      effectiveContent: {
+        headline: "Updated national days out",
+        body: "Corrected HQ copy."
+      },
+      sourceVersion: 2
+    });
+  });
 });
 
 function hqContext() {
@@ -233,6 +296,8 @@ function emptyData(): PublishingData {
     territoryEditions: [],
     magazineTemplates: [],
     magazineTemplateVersions: [],
+    editionContentItems: [],
+    territoryEditionContent: [],
     territories: [
       {
         id: ids.territories.own,
@@ -325,6 +390,26 @@ function templateVersion() {
     footerFurniture: { pageNumber: false },
     printRules: { colourSpace: "cmyk", minDpi: 300 },
     digitalEnhancements: { links: true }
+  };
+}
+
+function contentItem() {
+  return {
+    id: ids.content,
+    sourceLevel: "hq_master",
+    title: "National days out",
+    contentType: "article",
+    status: "approved",
+    inheritanceMode: "mandatory",
+    locked: false,
+    localisable: true,
+    advertiserSpecific: false,
+    body: {
+      headline: "National days out",
+      body: "National copy."
+    },
+    targeting: {},
+    createdByUserId: ids.users.hq
   };
 }
 
