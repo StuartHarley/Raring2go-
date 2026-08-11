@@ -64,6 +64,10 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
             <span>Acceptances</span>
             <strong>{result.acceptances.length}</strong>
           </article>
+          <article>
+            <span>Artwork</span>
+            <strong>{result.artworkRequirements.filter((item) => item.status !== "production_ready").length}</strong>
+          </article>
         </div>
       </section>
 
@@ -160,6 +164,27 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           <span>Advertiser acceptance deferred to ADV-005</span>
           <span>Invoices deferred to ADV-006</span>
           <span>Artwork intake deferred to ADV-007</span>
+        </div>
+      </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Artwork</p>
+        <h2>Production handoff</h2>
+        <div className="franchise-list">
+          {result.artworkRequirements.length === 0 ? (
+            <div>
+              <strong>No artwork requirements yet</strong>
+              <span>Artwork requirements are created from confirmed booking items.</span>
+            </div>
+          ) : (
+            result.artworkRequirements.map((requirement) => (
+              <div key={requirement.id}>
+                <strong>{requirement.sourceType.replaceAll("_", " ")}</strong>
+                <span>{requirement.status.replaceAll("_", " ")} - deadline {requirement.deadline ?? "not set"}</span>
+                <span>{requirement.editionPageId ? "Edition placement linked" : "Awaiting page placement"}</span>
+              </div>
+            ))
+          )}
         </div>
       </section>
 

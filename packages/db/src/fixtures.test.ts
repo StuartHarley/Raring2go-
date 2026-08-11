@@ -84,7 +84,11 @@ describe("foundation fixtures", () => {
       "advertiser.payment",
       "advertiser.payment",
       "advertiser.payment",
-      "advertiser.finance"
+      "advertiser.finance",
+      "advertiser.artwork",
+      "advertiser.artwork",
+      "advertiser.artwork",
+      "advertiser.artwork"
     ]);
   });
 
@@ -246,6 +250,11 @@ describe("foundation fixtures", () => {
     });
     expect(foundationSeed.advertiserInvoices).toEqual([]);
     expect(foundationSeed.advertiserPayments).toEqual([]);
+  });
+
+  it("does not seed fake advertiser artwork records", () => {
+    expect(foundationSeed.artworkRequirements).toEqual([]);
+    expect(foundationSeed.artworkVersions).toEqual([]);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

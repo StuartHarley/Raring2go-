@@ -17,6 +17,8 @@ import type {
   AdvertiserRecord,
   AdvertisingActorContext,
   AdvertisingData,
+  ArtworkRequirement,
+  ArtworkVersion,
   CatalogueView,
   CommercialBooking,
   CommercialBookingItem,
@@ -924,6 +926,127 @@ export async function issueCreditNote(
   return credit;
 }
 
+export async function createArtworkRequirement(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  requirement: ArtworkRequirement,
+  domainEventId: string
+) {
+  requireAdvertisingPermission(context, permissions, "artworkManage");
+  const advertiser = requireAdvertiser(data, requirement.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  const request = data.productionRequests.find((candidate) => candidate.id === requirement.productionRequestId && !candidate.deletedAt);
+  if (!request || request.advertiserId !== advertiser.id || request.territoryId !== requirement.territoryId) {
+    throw new Error("Artwork requirement must reference a matching production request.");
+  }
+  if (data.artworkRequirements.some((candidate) => candidate.productionRequestId === requirement.productionRequestId && !candidate.deletedAt)) {
+    throw new Error("Production request already has an artwork requirement.");
+  }
+  data.artworkRequirements.push(requirement);
+  emitAdvertiserEvent(data, event(domainEventId, "advertiser.artwork.requested", "artwork_requirement", requirement.id, advertiser, {
+    productionRequestId: requirement.productionRequestId,
+    bookingItemId: requirement.bookingItemId
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserArtworkRequest, advertiser, {
+    artworkRequirementId: requirement.id,
+    productionRequestId: requirement.productionRequestId
+  }));
+  return requirement;
+}
+
+export async function submitArtworkVersion(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  requirementId: string,
+  version: ArtworkVersion,
+  domainEventId: string
+) {
+  requireAdvertisingPermission(context, permissions, "artworkSubmit");
+  const requirement = requireArtworkRequirement(data, requirementId);
+  const advertiser = requireAdvertiser(data, requirement.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (version.artworkRequirementId !== requirement.id) {
+    throw new Error("Artwork version must reference the requirement.");
+  }
+  data.artworkVersions.push(version);
+  requirement.status = version.preflightResultId && version.status === "rejected" ? "rejected" : "submitted";
+  emitAdvertiserEvent(data, event(domainEventId, "advertiser.artwork.submitted", "artwork_requirement", requirement.id, advertiser, {
+    versionId: version.id,
+    preflightResultId: version.preflightResultId ?? null
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserArtworkSubmit, advertiser, {
+    artworkRequirementId: requirement.id,
+    versionId: version.id
+  }));
+  if (version.status === "rejected") {
+    await audit.record(auditEvent(context, auditActions.advertiserArtworkPreflightFail, advertiser, {
+      artworkRequirementId: requirement.id,
+      versionId: version.id,
+      preflightResultId: version.preflightResultId ?? null
+    }));
+  }
+  return version;
+}
+
+export async function updateArtworkStatus(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  requirementId: string,
+  input: {
+    status: ArtworkRequirement["status"];
+    approvedVersionId?: string | null;
+    proofReference?: Record<string, unknown>;
+    actorDate: string;
+    domainEventId: string;
+  }
+) {
+  requireAdvertisingPermission(context, permissions, input.status === "production_ready" || input.status === "approved" ? "artworkApprove" : "artworkManage");
+  const requirement = requireArtworkRequirement(data, requirementId);
+  const advertiser = requireAdvertiser(data, requirement.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (input.approvedVersionId && !data.artworkVersions.some((version) => version.id === input.approvedVersionId && version.artworkRequirementId === requirement.id && !version.deletedAt)) {
+    throw new Error("Approved artwork version must belong to the requirement.");
+  }
+  requirement.status = input.status;
+  requirement.approvedVersionId = input.approvedVersionId ?? requirement.approvedVersionId ?? null;
+  requirement.proofReference = input.proofReference ?? requirement.proofReference;
+  if (input.status === "approved") {
+    requirement.advertiserApprovedAt = input.actorDate;
+  }
+  if (input.status === "production_ready") {
+    requirement.productionApprovedAt = input.actorDate;
+  }
+  const action = input.status === "changes_requested"
+    ? auditActions.advertiserArtworkChangesRequest
+    : input.status === "approved"
+      ? auditActions.advertiserArtworkProofApprove
+      : input.status === "production_ready"
+        ? auditActions.advertiserArtworkProductionReady
+        : auditActions.advertiserArtworkProofIssue;
+  const eventType = input.status === "changes_requested"
+    ? "advertiser.artwork.changes_requested"
+    : input.status === "approved"
+      ? "advertiser.artwork.proof_approved"
+      : input.status === "production_ready"
+        ? "advertiser.artwork.production_ready"
+        : "advertiser.artwork.proof_issued";
+  emitAdvertiserEvent(data, event(input.domainEventId, eventType, "artwork_requirement", requirement.id, advertiser, {
+    status: input.status,
+    approvedVersionId: requirement.approvedVersionId ?? null
+  }));
+  await audit.record(auditEvent(context, action, advertiser, {
+    artworkRequirementId: requirement.id,
+    status: input.status
+  }));
+  return requirement;
+}
+
 function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserRecord): Advertiser360 {
   return {
     advertiser,
@@ -943,6 +1066,11 @@ function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserReco
       return invoice?.advertiserId === advertiser.id && !credit.deletedAt;
     }),
     payments: data.payments.filter((payment) => payment.advertiserId === advertiser.id && !payment.deletedAt),
+    artworkRequirements: data.artworkRequirements.filter((requirement) => requirement.advertiserId === advertiser.id && !requirement.deletedAt),
+    artworkVersions: data.artworkVersions.filter((version) => {
+      const requirement = data.artworkRequirements.find((candidate) => candidate.id === version.artworkRequirementId);
+      return requirement?.advertiserId === advertiser.id && !version.deletedAt;
+    }),
     financeSummary: financeSummary(data, advertiser.id),
     activity: data.activityEvents
       .filter((event) => event.advertiserId === advertiser.id && !event.deletedAt)
@@ -1073,6 +1201,14 @@ function requirePayment(data: AdvertisingData, paymentId: string) {
     throw new Error("Payment was not found.");
   }
   return payment;
+}
+
+function requireArtworkRequirement(data: AdvertisingData, requirementId: string) {
+  const requirement = data.artworkRequirements.find((candidate) => candidate.id === requirementId && !candidate.deletedAt);
+  if (!requirement) {
+    throw new Error("Artwork requirement was not found.");
+  }
+  return requirement;
 }
 
 function requireInvoiceSequence(data: AdvertisingData, issuerOrganisationId: string, key: string) {

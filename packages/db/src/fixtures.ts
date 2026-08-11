@@ -91,7 +91,11 @@ export const fixtureIds = {
     paymentRecord: "00000000-0000-4000-8000-000000000471",
     paymentAllocate: "00000000-0000-4000-8000-000000000472",
     paymentReconcile: "00000000-0000-4000-8000-000000000473",
-    financeExport: "00000000-0000-4000-8000-000000000474"
+    financeExport: "00000000-0000-4000-8000-000000000474",
+    artworkView: "00000000-0000-4000-8000-000000000475",
+    artworkManage: "00000000-0000-4000-8000-000000000476",
+    artworkSubmit: "00000000-0000-4000-8000-000000000477",
+    artworkApprove: "00000000-0000-4000-8000-000000000478"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -736,6 +740,30 @@ export const foundationSeed = {
       module: "advertiser.finance",
       action: "export",
       description: "Export advertiser finance records to provider-neutral accounting sync."
+    },
+    {
+      id: fixtureIds.permissions.artworkView,
+      module: "advertiser.artwork",
+      action: "view",
+      description: "View advertiser artwork and production handoff status."
+    },
+    {
+      id: fixtureIds.permissions.artworkManage,
+      module: "advertiser.artwork",
+      action: "manage",
+      description: "Manage advertiser artwork requirements and proof states."
+    },
+    {
+      id: fixtureIds.permissions.artworkSubmit,
+      module: "advertiser.artwork",
+      action: "submit",
+      description: "Submit advertiser artwork or content assets."
+    },
+    {
+      id: fixtureIds.permissions.artworkApprove,
+      module: "advertiser.artwork",
+      action: "approve",
+      description: "Approve advertiser artwork for production readiness."
     }
   ],
   advertisers: [
@@ -1030,6 +1058,8 @@ export const foundationSeed = {
   advertiserPayments: [],
   advertiserPaymentAllocations: [],
   advertiserProviderSyncReferences: [],
+  artworkRequirements: [],
+  artworkVersions: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

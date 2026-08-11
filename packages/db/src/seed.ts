@@ -280,7 +280,11 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.paymentRecord,
         fixtureIds.permissions.paymentAllocate,
         fixtureIds.permissions.paymentReconcile,
-        fixtureIds.permissions.financeExport
+        fixtureIds.permissions.financeExport,
+        fixtureIds.permissions.artworkView,
+        fixtureIds.permissions.artworkManage,
+        fixtureIds.permissions.artworkSubmit,
+        fixtureIds.permissions.artworkApprove
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -438,7 +442,11 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.invoiceIssue,
         fixtureIds.permissions.creditCreate,
         fixtureIds.permissions.paymentRecord,
-        fixtureIds.permissions.paymentAllocate
+        fixtureIds.permissions.paymentAllocate,
+        fixtureIds.permissions.artworkView,
+        fixtureIds.permissions.artworkManage,
+        fixtureIds.permissions.artworkSubmit,
+        fixtureIds.permissions.artworkApprove
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,

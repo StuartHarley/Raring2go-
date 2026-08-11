@@ -1,7 +1,7 @@
 import { boolean, date, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
 import { users } from "./identity";
-import { editionPages, territoryEditions } from "./publishing";
+import { editionPages, preflightResults, territoryEditions } from "./publishing";
 import { organisations, territories } from "./tenancy";
 
 export const advertisers = pgTable(
@@ -675,5 +675,62 @@ export const advertiserProviderSyncReferences = pgTable(
   (table) => [
     uniqueIndex("advertiser_provider_sync_entity_uidx").on(table.providerType, table.providerKey, table.entityType, table.entityId),
     index("advertiser_provider_sync_status_idx").on(table.status)
+  ]
+);
+
+export const artworkRequirements = pgTable(
+  "artwork_requirements",
+  {
+    id,
+    productionRequestId: uuid("production_request_id").notNull().references(() => commercialProductionRequests.id),
+    bookingItemId: uuid("booking_item_id").notNull().references(() => commercialBookingItems.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    territoryEditionId: uuid("territory_edition_id").references(() => territoryEditions.id),
+    editionPageId: uuid("edition_page_id").references(() => editionPages.id),
+    inventorySlotId: uuid("inventory_slot_id").references(() => inventorySlots.id),
+    sourceType: text("source_type").notNull().default("advertiser_supplied"),
+    status: text("status").notNull().default("requested"),
+    specification: jsonb("specification").$type<Record<string, unknown>>().notNull().default({}),
+    dimensions: jsonb("dimensions").$type<Record<string, unknown>>().notNull().default({}),
+    contentFields: jsonb("content_fields").$type<Record<string, unknown>>().notNull().default({}),
+    deadline: date("deadline", { mode: "date" }),
+    approvedVersionId: uuid("approved_version_id"),
+    proofReference: jsonb("proof_reference").$type<Record<string, unknown>>().notNull().default({}),
+    advertiserApprovedAt: date("advertiser_approved_at", { mode: "date" }),
+    productionApprovedAt: date("production_approved_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("artwork_requirements_production_request_uidx").on(table.productionRequestId),
+    index("artwork_requirements_advertiser_id_idx").on(table.advertiserId),
+    index("artwork_requirements_territory_id_idx").on(table.territoryId),
+    index("artwork_requirements_status_idx").on(table.status),
+    index("artwork_requirements_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const artworkVersions = pgTable(
+  "artwork_versions",
+  {
+    id,
+    artworkRequirementId: uuid("artwork_requirement_id").notNull().references(() => artworkRequirements.id),
+    versionNumber: integer("version_number").notNull(),
+    submittedByUserId: uuid("submitted_by_user_id").references(() => users.id),
+    assetReference: jsonb("asset_reference").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status").notNull().default("submitted"),
+    preflightResultId: uuid("preflight_result_id").references(() => preflightResults.id),
+    notes: text("notes"),
+    submittedAt: date("submitted_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("artwork_versions_requirement_version_uidx").on(table.artworkRequirementId, table.versionNumber),
+    index("artwork_versions_requirement_id_idx").on(table.artworkRequirementId),
+    index("artwork_versions_preflight_result_id_idx").on(table.preflightResultId),
+    index("artwork_versions_status_idx").on(table.status),
+    index("artwork_versions_deleted_at_idx").on(table.deletedAt)
   ]
 );

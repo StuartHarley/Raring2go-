@@ -31,11 +31,13 @@ export const advertisingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.catalogueView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.proposalView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.financeView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.artworkView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.advertiserView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.opportunityView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.catalogueView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.proposalView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.financeView, "own_territory")
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.financeView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.artworkView, "own_territory")
   ],
   territories: foundationSeed.territories.map((territory) => ({
     id: territory.id,

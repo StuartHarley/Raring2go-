@@ -22,6 +22,8 @@ import {
   advertiserProviderSyncReferences,
   advertiserTerms,
   advertisers,
+  artworkRequirements,
+  artworkVersions,
   commercialPackages,
   commercialProducts,
   commercialBookingItems,
@@ -182,6 +184,15 @@ describe("foundation schema", () => {
     expect(advertiserProviderSyncReferences.providerKey.name).toBe("provider_key");
     expect((advertiserInvoices as unknown as Record<string, unknown>).xeroInvoiceId).toBeUndefined();
     expect((advertiserPayments as unknown as Record<string, unknown>).stripePaymentIntentId).toBeUndefined();
+  });
+
+  it("models advertiser artwork handoff using publishing preflight references", () => {
+    expect(artworkRequirements.productionRequestId.name).toBe("production_request_id");
+    expect(artworkRequirements.territoryEditionId.name).toBe("territory_edition_id");
+    expect(artworkRequirements.editionPageId.name).toBe("edition_page_id");
+    expect(artworkRequirements.approvedVersionId.name).toBe("approved_version_id");
+    expect(artworkVersions.preflightResultId.name).toBe("preflight_result_id");
+    expect((artworkVersions as unknown as Record<string, unknown>).validationEngine).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

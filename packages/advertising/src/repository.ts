@@ -14,6 +14,8 @@ import {
   advertiserProviderSyncReferences,
   advertiserTerms,
   advertisers,
+  artworkRequirements,
+  artworkVersions,
   commercialBookingItems,
   commercialBookings,
   commercialPackages,
@@ -68,6 +70,8 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     paymentRows,
     paymentAllocationRows,
     providerSyncRows,
+    artworkRequirementRows,
+    artworkVersionRows,
     organisationRows,
     territoryRows
   ] = await Promise.all([
@@ -99,6 +103,8 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     db.select().from(advertiserPayments),
     db.select().from(advertiserPaymentAllocations),
     db.select().from(advertiserProviderSyncReferences),
+    db.select().from(artworkRequirements),
+    db.select().from(artworkVersions),
     db.select().from(organisations),
     db.select().from(territories)
   ]);
@@ -187,6 +193,16 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
       ...row,
       lastSyncedAt: dateString(row.lastSyncedAt)
     })) as AdvertisingData["providerSyncReferences"],
+    artworkRequirements: artworkRequirementRows.map((row) => ({
+      ...row,
+      deadline: dateString(row.deadline),
+      advertiserApprovedAt: dateString(row.advertiserApprovedAt),
+      productionApprovedAt: dateString(row.productionApprovedAt)
+    })) as AdvertisingData["artworkRequirements"],
+    artworkVersions: artworkVersionRows.map((row) => ({
+      ...row,
+      submittedAt: dateString(row.submittedAt)
+    })) as AdvertisingData["artworkVersions"],
     organisations: organisationRows as AdvertisingData["organisations"],
     territories: territoryRows as AdvertisingData["territories"]
   };

@@ -425,6 +425,50 @@ export type AdvertiserProviderSyncReference = {
   metadata: Record<string, unknown>;
 };
 
+export type ArtworkRequirement = {
+  id: string;
+  productionRequestId: string;
+  bookingItemId: string;
+  advertiserId: string;
+  territoryId: string;
+  territoryEditionId?: string | null;
+  editionPageId?: string | null;
+  inventorySlotId?: string | null;
+  sourceType: "advertiser_supplied" | "raring2go_created" | (string & {});
+  status:
+    | "requested"
+    | "submitted"
+    | "received"
+    | "in_review"
+    | "changes_requested"
+    | "approved"
+    | "rejected"
+    | "production_ready"
+    | (string & {});
+  specification: Record<string, unknown>;
+  dimensions: Record<string, unknown>;
+  contentFields: Record<string, unknown>;
+  deadline?: string | null;
+  approvedVersionId?: string | null;
+  proofReference: Record<string, unknown>;
+  advertiserApprovedAt?: string | null;
+  productionApprovedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type ArtworkVersion = {
+  id: string;
+  artworkRequirementId: string;
+  versionNumber: number;
+  submittedByUserId?: string | null;
+  assetReference: Record<string, unknown>;
+  status: string;
+  preflightResultId?: string | null;
+  notes?: string | null;
+  submittedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
 export type AdvertisingOrganisation = {
   id: string;
   kind: string;
@@ -468,6 +512,8 @@ export type AdvertisingData = {
   payments: AdvertiserPayment[];
   paymentAllocations: AdvertiserPaymentAllocation[];
   providerSyncReferences: AdvertiserProviderSyncReference[];
+  artworkRequirements: ArtworkRequirement[];
+  artworkVersions: ArtworkVersion[];
   organisations: AdvertisingOrganisation[];
   territories: AdvertisingTerritory[];
 };
@@ -485,6 +531,8 @@ export type Advertiser360 = {
   invoices: AdvertiserInvoice[];
   creditNotes: AdvertiserCreditNote[];
   payments: AdvertiserPayment[];
+  artworkRequirements: ArtworkRequirement[];
+  artworkVersions: ArtworkVersion[];
   financeSummary: {
     lifetimeInvoicedMinor: number;
     lifetimePaidMinor: number;

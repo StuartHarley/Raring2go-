@@ -155,6 +155,13 @@
       "when": 1786438158104,
       "tag": "0021_curly_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786438518236,
+      "tag": "0022_young_christian_walker",
+      "breakpoints": true
     }
   ]
 }

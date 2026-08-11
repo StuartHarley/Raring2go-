@@ -8,12 +8,14 @@ import {
   changeOpportunityStage,
   createAdvertiser,
   createInvoiceFromBooking,
+  createArtworkRequirement,
   createOpportunity,
   createProposal,
   editDraftInvoice,
   getAdvertiser360,
   issueCreditNote,
   issueInvoice,
+  submitArtworkVersion,
   listCatalogue,
   listAdvertisers,
   listPipeline,
@@ -21,6 +23,7 @@ import {
   recordPayment,
   reserveInventorySlot,
   respondToProposal,
+  updateArtworkStatus,
   updateAdvertiser
 } from "./service";
 import type { AdvertisingData } from "./types";
@@ -102,6 +105,10 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.credit", "create", "network"),
     grant(ids.roles.hq, "advertiser.payment", "record", "network"),
     grant(ids.roles.hq, "advertiser.payment", "allocate", "network"),
+    grant(ids.roles.hq, "advertiser.artwork", "view", "network"),
+    grant(ids.roles.hq, "advertiser.artwork", "manage", "network"),
+    grant(ids.roles.hq, "advertiser.artwork", "submit", "network"),
+    grant(ids.roles.hq, "advertiser.artwork", "approve", "network"),
     grant(ids.roles.local, "advertiser", "view", "own_territory"),
     grant(ids.roles.local, "advertiser", "create", "own_territory"),
     grant(ids.roles.local, "advertiser", "edit", "own_territory"),
@@ -123,7 +130,11 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "advertiser.invoice", "issue", "own_territory"),
     grant(ids.roles.local, "advertiser.credit", "create", "own_territory"),
     grant(ids.roles.local, "advertiser.payment", "record", "own_territory"),
-    grant(ids.roles.local, "advertiser.payment", "allocate", "own_territory")
+    grant(ids.roles.local, "advertiser.payment", "allocate", "own_territory"),
+    grant(ids.roles.local, "advertiser.artwork", "view", "own_territory"),
+    grant(ids.roles.local, "advertiser.artwork", "manage", "own_territory"),
+    grant(ids.roles.local, "advertiser.artwork", "submit", "own_territory"),
+    grant(ids.roles.local, "advertiser.artwork", "approve", "own_territory")
   ],
   territories: [
     {
@@ -696,6 +707,87 @@ describe("advertiser CRM foundation", () => {
       metadata: {}
     }, "event_cross")).rejects.toThrow();
   });
+
+  it("tracks artwork handoff, preflight-linked submissions and production readiness", async () => {
+    const data = seededData();
+    seedAcceptedBooking(data);
+    data.productionRequests.push({
+      id: "production_1",
+      bookingId: "booking_autumn",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      requestType: "artwork",
+      status: "requested",
+      dueOn: "2026-08-20",
+      metadata: {}
+    });
+    const recorder = audit();
+    const requirement = await createArtworkRequirement(localContext(), permissions, recorder, data, {
+      id: "artwork_1",
+      productionRequestId: "production_1",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      territoryEditionId: "edition_autumn",
+      editionPageId: "page_3",
+      inventorySlotId: ids.slot,
+      sourceType: "advertiser_supplied",
+      status: "requested",
+      specification: { format: "print_pdf" },
+      dimensions: { widthMm: 210, heightMm: 297 },
+      contentFields: { headline: "Autumn offer" },
+      deadline: "2026-08-20",
+      approvedVersionId: null,
+      proofReference: {},
+      advertiserApprovedAt: null,
+      productionApprovedAt: null
+    }, "event_artwork_requested");
+    await submitArtworkVersion(localContext(), permissions, recorder, data, requirement.id, {
+      id: "artwork_version_1",
+      artworkRequirementId: requirement.id,
+      versionNumber: 1,
+      submittedByUserId: ids.users.local,
+      assetReference: { storageKey: "artwork/example.pdf" },
+      status: "submitted",
+      preflightResultId: "preflight_1",
+      notes: "Initial upload",
+      submittedAt: "2026-08-12"
+    }, "event_artwork_submitted");
+    await updateArtworkStatus(localContext(), permissions, recorder, data, requirement.id, {
+      status: "changes_requested",
+      actorDate: "2026-08-13",
+      domainEventId: "event_changes"
+    });
+    await updateArtworkStatus(localContext(), permissions, recorder, data, requirement.id, {
+      status: "approved",
+      approvedVersionId: "artwork_version_1",
+      proofReference: { proofKey: "proof/example-v1.pdf" },
+      actorDate: "2026-08-14",
+      domainEventId: "event_proof_approved"
+    });
+    await updateArtworkStatus(localContext(), permissions, recorder, data, requirement.id, {
+      status: "production_ready",
+      actorDate: "2026-08-15",
+      domainEventId: "event_ready"
+    });
+
+    expect(requirement).toMatchObject({
+      status: "production_ready",
+      approvedVersionId: "artwork_version_1",
+      advertiserApprovedAt: "2026-08-14",
+      productionApprovedAt: "2026-08-15"
+    });
+    expect(getAdvertiser360(localContext(), permissions, data, ids.advertiser).artworkRequirements).toHaveLength(1);
+    expect(data.domainEvents.map((event) => event.eventType)).toContain("advertiser.artwork.production_ready");
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.advertiserArtworkRequest,
+      auditActions.advertiserArtworkSubmit,
+      auditActions.advertiserArtworkChangesRequest,
+      auditActions.advertiserArtworkProofApprove,
+      auditActions.advertiserArtworkProductionReady
+    ]);
+  });
 });
 
 function hqContext() {
@@ -743,6 +835,8 @@ function emptyData(): AdvertisingData {
     payments: [],
     paymentAllocations: [],
     providerSyncReferences: [],
+    artworkRequirements: [],
+    artworkVersions: [],
     organisations: [
       { id: ids.organisations.hq, kind: "hq", name: "HQ" },
       { id: ids.organisations.franchise, kind: "franchise", name: "Own Franchise" },
