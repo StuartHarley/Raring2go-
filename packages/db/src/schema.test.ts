@@ -22,6 +22,7 @@ import {
   franchiseOnboardingTasks,
   franchises,
   editionContentItems,
+  editionPages,
   magazineTemplates,
   magazineTemplateVersions,
   masterEditions,
@@ -158,5 +159,15 @@ describe("foundation schema", () => {
     expect(territoryEditionContent.inheritanceState.name).toBe("inheritance_state");
     expect(territoryEditionContent.localOverride.name).toBe("local_override");
     expect(territoryEditionContent.effectiveContent.name).toBe("effective_content");
+  });
+
+  it("models edition flatplan pages with template content and readiness state", () => {
+    expect(editionPages.territoryEditionId.name).toBe("territory_edition_id");
+    expect(editionPages.pageNumber.name).toBe("page_number");
+    expect(editionPages.spreadNumber.name).toBe("spread_number");
+    expect(editionPages.templateVersionId.name).toBe("template_version_id");
+    expect(editionPages.assignedContentId.name).toBe("assigned_content_id");
+    expect(editionPages.sourceMarker.name).toBe("source_marker");
+    expect(editionPages.readiness.name).toBe("readiness");
   });
 });

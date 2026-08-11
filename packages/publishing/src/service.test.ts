@@ -4,14 +4,17 @@ import {
   createSeasonWithMasterEdition,
   approveTemplateVersion,
   applyLocalContentOverride,
+  assignPageTemplateAndContent,
   createMagazineTemplate,
   createCentralContentItem,
+  createEditionFlatplan,
   createTemplateRevision,
   distributeContentToTerritoryEditions,
   generateTerritoryEditions,
   listEditionSummaries,
   publishTemplateVersion,
-  propagateMasterContentCorrection
+  propagateMasterContentCorrection,
+  reorderEditionPages
 } from "./service";
 import type { PublishingData } from "./types";
 import type { PermissionData } from "@raring2go/permissions";
@@ -67,8 +70,10 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "edition.template", "edit", "network"),
     grant(ids.roles.hq, "edition.template", "approve", "network"),
     grant(ids.roles.hq, "edition.template", "publish", "network"),
+    grant(ids.roles.hq, "edition.page", "edit", "network"),
     grant(ids.roles.hq, "edition.content", "edit_local", "network"),
     grant(ids.roles.hq, "edition.content", "manage_locked", "network"),
+    grant(ids.roles.local, "edition.page", "edit", "own_territory"),
     grant(ids.roles.local, "edition.content", "edit_local", "own_territory"),
     grant(ids.roles.local, "edition", "view", "own_territory")
   ],
@@ -280,6 +285,43 @@ describe("publishing edition model", () => {
       sourceVersion: 2
     });
   });
+
+  it("creates a visual flatplan and assigns published templates/content", async () => {
+    const publishingData = seededData();
+    await generateTerritoryEditions(hqContext(), permissions, audit(), publishingData, ids.master, [ids.territories.own]);
+    publishingData.magazineTemplates.push(template());
+    publishingData.magazineTemplateVersions.push({ ...templateVersion(), status: "published" });
+    await createCentralContentItem(hqContext(), permissions, audit(), publishingData, contentItem());
+    await distributeContentToTerritoryEditions(hqContext(), permissions, audit(), publishingData, ids.content, 1);
+    const edition = publishingData.territoryEditions[0]!;
+    const pages = await createEditionFlatplan(hqContext(), permissions, audit(), publishingData, edition.id);
+    const page = await assignPageTemplateAndContent(hqContext(), permissions, audit(), publishingData, pages[2]!.id, {
+      templateVersionId: ids.templateVersion,
+      assignedContentId: publishingData.territoryEditionContent[0]!.id
+    });
+
+    expect(pages).toHaveLength(36);
+    expect(pages[0]).toMatchObject({ pageNumber: 1, side: "single", locked: true });
+    expect(page).toMatchObject({
+      status: "in_progress",
+      readiness: "in_progress",
+      sourceMarker: "local"
+    });
+  });
+
+  it("rejects moving locked flatplan pages", async () => {
+    const publishingData = seededData();
+    await generateTerritoryEditions(hqContext(), permissions, audit(), publishingData, ids.master, [ids.territories.own]);
+    const pages = await createEditionFlatplan(hqContext(), permissions, audit(), publishingData, publishingData.territoryEditions[0]!.id);
+
+    await expect(
+      reorderEditionPages(hqContext(), permissions, audit(), publishingData, publishingData.territoryEditions[0]!.id, [
+        pages[1]!.id,
+        pages[0]!.id,
+        ...pages.slice(2).map((page) => page.id)
+      ])
+    ).rejects.toThrow("Locked pages");
+  });
 });
 
 function hqContext() {
@@ -298,6 +340,7 @@ function emptyData(): PublishingData {
     magazineTemplateVersions: [],
     editionContentItems: [],
     territoryEditionContent: [],
+    editionPages: [],
     territories: [
       {
         id: ids.territories.own,

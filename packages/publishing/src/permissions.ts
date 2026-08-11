@@ -8,6 +8,7 @@ export const publishingCapabilities = {
   templateEdit: { module: "edition.template", action: "edit" },
   templateApprove: { module: "edition.template", action: "approve" },
   templatePublish: { module: "edition.template", action: "publish" },
+  pageEdit: { module: "edition.page", action: "edit" },
   localContentEdit: { module: "edition.content", action: "edit_local" },
   lockedContentManage: { module: "edition.content", action: "manage_locked" }
 } as const;

@@ -201,3 +201,35 @@ export const territoryEditionContent = pgTable(
     index("territory_edition_content_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const editionPages = pgTable(
+  "edition_pages",
+  {
+    id,
+    territoryEditionId: uuid("territory_edition_id").notNull().references(() => territoryEditions.id),
+    pageNumber: integer("page_number").notNull(),
+    spreadNumber: integer("spread_number").notNull(),
+    side: text("side").notNull(),
+    status: text("status").notNull().default("empty"),
+    templateVersionId: uuid("template_version_id").references(() => magazineTemplateVersions.id),
+    assignedContentId: uuid("assigned_content_id").references(() => territoryEditionContent.id),
+    advertiserInventoryState: text("advertiser_inventory_state").notNull().default("unassigned"),
+    ownerType: text("owner_type").notNull().default("hq"),
+    deadline: date("deadline", { mode: "date" }),
+    sourceMarker: text("source_marker").notNull().default("central"),
+    locked: boolean("locked").notNull().default(false),
+    readiness: text("readiness").notNull().default("not_ready"),
+    comments: jsonb("comments").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    issues: jsonb("issues").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("edition_pages_edition_page_uidx").on(table.territoryEditionId, table.pageNumber),
+    index("edition_pages_edition_id_idx").on(table.territoryEditionId),
+    index("edition_pages_status_idx").on(table.status),
+    index("edition_pages_template_version_id_idx").on(table.templateVersionId),
+    index("edition_pages_readiness_idx").on(table.readiness),
+    index("edition_pages_deleted_at_idx").on(table.deletedAt)
+  ]
+);

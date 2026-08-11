@@ -4,6 +4,7 @@ import { publishingCapabilities, type PublishingCapability } from "./permissions
 import type {
   EditionSummary,
   EditionContentItem,
+  EditionPage,
   MagazineTemplate,
   MagazineTemplateVersion,
   MasterEdition,
@@ -371,6 +372,125 @@ export async function propagateMasterContentCorrection(
   return { updatedCount, skippedOverrides };
 }
 
+export async function createEditionFlatplan(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string
+) {
+  requirePublishingPermission(context, permissions, "pageEdit");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  if (data.editionPages.some((page) => page.territoryEditionId === edition.id && !page.deletedAt)) {
+    throw new Error("Edition flatplan already exists.");
+  }
+  const pages: EditionPage[] = Array.from({ length: edition.pageCount }, (_, index) => {
+    const pageNumber = index + 1;
+    return {
+      id: crypto.randomUUID(),
+      territoryEditionId: edition.id,
+      pageNumber,
+      spreadNumber: Math.ceil(pageNumber / 2),
+      side: pageNumber === 1 ? "single" : pageNumber % 2 === 0 ? "left" : "right",
+      status: "empty",
+      advertiserInventoryState: "unassigned",
+      ownerType: pageNumber <= 2 ? "hq" : "local",
+      deadline: edition.editorialDeadline,
+      sourceMarker: pageNumber <= 2 ? "central" : "local",
+      locked: pageNumber === 1,
+      readiness: "not_ready",
+      comments: [],
+      issues: []
+    };
+  });
+  data.editionPages.push(...pages);
+  await audit.record(auditEvent(context, auditActions.publishingPageAssign, "territory_edition", edition.id, {
+    action: "create_flatplan",
+    pageCount: pages.length
+  }, edition.territoryId));
+  return pages;
+}
+
+export async function assignPageTemplateAndContent(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  pageId: string,
+  input: {
+    templateVersionId?: string | null;
+    assignedContentId?: string | null;
+    status?: EditionPage["status"];
+  }
+) {
+  requirePublishingPermission(context, permissions, "pageEdit");
+  const page = requireEditionPage(data, pageId);
+  const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  if (page.locked && context.territoryId) {
+    throw new Error("Locked pages cannot be changed from local context.");
+  }
+  if (input.templateVersionId) {
+    const templateVersion = requireTemplateVersion(data, input.templateVersionId);
+    if (templateVersion.status !== "published") {
+      throw new Error("Only published template versions can be assigned to edition pages.");
+    }
+  }
+  if (input.assignedContentId) {
+    const content = requireTerritoryContent(data, input.assignedContentId);
+    if (content.territoryEditionId !== edition.id) {
+      throw new Error("Assigned content belongs to another territory edition.");
+    }
+  }
+  page.templateVersionId = input.templateVersionId ?? page.templateVersionId ?? null;
+  page.assignedContentId = input.assignedContentId ?? page.assignedContentId ?? null;
+  page.status = input.status ?? (page.assignedContentId ? "in_progress" : "needs_content");
+  page.readiness = page.templateVersionId && page.assignedContentId ? "in_progress" : "not_ready";
+  await audit.record(auditEvent(context, auditActions.publishingPageAssign, "edition_page", page.id, {
+    action: "assign",
+    templateVersionId: page.templateVersionId,
+    assignedContentId: page.assignedContentId
+  }, edition.territoryId));
+  return page;
+}
+
+export async function reorderEditionPages(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string,
+  orderedPageIds: string[]
+) {
+  requirePublishingPermission(context, permissions, "pageEdit");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  const pages = data.editionPages.filter((page) => page.territoryEditionId === edition.id && !page.deletedAt);
+  if (orderedPageIds.length !== pages.length || new Set(orderedPageIds).size !== pages.length) {
+    throw new Error("Reorder request must include every page exactly once.");
+  }
+  const pageById = new Map(pages.map((page) => [page.id, page]));
+  orderedPageIds.forEach((pageId, index) => {
+    const page = pageById.get(pageId);
+    if (!page) {
+      throw new Error("Reorder request includes a page outside the edition.");
+    }
+    if (page.locked && page.pageNumber !== index + 1) {
+      throw new Error("Locked pages cannot be moved.");
+    }
+  });
+  orderedPageIds.forEach((pageId, index) => {
+    const page = pageById.get(pageId)!;
+    const pageNumber = index + 1;
+    page.pageNumber = pageNumber;
+    page.spreadNumber = Math.ceil(pageNumber / 2);
+    page.side = pageNumber === 1 ? "single" : pageNumber % 2 === 0 ? "left" : "right";
+  });
+  await audit.record(auditEvent(context, auditActions.publishingPageAssign, "territory_edition", edition.id, {
+    action: "reorder_flatplan",
+    pageCount: pages.length
+  }, edition.territoryId));
+  return pages.sort((left, right) => left.pageNumber - right.pageNumber);
+}
+
 function requirePublishingPermission(
   context: PublishingActorContext,
   permissions: PermissionData,
@@ -453,6 +573,14 @@ function requireTerritoryContent(data: PublishingData, territoryContentId: strin
     throw new Error("Territory edition content was not found.");
   }
   return content;
+}
+
+function requireEditionPage(data: PublishingData, pageId: string) {
+  const page = data.editionPages.find((candidate) => candidate.id === pageId && !candidate.deletedAt);
+  if (!page) {
+    throw new Error("Edition page was not found.");
+  }
+  return page;
 }
 
 function contentTargetsTerritory(item: EditionContentItem, territoryId: string) {

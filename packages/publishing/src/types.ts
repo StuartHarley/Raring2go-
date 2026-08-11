@@ -146,6 +146,37 @@ export type TerritoryEditionContent = {
   deletedAt?: Date | null;
 };
 
+export type EditionPage = {
+  id: string;
+  territoryEditionId: string;
+  pageNumber: number;
+  spreadNumber: number;
+  side: "left" | "right" | "single" | (string & {});
+  status:
+    | "empty"
+    | "needs_content"
+    | "in_progress"
+    | "awaiting_local_review"
+    | "awaiting_hq"
+    | "preflight_failed"
+    | "approved"
+    | "locked"
+    | "print_ready"
+    | "published"
+    | (string & {});
+  templateVersionId?: string | null;
+  assignedContentId?: string | null;
+  advertiserInventoryState: string;
+  ownerType: "central" | "local" | "advertiser" | "hq" | (string & {});
+  deadline?: string | null;
+  sourceMarker: "central" | "local" | "inherited" | (string & {});
+  locked: boolean;
+  readiness: "not_ready" | "in_progress" | "ready" | "blocked" | (string & {});
+  comments: Array<Record<string, unknown>>;
+  issues: Array<Record<string, unknown>>;
+  deletedAt?: Date | null;
+};
+
 export type PublishingTerritory = {
   id: string;
   franchiseOrganisationId?: string | null;
@@ -162,6 +193,7 @@ export type PublishingData = {
   magazineTemplateVersions: MagazineTemplateVersion[];
   editionContentItems: EditionContentItem[];
   territoryEditionContent: TerritoryEditionContent[];
+  editionPages: EditionPage[];
   territories: PublishingTerritory[];
 };
 
