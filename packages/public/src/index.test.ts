@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { fixtureIds, foundationSeed } from "@raring2go/db";
-import { defaultPublicTerritorySlug, getPublicHomepage, publicHomepageTemplate, territoryFromSlug } from ".";
+import {
+  defaultPublicTerritorySlug,
+  getPublicDiscovery,
+  getPublicHomepage,
+  publicHomepageTemplate,
+  territoryFromSlug
+} from ".";
 
 const db = {
   select() {
@@ -46,6 +52,66 @@ describe("@raring2go/public homepage", () => {
         })
       ])
     );
+  });
+});
+
+describe("@raring2go/public discovery", () => {
+  it("filters public events by query and category", async () => {
+    const discovery = await getPublicDiscovery(dbWithContent([
+      publicContent({
+        id: "11111111-1111-4111-8111-111111111111",
+        title: "Family theatre morning",
+        contentType: "event",
+        categories: ["theatre"],
+        tags: ["indoors"],
+        status: "published"
+      }),
+      publicContent({
+        id: "22222222-2222-4222-8222-222222222222",
+        title: "Swimming club taster",
+        contentType: "event",
+        categories: ["sport"],
+        tags: ["active"],
+        status: "published"
+      })
+    ]), defaultPublicTerritorySlug, "whats_on", { query: "theatre", category: "theatre" });
+
+    expect(discovery?.items).toHaveLength(1);
+    expect(discovery?.items[0]?.title).toBe("Family theatre morning");
+  });
+
+  it("does not expose draft discovery records", async () => {
+    const discovery = await getPublicDiscovery(dbWithContent([
+      publicContent({
+        id: "33333333-3333-4333-8333-333333333333",
+        title: "Draft woodland walk",
+        contentType: "event",
+        status: "draft"
+      })
+    ]), defaultPublicTerritorySlug, "whats_on");
+
+    expect(discovery?.items).toEqual([]);
+    expect(discovery?.emptyState).toContain("Nothing public matches");
+  });
+
+  it("keeps activities separate from dated events", async () => {
+    const discovery = await getPublicDiscovery(dbWithContent([
+      publicContent({
+        id: "44444444-4444-4444-8444-444444444444",
+        title: "Rainy day crafts",
+        contentType: "guide",
+        categories: ["craft"],
+        status: "approved"
+      }),
+      publicContent({
+        id: "55555555-5555-4555-8555-555555555555",
+        title: "Park fun day",
+        contentType: "event",
+        status: "published"
+      })
+    ]), defaultPublicTerritorySlug, "activities");
+
+    expect(discovery?.items.map((item) => item.title)).toEqual(["Rainy day crafts"]);
   });
 });
 
@@ -113,6 +179,41 @@ function rowsFor(table: unknown): Array<Record<string, unknown>> {
   ]);
 
   return mapping.get(table) ?? [];
+}
+
+function dbWithContent(contentItems: Array<Record<string, unknown>>) {
+  return {
+    select() {
+      return {
+        async from(table: unknown): Promise<Array<Record<string, unknown>>> {
+          if (table === importTable("contentItems")) {
+            return contentItems;
+          }
+          return rowsFor(table);
+        }
+      };
+    }
+  };
+}
+
+function publicContent(overrides: Partial<Record<string, unknown>>) {
+  return {
+    id: "00000000-0000-4000-8000-000000000000",
+    title: "Public content",
+    standfirst: "A public discovery record.",
+    contentType: "event",
+    ownerLevel: "territory",
+    organisationId: fixtureIds.organisations.franchise,
+    territoryId: fixtureIds.territories.suttonColdfield,
+    status: "published",
+    sourceType: "human",
+    heroArtifactReference: {},
+    categories: [],
+    tags: [],
+    relevantDates: { startDate: "2026-10-10" },
+    provenance: { location: "Sutton Coldfield" },
+    ...overrides
+  };
 }
 
 function importTable(name: string) {

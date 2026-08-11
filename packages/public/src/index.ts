@@ -23,6 +23,11 @@ export type PublicContentCard = {
   type: string;
   source: "local" | "network";
   href: string;
+  categories: string[];
+  tags: string[];
+  startDate?: string | null;
+  endDate?: string | null;
+  location?: string | null;
 };
 
 export type PublicPlacement = {
@@ -79,6 +84,28 @@ export type PublicHomepage = {
     consentText: string;
   };
   emptyStates: Array<{ slot: string; message: string }>;
+};
+
+export type PublicDiscoveryKind = "whats_on" | "activities";
+
+export type PublicDiscoveryFilters = {
+  query?: string;
+  category?: string;
+  date?: "today" | "weekend" | "school_holidays" | "all";
+};
+
+export type PublicDiscoveryResult = {
+  territory: PublicTerritory;
+  kind: PublicDiscoveryKind;
+  heading: string;
+  filters: {
+    query: string;
+    category: string;
+    date: NonNullable<PublicDiscoveryFilters["date"]>;
+  };
+  availableCategories: string[];
+  items: PublicContentCard[];
+  emptyState?: string;
 };
 
 export const publicHomepageTemplate: PublicHomepage["template"] = {
@@ -194,6 +221,61 @@ export async function getPublicHomepage(db: PublicDb, slug: string): Promise<Pub
   };
 }
 
+export async function getPublicDiscovery(
+  db: PublicDb,
+  slug: string,
+  kind: PublicDiscoveryKind,
+  filters: PublicDiscoveryFilters = {}
+): Promise<PublicDiscoveryResult | undefined> {
+  const territory = territoryFromSlug(slug);
+  if (!territory) {
+    return undefined;
+  }
+
+  const publishing = await loadPublishingData(db);
+  const query = (filters.query ?? "").trim().toLowerCase();
+  const category = (filters.category ?? "all").trim().toLowerCase();
+  const date = filters.date ?? "all";
+  const contentTypes = kind === "whats_on" ? new Set(["event"]) : new Set(["article", "guide", "evergreen"]);
+  const publicItems = publishing.contentItems
+    .filter((item) => !item.deletedAt)
+    .filter((item) => item.status === "approved" || item.status === "published")
+    .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
+    .filter((item) => contentTypes.has(item.contentType))
+    .map((item) => contentCard(item, territory))
+    .filter((item) => matchesQuery(item, query))
+    .filter((item) => matchesCategory(item, category))
+    .filter((item) => matchesDate(item, date))
+    .sort((left, right) => (left.startDate ?? "9999-12-31").localeCompare(right.startDate ?? "9999-12-31"));
+  const categories = Array.from(
+    new Set(
+      publishing.contentItems
+        .filter((item) => !item.deletedAt)
+        .filter((item) => item.status === "approved" || item.status === "published")
+        .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
+        .filter((item) => contentTypes.has(item.contentType))
+        .flatMap((item) => item.categories)
+        .map((value) => value.toLowerCase())
+    )
+  ).sort();
+
+  return {
+    territory,
+    kind,
+    heading: kind === "whats_on" ? "What's on near you" : "Activities and things to do",
+    filters: {
+      query,
+      category,
+      date
+    },
+    availableCategories: categories,
+    items: publicItems,
+    emptyState: publicItems.length === 0
+      ? "Nothing public matches those filters yet. Approved local discovery content will appear here when it is ready."
+      : undefined
+  };
+}
+
 function slot(
   kind: PublicHomepageSlot["kind"],
   heading: string,
@@ -220,9 +302,15 @@ function contentCard(
     contentType: string;
     territoryId?: string | null;
     ownerLevel: string;
+    categories?: string[];
+    tags?: string[];
+    relevantDates?: Record<string, unknown>;
+    provenance?: Record<string, unknown>;
   },
   territory: PublicTerritory
 ): PublicContentCard {
+  const relevantDates = item.relevantDates ?? {};
+  const provenance = item.provenance ?? {};
   return {
     id: item.id,
     slug: territorySlug(item.title),
@@ -230,8 +318,47 @@ function contentCard(
     summary: item.standfirst ?? "Family inspiration from Raring2go.",
     type: item.contentType,
     source: item.territoryId === territory.id ? "local" : "network",
-    href: `/areas/${territory.slug}/stories/${territorySlug(item.title)}`
+    href: item.contentType === "event"
+      ? `/areas/${territory.slug}/whats-on/${territorySlug(item.title)}`
+      : `/areas/${territory.slug}/activities/${territorySlug(item.title)}`,
+    categories: item.categories ?? [],
+    tags: item.tags ?? [],
+    startDate: stringValue(relevantDates.startDate) ?? stringValue(relevantDates.date),
+    endDate: stringValue(relevantDates.endDate),
+    location: stringValue(provenance.location) ?? stringValue(provenance.venue)
   };
+}
+
+function matchesQuery(item: PublicContentCard, query: string) {
+  if (!query) return true;
+  return [item.title, item.summary, item.location, ...item.categories, ...item.tags]
+    .filter((value): value is string => typeof value === "string")
+    .some((value) => value.toLowerCase().includes(query));
+}
+
+function matchesCategory(item: PublicContentCard, category: string) {
+  return category === "all" || item.categories.map((value) => value.toLowerCase()).includes(category);
+}
+
+function matchesDate(item: PublicContentCard, date: NonNullable<PublicDiscoveryFilters["date"]>) {
+  if (date === "all") return true;
+  if (!item.startDate) return date === "school_holidays" && item.tags.includes("school-holidays");
+  const start = new Date(item.startDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (date === "today") return sameDay(start, today);
+  if (date === "weekend") return start.getDay() === 0 || start.getDay() === 6;
+  return item.tags.includes("school-holidays") || item.categories.includes("school-holidays");
+}
+
+function sameDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
 export const defaultPublicTerritorySlug = territorySlug(

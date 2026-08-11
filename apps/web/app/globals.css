@@ -724,6 +724,10 @@ p {
   padding: clamp(44px, 8vw, 96px) clamp(18px, 5vw, 70px);
 }
 
+.public-hero-compact {
+  min-height: 340px;
+}
+
 .public-hero > div {
   max-width: 760px;
 }
@@ -875,6 +879,38 @@ p {
   font-weight: 900;
 }
 
+.public-filters {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 220px) minmax(160px, 220px) auto;
+  margin: 28px auto 0;
+  max-width: 1180px;
+  padding: 0 clamp(18px, 4vw, 44px);
+}
+
+.public-filters input,
+.public-filters select {
+  background: #fff;
+  border: 1px solid rgb(122 64 149 / 20%);
+  border-radius: 8px;
+  color: var(--r2-text-primary);
+  font: inherit;
+  min-height: 46px;
+  padding: 0 14px;
+}
+
+.public-filters button {
+  background: var(--r2-brand-purple);
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  font: inherit;
+  font-weight: 900;
+  min-height: 46px;
+  padding: 0 18px;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -904,5 +940,9 @@ p {
   .public-newsletter input {
     min-width: 0;
     width: 100%;
+  }
+
+  .public-filters {
+    grid-template-columns: 1fr;
   }
 }
