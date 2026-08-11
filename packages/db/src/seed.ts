@@ -3,6 +3,10 @@ import { createDb } from "./client";
 import { fixtureIds, foundationSeed } from "./fixtures";
 import {
   auditEvents,
+  audienceConsentEvents,
+  audienceContacts,
+  audienceSegments,
+  audienceTerritorySubscriptions,
   advertiserActivityEvents,
   advertiserContacts,
   advertiserInvoiceSequences,
@@ -291,7 +295,13 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.proofCreate,
         fixtureIds.permissions.renewalView,
         fixtureIds.permissions.renewalManage,
-        fixtureIds.permissions.analyticsView
+        fixtureIds.permissions.analyticsView,
+        fixtureIds.permissions.audienceView,
+        fixtureIds.permissions.audienceManage,
+        fixtureIds.permissions.consentManage,
+        fixtureIds.permissions.segmentView,
+        fixtureIds.permissions.segmentManage,
+        fixtureIds.permissions.audienceImportManage
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -460,7 +470,13 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.proofCreate,
         fixtureIds.permissions.renewalView,
         fixtureIds.permissions.renewalManage,
-        fixtureIds.permissions.analyticsView
+        fixtureIds.permissions.analyticsView,
+        fixtureIds.permissions.audienceView,
+        fixtureIds.permissions.audienceManage,
+        fixtureIds.permissions.consentManage,
+        fixtureIds.permissions.segmentView,
+        fixtureIds.permissions.segmentManage,
+        fixtureIds.permissions.audienceImportManage
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,
@@ -817,6 +833,66 @@ export async function seedDatabase(databaseUrl?: string) {
         nextNumber: sql`excluded.next_number`,
         padding: sql`excluded.padding`,
         updatedAt: sql`now()`
+      }
+    });
+
+    await db.insert(audienceContacts).values(foundationSeed.audienceContacts.map((contact) => ({
+      ...contact,
+      tags: [...contact.tags],
+      metadata: { ...contact.metadata }
+    }))).onConflictDoUpdate({
+      target: audienceContacts.id,
+      set: {
+        email: sql`excluded.email`,
+        emailNormalised: sql`excluded.email_normalised`,
+        firstName: sql`excluded.first_name`,
+        lastName: sql`excluded.last_name`,
+        emailStatus: sql`excluded.email_status`,
+        tags: sql`excluded.tags`,
+        metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(audienceTerritorySubscriptions).values(foundationSeed.audienceTerritorySubscriptions.map((subscription) => ({
+      ...subscription,
+      preferences: { ...subscription.preferences },
+      subscribedAt: subscription.subscribedAt ? new Date(subscription.subscribedAt) : null,
+      unsubscribedAt: subscription.unsubscribedAt ? new Date(subscription.unsubscribedAt) : null
+    }))).onConflictDoUpdate({
+      target: audienceTerritorySubscriptions.id,
+      set: {
+        status: sql`excluded.status`,
+        source: sql`excluded.source`,
+        preferences: sql`excluded.preferences`,
+        subscribedAt: sql`excluded.subscribed_at`,
+        unsubscribedAt: sql`excluded.unsubscribed_at`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(audienceConsentEvents).values(foundationSeed.audienceConsentEvents.map((event) => ({
+      ...event,
+      occurredAt: new Date(event.occurredAt),
+      evidence: { ...event.evidence }
+    }))).onConflictDoNothing();
+
+    await db.insert(audienceSegments).values(foundationSeed.audienceSegments.map((segment) => ({
+      ...segment,
+      definition: { ...segment.definition }
+    }))).onConflictDoUpdate({
+      target: audienceSegments.id,
+      set: {
+        territoryId: sql`excluded.territory_id`,
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        segmentType: sql`excluded.segment_type`,
+        definition: sql`excluded.definition`,
+        status: sql`excluded.status`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
       }
     });
 

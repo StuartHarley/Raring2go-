@@ -102,7 +102,13 @@ export const fixtureIds = {
     proofCreate: "00000000-0000-4000-8000-000000000482",
     renewalView: "00000000-0000-4000-8000-000000000483",
     renewalManage: "00000000-0000-4000-8000-000000000484",
-    analyticsView: "00000000-0000-4000-8000-000000000485"
+    analyticsView: "00000000-0000-4000-8000-000000000485",
+    audienceView: "00000000-0000-4000-8000-000000000486",
+    audienceManage: "00000000-0000-4000-8000-000000000487",
+    consentManage: "00000000-0000-4000-8000-000000000488",
+    segmentView: "00000000-0000-4000-8000-000000000489",
+    segmentManage: "00000000-0000-4000-8000-000000000490",
+    audienceImportManage: "00000000-0000-4000-8000-000000000491"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -161,6 +167,19 @@ export const fixtureIds = {
   },
   advertiserInvoiceSequences: {
     franchiseDefault: "00000000-0000-4000-8000-000000000722"
+  },
+  audienceContacts: {
+    parentOne: "00000000-0000-4000-8000-000000000741"
+  },
+  audienceSubscriptions: {
+    parentOneSutton: "00000000-0000-4000-8000-000000000742",
+    parentOneSolihull: "00000000-0000-4000-8000-000000000743"
+  },
+  audienceConsentEvents: {
+    parentOneNewsletter: "00000000-0000-4000-8000-000000000744"
+  },
+  audienceSegments: {
+    suttonNewsletter: "00000000-0000-4000-8000-000000000745"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -813,6 +832,42 @@ export const foundationSeed = {
       module: "advertiser.analytics",
       action: "view",
       description: "View commercial command centre metrics and territory benchmarks."
+    },
+    {
+      id: fixtureIds.permissions.audienceView,
+      module: "marketing.audience",
+      action: "view",
+      description: "View permission-scoped native audience records."
+    },
+    {
+      id: fixtureIds.permissions.audienceManage,
+      module: "marketing.audience",
+      action: "manage",
+      description: "Create and update native audience records and territory subscriptions."
+    },
+    {
+      id: fixtureIds.permissions.consentManage,
+      module: "marketing.consent",
+      action: "manage",
+      description: "Record audience consent changes and suppressions."
+    },
+    {
+      id: fixtureIds.permissions.segmentView,
+      module: "marketing.segment",
+      action: "view",
+      description: "Preview permission-scoped audience segments."
+    },
+    {
+      id: fixtureIds.permissions.segmentManage,
+      module: "marketing.segment",
+      action: "manage",
+      description: "Create and manage audience segment definitions."
+    },
+    {
+      id: fixtureIds.permissions.audienceImportManage,
+      module: "marketing.import",
+      action: "manage",
+      description: "Import and deduplicate native audience contacts."
     }
   ],
   advertisers: [
@@ -1112,6 +1167,68 @@ export const foundationSeed = {
   campaignFulfilments: [],
   proofPacks: [],
   renewalPrompts: [],
+  audienceContacts: [
+    {
+      id: fixtureIds.audienceContacts.parentOne,
+      email: "parent@example.test",
+      emailNormalised: "parent@example.test",
+      firstName: "Pat",
+      lastName: "Parent",
+      emailStatus: "subscribed",
+      tags: ["days-out"],
+      metadata: { source: "seed" }
+    }
+  ],
+  audienceTerritorySubscriptions: [
+    {
+      id: fixtureIds.audienceSubscriptions.parentOneSutton,
+      contactId: fixtureIds.audienceContacts.parentOne,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      status: "subscribed",
+      source: "seed",
+      preferences: { newsletter: true },
+      subscribedAt: "2026-08-11T00:00:00.000Z",
+      unsubscribedAt: null
+    },
+    {
+      id: fixtureIds.audienceSubscriptions.parentOneSolihull,
+      contactId: fixtureIds.audienceContacts.parentOne,
+      territoryId: fixtureIds.territories.solihull,
+      status: "subscribed",
+      source: "seed",
+      preferences: { newsletter: true },
+      subscribedAt: "2026-08-11T00:00:00.000Z",
+      unsubscribedAt: null
+    }
+  ],
+  audienceConsentEvents: [
+    {
+      id: fixtureIds.audienceConsentEvents.parentOneNewsletter,
+      contactId: fixtureIds.audienceContacts.parentOne,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      consentType: "newsletter",
+      action: "granted",
+      source: "seed",
+      occurredAt: "2026-08-11T00:00:00.000Z",
+      actorUserId: null,
+      evidence: {}
+    }
+  ],
+  audienceSuppressions: [],
+  audienceSegments: [
+    {
+      id: fixtureIds.audienceSegments.suttonNewsletter,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      key: "sutton-newsletter",
+      name: "Sutton newsletter audience",
+      segmentType: "dynamic",
+      definition: { territoryId: fixtureIds.territories.suttonColdfield, subscriptionStatus: "subscribed" },
+      status: "active"
+    }
+  ],
+  audienceSegmentMembers: [],
+  audienceImports: [],
+  audienceActivityEvents: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

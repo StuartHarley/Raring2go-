@@ -113,7 +113,12 @@ export const auditActions = {
   advertiserProofPackCreate: "advertiser.proof_pack.create",
   advertiserProofPackDeliver: "advertiser.proof_pack.deliver",
   advertiserRenewalPromptCreate: "advertiser.renewal.prompt.create",
-  advertiserAnalyticsView: "advertiser.analytics.view"
+  advertiserAnalyticsView: "advertiser.analytics.view",
+  marketingAudienceContactCreate: "marketing.audience.contact.create",
+  marketingAudienceContactUpdate: "marketing.audience.contact.update",
+  marketingAudienceSubscribe: "marketing.audience.subscribe",
+  marketingConsentRecord: "marketing.consent.record",
+  marketingAudienceSuppress: "marketing.audience.suppress"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

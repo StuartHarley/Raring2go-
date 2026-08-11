@@ -7,6 +7,11 @@ import {
   agreementSignatureEvents,
   agreementSignatureRequests,
   agreementSigners,
+  audienceConsentEvents,
+  audienceContacts,
+  audienceSegments,
+  audienceSuppressions,
+  audienceTerritorySubscriptions,
   advertiserActivityEvents,
   advertiserContacts,
   advertiserDomainEvents,
@@ -210,6 +215,19 @@ describe("foundation schema", () => {
     expect(renewalPrompts.renewalSnapshot.name).toBe("renewal_snapshot");
     expect((proofPacks as unknown as Record<string, unknown>).mailchimpCampaignId).toBeUndefined();
     expect((campaignFulfilments as unknown as Record<string, unknown>).royaltyInvoiceId).toBeUndefined();
+  });
+
+  it("models native audience identity, consent, suppression and segments", () => {
+    expect(audienceContacts.emailNormalised.name).toBe("email_normalised");
+    expect(audienceContacts.emailStatus.name).toBe("email_status");
+    expect(audienceTerritorySubscriptions.contactId.name).toBe("contact_id");
+    expect(audienceTerritorySubscriptions.territoryId.name).toBe("territory_id");
+    expect(audienceConsentEvents.consentType.name).toBe("consent_type");
+    expect(audienceConsentEvents.occurredAt.name).toBe("occurred_at");
+    expect(audienceSuppressions.emailNormalised.name).toBe("email_normalised");
+    expect(audienceSuppressions.active.name).toBe("active");
+    expect(audienceSegments.segmentType.name).toBe("segment_type");
+    expect((audienceContacts as unknown as Record<string, unknown>).mailchimpId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

@@ -166,6 +166,7 @@ describe("app shell context and capabilities", () => {
       expect(shell.navigation.map((item) => item.id)).toEqual([
         "franchisees",
         "advertisers",
+        "audience",
         "commercial-command",
         "editions",
         "roles",

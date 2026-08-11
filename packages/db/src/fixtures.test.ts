@@ -95,7 +95,13 @@ describe("foundation fixtures", () => {
       "advertiser.proof",
       "advertiser.renewal",
       "advertiser.renewal",
-      "advertiser.analytics"
+      "advertiser.analytics",
+      "marketing.audience",
+      "marketing.audience",
+      "marketing.consent",
+      "marketing.segment",
+      "marketing.segment",
+      "marketing.import"
     ]);
   });
 
@@ -265,6 +271,16 @@ describe("foundation fixtures", () => {
     expect(foundationSeed.campaignFulfilments).toEqual([]);
     expect(foundationSeed.proofPacks).toEqual([]);
     expect(foundationSeed.renewalPrompts).toEqual([]);
+  });
+
+  it("includes native audience fixtures without duplicating multi-territory identity", () => {
+    expect(foundationSeed.audienceContacts).toHaveLength(1);
+    expect(foundationSeed.audienceTerritorySubscriptions).toHaveLength(2);
+    expect(new Set(foundationSeed.audienceTerritorySubscriptions.map((subscription) => subscription.contactId))).toEqual(
+      new Set([fixtureIds.audienceContacts.parentOne])
+    );
+    expect(foundationSeed.audienceConsentEvents).toHaveLength(1);
+    expect(foundationSeed.audienceSuppressions).toEqual([]);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

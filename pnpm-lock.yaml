@@ -50,6 +50,9 @@ importers:
       '@raring2go/franchise':
         specifier: workspace:*
         version: link:../../packages/franchise
+      '@raring2go/marketing':
+        specifier: workspace:*
+        version: link:../../packages/marketing
       '@raring2go/permissions':
         specifier: workspace:*
         version: link:../../packages/permissions
@@ -175,6 +178,22 @@ importers:
         version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
 
   packages/integrations: {}
+
+  packages/marketing:
+    dependencies:
+      '@raring2go/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
 
   packages/observability: {}
 
