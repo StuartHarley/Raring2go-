@@ -4,12 +4,19 @@ import { describe, expect, it } from "vitest";
 import {
   listAudienceContacts,
   approveEmailCampaignVersion,
+  activateJourney,
+  approveJourneyVersion,
   approveNetworkNewsletterMaster,
   createEmailCampaign,
+  createJourney,
   createNetworkNewsletterMaster,
   createRecipientSnapshot,
+  enterJourneyFromEvent,
+  executeJourneyStep,
   generateTerritoryNewsletterEditions,
+  listJourneys,
   listNewsletterFactory,
+  pauseJourney,
   previewSegment,
   recordConsentEvent,
   recordEmailDeliveryEvent,
@@ -51,6 +58,13 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "marketing.newsletter_factory", "manage", "network"),
     grant(ids.roles.hq, "marketing.newsletter_factory", "approve", "network"),
     grant(ids.roles.hq, "marketing.newsletter_factory", "contribute", "network"),
+    grant(ids.roles.hq, "marketing.journey", "view", "network"),
+    grant(ids.roles.hq, "marketing.journey", "create", "network"),
+    grant(ids.roles.hq, "marketing.journey", "edit", "network"),
+    grant(ids.roles.hq, "marketing.journey", "approve", "network"),
+    grant(ids.roles.hq, "marketing.journey", "activate", "network"),
+    grant(ids.roles.hq, "marketing.journey", "pause", "network"),
+    grant(ids.roles.hq, "marketing.journey", "execute", "network"),
     grant(ids.roles.local, "marketing.audience", "view", "own_territory"),
     grant(ids.roles.local, "marketing.audience", "manage", "own_territory"),
     grant(ids.roles.local, "marketing.consent", "manage", "own_territory"),
@@ -63,7 +77,9 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "marketing.email", "send", "own_territory"),
     grant(ids.roles.local, "marketing.email", "record_delivery", "own_territory"),
     grant(ids.roles.local, "marketing.newsletter_factory", "view", "own_territory"),
-    grant(ids.roles.local, "marketing.newsletter_factory", "contribute", "own_territory")
+    grant(ids.roles.local, "marketing.newsletter_factory", "contribute", "own_territory"),
+    grant(ids.roles.local, "marketing.journey", "view", "own_territory"),
+    grant(ids.roles.local, "marketing.journey", "execute", "own_territory")
   ],
   territories: [
     { id: ids.territories.own, franchiseOrganisationId: ids.organisations.franchise },
@@ -311,6 +327,72 @@ describe("marketing audience foundation", () => {
       local: true
     })).rejects.toThrow("outside the active territory");
   });
+
+  it("creates, activates and executes event-driven journeys with consent and idempotency", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createJourney(hqContext(), permissions, recorder, data, journey(), journeyVersion());
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_welcome", "journey_welcome_v1", "2026-08-11T09:00:00.000Z");
+    await activateJourney(hqContext(), permissions, recorder, data, "journey_welcome", "2026-08-11T09:05:00.000Z");
+    const entry = await enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: "journey_welcome",
+      contactId: ids.contact,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: "event_1",
+      enteredAt: "2026-08-11T09:10:00.000Z",
+      idempotencyKey: "audience.subscribed:event_1"
+    });
+    const duplicate = await enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: "journey_welcome",
+      contactId: ids.contact,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: "event_1",
+      enteredAt: "2026-08-11T09:10:00.000Z",
+      idempotencyKey: "audience.subscribed:event_1"
+    });
+    const execution = await executeJourneyStep(localContext(), permissions, recorder, data, data.journeyExecutions[0]!.id, "welcome-email", "2026-08-11T09:11:00.000Z");
+
+    expect(duplicate.id).toBe(entry.id);
+    expect(execution.status).toBe("completed");
+    expect(listJourneys(hqContext(), permissions, data).totals).toMatchObject({
+      journeys: 1,
+      active: 1,
+      failedExecutions: 0
+    });
+    expect(recorder.events.map((event) => event.action)).toContain(auditActions.marketingJourneyStepExecute);
+  });
+
+  it("prevents journeys from sending to suppressed contacts and can pause automation", async () => {
+    const data = seededData();
+    const recorder = audit();
+    data.journeys.push({ ...journey(), status: "active" });
+    data.journeyVersions.push({ ...journeyVersion(), status: "approved" });
+    await suppressContact(localContext(), permissions, recorder, data, {
+      id: "suppression_journey",
+      contactId: ids.contact,
+      emailNormalised: "parent@example.test",
+      territoryId: ids.territories.own,
+      reason: "unsubscribe",
+      source: "test",
+      active: true,
+      suppressedAt: "2026-08-11T09:00:00.000Z",
+      metadata: {}
+    });
+
+    await expect(enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: "journey_welcome",
+      contactId: ids.contact,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      enteredAt: "2026-08-11T09:10:00.000Z",
+      idempotencyKey: "blocked"
+    })).rejects.toThrow("Suppressed contacts");
+    await pauseJourney(hqContext(), permissions, recorder, data, "journey_welcome", "2026-08-11T10:00:00.000Z");
+    expect(data.journeys[0]!.status).toBe("paused");
+  });
 });
 
 function seededData(): MarketingData {
@@ -368,6 +450,11 @@ function emptyData(): MarketingData {
     networkNewsletterMasters: [],
     territoryNewsletterEditions: [],
     newsletterFactoryRuns: [],
+    journeys: [],
+    journeyVersions: [],
+    journeyAudienceEntries: [],
+    journeyExecutions: [],
+    journeyStepExecutions: [],
     territories: [
       { id: ids.territories.own, franchiseOrganisationId: ids.organisations.franchise, name: "Own" },
       { id: ids.territories.other, franchiseOrganisationId: "org_other", name: "Other" }
@@ -398,6 +485,40 @@ function subscription(id: string, contactId: string, territoryId: string) {
     preferences: { newsletter: true },
     subscribedAt: "2026-08-11T00:00:00.000Z",
     unsubscribedAt: null
+  };
+}
+
+function journey() {
+  return {
+    id: "journey_welcome",
+    key: "welcome",
+    name: "Welcome journey",
+    territoryId: null,
+    status: "draft" as const,
+    purpose: "marketing",
+    description: "Welcomes new subscribers.",
+    frequencyCap: { maxPerContactPerDays: 1 },
+    metadata: {},
+    createdByUserId: ids.users.hq,
+    approvedByUserId: null,
+    approvedAt: null,
+    activatedAt: null,
+    pausedAt: null
+  };
+}
+
+function journeyVersion() {
+  return {
+    id: "journey_welcome_v1",
+    journeyId: "journey_welcome",
+    versionNumber: 1,
+    status: "draft",
+    trigger: { eventType: "audience.subscribed" },
+    conditions: [{ type: "subscribed", purpose: "newsletter" }],
+    steps: [{ key: "welcome-email", actionType: "send_email", templateKey: "welcome" }],
+    aiSuggestions: { subjectLines: ["Welcome to Raring2go"] },
+    approvedByUserId: null,
+    approvedAt: null
   };
 }
 

@@ -120,6 +120,11 @@ export type MarketingData = {
   networkNewsletterMasters: NetworkNewsletterMaster[];
   territoryNewsletterEditions: TerritoryNewsletterEdition[];
   newsletterFactoryRuns: NewsletterFactoryRun[];
+  journeys: MarketingJourney[];
+  journeyVersions: MarketingJourneyVersion[];
+  journeyAudienceEntries: MarketingJourneyAudienceEntry[];
+  journeyExecutions: MarketingJourneyExecution[];
+  journeyStepExecutions: MarketingJourneyStepExecution[];
   territories: MarketingTerritory[];
 };
 
@@ -291,5 +296,96 @@ export type NewsletterFactoryOverview = {
     ready: number;
     needsReview: number;
     blocked: number;
+  };
+};
+
+export type MarketingJourney = {
+  id: string;
+  key: string;
+  name: string;
+  territoryId?: string | null;
+  status: "draft" | "approved" | "active" | "paused" | "retired" | (string & {});
+  purpose: string;
+  description?: string | null;
+  frequencyCap: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  createdByUserId?: string | null;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  activatedAt?: string | null;
+  pausedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type MarketingJourneyVersion = {
+  id: string;
+  journeyId: string;
+  versionNumber: number;
+  status: string;
+  trigger: Record<string, unknown>;
+  conditions: Array<Record<string, unknown>>;
+  steps: Array<Record<string, unknown>>;
+  aiSuggestions: Record<string, unknown>;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type MarketingJourneyAudienceEntry = {
+  id: string;
+  journeyId: string;
+  journeyVersionId: string;
+  contactId: string;
+  territoryId?: string | null;
+  sourceEventType: string;
+  sourceEventId?: string | null;
+  status: string;
+  enteredAt: string;
+  exitedAt?: string | null;
+  exitReason?: string | null;
+  idempotencyKey: string;
+  metadata: Record<string, unknown>;
+};
+
+export type MarketingJourneyExecution = {
+  id: string;
+  entryId: string;
+  journeyId: string;
+  status: string;
+  currentStepKey?: string | null;
+  runAfter: string;
+  attempts: number;
+  maxAttempts: number;
+  failureReason?: string | null;
+  completedAt?: string | null;
+  idempotencyKey: string;
+};
+
+export type MarketingJourneyStepExecution = {
+  id: string;
+  executionId: string;
+  stepKey: string;
+  actionType: string;
+  status: string;
+  scheduledFor?: string | null;
+  completedAt?: string | null;
+  failureReason?: string | null;
+  output: Record<string, unknown>;
+  idempotencyKey: string;
+};
+
+export type MarketingJourneyOverview = {
+  journeys: Array<{
+    journey: MarketingJourney;
+    activeVersion?: MarketingJourneyVersion;
+    entries: number;
+    activeExecutions: number;
+    failedExecutions: number;
+  }>;
+  totals: {
+    journeys: number;
+    active: number;
+    paused: number;
+    failedExecutions: number;
   };
 };

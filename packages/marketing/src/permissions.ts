@@ -14,7 +14,14 @@ export const marketingCapabilities = {
   newsletterFactoryView: { module: "marketing.newsletter_factory", action: "view" },
   newsletterFactoryManage: { module: "marketing.newsletter_factory", action: "manage" },
   newsletterFactoryApprove: { module: "marketing.newsletter_factory", action: "approve" },
-  newsletterFactoryContribute: { module: "marketing.newsletter_factory", action: "contribute" }
+  newsletterFactoryContribute: { module: "marketing.newsletter_factory", action: "contribute" },
+  journeyView: { module: "marketing.journey", action: "view" },
+  journeyCreate: { module: "marketing.journey", action: "create" },
+  journeyEdit: { module: "marketing.journey", action: "edit" },
+  journeyApprove: { module: "marketing.journey", action: "approve" },
+  journeyActivate: { module: "marketing.journey", action: "activate" },
+  journeyPause: { module: "marketing.journey", action: "pause" },
+  journeyExecute: { module: "marketing.journey", action: "execute" }
 } as const;
 
 export type MarketingCapability = keyof typeof marketingCapabilities;

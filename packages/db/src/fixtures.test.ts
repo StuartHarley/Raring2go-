@@ -129,7 +129,14 @@ describe("foundation fixtures", () => {
       "social",
       "social",
       "social",
-      "social"
+      "social",
+      "marketing.journey",
+      "marketing.journey",
+      "marketing.journey",
+      "marketing.journey",
+      "marketing.journey",
+      "marketing.journey",
+      "marketing.journey"
     ]);
   });
 

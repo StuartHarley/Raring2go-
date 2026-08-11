@@ -359,3 +359,127 @@ export const newsletterFactoryRuns = pgTable(
     index("newsletter_factory_runs_master_id_idx").on(table.masterId)
   ]
 );
+
+export const marketingJourneys = pgTable(
+  "marketing_journeys",
+  {
+    id,
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    status: text("status").notNull().default("draft"),
+    purpose: text("purpose").notNull().default("marketing"),
+    description: text("description"),
+    frequencyCap: jsonb("frequency_cap").$type<Record<string, unknown>>().notNull().default({}),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    pausedAt: timestamp("paused_at", { withTimezone: true }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("marketing_journeys_key_uidx").on(table.key),
+    index("marketing_journeys_territory_id_idx").on(table.territoryId),
+    index("marketing_journeys_status_idx").on(table.status),
+    index("marketing_journeys_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const marketingJourneyVersions = pgTable(
+  "marketing_journey_versions",
+  {
+    id,
+    journeyId: uuid("journey_id").notNull().references(() => marketingJourneys.id),
+    versionNumber: integer("version_number").notNull(),
+    status: text("status").notNull().default("draft"),
+    trigger: jsonb("trigger").$type<Record<string, unknown>>().notNull(),
+    conditions: jsonb("conditions").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    steps: jsonb("steps").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    aiSuggestions: jsonb("ai_suggestions").$type<Record<string, unknown>>().notNull().default({}),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("marketing_journey_versions_journey_version_uidx").on(table.journeyId, table.versionNumber),
+    index("marketing_journey_versions_journey_id_idx").on(table.journeyId),
+    index("marketing_journey_versions_status_idx").on(table.status),
+    index("marketing_journey_versions_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const marketingJourneyAudienceEntries = pgTable(
+  "marketing_journey_audience_entries",
+  {
+    id,
+    journeyId: uuid("journey_id").notNull().references(() => marketingJourneys.id),
+    journeyVersionId: uuid("journey_version_id").notNull().references(() => marketingJourneyVersions.id),
+    contactId: uuid("contact_id").notNull().references(() => audienceContacts.id),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    sourceEventType: text("source_event_type").notNull(),
+    sourceEventId: text("source_event_id"),
+    status: text("status").notNull().default("active"),
+    enteredAt: timestamp("entered_at", { withTimezone: true }).notNull(),
+    exitedAt: timestamp("exited_at", { withTimezone: true }),
+    exitReason: text("exit_reason"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("marketing_journey_entries_idempotency_uidx").on(table.idempotencyKey),
+    index("marketing_journey_entries_contact_id_idx").on(table.contactId),
+    index("marketing_journey_entries_journey_id_idx").on(table.journeyId),
+    index("marketing_journey_entries_status_idx").on(table.status)
+  ]
+);
+
+export const marketingJourneyExecutions = pgTable(
+  "marketing_journey_executions",
+  {
+    id,
+    entryId: uuid("entry_id").notNull().references(() => marketingJourneyAudienceEntries.id),
+    journeyId: uuid("journey_id").notNull().references(() => marketingJourneys.id),
+    status: text("status").notNull().default("queued"),
+    currentStepKey: text("current_step_key"),
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    failureReason: text("failure_reason"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("marketing_journey_executions_idempotency_uidx").on(table.idempotencyKey),
+    index("marketing_journey_executions_entry_id_idx").on(table.entryId),
+    index("marketing_journey_executions_status_idx").on(table.status),
+    index("marketing_journey_executions_run_after_idx").on(table.runAfter)
+  ]
+);
+
+export const marketingJourneyStepExecutions = pgTable(
+  "marketing_journey_step_executions",
+  {
+    id,
+    executionId: uuid("execution_id").notNull().references(() => marketingJourneyExecutions.id),
+    stepKey: text("step_key").notNull(),
+    actionType: text("action_type").notNull(),
+    status: text("status").notNull().default("queued"),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    failureReason: text("failure_reason"),
+    output: jsonb("output").$type<Record<string, unknown>>().notNull().default({}),
+    idempotencyKey: text("idempotency_key").notNull(),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("marketing_journey_step_exec_idempotency_uidx").on(table.idempotencyKey),
+    index("marketing_journey_step_exec_execution_id_idx").on(table.executionId),
+    index("marketing_journey_step_exec_status_idx").on(table.status)
+  ]
+);

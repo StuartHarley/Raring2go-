@@ -136,7 +136,14 @@ export const fixtureIds = {
     socialPublish: "00000000-0000-4000-8000-000000000516",
     socialCancel: "00000000-0000-4000-8000-000000000517",
     socialManageAccounts: "00000000-0000-4000-8000-000000000518",
-    socialNetworkDistribute: "00000000-0000-4000-8000-000000000519"
+    socialNetworkDistribute: "00000000-0000-4000-8000-000000000519",
+    journeyView: "00000000-0000-4000-8000-000000000520",
+    journeyCreate: "00000000-0000-4000-8000-000000000521",
+    journeyEdit: "00000000-0000-4000-8000-000000000522",
+    journeyApprove: "00000000-0000-4000-8000-000000000523",
+    journeyActivate: "00000000-0000-4000-8000-000000000524",
+    journeyPause: "00000000-0000-4000-8000-000000000525",
+    journeyExecute: "00000000-0000-4000-8000-000000000526"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -248,6 +255,21 @@ export const fixtureIds = {
   },
   socialPublishJobs: {
     halfTermFacebookSutton: "00000000-0000-4000-8000-000000000763"
+  },
+  marketingJourneys: {
+    welcomeSeries: "00000000-0000-4000-8000-000000000764"
+  },
+  marketingJourneyVersions: {
+    welcomeSeriesV1: "00000000-0000-4000-8000-000000000765"
+  },
+  marketingJourneyAudienceEntries: {
+    welcomeParent: "00000000-0000-4000-8000-000000000766"
+  },
+  marketingJourneyExecutions: {
+    welcomeParent: "00000000-0000-4000-8000-000000000767"
+  },
+  marketingJourneyStepExecutions: {
+    welcomeParentEmail: "00000000-0000-4000-8000-000000000768"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -1104,6 +1126,48 @@ export const foundationSeed = {
       module: "social",
       action: "network_distribute",
       description: "Suggest social queue items across permitted territories."
+    },
+    {
+      id: fixtureIds.permissions.journeyView,
+      module: "marketing.journey",
+      action: "view",
+      description: "View marketing automation journeys and execution health."
+    },
+    {
+      id: fixtureIds.permissions.journeyCreate,
+      module: "marketing.journey",
+      action: "create",
+      description: "Create marketing automation journeys."
+    },
+    {
+      id: fixtureIds.permissions.journeyEdit,
+      module: "marketing.journey",
+      action: "edit",
+      description: "Edit draft marketing automation journeys."
+    },
+    {
+      id: fixtureIds.permissions.journeyApprove,
+      module: "marketing.journey",
+      action: "approve",
+      description: "Approve marketing automation journey versions."
+    },
+    {
+      id: fixtureIds.permissions.journeyActivate,
+      module: "marketing.journey",
+      action: "activate",
+      description: "Activate approved marketing automation journeys."
+    },
+    {
+      id: fixtureIds.permissions.journeyPause,
+      module: "marketing.journey",
+      action: "pause",
+      description: "Pause active marketing automation journeys."
+    },
+    {
+      id: fixtureIds.permissions.journeyExecute,
+      module: "marketing.journey",
+      action: "execute",
+      description: "Run consent-safe marketing automation journey steps."
     }
   ],
   advertisers: [
@@ -1763,6 +1827,91 @@ export const foundationSeed = {
     }
   ],
   socialProviderEvents: [],
+  marketingJourneys: [
+    {
+      id: fixtureIds.marketingJourneys.welcomeSeries,
+      key: "sutton-welcome-series",
+      name: "Sutton welcome series",
+      territoryId: fixtureIds.territories.suttonColdfield,
+      status: "active",
+      purpose: "parent_welcome",
+      description: "Consent-safe welcome journey for new Sutton Coldfield parent subscribers.",
+      frequencyCap: { maxPerContact: 1, window: "lifetime" },
+      metadata: { source: "seed", channel: "email" },
+      createdByUserId: fixtureIds.users.superAdmin,
+      approvedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2026-08-11T09:20:00.000Z",
+      activatedAt: "2026-08-11T09:30:00.000Z",
+      pausedAt: null
+    }
+  ],
+  marketingJourneyVersions: [
+    {
+      id: fixtureIds.marketingJourneyVersions.welcomeSeriesV1,
+      journeyId: fixtureIds.marketingJourneys.welcomeSeries,
+      versionNumber: 1,
+      status: "approved",
+      trigger: { eventType: "audience.subscribed", territoryRequired: true },
+      conditions: [{ type: "consent", status: "subscribed" }, { type: "suppression", behaviour: "exclude" }],
+      steps: [
+        {
+          key: "welcome-email",
+          actionType: "send_email",
+          templateKey: "standard-newsletter",
+          delay: { amount: 0, unit: "minutes" }
+        }
+      ],
+      aiSuggestions: { allowed: false },
+      approvedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2026-08-11T09:20:00.000Z"
+    }
+  ],
+  marketingJourneyAudienceEntries: [
+    {
+      id: fixtureIds.marketingJourneyAudienceEntries.welcomeParent,
+      journeyId: fixtureIds.marketingJourneys.welcomeSeries,
+      journeyVersionId: fixtureIds.marketingJourneyVersions.welcomeSeriesV1,
+      contactId: fixtureIds.audienceContacts.parentOne,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: fixtureIds.audienceConsentEvents.parentOneNewsletter,
+      status: "completed",
+      enteredAt: "2026-08-11T09:35:00.000Z",
+      exitedAt: "2026-08-11T09:36:00.000Z",
+      exitReason: "completed",
+      idempotencyKey: "seed:journey:sutton-welcome:parent-one",
+      metadata: { source: "seed" }
+    }
+  ],
+  marketingJourneyExecutions: [
+    {
+      id: fixtureIds.marketingJourneyExecutions.welcomeParent,
+      entryId: fixtureIds.marketingJourneyAudienceEntries.welcomeParent,
+      journeyId: fixtureIds.marketingJourneys.welcomeSeries,
+      status: "completed",
+      currentStepKey: "welcome-email",
+      runAfter: "2026-08-11T09:35:00.000Z",
+      attempts: 1,
+      maxAttempts: 3,
+      failureReason: null,
+      completedAt: "2026-08-11T09:36:00.000Z",
+      idempotencyKey: "seed:journey:execution:sutton-welcome:parent-one"
+    }
+  ],
+  marketingJourneyStepExecutions: [
+    {
+      id: fixtureIds.marketingJourneyStepExecutions.welcomeParentEmail,
+      executionId: fixtureIds.marketingJourneyExecutions.welcomeParent,
+      stepKey: "welcome-email",
+      actionType: "send_email",
+      status: "completed",
+      scheduledFor: "2026-08-11T09:35:00.000Z",
+      completedAt: "2026-08-11T09:36:00.000Z",
+      failureReason: null,
+      output: { channel: "email", templateKey: "standard-newsletter" },
+      idempotencyKey: "seed:journey:step:sutton-welcome:parent-one:welcome-email"
+    }
+  ],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

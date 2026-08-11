@@ -17,6 +17,11 @@ import {
   emailDeliveryRecords,
   emailRecipientSnapshots,
   emailTemplates,
+  marketingJourneyAudienceEntries,
+  marketingJourneyExecutions,
+  marketingJourneyStepExecutions,
+  marketingJourneyVersions,
+  marketingJourneys,
   networkNewsletterMasters,
   newsletterFactoryRuns,
   territoryNewsletterEditions,
@@ -299,6 +304,18 @@ describe("foundation schema", () => {
     expect(socialProviderEvents.providerEventId.name).toBe("provider_event_id");
     expect((socialAccounts as unknown as Record<string, unknown>).accessToken).toBeUndefined();
     expect((socialPublications as unknown as Record<string, unknown>).facebookPostId).toBeUndefined();
+  });
+
+  it("models approved marketing journeys and consent-safe execution state", () => {
+    expect(marketingJourneys.key.name).toBe("key");
+    expect(marketingJourneys.frequencyCap.name).toBe("frequency_cap");
+    expect(marketingJourneyVersions.versionNumber.name).toBe("version_number");
+    expect(marketingJourneyVersions.trigger.name).toBe("trigger");
+    expect(marketingJourneyVersions.steps.name).toBe("steps");
+    expect(marketingJourneyAudienceEntries.idempotencyKey.name).toBe("idempotency_key");
+    expect(marketingJourneyExecutions.runAfter.name).toBe("run_after");
+    expect(marketingJourneyStepExecutions.actionType.name).toBe("action_type");
+    expect((marketingJourneys as unknown as Record<string, unknown>).mailchimpJourneyId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

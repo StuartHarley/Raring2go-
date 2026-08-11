@@ -15,6 +15,11 @@ import type {
   EmailDeliveryRecord,
   EmailRecipientSnapshot,
   EmailTemplate,
+  MarketingJourney,
+  MarketingJourneyAudienceEntry,
+  MarketingJourneyExecution,
+  MarketingJourneyOverview,
+  MarketingJourneyVersion,
   NetworkNewsletterMaster,
   NewsletterFactoryOverview,
   NewsletterFactoryRun,
@@ -123,6 +128,36 @@ export function listNewsletterFactory(
       ready: editions.filter((edition) => edition.status === "ready").length,
       needsReview: editions.filter((edition) => edition.status === "needs_review").length,
       blocked: editions.filter((edition) => edition.status === "blocked").length
+    }
+  };
+}
+
+export function listJourneys(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData
+): MarketingJourneyOverview {
+  requireMarketingPermission(context, permissions, "journeyView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  const journeys = data.journeys
+    .filter((journey) => !journey.deletedAt)
+    .filter((journey) => visibleTerritoryIds == null || !journey.territoryId || visibleTerritoryIds.has(journey.territoryId))
+    .map((journey) => {
+      const activeVersion = data.journeyVersions
+        .filter((version) => version.journeyId === journey.id && version.status === "approved" && !version.deletedAt)
+        .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+      const entries = data.journeyAudienceEntries.filter((entry) => entry.journeyId === journey.id).length;
+      const activeExecutions = data.journeyExecutions.filter((execution) => execution.journeyId === journey.id && execution.status === "queued").length;
+      const failedExecutions = data.journeyExecutions.filter((execution) => execution.journeyId === journey.id && execution.status === "failed").length;
+      return { journey, activeVersion, entries, activeExecutions, failedExecutions };
+    });
+  return {
+    journeys,
+    totals: {
+      journeys: journeys.length,
+      active: journeys.filter((view) => view.journey.status === "active").length,
+      paused: journeys.filter((view) => view.journey.status === "paused").length,
+      failedExecutions: journeys.reduce((total, view) => total + view.failedExecutions, 0)
     }
   };
 }
@@ -597,6 +632,214 @@ export async function recordTerritoryNewsletterOverride(
   return edition;
 }
 
+export async function createJourney(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  journey: MarketingJourney,
+  version: MarketingJourneyVersion
+) {
+  requireMarketingPermission(context, permissions, "journeyCreate");
+  if (journey.territoryId) ensureContextCanAccessTerritory(context, journey.territoryId);
+  if (version.journeyId !== journey.id || version.versionNumber !== 1) {
+    throw new Error("Initial journey version must belong to the journey and start at version 1.");
+  }
+  data.journeys.push(journey);
+  data.journeyVersions.push(version);
+  await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyCreate, "marketing_journey", journey.id, {
+    trigger: version.trigger,
+    stepCount: version.steps.length
+  }, journey.territoryId));
+  return journey;
+}
+
+export async function approveJourneyVersion(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  journeyId: string,
+  versionId: string,
+  approvedAt: string
+) {
+  requireMarketingPermission(context, permissions, "journeyApprove");
+  const journey = requireJourney(data, journeyId);
+  if (journey.territoryId) ensureContextCanAccessTerritory(context, journey.territoryId);
+  const version = requireJourneyVersion(data, versionId);
+  if (version.journeyId !== journey.id) throw new Error("Journey version does not belong to journey.");
+  version.status = "approved";
+  version.approvedByUserId = context.userId;
+  version.approvedAt = approvedAt;
+  journey.status = "approved";
+  journey.approvedByUserId = context.userId;
+  journey.approvedAt = approvedAt;
+  await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyApprove, "marketing_journey", journey.id, {
+    versionNumber: version.versionNumber
+  }, journey.territoryId));
+  return version;
+}
+
+export async function activateJourney(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  journeyId: string,
+  activatedAt: string
+) {
+  requireMarketingPermission(context, permissions, "journeyActivate");
+  const journey = requireJourney(data, journeyId);
+  if (!data.journeyVersions.some((version) => version.journeyId === journey.id && version.status === "approved" && !version.deletedAt)) {
+    throw new Error("Journey requires an approved version before activation.");
+  }
+  journey.status = "active";
+  journey.activatedAt = activatedAt;
+  journey.pausedAt = null;
+  await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyActivate, "marketing_journey", journey.id, {}, journey.territoryId));
+  return journey;
+}
+
+export async function pauseJourney(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  journeyId: string,
+  pausedAt: string
+) {
+  requireMarketingPermission(context, permissions, "journeyPause");
+  const journey = requireJourney(data, journeyId);
+  journey.status = "paused";
+  journey.pausedAt = pausedAt;
+  await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyPause, "marketing_journey", journey.id, {}, journey.territoryId));
+  return journey;
+}
+
+export async function enterJourneyFromEvent(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  input: {
+    journeyId: string;
+    contactId: string;
+    territoryId?: string | null;
+    sourceEventType: string;
+    sourceEventId?: string | null;
+    enteredAt: string;
+    idempotencyKey: string;
+  }
+) {
+  requireMarketingPermission(context, permissions, "journeyExecute");
+  const existing = data.journeyAudienceEntries.find((entry) => entry.idempotencyKey === input.idempotencyKey);
+  if (existing) return existing;
+  const journey = requireJourney(data, input.journeyId);
+  if (journey.status !== "active") throw new Error("Only active journeys can receive audience entries.");
+  if (input.territoryId) ensureContextCanAccessTerritory(context, input.territoryId);
+  const contact = requireContact(data, input.contactId);
+  if (contact.emailStatus === "suppressed" || data.suppressions.some((suppression) => suppression.contactId === contact.id && suppression.active)) {
+    throw new Error("Suppressed contacts cannot enter marketing journeys.");
+  }
+  if (input.territoryId && !data.subscriptions.some((subscription) => subscription.contactId === contact.id && subscription.territoryId === input.territoryId && subscription.status === "subscribed" && !subscription.deletedAt)) {
+    throw new Error("Contact is not subscribed in the target territory.");
+  }
+  const version = data.journeyVersions
+    .filter((candidate) => candidate.journeyId === journey.id && candidate.status === "approved" && !candidate.deletedAt)
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+  if (!version) throw new Error("Active journey has no approved version.");
+  const entry: MarketingJourneyAudienceEntry = {
+    id: crypto.randomUUID(),
+    journeyId: journey.id,
+    journeyVersionId: version.id,
+    contactId: contact.id,
+    territoryId: input.territoryId ?? journey.territoryId ?? null,
+    sourceEventType: input.sourceEventType,
+    sourceEventId: input.sourceEventId ?? null,
+    status: "active",
+    enteredAt: input.enteredAt,
+    exitedAt: null,
+    exitReason: null,
+    idempotencyKey: input.idempotencyKey,
+    metadata: {}
+  };
+  const execution: MarketingJourneyExecution = {
+    id: crypto.randomUUID(),
+    entryId: entry.id,
+    journeyId: journey.id,
+    status: "queued",
+    currentStepKey: typeof version.steps[0]?.key === "string" ? version.steps[0].key : null,
+    runAfter: input.enteredAt,
+    attempts: 0,
+    maxAttempts: 3,
+    failureReason: null,
+    completedAt: null,
+    idempotencyKey: `journey:execution:${entry.id}`
+  };
+  data.journeyAudienceEntries.push(entry);
+  data.journeyExecutions.push(execution);
+  await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyEnter, "marketing_journey_audience_entry", entry.id, {
+    journeyId: journey.id,
+    sourceEventType: input.sourceEventType
+  }, entry.territoryId));
+  return entry;
+}
+
+export async function executeJourneyStep(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  executionId: string,
+  stepKey: string,
+  completedAt: string
+) {
+  requireMarketingPermission(context, permissions, "journeyExecute");
+  const execution = data.journeyExecutions.find((candidate) => candidate.id === executionId);
+  if (!execution) throw new Error("Journey execution was not found.");
+  const entry = data.journeyAudienceEntries.find((candidate) => candidate.id === execution.entryId);
+  if (!entry) throw new Error("Journey audience entry was not found.");
+  if (entry.territoryId) ensureContextCanAccessTerritory(context, entry.territoryId);
+  const version = requireJourneyVersion(data, entry.journeyVersionId);
+  const step = version.steps.find((candidate) => candidate.key === stepKey);
+  if (!step) throw new Error("Journey step was not found.");
+  const actionType = typeof step.actionType === "string" ? step.actionType : "unknown";
+  if (["send_email", "add_to_email_campaign", "create_social_queue_suggestion"].includes(actionType)) {
+    const contact = requireContact(data, entry.contactId);
+    if (contact.emailStatus === "suppressed" || data.suppressions.some((suppression) => suppression.contactId === contact.id && suppression.active)) {
+      execution.status = "failed";
+      execution.failureReason = "suppressed_contact";
+      await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyFail, "marketing_journey_execution", execution.id, {
+        reason: "suppressed_contact"
+      }, entry.territoryId));
+      throw new Error("Suppressed contacts cannot receive outbound journey actions.");
+    }
+  }
+  data.journeyStepExecutions.push({
+    id: crypto.randomUUID(),
+    executionId: execution.id,
+    stepKey,
+    actionType,
+    status: "completed",
+    scheduledFor: null,
+    completedAt,
+    failureReason: null,
+    output: { providerNeutral: true },
+    idempotencyKey: `journey:step:${execution.id}:${stepKey}`
+  });
+  execution.currentStepKey = null;
+  execution.status = "completed";
+  execution.completedAt = completedAt;
+  entry.status = "completed";
+  entry.exitedAt = completedAt;
+  entry.exitReason = "completed";
+  await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyStepExecute, "marketing_journey_execution", execution.id, {
+    stepKey,
+    actionType
+  }, entry.territoryId));
+  return execution;
+}
+
 function contactMatchesSegment(
   view: AudienceContactView,
   segment: AudienceSegment,
@@ -691,6 +934,22 @@ function requireCampaignVersion(data: MarketingData, versionId: string) {
   const version = data.emailCampaignVersions.find((candidate) => candidate.id === versionId && !candidate.deletedAt);
   if (!version) {
     throw new Error("Email campaign version was not found.");
+  }
+  return version;
+}
+
+function requireJourney(data: MarketingData, journeyId: string) {
+  const journey = data.journeys.find((candidate) => candidate.id === journeyId && !candidate.deletedAt);
+  if (!journey) {
+    throw new Error("Marketing journey was not found.");
+  }
+  return journey;
+}
+
+function requireJourneyVersion(data: MarketingData, versionId: string) {
+  const version = data.journeyVersions.find((candidate) => candidate.id === versionId && !candidate.deletedAt);
+  if (!version) {
+    throw new Error("Marketing journey version was not found.");
   }
   return version;
 }

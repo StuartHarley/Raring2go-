@@ -1,4 +1,10 @@
-import { listAudienceContacts, listEmailCampaigns, listNewsletterFactory, loadMarketingData } from "@raring2go/marketing";
+import {
+  listAudienceContacts,
+  listEmailCampaigns,
+  listJourneys,
+  listNewsletterFactory,
+  loadMarketingData
+} from "@raring2go/marketing";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import type { PermissionData } from "@raring2go/permissions";
@@ -24,10 +30,12 @@ export const marketingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.segmentView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.audienceView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.segmentView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryView, "own_territory")
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyView, "own_territory")
   ],
   territories: foundationSeed.territories.map((territory) => ({
     id: territory.id,
@@ -60,6 +68,16 @@ export async function readNewsletterFactoryOverview(context: MarketingActorConte
 
   try {
     return listNewsletterFactory(context, marketingPermissionData, await loadMarketingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readJourneyOverview(context: MarketingActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    return listJourneys(context, marketingPermissionData, await loadMarketingData(db));
   } finally {
     await sql.end();
   }

@@ -12,6 +12,11 @@ import {
   emailDeliveryRecords,
   emailRecipientSnapshots,
   emailTemplates,
+  marketingJourneyAudienceEntries,
+  marketingJourneyExecutions,
+  marketingJourneyStepExecutions,
+  marketingJourneyVersions,
+  marketingJourneys,
   networkNewsletterMasters,
   newsletterFactoryRuns,
   territoryNewsletterEditions,
@@ -43,6 +48,11 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     newsletterMasterRows,
     newsletterEditionRows,
     newsletterRunRows,
+    journeyRows,
+    journeyVersionRows,
+    journeyEntryRows,
+    journeyExecutionRows,
+    journeyStepRows,
     territoryRows
   ] = await Promise.all([
     db.select().from(audienceContacts),
@@ -61,6 +71,11 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     db.select().from(networkNewsletterMasters),
     db.select().from(territoryNewsletterEditions),
     db.select().from(newsletterFactoryRuns),
+    db.select().from(marketingJourneys),
+    db.select().from(marketingJourneyVersions),
+    db.select().from(marketingJourneyAudienceEntries),
+    db.select().from(marketingJourneyExecutions),
+    db.select().from(marketingJourneyStepExecutions),
     db.select().from(territories)
   ]);
 
@@ -81,6 +96,11 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     networkNewsletterMasters: newsletterMasterRows.map(dateRows(["approvedAt"])) as MarketingData["networkNewsletterMasters"],
     territoryNewsletterEditions: newsletterEditionRows.map(dateRows(["generatedAt", "approvedAt"])) as MarketingData["territoryNewsletterEditions"],
     newsletterFactoryRuns: newsletterRunRows.map(dateRows(["generatedAt"])) as MarketingData["newsletterFactoryRuns"],
+    journeys: journeyRows.map(dateRows(["approvedAt", "activatedAt", "pausedAt"])) as MarketingData["journeys"],
+    journeyVersions: journeyVersionRows.map(dateRows(["approvedAt"])) as MarketingData["journeyVersions"],
+    journeyAudienceEntries: journeyEntryRows.map(dateRows(["enteredAt", "exitedAt"])) as MarketingData["journeyAudienceEntries"],
+    journeyExecutions: journeyExecutionRows.map(dateRows(["runAfter", "completedAt"])) as MarketingData["journeyExecutions"],
+    journeyStepExecutions: journeyStepRows.map(dateRows(["scheduledFor", "completedAt"])) as MarketingData["journeyStepExecutions"],
     territories: territoryRows as MarketingData["territories"]
   };
 }

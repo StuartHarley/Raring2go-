@@ -24,6 +24,11 @@ import {
   contentItems,
   contentLocalisations,
   emailTemplates,
+  marketingJourneyAudienceEntries,
+  marketingJourneyExecutions,
+  marketingJourneyStepExecutions,
+  marketingJourneyVersions,
+  marketingJourneys,
   networkNewsletterMasters,
   agreementTemplates,
   agreementVersions,
@@ -340,7 +345,14 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.socialPublish,
         fixtureIds.permissions.socialCancel,
         fixtureIds.permissions.socialManageAccounts,
-        fixtureIds.permissions.socialNetworkDistribute
+        fixtureIds.permissions.socialNetworkDistribute,
+        fixtureIds.permissions.journeyView,
+        fixtureIds.permissions.journeyCreate,
+        fixtureIds.permissions.journeyEdit,
+        fixtureIds.permissions.journeyApprove,
+        fixtureIds.permissions.journeyActivate,
+        fixtureIds.permissions.journeyPause,
+        fixtureIds.permissions.journeyExecute
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -532,7 +544,9 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.socialEdit,
         fixtureIds.permissions.socialApprove,
         fixtureIds.permissions.socialSchedule,
-        fixtureIds.permissions.socialCancel
+        fixtureIds.permissions.socialCancel,
+        fixtureIds.permissions.journeyView,
+        fixtureIds.permissions.journeyExecute
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,
@@ -1148,6 +1162,103 @@ export async function seedDatabase(databaseUrl?: string) {
         attempts: sql`excluded.attempts`,
         providerResponse: sql`excluded.provider_response`,
         completedAt: sql`excluded.completed_at`,
+        updatedAt: sql`now()`
+      }
+    });
+
+    await db.insert(marketingJourneys).values(foundationSeed.marketingJourneys.map((journey) => ({
+      ...journey,
+      frequencyCap: { ...journey.frequencyCap },
+      metadata: { ...journey.metadata },
+      approvedAt: journey.approvedAt ? new Date(journey.approvedAt) : null,
+      activatedAt: journey.activatedAt ? new Date(journey.activatedAt) : null,
+      pausedAt: journey.pausedAt ? new Date(journey.pausedAt) : null
+    }))).onConflictDoUpdate({
+      target: marketingJourneys.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        territoryId: sql`excluded.territory_id`,
+        status: sql`excluded.status`,
+        purpose: sql`excluded.purpose`,
+        description: sql`excluded.description`,
+        frequencyCap: sql`excluded.frequency_cap`,
+        metadata: sql`excluded.metadata`,
+        approvedByUserId: sql`excluded.approved_by_user_id`,
+        approvedAt: sql`excluded.approved_at`,
+        activatedAt: sql`excluded.activated_at`,
+        pausedAt: sql`excluded.paused_at`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(marketingJourneyVersions).values(foundationSeed.marketingJourneyVersions.map((version) => ({
+      ...version,
+      trigger: { ...version.trigger },
+      conditions: [...version.conditions],
+      steps: [...version.steps],
+      aiSuggestions: { ...version.aiSuggestions },
+      approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
+    }))).onConflictDoUpdate({
+      target: marketingJourneyVersions.id,
+      set: {
+        status: sql`excluded.status`,
+        trigger: sql`excluded.trigger`,
+        conditions: sql`excluded.conditions`,
+        steps: sql`excluded.steps`,
+        aiSuggestions: sql`excluded.ai_suggestions`,
+        approvedByUserId: sql`excluded.approved_by_user_id`,
+        approvedAt: sql`excluded.approved_at`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(marketingJourneyAudienceEntries).values(foundationSeed.marketingJourneyAudienceEntries.map((entry) => ({
+      ...entry,
+      enteredAt: new Date(entry.enteredAt),
+      exitedAt: entry.exitedAt ? new Date(entry.exitedAt) : null,
+      metadata: { ...entry.metadata }
+    }))).onConflictDoUpdate({
+      target: marketingJourneyAudienceEntries.id,
+      set: {
+        status: sql`excluded.status`,
+        exitedAt: sql`excluded.exited_at`,
+        exitReason: sql`excluded.exit_reason`,
+        metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`
+      }
+    });
+
+    await db.insert(marketingJourneyExecutions).values(foundationSeed.marketingJourneyExecutions.map((execution) => ({
+      ...execution,
+      runAfter: new Date(execution.runAfter),
+      completedAt: execution.completedAt ? new Date(execution.completedAt) : null
+    }))).onConflictDoUpdate({
+      target: marketingJourneyExecutions.id,
+      set: {
+        status: sql`excluded.status`,
+        currentStepKey: sql`excluded.current_step_key`,
+        attempts: sql`excluded.attempts`,
+        failureReason: sql`excluded.failure_reason`,
+        completedAt: sql`excluded.completed_at`,
+        updatedAt: sql`now()`
+      }
+    });
+
+    await db.insert(marketingJourneyStepExecutions).values(foundationSeed.marketingJourneyStepExecutions.map((step) => ({
+      ...step,
+      scheduledFor: step.scheduledFor ? new Date(step.scheduledFor) : null,
+      completedAt: step.completedAt ? new Date(step.completedAt) : null,
+      output: { ...step.output }
+    }))).onConflictDoUpdate({
+      target: marketingJourneyStepExecutions.id,
+      set: {
+        status: sql`excluded.status`,
+        completedAt: sql`excluded.completed_at`,
+        failureReason: sql`excluded.failure_reason`,
+        output: sql`excluded.output`,
         updatedAt: sql`now()`
       }
     });

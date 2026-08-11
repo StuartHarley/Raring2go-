@@ -130,6 +130,16 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory"
   },
   {
+    id: "journeys",
+    label: "Journeys",
+    href: "/app/journeys",
+    capability: {
+      module: "marketing.journey",
+      action: "view"
+    },
+    contextLevel: "territory"
+  },
+  {
     id: "content",
     label: "Content Studio",
     href: "/app/content",
@@ -335,6 +345,12 @@ const permissionData: PermissionData = {
     },
     {
       roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.journeyView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
       permissionId: fixtureIds.permissions.contentView,
       scope: "network",
       constraints: {}
@@ -354,6 +370,12 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.newsletterFactoryView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.journeyView,
       scope: "own_territory",
       constraints: {}
     },

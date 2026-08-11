@@ -145,7 +145,14 @@ export const auditActions = {
   socialPublished: "social.published",
   socialPublishFailed: "social.publish.failed",
   socialCancelled: "social.cancelled",
-  socialAccountChanged: "social.account.changed"
+  socialAccountChanged: "social.account.changed",
+  marketingJourneyCreate: "marketing.journey.create",
+  marketingJourneyApprove: "marketing.journey.approve",
+  marketingJourneyActivate: "marketing.journey.activate",
+  marketingJourneyPause: "marketing.journey.pause",
+  marketingJourneyEnter: "marketing.journey.enter",
+  marketingJourneyStepExecute: "marketing.journey.step.execute",
+  marketingJourneyFail: "marketing.journey.fail"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});
