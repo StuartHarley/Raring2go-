@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { scanFile, validateScanRequest, type ScanDependencies, type ScannerConfig } from "./scanner";
+import { scanFile, validateScanRequest, type ScanDependencies, type ScannerConfig } from "./scanner.js";
 
 export function createScannerServer(config: ScannerConfig, dependencies: ScanDependencies = {}) {
   return createServer(async (request, response) => {

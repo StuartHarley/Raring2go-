@@ -5,8 +5,8 @@ import {
   scanFile,
   validateScanRequest,
   type ScannerConfig
-} from "./scanner";
-import { createScannerServer } from "./server";
+} from "./scanner.js";
+import { createScannerServer } from "./server.js";
 
 const config: ScannerConfig = {
   apiKey: "scanner-secret",
