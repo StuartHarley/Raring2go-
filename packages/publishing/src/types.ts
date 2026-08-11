@@ -261,3 +261,22 @@ export type EditionSummary = {
   masterEdition: MasterEdition;
   territoryEditions: TerritoryEdition[];
 };
+
+export type EditionControlRoomRow = {
+  territoryEdition: TerritoryEdition;
+  territory?: PublishingTerritory;
+  season: Season;
+  completionPercent: number;
+  phase: string;
+  riskStatus: "on_track" | "watch" | "blocked";
+  pagesReady: number;
+  pagesTotal: number;
+  blockedPages: number;
+  missingLocalContent: number;
+  preflightFailures: number;
+  hqActions: number;
+  localActions: number;
+  nextDeadline?: string | null;
+  printStatus: string;
+  digitalStatus: string;
+};

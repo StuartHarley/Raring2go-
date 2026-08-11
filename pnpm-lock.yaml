@@ -50,6 +50,9 @@ importers:
       '@raring2go/permissions':
         specifier: workspace:*
         version: link:../../packages/permissions
+      '@raring2go/publishing':
+        specifier: workspace:*
+        version: link:../../packages/publishing
       next:
         specifier: 16.3.0
         version: 16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@26.2.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

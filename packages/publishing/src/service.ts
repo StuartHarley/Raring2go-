@@ -2,6 +2,7 @@ import { auditActions } from "@raring2go/audit";
 import { requirePermission, type PermissionData } from "@raring2go/permissions";
 import { publishingCapabilities, type PublishingCapability } from "./permissions";
 import type {
+  EditionControlRoomRow,
   EditionSummary,
   EditionContentItem,
   EditionPage,
@@ -50,6 +51,64 @@ export function listEditionSummaries(
       return { season, masterEdition, territoryEditions };
     })
     .filter((summary) => summary.territoryEditions.length > 0 || visibleTerritoryIds == null);
+}
+
+export function listEditionControlRoom(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  data: PublishingData
+): EditionControlRoomRow[] {
+  requirePublishingPermission(context, permissions, "editionView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+
+  return data.territoryEditions
+    .filter((edition) => !edition.deletedAt)
+    .filter((edition) => visibleTerritoryIds == null || visibleTerritoryIds.has(edition.territoryId))
+    .map((edition) => {
+      const season = requireSeason(data, edition.seasonId);
+      const territory = data.territories.find((candidate) => candidate.id === edition.territoryId);
+      const pages = data.editionPages.filter((page) => page.territoryEditionId === edition.id && !page.deletedAt);
+      const pagesReady = pages.filter((page) => page.readiness === "ready").length;
+      const blockedPages = pages.filter((page) => page.readiness === "blocked" || page.issues.length > 0).length;
+      const missingLocalContent = pages.filter(
+        (page) => page.sourceMarker === "local" && !page.assignedContentId
+      ).length;
+      const preflightFailures = data.preflightResults.filter(
+        (result) =>
+          result.territoryEditionId === edition.id &&
+          result.status === "failed" &&
+          !result.deletedAt
+      ).length;
+      const pagesTotal = Math.max(edition.pageCount, pages.length);
+      const completionPercent = pagesTotal === 0 ? 0 : Math.round((pagesReady / pagesTotal) * 100);
+      const hqActions = pages.filter((page) => page.status === "awaiting_hq").length + preflightFailures;
+      const localActions = missingLocalContent + blockedPages;
+      const riskStatus: EditionControlRoomRow["riskStatus"] = blockedPages > 0 || preflightFailures > 0
+        ? "blocked"
+        : completionPercent < 70
+          ? "watch"
+          : "on_track";
+
+      return {
+        territoryEdition: edition,
+        territory,
+        season,
+        completionPercent,
+        phase: editionPhase(edition),
+        riskStatus,
+        pagesReady,
+        pagesTotal,
+        blockedPages,
+        missingLocalContent,
+        preflightFailures,
+        hqActions,
+        localActions,
+        nextDeadline: nextEditionDeadline(edition),
+        printStatus: edition.printStatus,
+        digitalStatus: edition.digitalStatus
+      };
+    })
+    .sort((left, right) => left.territoryEdition.title.localeCompare(right.territoryEdition.title));
 }
 
 export async function createSeasonWithMasterEdition(
@@ -977,6 +1036,35 @@ function preflightStatus(checks: PreflightCheck[]) {
     return "warning";
   }
   return "passed";
+}
+
+function editionPhase(edition: TerritoryEdition) {
+  if (edition.status === "published") {
+    return "Published";
+  }
+  if (edition.printStatus === "generated" || edition.digitalStatus === "generated") {
+    return "Output generated";
+  }
+  if (edition.status === "approved") {
+    return "Approved";
+  }
+  if (edition.status === "review") {
+    return "HQ review";
+  }
+  if (edition.status === "localising") {
+    return "Local editing";
+  }
+  return "Planning";
+}
+
+function nextEditionDeadline(edition: TerritoryEdition) {
+  return (
+    edition.editorialDeadline ??
+    edition.proofDeadline ??
+    edition.printDeadline ??
+    edition.publicationDate ??
+    null
+  );
 }
 
 function safeFixAction(code: string) {

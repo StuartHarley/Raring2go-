@@ -100,6 +100,16 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory"
   },
   {
+    id: "editions",
+    label: "Edition Factory",
+    href: "/app/editions",
+    capability: {
+      module: "edition",
+      action: "view"
+    },
+    contextLevel: "territory"
+  },
+  {
     id: "roles",
     label: "Roles & Permissions",
     href: "/app/roles",
@@ -200,6 +210,18 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.franchiseView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.editionView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.editionView,
       scope: "own_territory",
       constraints: {}
     }

@@ -411,6 +411,40 @@ p {
   font-size: 0.875rem;
 }
 
+.edition-flatplan {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+
+.edition-page-tile {
+  aspect-ratio: 3 / 4;
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.edition-page-tile span,
+.edition-page-tile small {
+  color: var(--r2-text-muted);
+  font-weight: 700;
+}
+
+.edition-page-tile strong {
+  color: var(--r2-text-primary);
+  text-transform: capitalize;
+}
+
+.edition-page-ready {
+  border-color: color-mix(in srgb, var(--r2-status-success), transparent 40%);
+}
+
+.edition-page-blocked {
+  border-color: color-mix(in srgb, var(--r2-status-danger), transparent 35%);
+}
+
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;

@@ -14,6 +14,7 @@ import {
   generateTerritoryEditions,
   generateDigitalOutput,
   generatePrintOutput,
+  listEditionControlRoom,
   listEditionSummaries,
   publishTemplateVersion,
   applySafePreflightFixes,
@@ -549,6 +550,50 @@ describe("publishing edition model", () => {
         artifact: { storageKey: "outputs/no-preflight.pdf" }
       })
     ).rejects.toThrow("successful preflight");
+  });
+
+  it("summarises HQ control room risk and filters local territory context", async () => {
+    const publishingData = seededData();
+    await generateTerritoryEditions(hqContext(), permissions, audit(), publishingData, ids.master, [
+      ids.territories.own,
+      ids.territories.other
+    ]);
+    await createEditionFlatplan(hqContext(), permissions, audit(), publishingData, publishingData.territoryEditions[0]!.id);
+    publishingData.editionPages[2]!.readiness = "blocked";
+    publishingData.editionPages[2]!.issues = [{ type: "missing_image" }];
+    publishingData.preflightResults.push({
+      id: "preflight_failed",
+      entityType: "edition_page",
+      entityId: publishingData.editionPages[2]!.id,
+      territoryEditionId: publishingData.territoryEditions[0]!.id,
+      status: "failed",
+      checks: [{ code: "low_resolution", severity: "error", message: "Low resolution", fixable: false }],
+      fixes: [],
+      originalArtifact: {},
+      derivedArtifact: {},
+      unfixableIssues: [{ code: "low_resolution", severity: "error", message: "Low resolution", fixable: false }],
+      createdByUserId: ids.users.hq
+    });
+
+    const hqRows = listEditionControlRoom(hqContext(), permissions, publishingData);
+    const localRows = listEditionControlRoom(
+      {
+        userId: ids.users.local,
+        organisationId: ids.organisations.franchise,
+        territoryId: ids.territories.own
+      },
+      permissions,
+      publishingData
+    );
+
+    expect(hqRows).toHaveLength(2);
+    expect(localRows).toHaveLength(1);
+    expect(localRows[0]).toMatchObject({
+      riskStatus: "blocked",
+      blockedPages: 1,
+      preflightFailures: 1,
+      missingLocalContent: 34
+    });
   });
 });
 
