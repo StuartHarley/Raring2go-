@@ -290,6 +290,22 @@ importers:
 
   packages/workflows: {}
 
+  services/clamav-scanner:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1106.0
+        version: 3.1106.0
+    devDependencies:
+      tsx:
+        specifier: 4.23.12
+        version: 4.23.12
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
+
 packages:
 
   '@asamuzakjp/css-color@6.0.7':

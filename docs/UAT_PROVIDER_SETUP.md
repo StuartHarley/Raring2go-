@@ -251,6 +251,10 @@ No public bucket or R2 public custom domain should be configured for this phase.
 
 ## 7. ClamAV Scanner Deployment Recommendation
 
+Decision: use Railway for the private ClamAV HTTP scanner during UAT.
+
+Implementation/runbook: `docs/RAILWAY_CLAMAV_SCANNER.md`.
+
 Current adapter expectation:
 
 - The app calls a private HTTP endpoint with `POST`.
@@ -265,10 +269,9 @@ Required scan flow:
 R2 object -> private scanner fetch/stream -> ClamAV scan -> clean / infected / failed result -> app scan status update
 ```
 
-Deployment options:
+Deployment option:
 
-- Small private container/service: lowest conceptual complexity if it can access R2 and is reachable only by the app. Good pilot default.
-- Cloud Run/Fly.io/Railway/Render-style private service: acceptable if private networking, secrets, memory and ClamAV definition updates are straightforward.
+- Railway container service running `clamd` and the minimal `services/clamav-scanner` HTTP wrapper.
 - Vercel Function: not recommended for actual ClamAV runtime because ClamAV definitions, cold starts, file-size handling and binary runtime needs are awkward.
 
 Recommendation:
@@ -287,7 +290,7 @@ Operational requirements:
 - ClamAV definition updates at least daily.
 - Logs must include file ID/status/timing only, not file contents, credentials or signed URLs.
 
-Decision required if no private container runtime is available: choose the pilot scanner host before live storage/scanning can become GREEN.
+Storage/scanning remains AMBER until the Railway scanner is deployed, configured and verified with clean and EICAR UAT objects.
 
 ## 8. Meta Live Verification Procedure
 
