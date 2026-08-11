@@ -105,7 +105,7 @@ Real email HTTP transport:
 Postmark email transport:
 
 - Implementation: `EmailDeliveryProvider` adapter added for Postmark transactional and broadcast streams.
-- Automated tests: pending current UAT-001C quality gate.
+- Automated tests: passed `pnpm --filter @raring2go/email test` and `pnpm --filter @raring2go/web typecheck`.
 - Configuration still required: Postmark Server, sending domain authentication for `mail.raring2go.co.uk`, Vercel/local secrets and webhook secret.
 - Live verification still required: passwordless send, transactional send, newsletter send, bounce/complaint webhook and suppression proof.
 - Status: AMBER until real Postmark DNS and controlled sends are verified.
@@ -113,7 +113,7 @@ Postmark email transport:
 Vercel/Cloudflare deployment readiness:
 
 - Implementation: `docs/DEPLOYMENT.md` added for `app.raring2go.co.uk`, `mis.raring2go.co.uk`, `mail.raring2go.co.uk`, provider callbacks, noindex/cutover policy and rollback.
-- Automated tests: pending current UAT-001D quality gate for environment URL validation.
+- Automated tests: passed `pnpm --filter @raring2go/config test` and `pnpm --filter @raring2go/web typecheck`.
 - Configuration still required: Vercel project/environment variables, Cloudflare DNS records and preview/production deployment verification.
 - Live verification still required: deployed auth, app shell, public territory page, Meta callback and email webhook smoke checks.
 - Status: AMBER until deployment and DNS are configured.
@@ -128,7 +128,7 @@ Signed URL storage:
 Cloudflare R2 storage and ClamAV scanning:
 
 - Implementation: R2 `StorageProvider` added with private signed upload/download URLs; ClamAV HTTP `FileScannerProvider` boundary added.
-- Automated tests: pending current UAT-001E quality gate.
+- Automated tests: passed `pnpm --filter @raring2go/storage test` and `pnpm --filter @raring2go/storage typecheck`.
 - Configuration still required: private R2 bucket, scoped R2 keys, Vercel/local secrets and private scanner service endpoint.
 - Live verification still required: real upload, non-public object proof, scan result, blocked infected/pending download, signed URL expiry and credential-leak review.
 - Status: AMBER until real R2 bucket and scanner service are verified.

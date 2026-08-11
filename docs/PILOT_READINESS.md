@@ -64,8 +64,8 @@ Status: GREEN for implemented foundations.
 
 Status: AMBER.
 
-- Email transport is provider-neutral with console, HTTP and SMTP-compatible boundaries.
-- Storage supports signed URL and scanner abstractions with download blocked until clean/not-required.
+- Email transport is provider-neutral with console, HTTP, SMTP-compatible and Postmark boundaries.
+- Storage supports development, signed URL and Cloudflare R2 providers with scanner abstractions and download blocked until clean/not-required.
 - Meta/Facebook adapter reports missing credentials, auth failure, provider outage and API failure without pretending success.
 - Social publish jobs persist failed/retryable state and sanitize provider metadata.
 - Live Meta retry/no-duplicate behaviour must be verified with a real Page before controlled pilot.
@@ -100,8 +100,8 @@ Safe to keep stubbed for internal UAT:
 Must become real before controlled pilot:
 
 - Meta Facebook Page credentials and live-post verification.
-- Production-capable email provider credentials/domain authentication for passwordless and transactional mail.
-- Production storage backend and scanner integration for real uploaded files.
+- Postmark credentials/domain authentication for passwordless, transactional and newsletter mail.
+- Cloudflare R2 bucket credentials and private ClamAV scanner integration for real uploaded files.
 - Database backups/restore verification for pilot environment.
 
 Must become real before broader production rollout:
@@ -118,8 +118,8 @@ Must become real before broader production rollout:
 | Public publishability | GREEN | Central projection boundary in place. |
 | Parent session | GREEN | Real global auth session; no internal access leakage. |
 | Analytics persistence | GREEN | Privacy-aware table and ingestion path implemented. |
-| Email transport | AMBER | Adapter ready; real provider/domain credentials still required. |
-| Storage/scanning | AMBER | Signed/scanning boundary ready; real backend/scanner still required. |
+| Email transport | AMBER | Postmark adapter ready; real DNS/domain credentials and controlled sends still required. |
+| Storage/scanning | AMBER | R2/scanner boundary ready; real bucket/private scanner verification still required. |
 | Meta/Facebook publishing | AMBER | Adapter ready; live Page credentials and live-post verification outstanding. |
 | Website publishing strategy | GREEN | Next.js canonical; WordPress not active. |
 | Tenancy/security | GREEN | Existing automated isolation tests remain green. |
@@ -134,8 +134,8 @@ No RED blockers were found for internal UAT.
 Controlled pilot blockers to clear:
 
 - Configure real Meta Facebook Page environment variables and complete one live-post verification.
-- Configure real email provider credentials and domain authentication.
-- Configure real storage/scanner backend for any pilot file uploads.
+- Configure Postmark credentials and `mail.raring2go.co.uk` domain authentication.
+- Configure Cloudflare R2 and private ClamAV scanner backend for any pilot file uploads.
 - Confirm backup/restore and support runbook ownership for pilot environment.
 
 ## Final Recommendation
