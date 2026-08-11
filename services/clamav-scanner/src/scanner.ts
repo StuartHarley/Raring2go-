@@ -292,6 +292,13 @@ export async function scanStreamWithClamd(
 export function parseClamdResponse(value: string): ClamScanOutcome {
   const trimmed = value.replace(/\0/g, "").trim();
 
+  if (!trimmed) {
+    return {
+      status: "failed",
+      reason: "clamd_empty_response"
+    };
+  }
+
   if (trimmed.endsWith("OK")) {
     return { status: "clean" };
   }
@@ -305,9 +312,16 @@ export function parseClamdResponse(value: string): ClamScanOutcome {
     };
   }
 
+  if (trimmed.endsWith("ERROR")) {
+    return {
+      status: "failed",
+      reason: "clamd_error"
+    };
+  }
+
   return {
     status: "failed",
-    reason: "scan_failed"
+    reason: "clamd_unexpected_response"
   };
 }
 

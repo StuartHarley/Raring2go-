@@ -78,6 +78,21 @@ describe("ClamAV scanner service", () => {
     });
   });
 
+  it("classifies unexpected clamd responses with safe failure reasons", () => {
+    expect(parseClamdResponse("\0")).toEqual({
+      status: "failed",
+      reason: "clamd_empty_response"
+    });
+    expect(parseClamdResponse("stream: Size limit exceeded. ERROR\0")).toEqual({
+      status: "failed",
+      reason: "clamd_error"
+    });
+    expect(parseClamdResponse("UNKNOWN COMMAND\0")).toEqual({
+      status: "failed",
+      reason: "clamd_unexpected_response"
+    });
+  });
+
   it("rejects missing or invalid API keys", async () => {
     const server = createScannerServer(config, {
       fetchObject: async () => ({ body: Readable.from("hello"), byteSize: 5 }),
