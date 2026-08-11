@@ -1,7 +1,13 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { eq, sql as drizzleSql } from "drizzle-orm";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  createFileReference,
+  createStorageProviderFromEnv,
+  type StorageProvider
+} from "@raring2go/storage";
 import { createDb, requireDatabaseUrl, requireMigrationDatabaseUrl } from "./client";
 import { seedUatDatabase } from "./seed-uat";
 import { memberships, organisations, permissions, roles, userRoleAssignments, users } from "./schema";
@@ -15,19 +21,27 @@ type Check = {
   action?: string;
 };
 
-const command = process.argv[2] ?? "check";
-
 hydrateLocalEnv();
 
-if (command === "check") {
-  await runCheck();
-} else if (command === "db:setup") {
-  await runDbSetup();
-} else if (command === "smoke") {
-  await runSmoke();
-} else {
-  console.error(`Unsupported UAT toolkit command: ${command}`);
-  process.exit(1);
+export async function main(argv = process.argv) {
+  const command = argv[2] ?? "check";
+
+  if (command === "check") {
+    await runCheck();
+  } else if (command === "db:setup") {
+    await runDbSetup();
+  } else if (command === "smoke") {
+    await runSmoke();
+  } else if (command === "storage") {
+    await runStorage();
+  } else {
+    console.error(`Unsupported UAT toolkit command: ${command}`);
+    process.exit(1);
+  }
+}
+
+if (process.argv[1]?.endsWith("uat-toolkit.ts")) {
+  await main();
 }
 
 async function runCheck() {
@@ -93,6 +107,185 @@ async function runSmoke() {
   exitFor(checks);
 }
 
+async function runStorage() {
+  const checks = await verifyR2Storage();
+
+  printReport("UAT R2 storage verification", checks, remainingActions(checks));
+  exitFor(checks);
+}
+
+export async function verifyR2Storage(input: {
+  source?: NodeJS.ProcessEnv;
+  provider?: StorageProvider;
+  fetcher?: typeof fetch;
+  id?: string;
+  now?: () => Date;
+} = {}): Promise<Check[]> {
+  const source = input.source ?? process.env;
+  const checks: Check[] = [
+    ...safetyChecks(source),
+    ...r2StorageConfigChecks(source)
+  ];
+
+  if (hasRed(checks)) {
+    return checks;
+  }
+
+  const now = input.now ?? (() => new Date());
+  const id = input.id ?? randomUUID();
+  const content = `Raring2go UAT R2 verification\nid=${id}\ncreatedAt=${now().toISOString()}\n`;
+  const checksum = sha256(content);
+  const reference = createFileReference({
+    id: `uat-storage-${id}`,
+    providerKey: "r2",
+    storageKey: `uat/verification/${id}.txt`,
+    fileName: `${id}.txt`,
+    contentType: "text/plain; charset=utf-8",
+    byteSize: Buffer.byteLength(content),
+    checksum,
+    accessScope: "system",
+    virusScanStatus: "not_required",
+    createdAt: now().toISOString(),
+    metadata: {
+      purpose: "uat-storage-verification",
+      publicBucketRequired: false,
+      clamAvInvolved: false
+    }
+  });
+  let provider: StorageProvider;
+  const fetcher = input.fetcher ?? fetch;
+  let cleanupAttempted = false;
+
+  try {
+    provider = input.provider ?? createStorageProviderFromEnv(source);
+  } catch (error) {
+    return [
+      ...checks,
+      {
+        status: "RED",
+        label: "R2 provider",
+        detail: safeDiagnostic(errorMessage(error), source),
+        action: "Check STORAGE_PROVIDER and Cloudflare R2 environment variables."
+      }
+    ];
+  }
+
+  if (provider.key !== "r2") {
+    return [
+      ...checks,
+      {
+        status: "RED",
+        label: "R2 provider",
+        detail: `Storage provider resolved to ${provider.key}, not r2.`,
+        action: "Set STORAGE_PROVIDER=r2 for live R2 verification."
+      }
+    ];
+  }
+
+  try {
+    const upload = await provider.createUploadIntent(reference);
+    checks.push({
+      status: "GREEN",
+      label: "Signed upload intent",
+      detail: "Private R2 signed upload intent was created. URL hidden."
+    });
+
+    const uploadResponse = await fetcher(upload.uploadUrl, {
+      method: "PUT",
+      headers: upload.headers,
+      body: content
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`R2 upload failed with HTTP ${uploadResponse.status}.`);
+    }
+
+    checks.push({
+      status: "GREEN",
+      label: "Private upload",
+      detail: "Temporary verification object uploaded to the configured private R2 bucket."
+    });
+
+    const download = await provider.createDownloadIntent({
+      ...reference,
+      virusScanStatus: "not_required"
+    }, { disposition: "attachment" });
+    checks.push({
+      status: "GREEN",
+      label: "Signed download intent",
+      detail: "Short-lived signed download intent was created. URL hidden."
+    });
+
+    const downloadResponse = await fetcher(download.downloadUrl, { method: "GET" });
+
+    if (!downloadResponse.ok) {
+      throw new Error(`R2 download failed with HTTP ${downloadResponse.status}.`);
+    }
+
+    const downloaded = await downloadResponse.text();
+    const downloadedChecksum = sha256(downloaded);
+
+    if (downloaded !== content || downloadedChecksum !== checksum) {
+      throw new Error("Downloaded R2 object content/checksum did not match the uploaded verification file.");
+    }
+
+    checks.push({
+      status: "GREEN",
+      label: "Content verification",
+      detail: "Downloaded object matched the generated content and SHA-256 checksum."
+    });
+    checks.push({
+      status: "GREEN",
+      label: "Private bucket posture",
+      detail: "Verification used provider-neutral signed URLs only; no public bucket URL is required."
+    });
+  } catch (error) {
+    checks.push({
+      status: "RED",
+      label: "R2 verification",
+      detail: safeDiagnostic(errorMessage(error), source),
+      action: "Check R2 credentials, bucket policy, network access and signed URL permissions."
+    });
+  } finally {
+    if (provider.deleteObject) {
+      try {
+        cleanupAttempted = true;
+        await provider.deleteObject(reference);
+        checks.push({
+          status: "GREEN",
+          label: "Cleanup",
+          detail: "Temporary verification object was deleted or already absent."
+        });
+      } catch (error) {
+        checks.push({
+          status: "RED",
+          label: "Cleanup",
+          detail: safeDiagnostic(errorMessage(error), source),
+          action: "Manually remove the temporary object under uat/verification/ from the private R2 bucket."
+        });
+      }
+    } else {
+      checks.push({
+        status: "RED",
+        label: "Cleanup",
+        detail: "The active storage provider does not support direct object cleanup.",
+        action: "Use the Cloudflare R2 provider for UAT storage verification."
+      });
+    }
+  }
+
+  if (!cleanupAttempted) {
+    checks.push({
+      status: "RED",
+      label: "Cleanup safety",
+      detail: "Cleanup was not attempted.",
+      action: "Review the storage provider configuration before rerunning verification."
+    });
+  }
+
+  return checks;
+}
+
 function environmentChecks(): Check[] {
   return [
     ...safetyChecks(),
@@ -105,9 +298,9 @@ function environmentChecks(): Check[] {
   ];
 }
 
-function safetyChecks(): Check[] {
-  const appEnv = process.env.APP_ENV;
-  const confirmation = process.env.UAT_CONFIRMATION;
+function safetyChecks(source: NodeJS.ProcessEnv = process.env): Check[] {
+  const appEnv = source.APP_ENV;
+  const confirmation = source.UAT_CONFIRMATION;
   const checks: Check[] = [];
 
   if (appEnv === "preview" || confirmation === "RARING2GO_UAT") {
@@ -127,24 +320,63 @@ function safetyChecks(): Check[] {
     });
   }
 
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = source.DATABASE_URL;
 
-  if (databaseUrl && looksLikeProductionDatabase(databaseUrl)) {
-    checks.push({
-      status: "RED",
-      label: "Database target safety",
-      detail: "DATABASE_URL appears to reference a production/main database.",
-      action: "Point DATABASE_URL at the Neon UAT/preview branch before running UAT setup."
-    });
-  } else if (databaseUrl) {
-    checks.push({
-      status: "GREEN",
-      label: "Database target safety",
-      detail: "DATABASE_URL does not match obvious production/main markers."
-    });
+  if (databaseUrl) {
+    try {
+      if (looksLikeProductionDatabase(databaseUrl)) {
+        checks.push({
+          status: "RED",
+          label: "Database target safety",
+          detail: "DATABASE_URL appears to reference a production/main database.",
+          action: "Point DATABASE_URL at the Neon UAT/preview branch before running UAT setup."
+        });
+      } else {
+        checks.push({
+          status: "GREEN",
+          label: "Database target safety",
+          detail: "DATABASE_URL does not match obvious production/main markers."
+        });
+      }
+    } catch {
+      checks.push({
+        status: "RED",
+        label: "Database target safety",
+        detail: "DATABASE_URL is not a valid database URL.",
+        action: "Set DATABASE_URL to the Neon UAT/preview branch before running UAT setup."
+      });
+    }
   }
 
   return checks;
+}
+
+function r2StorageConfigChecks(source: NodeJS.ProcessEnv): Check[] {
+  return [
+    requiredFrom(source, "STORAGE_PROVIDER", false, "Cloudflare R2 storage provider selector."),
+    requiredFrom(source, "R2_ACCOUNT_ID", true, "Cloudflare R2 account ID."),
+    requiredFrom(source, "R2_BUCKET", false, "Private Cloudflare R2 bucket."),
+    requiredFrom(source, "R2_ACCESS_KEY_ID", true, "Cloudflare R2 access key ID."),
+    requiredFrom(source, "R2_SECRET_ACCESS_KEY", true, "Cloudflare R2 secret access key."),
+    requiredFrom(source, "STORAGE_URL_TTL_SECONDS", false, "Signed URL lifetime.")
+  ];
+}
+
+function requiredFrom(source: NodeJS.ProcessEnv, name: string, secret: boolean, purpose: string): Check {
+  if (source[name]) {
+    return {
+      status: "GREEN",
+      label: name,
+      detail: `${purpose} Configured${secret ? " (secret hidden)." : "."}`
+    };
+  }
+
+  return {
+    status: "RED",
+    label: name,
+    detail: `${purpose} Missing.`,
+    action: `Set ${name} in the UAT environment.`
+  };
 }
 
 function providerPresenceChecks(): Check[] {
@@ -410,6 +642,38 @@ function exitFor(checks: Check[]) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error";
+}
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function safeDiagnostic(value: string, source: NodeJS.ProcessEnv = process.env) {
+  let output = value
+    .replace(/https:\/\/\S*X-Amz-\S+/g, "[signed-url-hidden]")
+    .replace(/X-Amz-[A-Za-z-]+=[^&\s]+/g, "X-Amz-[hidden]")
+    .replace(/Signature=[^&\s]+/gi, "Signature=[hidden]");
+
+  const secretNames = [
+    "DATABASE_URL",
+    "DATABASE_MIGRATION_URL",
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "POSTMARK_SERVER_TOKEN",
+    "META_APP_SECRET",
+    "INTEGRATION_SECRET_ENCRYPTION_KEY",
+    "CLAMAV_SCANNER_API_KEY"
+  ];
+
+  for (const name of secretNames) {
+    const secret = source[name];
+    if (secret && secret.length >= 4) {
+      output = output.split(secret).join("[hidden]");
+    }
+  }
+
+  return output;
 }
 
 function redactUrl(url: URL) {

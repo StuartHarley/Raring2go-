@@ -63,7 +63,8 @@ Normal workflow:
 2. Run `pnpm uat:check`.
 3. Run `pnpm uat:db:setup`.
 4. Run `pnpm uat:smoke`.
-5. Complete only the remaining live verification steps and record evidence.
+5. Run `pnpm uat:storage` after R2 credentials are configured.
+6. Complete only the remaining live verification steps and record evidence.
 
 ### `pnpm uat:check`
 
@@ -102,6 +103,21 @@ Checks deployed route configuration where practical:
 - optional territory route if `UAT_SMOKE_TERRITORY_SLUG` is set.
 
 Network failures are reported as AMBER so they can be rerun from an environment with deployment access.
+
+### `pnpm uat:storage`
+
+Verifies live Cloudflare R2 storage without adding product data:
+
+- refuses to run without `APP_ENV=preview` or `UAT_CONFIRMATION=RARING2GO_UAT`;
+- refuses obvious production/main database targets;
+- requires `STORAGE_PROVIDER=r2` and the R2 configuration variables;
+- creates a generated temporary text object under `uat/verification/`;
+- uploads through the provider-neutral storage API using a signed upload intent;
+- downloads through a short-lived signed download URL and verifies content plus SHA-256 checksum;
+- confirms no public R2 bucket URL is required;
+- deletes the temporary object afterwards.
+
+The command never prints R2 access keys, R2 secrets, signed upload URLs or signed download URLs. It does not call ClamAV and does not prove scanner readiness; scanner evidence remains separate under `SCAN-001` and `SCAN-002`.
 
 ## 3. Environment Variable Matrix
 
@@ -224,9 +240,9 @@ Codex must not send live emails without explicit credentials and approval.
 3. Create scoped R2 API credentials for that bucket.
 4. Record account ID and bucket name.
 5. Configure Vercel secrets for `STORAGE_PROVIDER=r2`, R2 credentials and TTL.
-6. Upload smoke test: create a signed upload intent and upload one harmless pilot file.
-7. Confirm direct public access to the object fails.
-8. Signed download test: mark file clean through scanner workflow and download via signed URL.
+6. Run `pnpm uat:storage` to create a signed upload intent, upload one harmless generated file, download it through a signed URL, verify checksum and delete it.
+7. Confirm direct public access to the bucket/object remains disabled through Cloudflare R2 controls.
+8. Signed download product test: mark a real pilot file clean through scanner workflow and download via signed URL.
 9. Cross-territory denial test: a user from Territory A must not receive a usable download for Territory B.
 10. Expiry test: expired signed URL must fail.
 11. Rejected/unclean test: pending, failed or infected scan status must block download.
@@ -335,10 +351,11 @@ Decision required:
 8. Run `pnpm uat:check`.
 9. Run `pnpm uat:db:setup`.
 10. Run `pnpm uat:smoke`.
-11. Confirm the `UAT_ADMIN_EMAIL` passwordless sign-in reaches `/app`.
-12. Run live verification matrix in order: Vercel/public, email, storage/scanning, Meta, backup/restore.
-13. Record evidence and defects.
-14. Only then consider UAT-002 internal user testing.
+11. Run `pnpm uat:storage`.
+12. Confirm the `UAT_ADMIN_EMAIL` passwordless sign-in reaches `/app`.
+13. Run live verification matrix in order: Vercel/public, email, storage/scanning, Meta, backup/restore.
+14. Record evidence and defects.
+15. Only then consider UAT-002 internal user testing.
 
 ## 11. Decisions Required
 

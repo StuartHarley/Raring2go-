@@ -58,8 +58,8 @@ Status values: NOT RUN, PASS, AMBER, FAIL.
 | EMAIL-001 | Postmark domain verified and `EMAIL_PROVIDER=postmark`. | Request a passwordless sign-in email to a project-owned mailbox. | Email arrives from `mail.raring2go.co.uk`; sign-in link works. | Postmark activity entry, email headers, screenshot. | PASS only with real delivered email. | NOT RUN |
 | EMAIL-002 | Postmark broadcast stream configured. | Send one controlled newsletter/test campaign to project-owned recipient. | Message uses broadcast stream and delivery is recorded. | Postmark message ID, recipient screenshot, internal record. | PASS only with controlled live send. | NOT RUN |
 | EMAIL-003 | Postmark webhook configured with app secret. | Trigger/replay bounce and complaint events for test recipient. | Events dedupe and suppression behaviour is visible; no credential leakage. | Webhook log, suppression/internal evidence. | PASS only when duplicate replay is ignored. | NOT RUN |
-| STORAGE-001 | Private R2 bucket and Vercel R2 secrets configured. | Create signed upload intent and upload harmless pilot file. | Object exists in private bucket and is not publicly accessible. | R2 object metadata, failed public access proof. | PASS only when bucket remains private. | NOT RUN |
-| STORAGE-002 | File has clean/not-required scan status. | Request authorised signed download as permitted user. | Short-lived signed URL works for authorised user. | Download URL timestamp, user/context, success screenshot. | PASS only with server-side permission proof. | NOT RUN |
+| STORAGE-001 | Private R2 bucket and Vercel R2 secrets configured. | Run `pnpm uat:storage`; confirm the command creates a signed upload intent and uploads a harmless generated file. | Object exists in private bucket during the test, then is cleaned up; no public bucket URL is required. | Safe command output, R2 object metadata if captured, failed public access proof. | PASS only when bucket remains private and secrets/URLs are not exposed. | NOT RUN |
+| STORAGE-002 | Private R2 bucket and Vercel R2 secrets configured. | Run `pnpm uat:storage`; confirm signed download verifies content/checksum and cleanup succeeds. | Short-lived signed URL works for the generated object; checksum matches; object is deleted after verification. | Safe command output, checksum result, cleanup confirmation. | PASS only when download succeeds without public access or secret leakage. | NOT RUN |
 | STORAGE-003 | Two territory contexts available. | Attempt Territory A access to Territory B file. | Access denied before usable signed URL is issued. | User/context IDs, denial screenshot/log. | PASS only when denial fails closed. | NOT RUN |
 | SCAN-001 | Private scanner deployed and connected to R2. | Scan a harmless clean file. | Scanner returns clean and file becomes downloadable. | Scan result, timestamp, file ID. | PASS only with real scanner result. | NOT RUN |
 | SCAN-002 | Private scanner deployed and test-signature policy approved. | Scan rejected test file/signature. | Scanner returns infected/rejected and download remains blocked. | Scan finding, blocked download evidence. | PASS only when blocked after scan. | NOT RUN |
@@ -154,6 +154,28 @@ Cloudflare R2 storage and ClamAV scanning:
 - Configuration still required: private R2 bucket, scoped R2 keys, Vercel/local secrets and private scanner service endpoint.
 - Live verification still required: real upload, non-public object proof, scan result, blocked infected/pending download, signed URL expiry and credential-leak review.
 - Status: AMBER until real R2 bucket and scanner service are verified.
+
+### STORAGE-001 / STORAGE-002 Live R2 Verification
+
+Command: `pnpm uat:storage`
+
+Date/time:
+
+Environment: Neon UAT / Vercel preview / Cloudflare R2 private bucket
+
+Result: NOT RUN
+
+Evidence to capture:
+
+- GREEN / AMBER / RED command output with no secret values and no signed URLs.
+- Confirmation the generated object was uploaded and then deleted.
+- Confirmation no public R2 bucket URL or public object access was required.
+- Any safe Cloudflare R2 object metadata/screenshots that do not expose credentials.
+
+Notes:
+
+- This verifies private R2 signed upload/download/cleanup only.
+- ClamAV scanning remains separate evidence under `SCAN-001` and `SCAN-002`.
 
 ### Outstanding Configuration Required
 

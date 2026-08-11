@@ -17,9 +17,11 @@
     "typecheck": "tsc --noEmit",
     "uat:check": "tsx src/uat-toolkit.ts check",
     "uat:db:setup": "tsx src/uat-toolkit.ts db:setup",
-    "uat:smoke": "tsx src/uat-toolkit.ts smoke"
+    "uat:smoke": "tsx src/uat-toolkit.ts smoke",
+    "uat:storage": "tsx src/uat-toolkit.ts storage"
   },
   "dependencies": {
+    "@raring2go/storage": "workspace:*",
     "drizzle-orm": "0.45.2",
     "postgres": "3.4.9"
   },

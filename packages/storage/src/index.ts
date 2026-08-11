@@ -73,6 +73,7 @@ export type StorageProvider = {
     input?: { disposition?: "inline" | "attachment" }
   ): Promise<FileDownloadIntent>;
   markDeleted?(reference: FileReference): Promise<FileReference>;
+  deleteObject?(reference: FileReference): Promise<FileReference>;
 };
 
 export type FileScannerProvider = {
@@ -268,6 +269,7 @@ export function createR2StorageProvider(input: {
   secretAccessKey: string;
   expiresInSeconds?: number;
   now?: () => Date;
+  fetch?: typeof fetch;
 }): StorageProvider {
   if (!input.accountId || !input.bucket || !input.accessKeyId || !input.secretAccessKey) {
     throw new Error("R2 storage provider requires account ID, bucket and access credentials.");
@@ -325,6 +327,30 @@ export function createR2StorageProvider(input: {
       };
     },
     async markDeleted(reference) {
+      return {
+        ...reference,
+        providerKey: "r2",
+        deletedAt: new Date().toISOString()
+      };
+    },
+    async deleteObject(reference) {
+      const now = input.now?.() ?? new Date();
+      const signed = r2SignedUrl({
+        method: "DELETE",
+        endpoint,
+        bucket: input.bucket,
+        storageKey: reference.storageKey,
+        accessKeyId: input.accessKeyId,
+        secretAccessKey: input.secretAccessKey,
+        expiresInSeconds,
+        now
+      });
+      const response = await (input.fetch ?? fetch)(signed.url, { method: "DELETE" });
+
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`R2 delete failed with HTTP ${response.status}.`);
+      }
+
       return {
         ...reference,
         providerKey: "r2",
@@ -547,7 +573,7 @@ function storageSignature(action: "upload" | "download", storageKey: string, exp
 }
 
 function r2SignedUrl(input: {
-  method: "GET" | "PUT";
+  method: "DELETE" | "GET" | "PUT";
   endpoint: string;
   bucket: string;
   storageKey: string;

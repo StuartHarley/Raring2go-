@@ -19,7 +19,8 @@
     "typecheck": "turbo run typecheck",
     "uat:check": "pnpm --filter @raring2go/db uat:check",
     "uat:db:setup": "pnpm --filter @raring2go/db uat:db:setup",
-    "uat:smoke": "pnpm --filter @raring2go/db uat:smoke"
+    "uat:smoke": "pnpm --filter @raring2go/db uat:smoke",
+    "uat:storage": "pnpm --filter @raring2go/db uat:storage"
   },
   "devDependencies": {
     "@types/node": "26.2.0",

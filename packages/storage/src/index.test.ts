@@ -239,6 +239,37 @@ describe("@raring2go/storage", () => {
     expect(download.downloadUrl).not.toContain("raring2go.co.uk/");
   });
 
+  it("deletes temporary Cloudflare R2 objects through a signed provider request", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const provider = createR2StorageProvider({
+      accountId: "account123",
+      bucket: "raring2go-pilot",
+      accessKeyId: "access-key-id",
+      secretAccessKey: "super-secret-key",
+      expiresInSeconds: 120,
+      now: () => new Date("2026-08-11T12:00:00.000Z"),
+      fetch: async (url, init) => {
+        requests.push({ url: String(url), init });
+        return new Response(null, { status: 204 });
+      }
+    });
+    const reference = createFileReference({
+      id: "file_1",
+      storageKey: "uat/verification/file.txt",
+      fileName: "file.txt",
+      contentType: "text/plain",
+      accessScope: "system",
+      virusScanStatus: "not_required"
+    });
+
+    const deleted = await provider.deleteObject?.(reference);
+
+    expect(deleted?.deletedAt).toBeTruthy();
+    expect(requests[0]?.init?.method).toBe("DELETE");
+    expect(requests[0]?.url).toContain("X-Amz-Expires=120");
+    expect(requests[0]?.url).not.toContain("super-secret-key");
+  });
+
   it("fails closed for missing R2 configuration", () => {
     expect(() => createStorageProviderFromEnv({
       STORAGE_PROVIDER: "r2",
