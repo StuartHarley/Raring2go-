@@ -1,8 +1,8 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { createDb } from "./client";
+import { createDb, requireMigrationDatabaseUrl } from "./client";
 
 async function main() {
-  const { db, sql } = createDb();
+  const { db, sql } = createDb(requireMigrationDatabaseUrl());
 
   try {
     await migrate(db, {

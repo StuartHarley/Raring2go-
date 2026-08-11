@@ -33,6 +33,7 @@ Core:
 - `NEXT_PUBLIC_SITE_URL=https://mis.raring2go.co.uk`
 - `NEXT_PUBLIC_APP_NAME=Raring2go Business-in-a-Box`
 - `DATABASE_URL`
+- `DATABASE_MIGRATION_URL`
 
 Authentication and email:
 
@@ -68,6 +69,20 @@ Storage and scanning:
 - `CLAMAV_SCANNER_WEBHOOK_SECRET`
 
 Never commit real values. Vercel project/environment secrets are the source of truth for production and preview secrets.
+
+## Neon Postgres
+
+Neon Postgres is the selected managed PostgreSQL provider for the pilot.
+
+- Local development continues to use Docker PostgreSQL.
+- Vercel preview deployments must use a separate Neon preview branch/database.
+- Vercel production must use the Neon production database.
+- Preview `DATABASE_URL` must never point at production.
+- Runtime `DATABASE_URL` should use Neon's pooled endpoint for serverless application traffic.
+- `DATABASE_MIGRATION_URL` should use Neon's direct endpoint for migrations/admin tasks where available.
+- `DATABASE_DIRECT_URL` is accepted as a compatibility alias when `DATABASE_MIGRATION_URL` is not set.
+
+Production seeding is blocked by default by the database package. Do not configure `ALLOW_PRODUCTION_SEED=true` except for an approved, documented recovery operation.
 
 ## Cloudflare DNS
 
@@ -116,13 +131,14 @@ Cutover requirements later:
 ## Deployment Checklist
 
 1. Link the repository to the Vercel project.
-2. Configure production and preview environment variables.
+2. Configure production and preview environment variables, including separate Neon production and preview database URLs.
 3. Configure Cloudflare DNS for `app`, `mis` and `mail`.
 4. Deploy preview and run auth, provider connection and public page smoke checks.
-5. Promote to production only after preview checks pass.
-6. Verify `/sign-in`, `/app`, `/areas/[territorySlug]`, `/api/integrations/meta/callback` and `/api/integrations/email/webhook`.
-7. Confirm secrets are not present in logs, audit records or client bundles.
-8. Record evidence in `docs/UAT_EVIDENCE.md`.
+5. Run migrations against the matching Neon branch/database before promotion.
+6. Promote to production only after preview checks pass.
+7. Verify `/sign-in`, `/app`, `/areas/[territorySlug]`, `/api/integrations/meta/callback` and `/api/integrations/email/webhook`.
+8. Confirm secrets are not present in logs, audit records or client bundles.
+9. Record evidence in `docs/UAT_EVIDENCE.md`.
 
 ## Rollback
 

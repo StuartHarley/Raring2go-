@@ -70,6 +70,7 @@ import {
 } from "./schema";
 
 export async function seedDatabase(databaseUrl?: string) {
+  assertSeedAllowed();
   const { db, sql: client } = createDb(databaseUrl);
 
   try {
@@ -1701,6 +1702,14 @@ export async function seedDatabase(databaseUrl?: string) {
     return fixtureIds;
   } finally {
     await client.end();
+  }
+}
+
+export function assertSeedAllowed(source = process.env) {
+  const appEnv = source.APP_ENV ?? source.NODE_ENV ?? "development";
+
+  if (appEnv === "production" && source.ALLOW_PRODUCTION_SEED !== "true") {
+    throw new Error("Production seed is disabled. Set ALLOW_PRODUCTION_SEED=true only for an approved, documented recovery operation.");
   }
 }
 

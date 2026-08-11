@@ -37,7 +37,7 @@ Social: Meta Facebook Page via provider connection/OAuth.
 8. pnpm version: `11.16.0`.
 9. Production branch: `main`.
 10. Preview behaviour: every pull request/branch may deploy with preview secrets and preview callback URLs. Never reuse production secrets in preview unless the provider/account owner has explicitly approved it.
-11. Database: configure a managed PostgreSQL `DATABASE_URL` per environment. Production and preview must not share the same writable database.
+11. Database: configure Neon Postgres per environment. Production and preview must not share the same writable database.
 12. Add environment variables in Vercel by environment: Production, Preview and Development as needed.
 13. Add custom domains:
     - `app.raring2go.co.uk`
@@ -63,7 +63,9 @@ Never include real secret values in Git, chat, screenshots or evidence notes.
 | Required platform | `NEXT_PUBLIC_APP_NAME` | yes | yes | `Raring2go Business-in-a-Box` | no | Public app display name. |
 | Required platform | `NODE_VERSION` | recommended | recommended | `22.18.0` | no | Pins Vercel Node runtime where configured. |
 | Required platform | `PNPM_VERSION` | recommended | recommended | `11.16.0` | no | Documents expected package manager version. |
-| Database | `DATABASE_URL` | yes | yes | `postgres://user:password@host:5432/db?sslmode=require` | yes | Managed PostgreSQL connection. |
+| Database | `DATABASE_URL` | yes | yes | `postgresql://user:password@ep-name-pooler.region.aws.neon.tech/db?sslmode=require` | yes | Neon pooled runtime PostgreSQL connection. |
+| Database | `DATABASE_MIGRATION_URL` | recommended | recommended | `postgresql://user:password@ep-name.region.aws.neon.tech/db?sslmode=require` | yes | Neon direct/admin URL for migrations. |
+| Database | `DATABASE_DIRECT_URL` | no | no | `postgresql://user:password@ep-name.region.aws.neon.tech/db?sslmode=require` | yes | Compatibility alias if `DATABASE_MIGRATION_URL` is not set. |
 | Auth | `EMAIL_PROVIDER` | yes | yes | `postmark` | no | Selects email transport for auth and app email. |
 | Auth | `EMAIL_FROM` | yes | yes | `no-reply@mail.raring2go.co.uk` | no | Default sender identity. |
 | Auth | `APP_URL` | yes | yes | `https://app.raring2go.co.uk` | no | Internal app absolute URL and auth redirect base. |
@@ -243,33 +245,35 @@ Do not change Meta code for this phase.
 
 Do not mark Meta GREEN until the actual Page post exists and retry/revoke behaviour has been observed.
 
-## 8. Database And Backup Checklist
+## 8. Neon Database And Backup Checklist
 
 Pilot database requirements:
 
-- Managed PostgreSQL.
-- Separate production and preview databases.
-- `DATABASE_URL` configured through Vercel secrets.
-- SSL-required connection where supported by the provider.
-- Migrations run with `pnpm db:migrate`.
-- Seeds run only where appropriate for the environment. Production/pilot seed policy must avoid overwriting real pilot data.
-- Backups enabled before UAT starts.
+- Neon Postgres selected for pilot.
+- Separate production and preview Neon branches/databases.
+- Runtime `DATABASE_URL` uses the Neon pooled endpoint.
+- Migration `DATABASE_MIGRATION_URL` uses the matching Neon direct endpoint where available.
+- SSL-required connection string from Neon.
+- Migrations run with `pnpm db:migrate` against the matching environment.
+- Seeds run only where appropriate. Production seed is blocked unless `ALLOW_PRODUCTION_SEED=true` is intentionally set for a documented recovery.
+- Neon backups/PITR or branch restore capability enabled before UAT starts.
 - Backup retention agreed before controlled pilot.
-- Restore rehearsal completed into a non-production database.
-- Restore evidence captured with timestamp, source backup, target DB and validation checks.
+- Restore rehearsal completed into an isolated Neon branch/database.
+- Restore evidence captured with timestamp, source backup/restore point, target DB and validation checks.
 
 RPO/RTO notes:
 
-- Initial pilot RPO target: decide with the project owner based on provider backup capabilities.
-- Initial pilot RTO target: decide with the project owner before controlled pilot sign-off.
+- Initial pilot RPO target: 24 hours or better, subject to Neon plan capability.
+- Initial pilot RTO target: same working day for controlled pilot, tightened before broader rollout.
 
 Decision required:
 
-- Select the managed PostgreSQL provider for Vercel production/preview if not already selected.
+- Confirm Neon project/region, production branch/database and preview branching strategy.
+- Confirm Neon backup/PITR retention available on the selected plan.
 
 ## 9. Recommended Order Of Operations
 
-1. Choose managed PostgreSQL provider and create separate preview/production databases.
+1. Create Neon project and separate production/preview branches or databases.
 2. Create Vercel project and configure non-provider core environment variables.
 3. Configure `app.raring2go.co.uk` and `mis.raring2go.co.uk` in Vercel/Cloudflare.
 4. Deploy preview, run migrations, run smoke tests.
@@ -282,7 +286,8 @@ Decision required:
 
 ## 10. Decisions Required
 
-- Managed PostgreSQL provider for production and preview.
+- Neon project region and production/preview branch naming.
+- Neon backup/PITR retention and restore rehearsal owner.
 - Whether preview environments can send real email or must use a separate Postmark test server.
 - Pilot DMARC policy for `mail.raring2go.co.uk`.
 - Private scanner hosting platform.

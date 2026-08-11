@@ -60,3 +60,57 @@ pnpm db:seed
 ```
 
 The default local connection string is in `.env.example`.
+
+## Neon Pilot Deployment
+
+Decision: Neon Postgres is the managed PostgreSQL provider for the controlled pilot.
+
+Compatibility findings:
+
+- The database package uses Drizzle with the `postgres` driver.
+- Neon exposes standard PostgreSQL connection URLs, so the existing Drizzle schema, migrations and repositories remain compatible.
+- No domain package should import Neon-specific APIs or depend on Neon concepts.
+
+Connection recommendation:
+
+- Application runtime on Vercel should use the Neon pooled connection URL as `DATABASE_URL`.
+- Migration/admin tasks should use a direct Neon URL as `DATABASE_MIGRATION_URL` where available.
+- `DATABASE_DIRECT_URL` is accepted as a compatibility alias for direct/admin usage.
+- Local development continues to use Docker PostgreSQL and the current `DATABASE_URL`.
+
+Environment model:
+
+| Environment | Runtime URL | Migration URL | Notes |
+| --- | --- | --- | --- |
+| Local | Local Docker `DATABASE_URL` | optional | Existing local workflow remains unchanged. |
+| Preview | Neon preview branch pooled `DATABASE_URL` | preview branch direct `DATABASE_MIGRATION_URL` | Must never point at production. |
+| Production | Neon production pooled `DATABASE_URL` | production direct `DATABASE_MIGRATION_URL` | Supplied only through Vercel secrets. |
+
+Migration procedure:
+
+1. Confirm target environment and Neon branch/database.
+2. Confirm `DATABASE_URL` points to the correct pooled runtime database.
+3. Confirm `DATABASE_MIGRATION_URL` or `DATABASE_DIRECT_URL` points to the matching direct database endpoint.
+4. Run `pnpm db:generate` locally to confirm no unexpected schema drift.
+5. Run `pnpm db:migrate` against the target environment using the direct migration URL.
+6. Deploy the application only after migrations complete.
+7. If migration fails, do not continue deployment promotion. Capture the error, target DB, migration name and rollback decision in UAT evidence.
+
+Seed policy:
+
+- Local/dev seeds are allowed.
+- Preview seeds are allowed only for explicitly disposable preview data or controlled UAT fixture setup.
+- Production seeds are blocked by default. `pnpm db:seed` will fail when `APP_ENV=production` unless `ALLOW_PRODUCTION_SEED=true` is set for a documented recovery operation.
+- Do not load demo fixture data into the controlled-pilot production database.
+
+Backup and restore:
+
+- Enable Neon backups/PITR or the available branch/restore capability for the production database before UAT.
+- Rehearse restore into an isolated Neon branch or separate database.
+- Validate representative records after restore: organisations, territories, users, provider connections metadata, published content, advertiser records and audit events.
+- Record backup ID/time, restore target, validation queries and sign-off in `docs/UAT_EVIDENCE.md`.
+
+Initial controlled-pilot RPO/RTO assumptions:
+
+- RPO target: 24 hours or better, tightened after Neon plan capabilities are confirmed.
+- RTO target: same working day for controlled pilot, tightened before broader rollout.

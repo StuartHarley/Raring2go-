@@ -39,6 +39,25 @@ export function requireDatabaseUrl(source = process.env) {
     throw new Error("DATABASE_URL is required for database operations.");
   }
 
+  assertPostgresUrl(url, "DATABASE_URL");
+
+  return url;
+}
+
+export function requireMigrationDatabaseUrl(source = process.env) {
+  loadLocalEnv();
+  const url = source.DATABASE_MIGRATION_URL ?? source.DATABASE_DIRECT_URL ?? source.DATABASE_URL;
+
+  if (!url) {
+    throw new Error("DATABASE_URL is required for database migrations.");
+  }
+
+  assertPostgresUrl(url, source.DATABASE_MIGRATION_URL
+    ? "DATABASE_MIGRATION_URL"
+    : source.DATABASE_DIRECT_URL
+      ? "DATABASE_DIRECT_URL"
+      : "DATABASE_URL");
+
   return url;
 }
 
@@ -56,4 +75,22 @@ export function createDb(databaseUrl = requireDatabaseUrl()) {
     db: drizzle(sql, { schema }),
     sql
   };
+}
+
+function assertPostgresUrl(value: string, label: string) {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${label} must be a valid PostgreSQL connection URL.`);
+  }
+
+  if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
+    throw new Error(`${label} must use the postgres or postgresql protocol.`);
+  }
+
+  if (!parsed.hostname) {
+    throw new Error(`${label} must include a database host.`);
+  }
 }
