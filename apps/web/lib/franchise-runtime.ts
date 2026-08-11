@@ -4,7 +4,11 @@ import {
   archiveFranchiseDocument,
   archiveFranchiseDocumentRecord,
   approveAgreement,
+  approveLaunch,
+  approveOnboardingTask,
   cancelSignatureRequest,
+  changeOnboardingTargetLaunchDate,
+  completeOnboardingTask,
   ensureComplianceActions,
   submitComplianceEvidence,
   insertComplianceActionRecords,
@@ -21,22 +25,34 @@ import {
   insertFranchiseDocumentGraph,
   insertFranchiseDocumentVersionGraph,
   insertFranchiseRecord,
+  insertDomainEvents,
+  insertOnboardingBlockerRecord,
+  insertOnboardingProgrammeGraph,
   insertSignatureRequest,
   insertSigners,
   latestApprovedAgreementVersionId,
   listActiveFranchises,
   listNetworkComplianceOverview,
+  listNetworkOnboardingOverview,
   loadFranchiseData,
+  manuallyCreateOnboardingProgramme,
+  markFranchiseLaunched,
+  raiseOnboardingBlocker,
   recordSignatureProviderEvent,
   resendSignatureRequest,
   resolveComplianceAction,
+  resolveOnboardingBlocker,
   sendAgreementForSignature,
   submitAgreementForApproval,
   syncSignatureRequestGraph,
   updateFranchiseAgreementState,
   updateComplianceActionRecord,
   updateFranchiseRecord,
+  updateOnboardingBlockerRecord,
+  updateOnboardingProgrammeRecord,
+  updateOnboardingTaskRecord,
   voidAgreement,
+  startOnboardingFromExecutedAgreement,
   uploadFranchiseDocument,
   updateFranchise
 } from "@raring2go/franchise";
@@ -162,7 +178,14 @@ export const franchisePermissionData: PermissionData = {
       fixtureIds.permissions.complianceSubmitEvidence,
       fixtureIds.permissions.complianceVerify,
       fixtureIds.permissions.complianceManageActions,
-      fixtureIds.permissions.complianceViewNetwork
+      fixtureIds.permissions.complianceViewNetwork,
+      fixtureIds.permissions.onboardingView,
+      fixtureIds.permissions.onboardingManage,
+      fixtureIds.permissions.onboardingTemplateManage,
+      fixtureIds.permissions.onboardingTaskComplete,
+      fixtureIds.permissions.onboardingTaskAssign,
+      fixtureIds.permissions.onboardingApproveMilestone,
+      fixtureIds.permissions.onboardingApproveLaunch
     ].map((permissionId) => ({
       roleId: fixtureIds.roles.hqAdmin,
       permissionId,
@@ -186,6 +209,16 @@ export const franchisePermissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.complianceSubmitEvidence,
+      scope: "own_territory"
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.onboardingView,
+      scope: "own_territory"
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.onboardingTaskComplete,
       scope: "own_territory"
     }
   ].map((grant) => {
@@ -229,6 +262,20 @@ export async function listComplianceOverview(context: FranchiseActorContext) {
 
   try {
     return listNetworkComplianceOverview(
+      context,
+      franchisePermissionData,
+      await loadFranchiseData(db)
+    );
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function listOnboardingOverview(context: FranchiseActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    return listNetworkOnboardingOverview(
       context,
       franchisePermissionData,
       await loadFranchiseData(db)
@@ -762,6 +809,194 @@ export async function resolveComplianceActionForFranchise(
       );
       await updateComplianceActionRecord(tx, action);
       return action;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function startOnboardingForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  targetLaunchDate: string
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      const view = getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const agreementId = view.agreement?.id;
+      const result = agreementId && view.agreement?.status === "executed"
+        ? await startOnboardingFromExecutedAgreement(context, franchisePermissionData, auditFor(tx), data, agreementId, {
+            targetLaunchDate
+          })
+        : await manuallyCreateOnboardingProgramme(context, franchisePermissionData, auditFor(tx), data, franchiseId, {
+            targetLaunchDate
+          });
+      await insertOnboardingProgrammeGraph(tx, result.programme, result.tasks);
+      await insertDomainEvents(tx, data.domainEvents ?? []);
+      await updateFranchiseRecord(tx, franchiseId, data.franchises.find((franchise) => franchise.id === franchiseId)!);
+      return result;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function completeOnboardingTaskForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  taskId: string
+) {
+  return mutateOnboardingTask(context, franchiseId, taskId, completeOnboardingTask);
+}
+
+export async function approveOnboardingTaskForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  taskId: string
+) {
+  return mutateOnboardingTask(context, franchiseId, taskId, approveOnboardingTask);
+}
+
+export async function changeOnboardingTargetForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  programmeId: string,
+  targetLaunchDate: string
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const programme = await changeOnboardingTargetLaunchDate(context, franchisePermissionData, auditFor(tx), data, programmeId, targetLaunchDate);
+      await updateOnboardingProgrammeRecord(tx, programme);
+      for (const task of data.onboardingTasks?.filter((candidate) => candidate.programmeId === programme.id) ?? []) {
+        await updateOnboardingTaskRecord(tx, task);
+      }
+      await insertDomainEvents(tx, data.domainEvents ?? []);
+      return programme;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function raiseOnboardingBlockerForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  taskId: string,
+  input: {
+    title: string;
+    notes?: string | null;
+  }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      const view = getFranchise360(context, franchisePermissionData, data, franchiseId);
+      if (!view.onboarding.tasks.some((task) => task.id === taskId)) {
+        throw new Error("Onboarding task is outside this franchise.");
+      }
+      const result = await raiseOnboardingBlocker(context, franchisePermissionData, auditFor(tx), data, taskId, input);
+      await updateOnboardingTaskRecord(tx, result.task);
+      await updateOnboardingProgrammeRecord(tx, result.programme);
+      await insertOnboardingBlockerRecord(tx, result.blocker);
+      await insertDomainEvents(tx, data.domainEvents ?? []);
+      return result;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function resolveOnboardingBlockerForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  blockerId: string
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      const view = getFranchise360(context, franchisePermissionData, data, franchiseId);
+      if (!view.onboarding.blockers.some((blocker) => blocker.id === blockerId)) {
+        throw new Error("Onboarding blocker is outside this franchise.");
+      }
+      const result = await resolveOnboardingBlocker(context, franchisePermissionData, auditFor(tx), data, blockerId);
+      await updateOnboardingBlockerRecord(tx, result.blocker);
+      await updateOnboardingProgrammeRecord(tx, result.programme);
+      await insertDomainEvents(tx, data.domainEvents ?? []);
+      return result;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function approveLaunchForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  programmeId: string
+) {
+  return mutateOnboardingProgramme(context, franchiseId, programmeId, approveLaunch);
+}
+
+export async function markLaunchedForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  programmeId: string
+) {
+  return mutateOnboardingProgramme(context, franchiseId, programmeId, markFranchiseLaunched);
+}
+
+async function mutateOnboardingTask(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  taskId: string,
+  mutation: typeof completeOnboardingTask | typeof approveOnboardingTask
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const task = await mutation(context, franchisePermissionData, auditFor(tx), data, taskId);
+      const programme = data.onboardingProgrammes!.find((candidate) => candidate.id === task.programmeId)!;
+      await updateOnboardingTaskRecord(tx, task);
+      await updateOnboardingProgrammeRecord(tx, programme);
+      await insertDomainEvents(tx, data.domainEvents ?? []);
+      return task;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+async function mutateOnboardingProgramme(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  programmeId: string,
+  mutation: typeof approveLaunch | typeof markFranchiseLaunched
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const programme = await mutation(context, franchisePermissionData, auditFor(tx), data, programmeId);
+      await updateOnboardingProgrammeRecord(tx, programme);
+      await updateFranchiseRecord(tx, franchiseId, data.franchises.find((franchise) => franchise.id === franchiseId)!);
+      await insertDomainEvents(tx, data.domainEvents ?? []);
+      return programme;
     });
   } finally {
     await sql.end();
