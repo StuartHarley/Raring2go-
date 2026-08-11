@@ -4,6 +4,49 @@ Status: active.
 
 This log records UAT and controlled-pilot evidence. It is not a product feature backlog and should be updated only with operational test evidence, provider setup results, defects and sign-off decisions.
 
+## Evidence Entry Template
+
+```text
+Scenario ID:
+Scenario name:
+Tester:
+Date/time:
+Environment/domain:
+Persona/context:
+Permissions expected:
+Records used:
+Steps completed:
+Expected result:
+Actual result:
+Evidence links/screenshots:
+Negative/security checks:
+Defects raised:
+Severity: S0 / S1 / S2 / S3 / none
+Retest result:
+Scenario status: PASS / AMBER / FAIL
+Sign-off:
+```
+
+## Defect Severity Reference
+
+- **S0:** active data leak, credential exposure, destructive data loss, legal/finance/compliance integrity breach, or unauthorised cross-tenant access.
+- **S1:** pilot-blocking journey failure with no safe workaround, failed auth for intended pilot users, missing mandatory provider path, or broken backup/restore once UAT-004 begins.
+- **S2:** important defect with controlled workaround; acceptable only with owner, target date and UAT Lead approval.
+- **S3:** usability/polish/content issue that does not block pilot operation or integrity.
+
+## Scenario Register
+
+| Scenario | Status | Notes |
+| --- | --- | --- |
+| UAT-HQ-001 | AMBER | Script prepared; not executed. |
+| UAT-FRN-001 | AMBER | Script prepared; not executed. |
+| UAT-COM-001 | AMBER | Script prepared; not executed. |
+| UAT-EDT-001 | AMBER | Script prepared; not executed. |
+| UAT-MKT-001 | AMBER | Script prepared; not executed. |
+| UAT-PAR-001 | AMBER | Script prepared; not executed. |
+| UAT-SEC-001 | AMBER | Script prepared; not executed. |
+| UAT-PROV-001 | AMBER | Script prepared; not executed. |
+
 ## UAT-001 Provider Configuration Preflight
 
 Date: 2026-08-11

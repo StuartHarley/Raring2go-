@@ -510,6 +510,201 @@ The starting point for UAT is:
 - **Internal UAT:** approved to begin.
 - **Controlled pilot:** remains AMBER until the required provider and operational evidence above is completed.
 
+## Executable UAT Scenario Pack
+
+Use these scenario IDs for UAT evidence, defect references and retests. Where a step reaches an intentional product limitation or provider still awaiting live configuration, record the limitation and mark the scenario AMBER rather than inventing a pass.
+
+### UAT-HQ-001 — HQ Franchise Lifecycle
+
+- **Persona:** HQ Operations user.
+- **Permissions/context:** HQ/network franchise, agreement, compliance, onboarding and audit capabilities.
+- **Starting state:** seeded franchise relationship, approved agreement template, compliance requirements, onboarding template, audit activity.
+- **Records required:** Sutton Coldfield franchise, agreement record, compliance evidence, onboarding programme.
+- **Steps and expected results:**
+  1. Sign in and select HQ/network context. Expected: My Today and Franchise navigation visible.
+  2. Open Franchisee 360. Expected: Overview, Agreement, Compliance, Documents, Activity sections show real persisted state.
+  3. Review agreement status. Expected: current lifecycle/status and historical activity visible.
+  4. Review compliance status. Expected: missing/expired/verified states are clear and scoped.
+  5. Review onboarding. Expected: launch tasks/blockers are visible where implemented.
+  6. Open Activity. Expected: material mutations are visible without secret/provider data.
+- **Negative/security checks:** direct URL to inaccessible territory must fail closed; archived franchise does not appear in active lists.
+- **Evidence required:** screenshots of Franchisee 360 sections, audit activity, context selector and any limitation notes.
+- **Pass/fail:** PASS if all implemented HQ franchise tasks complete without S0/S1 defects; AMBER if future workflow placeholder is encountered and documented; FAIL for tenancy or audit gaps.
+- **Defect references:** record IDs in `docs/UAT_EVIDENCE.md`.
+- **Retest result:** pending until defects are retested.
+- **Final sign-off:** HQ Operations tester plus UAT Lead.
+
+### UAT-FRN-001 — Franchise Local-User Lifecycle
+
+- **Persona:** franchise owner/editor for one territory.
+- **Permissions/context:** own-organisation/own-territory franchise, publishing, marketing and document capabilities as assigned.
+- **Starting state:** franchise user membership for one territory with at least one other territory present for isolation checks.
+- **Records required:** own franchise, own territory edition/content/social records, another territory franchise.
+- **Steps and expected results:**
+  1. Sign in as local franchise user. Expected: only permitted local navigation is visible.
+  2. Open own Franchisee 360. Expected: own record visible; HQ-only actions hidden or denied.
+  3. Open local edition/content/social areas. Expected: territory-specific records visible.
+  4. Attempt an allowed local action where implemented. Expected: mutation is audited and scoped.
+- **Negative/security checks:** change URL/query to another territory/franchise. Expected: unauthorised or invalid-context outcome.
+- **Evidence required:** own-territory screenshots, denied cross-territory screenshot, audit record if mutation performed.
+- **Pass/fail:** PASS if own data works and cross-territory access fails closed; FAIL for data leakage.
+- **Defect references:** required for any hidden-navigation/direct-route mismatch.
+- **Retest result:** pending.
+- **Final sign-off:** franchise tester plus technical observer.
+
+### UAT-COM-001 — Advertiser/Commercial Lifecycle
+
+- **Persona:** HQ commercial or permitted local sales user.
+- **Permissions/context:** advertiser, opportunity, proposal, booking, finance, artwork and proof capabilities as assigned.
+- **Starting state:** advertiser, contact, opportunity, product/package/price book, proposal/booking, invoice/artwork/proof records.
+- **Records required:** seeded advertiser and booking linked to territory/edition.
+- **Steps and expected results:**
+  1. Open Advertiser 360. Expected: canonical advertiser/contact/commercial state visible.
+  2. Review pipeline/opportunity. Expected: stage and activity are visible.
+  3. Review proposal/booking. Expected: accepted commercial state is immutable where appropriate.
+  4. Review invoice/payment status. Expected: finance state is provider-neutral and auditable.
+  5. Review artwork/proof/fulfilment. Expected: linked edition/publication evidence appears where implemented.
+- **Negative/security checks:** local user attempts another territory advertiser. Expected: denied.
+- **Evidence required:** screenshots of Advertiser 360, pipeline, booking/invoice/artwork/proof state, denial evidence.
+- **Pass/fail:** PASS if commercial journey is coherent with no cross-tenant leakage; AMBER for provider/payment stubs documented.
+- **Defect references:** required for broken handoffs.
+- **Retest result:** pending.
+- **Final sign-off:** HQ Commercial tester.
+
+### UAT-EDT-001 — Edition Production Lifecycle
+
+- **Persona:** HQ/editorial or franchise editor.
+- **Permissions/context:** content, edition, template, preflight and publication output capabilities.
+- **Starting state:** canonical content, localised content, edition, pages, preflight results, publication output.
+- **Records required:** current pilot edition with magazine/website/newsletter/social variants.
+- **Steps and expected results:**
+  1. Open Edition Factory. Expected: edition status and risks visible.
+  2. Open edition detail. Expected: pages, content, outputs and preflight state visible.
+  3. Review content inheritance/local override. Expected: provenance is clear.
+  4. Review publication output. Expected: public magazine resolves from released output/version.
+- **Negative/security checks:** draft/unapproved output must not appear on public pilot site.
+- **Evidence required:** screenshots of control room, edition detail, output, public non-leak check.
+- **Pass/fail:** PASS if publication state is coherent and immutable output drives public rendering; FAIL for draft/public leakage.
+- **Defect references:** required for preflight/public mismatch.
+- **Retest result:** pending.
+- **Final sign-off:** HQ Editorial/Publishing tester.
+
+### UAT-MKT-001 — Marketing Lifecycle
+
+- **Persona:** HQ Marketing user.
+- **Permissions/context:** audience, consent, newsletter factory, journey, social and analytics capabilities.
+- **Starting state:** audience contact/subscription, consent events, suppression test record, newsletter campaign/master, journey, social queue.
+- **Records required:** parent contact, active subscription, suppressed contact, campaign/journey/social records.
+- **Steps and expected results:**
+  1. Open Audience and Preferences. Expected: consent/preferences/suppression visible and privacy-light.
+  2. Review newsletter factory/campaign. Expected: recipient snapshot excludes suppressed contacts.
+  3. Review journey. Expected: suppressed contacts cannot receive outbound journey actions.
+  4. Review Social queue. Expected: provider states visible; Meta live post remains parked until configured.
+  5. Review Marketing Command/Analytics. Expected: counts derive from actual records only.
+- **Negative/security checks:** provider failure must be visible/retryable and secret-free; suppressed contact must not be sent.
+- **Evidence required:** audience, suppression, newsletter, journey, social status and analytics screenshots.
+- **Pass/fail:** PASS for consent-safe marketing flow; AMBER for live Postmark/Meta steps until provider evidence exists.
+- **Defect references:** required for suppression/provider issues.
+- **Retest result:** pending.
+- **Final sign-off:** HQ Marketing tester.
+
+### UAT-PAR-001 — Parent/Public Lifecycle
+
+- **Persona:** parent/public user.
+- **Permissions/context:** public/parent auth only; no internal organisation membership.
+- **Starting state:** pilot territory public data on `mis.raring2go.co.uk`, parent account/contact/preferences.
+- **Records required:** territory homepage, event/offer/competition/article, digital magazine output, parent saved/preferences.
+- **Steps and expected results:**
+  1. Open `mis.raring2go.co.uk` territory page. Expected: approved/published public content only.
+  2. Browse What's On, activities, offers, competitions and magazine. Expected: no operational metadata leaks.
+  3. Sign in as parent where available. Expected: saved/preference flows work without `/app` access.
+  4. Submit newsletter preference/consent. Expected: consent evidence is recorded and scoped.
+- **Negative/security checks:** parent attempts `/app`. Expected: unauthenticated/unauthorised, no internal access.
+- **Evidence required:** public pages, parent auth/preference, `/app` denial, consent evidence.
+- **Pass/fail:** PASS if public experience is privacy-safe; FAIL for internal metadata or membership leakage.
+- **Defect references:** required for public/private boundary issues.
+- **Retest result:** pending.
+- **Final sign-off:** parent/public tester plus UAT Lead.
+
+### UAT-SEC-001 — Cross-Territory/Security Isolation
+
+- **Persona:** technical observer plus HQ/local testers.
+- **Permissions/context:** one HQ/network user, one local Territory A user, one local Territory B or non-member context.
+- **Starting state:** at least two territories with franchise, advertiser, edition, audience and provider records.
+- **Records required:** Territory A and Territory B IDs/URLs.
+- **Steps and expected results:**
+  1. Local user opens own territory records. Expected: allowed.
+  2. Local user modifies URL/query to Territory B records. Expected: denied or invalid context.
+  3. Parent user attempts internal routes. Expected: no internal access.
+  4. Public route probes draft/unapproved records. Expected: not rendered.
+  5. Provider connection secret/audit inspection. Expected: no secrets in audit/logs/UI.
+- **Negative/security checks:** every step is a negative/security check.
+- **Evidence required:** denied route screenshots, logs without secrets, relevant audit records.
+- **Pass/fail:** any cross-tenant leakage is S0/S1 and blocks pilot.
+- **Defect references:** mandatory for all failures.
+- **Retest result:** pending.
+- **Final sign-off:** technical owner.
+
+### UAT-PROV-001 — Provider Failure/Recovery
+
+- **Persona:** technical observer with HQ Operations/Marketing.
+- **Permissions/context:** integration, marketing, storage and system health capabilities where available.
+- **Starting state:** development providers plus configured pilot provider stubs/credentials as they become available.
+- **Records required:** Postmark test message, Meta connection, storage file reference, scan result.
+- **Steps and expected results:**
+  1. Trigger missing/invalid provider config. Expected: safe, visible failure.
+  2. Send test email after Postmark configuration. Expected: provider message ID recorded; no credential leakage.
+  3. Receive duplicate webhook. Expected: deduped/idempotent.
+  4. Upload file with scanner pending. Expected: not downloadable.
+  5. Mark scan clean/rejected/failed. Expected: only clean becomes downloadable.
+  6. Meta live post remains parked until Vercel configuration. Expected: AMBER evidence, not false GREEN.
+- **Negative/security checks:** revoked/invalid credentials fail closed; no provider secrets in audit/logs.
+- **Evidence required:** provider health/failure screenshots, delivery/storage records, webhook dedupe evidence.
+- **Pass/fail:** PASS when configured providers recover safely; AMBER until live provider evidence exists.
+- **Defect references:** required for provider failure ambiguity.
+- **Retest result:** pending.
+- **Final sign-off:** technical observer plus UAT Lead.
+
+### Defect Severity Rules
+
+- **S0:** active data leak, credential exposure, destructive data loss, legal/finance/compliance integrity breach, or unauthorised cross-tenant access.
+- **S1:** pilot-blocking journey failure with no safe workaround, failed auth for intended pilot users, missing mandatory provider path, or broken backup/restore once UAT-004 begins.
+- **S2:** important defect with controlled workaround; acceptable only with owner, target date and UAT Lead approval.
+- **S3:** usability/polish/content issue that does not block pilot operation or integrity.
+
+### UAT Evidence Template
+
+Use this structure for every scenario execution:
+
+```text
+Scenario ID:
+Scenario name:
+Tester:
+Date/time:
+Environment/domain:
+Persona/context:
+Permissions expected:
+Records used:
+Steps completed:
+Expected result:
+Actual result:
+Evidence links/screenshots:
+Negative/security checks:
+Defects raised:
+Severity:
+Retest result:
+Scenario status: PASS / AMBER / FAIL
+Sign-off:
+```
+
+### UAT Sign-off Rules
+
+- Scenario PASS requires all material steps to pass and no open S0/S1 defects.
+- Scenario AMBER requires a documented limitation/workaround, owner and target resolution date.
+- Scenario FAIL requires a linked defect and retest before sign-off.
+- Internal UAT cannot complete while mandatory scenarios are FAIL.
+- Controlled pilot cannot be signed off while any S0/S1 remains open or any mandatory real provider remains unverified.
+
 ## Scope control
 
 During UAT:
