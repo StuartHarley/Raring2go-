@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { fixtureIds, foundationSeed } from "@raring2go/db";
 import {
+  assertPublicNewsletterSocialLinkage,
   createPublicAnalyticsEvent,
+  createPublicAnalyticsEventForDb,
   defaultPublicTerritorySlug,
   getPublicDiscovery,
   getPublicHomepage,
@@ -9,7 +11,9 @@ import {
   getPublicParentHub,
   getPublicRecommendations,
   publicSeoRoutes,
+  publicSeoRoutesForDb,
   publicTerritoryStructuredData,
+  resolvePublicTerritory,
   getPublicCommercialDiscovery,
   publicHomepageTemplate,
   territoryFromSlug
@@ -30,6 +34,15 @@ describe("@raring2go/public homepage", () => {
     expect(territoryFromSlug(defaultPublicTerritorySlug)).toMatchObject({
       id: fixtureIds.territories.suttonColdfield,
       slug: "sutton-coldfield"
+    });
+  });
+
+  it("resolves public territories from database records for more than one territory", async () => {
+    await expect(resolvePublicTerritory(db, "sutton-coldfield")).resolves.toMatchObject({
+      id: fixtureIds.territories.suttonColdfield
+    });
+    await expect(resolvePublicTerritory(db, "solihull")).resolves.toMatchObject({
+      id: fixtureIds.territories.solihull
     });
   });
 
@@ -100,6 +113,22 @@ describe("@raring2go/public analytics", () => {
       path: "https://evil.example/path"
     })).toThrow("safe internal path");
   });
+
+  it("validates analytics hooks against DB-backed territory slugs", async () => {
+    const event = await createPublicAnalyticsEventForDb(db, {
+      eventType: "magazine_opened",
+      territorySlug: "solihull",
+      path: "/areas/solihull/magazine",
+      entityType: "edition",
+      entityId: "edition-public-reference"
+    }, new Date("2026-08-11T12:00:00.000Z"));
+
+    expect(event).toMatchObject({
+      territoryId: fixtureIds.territories.solihull,
+      territorySlug: "solihull",
+      entityType: "edition"
+    });
+  });
 });
 
 describe("@raring2go/public SEO", () => {
@@ -108,6 +137,15 @@ describe("@raring2go/public SEO", () => {
 
     expect(routes.some((route) => route.path.includes("/areas/sutton-coldfield"))).toBe(true);
     expect(routes.every((route) => !route.path.includes("/app"))).toBe(true);
+  });
+
+  it("generates DB-backed public territory routes for more than one territory", async () => {
+    const routes = await publicSeoRoutesForDb(db, "https://www.raring2go.example");
+
+    expect(routes.map((route) => route.path)).toEqual(expect.arrayContaining([
+      "https://www.raring2go.example/areas/sutton-coldfield",
+      "https://www.raring2go.example/areas/solihull"
+    ]));
   });
 
   it("creates structured data from the public homepage DTO", async () => {
@@ -156,6 +194,91 @@ describe("@raring2go/public recommendations", () => {
 
     expect(recommendations?.personalised).toBe(true);
     expect(recommendations?.recommendations[0]?.reasons.join(" ")).toContain("Matches");
+  });
+});
+
+describe("@raring2go/public publishability boundary", () => {
+  it("fails closed for approved content without an approved public website variant", async () => {
+    const recommendations = await getPublicRecommendations(dbWithTables({
+      contentItems: [
+        publicContent({
+          id: "abababab-abab-4aba-8aba-abababababab",
+          title: "Approved but not projected",
+          status: "approved"
+        })
+      ],
+      contentChannelVariants: [],
+      contentChannelVariantVersions: []
+    }), defaultPublicTerritorySlug);
+
+    expect(recommendations?.recommendations).toEqual([]);
+  });
+
+  it("rejects stale localisation and expired records through the shared projection", async () => {
+    const discovery = await getPublicDiscovery(dbWithPublicContent([
+      publicContent({
+        id: "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd",
+        title: "Expired day out",
+        status: "published",
+        relevantDates: { endDate: "2026-01-01" }
+      }),
+      publicContent({
+        id: "dededede-dede-4ded-8ded-dededededede",
+        title: "Review required local story",
+        status: "published",
+        ownerLevel: "network",
+        territoryId: null
+      })
+    ], {
+      contentLocalisations: [
+        {
+          id: "efefefef-efef-4efe-8efe-efefefefefef",
+          masterContentItemId: "dededede-dede-4ded-8ded-dededededede",
+          territoryId: fixtureIds.territories.suttonColdfield,
+          localContentItemId: null,
+          state: "review_required",
+          lockedFields: [],
+          editableFields: [],
+          localOverrides: {},
+          masterVersionNumber: 1,
+          reviewedAt: null
+        }
+      ]
+    }), defaultPublicTerritorySlug, "whats_on");
+
+    expect(discovery?.items).toEqual([]);
+  });
+
+  it("proves generic two-territory public content projection without specific ID branches", async () => {
+    const discovery = await getPublicDiscovery(dbWithPublicContent([
+      publicContent({
+        id: "12121212-1212-4212-8212-121212121212",
+        title: "Sutton theatre",
+        territoryId: fixtureIds.territories.suttonColdfield,
+        status: "published"
+      }),
+      publicContent({
+        id: "34343434-3434-4434-8434-343434343434",
+        title: "Solihull theatre",
+        territoryId: fixtureIds.territories.solihull,
+        status: "published"
+      })
+    ]), "solihull", "whats_on");
+
+    expect(discovery?.items.map((item) => item.title)).toEqual(["Solihull theatre"]);
+  });
+
+  it("requires published social references to link to canonical public content and versions", async () => {
+    const data = publishingDataWithPublicContent([
+      publicContent({
+        id: fixtureIds.contentItems.halfTermGuide,
+        title: "Half term ideas near you",
+        status: "published"
+      })
+    ]);
+    const territory = territoryFromSlug(defaultPublicTerritorySlug);
+
+    expect(territory && assertPublicNewsletterSocialLinkage(data, territory)).toBe(true);
   });
 });
 
@@ -208,7 +331,7 @@ describe("@raring2go/public magazine", () => {
           outputType: "digital",
           status: "generated",
           version: 2,
-          sourcePageSnapshot: [],
+          sourcePageSnapshot: [{ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }],
           artifact: { storageKey: "public/magazines/sutton-autumn-2026" },
           preflightResultId: null,
           idempotencyKey: "test-public-output",
@@ -442,12 +565,32 @@ function rowsFor(table: unknown): Array<Record<string, unknown>> {
 }
 
 function dbWithContent(contentItems: Array<Record<string, unknown>>) {
+  return dbWithPublicContent(contentItems);
+}
+
+function dbWithPublicContent(
+  contentItems: Array<Record<string, unknown>>,
+  overrides: Record<string, Array<Record<string, unknown>>> = {}
+) {
+  const variantRows = contentItems.map((item) => websiteVariantForContent(item));
+  const versionRows = variantRows.map((variant) => websiteVariantVersionForVariant(variant));
   return {
     select() {
       return {
         async from(table: unknown): Promise<Array<Record<string, unknown>>> {
+          const tableName = Object.entries(awaitedDbTables as Record<string, unknown>)
+            .find(([, value]) => value === table)?.[0];
+          if (tableName && overrides[tableName]) {
+            return overrides[tableName];
+          }
           if (table === importTable("contentItems")) {
             return contentItems;
+          }
+          if (table === importTable("contentChannelVariants")) {
+            return variantRows;
+          }
+          if (table === importTable("contentChannelVariantVersions")) {
+            return versionRows;
           }
           return rowsFor(table);
         }
@@ -463,6 +606,24 @@ function dbWithAdvertisers(advertisers: Array<Record<string, unknown>>) {
         async from(table: unknown): Promise<Array<Record<string, unknown>>> {
           if (table === importTable("advertisers")) {
             return advertisers;
+          }
+          if (table === importTable("campaignFulfilments")) {
+            return advertisers
+              .filter((advertiser) => advertiser.status === "active")
+              .map((advertiser, index) => publicFulfilmentForAdvertiser(advertiser, index));
+          }
+          if (table === importTable("territoryEditions")) {
+            return [{
+              ...foundationSeed.territoryEditions[0],
+              status: "published",
+              digitalStatus: "generated"
+            }];
+          }
+          if (table === importTable("publicationOutputs")) {
+            return [publicMagazineOutput()];
+          }
+          if (table === importTable("editionPages")) {
+            return [publicMagazinePage()];
           }
           return rowsFor(table);
         }
@@ -506,6 +667,122 @@ function publicContent(overrides: Partial<Record<string, unknown>>) {
     provenance: { location: "Sutton Coldfield" },
     ...overrides
   };
+}
+
+function websiteVariantForContent(item: Record<string, unknown>) {
+  const id = `${String(item.id).slice(0, 8)}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
+  return {
+    id,
+    contentItemId: item.id,
+    channel: "website",
+    status: "approved",
+    currentVersionId: `${String(item.id).slice(0, 8)}-bbbb-4bbb-8bbb-bbbbbbbbbbbb`,
+    territoryId: item.territoryId ?? null,
+    scheduledAt: null,
+    publishedAt: null,
+    provenance: {},
+    deletedAt: null
+  };
+}
+
+function websiteVariantVersionForVariant(variant: Record<string, unknown>) {
+  return {
+    id: variant.currentVersionId,
+    variantId: variant.id,
+    versionNumber: 1,
+    status: "approved",
+    snapshot: {},
+    generatedByTaskId: null,
+    provenance: {},
+    createdByUserId: fixtureIds.users.superAdmin,
+    approvedByUserId: fixtureIds.users.superAdmin,
+    approvedAt: "2026-08-11T10:00:00.000Z",
+    deletedAt: null
+  };
+}
+
+function publicMagazineOutput(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    territoryEditionId: fixtureIds.territoryEditions.suttonAutumn2026,
+    outputType: "digital",
+    status: "generated",
+    version: 2,
+    sourcePageSnapshot: [{ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }],
+    artifact: { storageKey: "public/magazines/sutton-autumn-2026" },
+    preflightResultId: null,
+    idempotencyKey: "test-public-output",
+    corrections: [],
+    metadata: {},
+    generatedByUserId: fixtureIds.users.superAdmin,
+    generatedAt: "2026-08-11",
+    ...overrides
+  };
+}
+
+function publicMagazinePage(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    territoryEditionId: fixtureIds.territoryEditions.suttonAutumn2026,
+    pageNumber: 1,
+    spreadNumber: 1,
+    side: "single",
+    status: "published",
+    templateVersionId: null,
+    assignedContentId: null,
+    advertiserInventoryState: "none",
+    ownerType: "central",
+    deadline: null,
+    sourceMarker: "central",
+    locked: true,
+    readiness: "ready",
+    comments: [],
+    issues: [],
+    deletedAt: null,
+    ...overrides
+  };
+}
+
+function publicFulfilmentForAdvertiser(advertiser: Record<string, unknown>, index: number) {
+  return {
+    id: `dadadada-dada-4dad-8dad-dadadadada${String(index).padStart(2, "0")}`,
+    bookingId: `fafafafa-fafa-4faf-8faf-fafafafafa${String(index).padStart(2, "0")}`,
+    bookingItemId: `fbfbfbfb-fbfb-4bfb-8bfb-fbfbfbfbfb${String(index).padStart(2, "0")}`,
+    advertiserId: advertiser.id,
+    territoryId: advertiser.owningTerritoryId,
+    artworkRequirementId: null,
+    territoryEditionId: fixtureIds.territoryEditions.suttonAutumn2026,
+    editionPageId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    status: "fulfilled",
+    channel: "print",
+    scheduledOn: "2026-08-11",
+    fulfilledOn: "2026-08-12",
+    placementReference: { pageNumber: 1 },
+    performanceReference: {},
+    metadata: {}
+  };
+}
+
+function publishingDataWithPublicContent(contentItems: Array<Record<string, unknown>>) {
+  const variants = contentItems.map((item) => websiteVariantForContent(item));
+  const versions = variants.map((variant) => websiteVariantVersionForVariant(variant));
+  return {
+    ...(foundationSeed as unknown as Record<string, Array<Record<string, unknown>>>),
+    contentItems,
+    contentChannelVariants: variants,
+    contentChannelVariantVersions: versions,
+    contentLocalisations: [],
+    socialPublications: [
+      {
+        ...foundationSeed.socialPublications[0],
+        contentItemId: contentItems[0]?.id,
+        variantId: variants[0]?.id,
+        variantVersionId: versions[0]?.id,
+        territoryId: fixtureIds.territories.suttonColdfield,
+        publishState: "published"
+      }
+    ]
+  } as never;
 }
 
 function publicAdvertiser(overrides: Partial<Record<string, unknown>>) {

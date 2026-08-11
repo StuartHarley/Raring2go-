@@ -1,5 +1,5 @@
 import { loadAdvertisingData } from "@raring2go/advertising";
-import { fixtureIds, foundationSeed } from "@raring2go/db";
+import { foundationSeed } from "@raring2go/db";
 import { loadMarketingData } from "@raring2go/marketing";
 import { loadPublishingData } from "@raring2go/publishing";
 
@@ -220,6 +220,15 @@ export type PublicAnalyticsEvent = {
   };
 };
 
+type PublicTerritoryRecord = {
+  id: string;
+  name: string;
+  status?: string;
+  deletedAt?: Date | null;
+};
+
+type PublicProjectionData = Awaited<ReturnType<typeof loadPublishingData>>;
+
 export const publicHomepageTemplate: PublicHomepage["template"] = {
   key: "r2go-territory-homepage",
   version: 1,
@@ -238,7 +247,16 @@ export const publicHomepageTemplate: PublicHomepage["template"] = {
 };
 
 export function publicSeoRoutes(baseUrl = "http://localhost:3000"): PublicSeoRoute[] {
-  return foundationSeed.territories.flatMap((territory) => {
+  return publicSeoRoutesFromTerritories(foundationSeed.territories, baseUrl);
+}
+
+export async function publicSeoRoutesForDb(db: PublicDb, baseUrl = "http://localhost:3000"): Promise<PublicSeoRoute[]> {
+  const publishing = await loadPublishingData(db);
+  return publicSeoRoutesFromTerritories(publishing.territories, baseUrl);
+}
+
+function publicSeoRoutesFromTerritories(territories: ReadonlyArray<PublicTerritoryRecord>, baseUrl: string): PublicSeoRoute[] {
+  return territories.filter(isPublicTerritoryRecord).flatMap((territory) => {
     const slug = territorySlug(territory.name);
     return [
       seoRoute(baseUrl, `/areas/${slug}`, "daily", 0.9),
@@ -271,6 +289,23 @@ export function publicTerritoryStructuredData(homepage: PublicHomepage, baseUrl 
 
 export function createPublicAnalyticsEvent(input: PublicAnalyticsInput, occurredAt = new Date()): PublicAnalyticsEvent {
   const territory = territoryFromSlug(input.territorySlug);
+  return createPublicAnalyticsEventForTerritory(input, territory, occurredAt);
+}
+
+export async function createPublicAnalyticsEventForDb(
+  db: PublicDb,
+  input: PublicAnalyticsInput,
+  occurredAt = new Date()
+): Promise<PublicAnalyticsEvent> {
+  const territory = await territoryFromSlugForDb(db, input.territorySlug);
+  return createPublicAnalyticsEventForTerritory(input, territory, occurredAt);
+}
+
+function createPublicAnalyticsEventForTerritory(
+  input: PublicAnalyticsInput,
+  territory: PublicTerritory | undefined,
+  occurredAt: Date
+): PublicAnalyticsEvent {
   if (!territory) {
     throw new Error("Unknown public territory.");
   }
@@ -301,8 +336,20 @@ export function territorySlug(name: string) {
 }
 
 export function territoryFromSlug(slug: string): PublicTerritory | undefined {
-  const territory = foundationSeed.territories.find((candidate) => territorySlug(candidate.name) === slug);
-  if (!territory) {
+  return publicTerritoryFromRecord(foundationSeed.territories.find((candidate) => territorySlug(candidate.name) === slug), slug);
+}
+
+export async function territoryFromSlugForDb(db: PublicDb, slug: string): Promise<PublicTerritory | undefined> {
+  const publishing = await loadPublishingData(db);
+  return publicTerritoryFromRecord(publishing.territories.find((candidate) => territorySlug(candidate.name) === slug), slug);
+}
+
+export async function resolvePublicTerritory(db: PublicDb, slug: string): Promise<PublicTerritory | undefined> {
+  return territoryFromSlugForDb(db, slug);
+}
+
+function publicTerritoryFromRecord(territory: PublicTerritoryRecord | undefined, slug: string): PublicTerritory | undefined {
+  if (!territory || !isPublicTerritoryRecord(territory)) {
     return undefined;
   }
 
@@ -315,8 +362,216 @@ export function territoryFromSlug(slug: string): PublicTerritory | undefined {
   };
 }
 
+function isPublicTerritoryRecord(territory: PublicTerritoryRecord) {
+  return !territory.deletedAt && (territory.status === undefined || territory.status === "active");
+}
+
+export function projectPublicContent(
+  data: PublicProjectionData,
+  item: PublicProjectionData["contentItems"][number],
+  territory: PublicTerritory,
+  now = new Date()
+): PublicContentCard | undefined {
+  if (!isPublishableContentItem(item, territory, now)) {
+    return undefined;
+  }
+
+  const localisation = data.contentLocalisations.find((candidate) =>
+    !candidate.deletedAt &&
+    candidate.masterContentItemId === item.id &&
+    candidate.territoryId === territory.id
+  );
+  if (localisation) {
+    if (["opted_out", "review_required", "master_updated"].includes(localisation.state)) {
+      return undefined;
+    }
+    if (localisation.localContentItemId) {
+      const localItem = data.contentItems.find((candidate) => candidate.id === localisation.localContentItemId);
+      if (!localItem || !isPublishableContentItem(localItem, territory, now)) {
+        return undefined;
+      }
+      return contentCard(localItem, territory);
+    }
+  }
+
+  const variant = data.contentChannelVariants.find((candidate) =>
+    !candidate.deletedAt &&
+    candidate.contentItemId === item.id &&
+    candidate.channel === "website" &&
+    ["approved", "published"].includes(candidate.status) &&
+    (!candidate.territoryId || candidate.territoryId === territory.id)
+  );
+  if (!variant?.currentVersionId) {
+    return undefined;
+  }
+  const version = data.contentChannelVariantVersions.find((candidate) =>
+    !candidate.deletedAt &&
+    candidate.id === variant.currentVersionId &&
+    candidate.variantId === variant.id &&
+    ["approved", "published"].includes(candidate.status)
+  );
+  if (!version) {
+    return undefined;
+  }
+
+  return contentCard(item, territory);
+}
+
+function publicContentProjections(data: PublicProjectionData, territory: PublicTerritory, now = new Date()) {
+  return data.contentItems
+    .map((item) => projectPublicContent(data, item, territory, now))
+    .filter((item): item is PublicContentCard => Boolean(item));
+}
+
+function isPublishableContentItem(
+  item: PublicProjectionData["contentItems"][number],
+  territory: PublicTerritory,
+  now: Date
+) {
+  if (item.deletedAt || !["approved", "published"].includes(item.status)) {
+    return false;
+  }
+  if (!(item.territoryId === territory.id || item.ownerLevel === "network")) {
+    return false;
+  }
+  if (item.ownerLevel !== "network" && !item.territoryId) {
+    return false;
+  }
+  return isWithinPublicDateWindow(item.relevantDates ?? {}, now);
+}
+
+function isWithinPublicDateWindow(relevantDates: Record<string, unknown>, now: Date) {
+  const availableFrom = stringValue(relevantDates.availableFrom) ?? stringValue(relevantDates.publishFrom);
+  const expiresAt = stringValue(relevantDates.expiresAt) ?? stringValue(relevantDates.endDate);
+  if (availableFrom && new Date(availableFrom) > now) {
+    return false;
+  }
+  if (expiresAt && new Date(expiresAt) < now) {
+    return false;
+  }
+  return true;
+}
+
+function latestPublishedMagazine(publishing: PublicProjectionData, territory: PublicTerritory) {
+  return publishing.publicationOutputs
+    .filter((output) => !output.deletedAt)
+    .filter((output) => output.outputType === "digital" && output.status === "generated")
+    .map((output) => {
+      const edition = publishing.territoryEditions.find((candidate) =>
+        !candidate.deletedAt &&
+        candidate.id === output.territoryEditionId &&
+        candidate.territoryId === territory.id &&
+        candidate.status === "published" &&
+        candidate.digitalStatus === "generated"
+      );
+      return edition ? { edition, output } : null;
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((left, right) => {
+      const dateCompare = (right.edition.publicationDate ?? "").localeCompare(left.edition.publicationDate ?? "");
+      return dateCompare === 0 ? right.output.version - left.output.version : dateCompare;
+    })[0];
+}
+
+function publishedMagazinePages(
+  publishing: PublicProjectionData,
+  magazine: NonNullable<ReturnType<typeof latestPublishedMagazine>>,
+  territory: PublicTerritory
+) {
+  const snapshot = Array.isArray(magazine.output.sourcePageSnapshot)
+    ? magazine.output.sourcePageSnapshot
+    : [];
+  return snapshot
+    .map((entry) => {
+      const pageId = typeof entry === "object" && entry ? stringValue((entry as Record<string, unknown>).id) : null;
+      return pageId
+        ? publishing.editionPages.find((candidate) =>
+          !candidate.deletedAt &&
+          candidate.id === pageId &&
+          candidate.territoryEditionId === magazine.edition.id &&
+          candidate.status === "published"
+        )
+        : undefined;
+    })
+    .filter((page): page is NonNullable<typeof page> => Boolean(page))
+    .sort((left, right) => left.pageNumber - right.pageNumber)
+    .map((page) => ({
+      pageNumber: page.pageNumber,
+      title: page.assignedContentId
+        ? publishing.contentItems.find((item) => item.id === page.assignedContentId)?.title ?? `Page ${page.pageNumber}`
+        : `Page ${page.pageNumber}`,
+      status: page.status,
+      href: `/areas/${territory.slug}/magazine/${territorySlug(magazine.edition.title)}/pages/${page.pageNumber}`
+    }));
+}
+
+function publicAdvertiserPlacements(
+  advertising: Awaited<ReturnType<typeof loadAdvertisingData>>,
+  publishing: PublicProjectionData,
+  territory: PublicTerritory
+) {
+  const validAdvertiserIds = new Set(advertising.campaignFulfilments
+    .filter((fulfilment) => !fulfilment.deletedAt)
+    .filter((fulfilment) => fulfilment.territoryId === territory.id && fulfilment.status === "fulfilled")
+    .filter((fulfilment) => Boolean(fulfilment.territoryEditionId && fulfilment.editionPageId))
+    .filter((fulfilment) => {
+      const edition = publishing.territoryEditions.find((candidate) =>
+        candidate.id === fulfilment.territoryEditionId &&
+        candidate.territoryId === territory.id &&
+        candidate.status === "published" &&
+        candidate.digitalStatus === "generated" &&
+        !candidate.deletedAt
+      );
+      const output = publishing.publicationOutputs.find((candidate) =>
+        candidate.territoryEditionId === fulfilment.territoryEditionId &&
+        candidate.outputType === "digital" &&
+        candidate.status === "generated" &&
+        !candidate.deletedAt
+      );
+      const page = publishing.editionPages.find((candidate) =>
+        candidate.id === fulfilment.editionPageId &&
+        candidate.territoryEditionId === fulfilment.territoryEditionId &&
+        candidate.status === "published" &&
+        !candidate.deletedAt
+      );
+      return Boolean(edition && output && page);
+    })
+    .map((fulfilment) => fulfilment.advertiserId));
+
+  return advertising.advertisers
+    .filter((advertiser) => !advertiser.deletedAt)
+    .filter((advertiser) => advertiser.status === "active")
+    .filter((advertiser) => advertiser.owningTerritoryId === territory.id)
+    .filter((advertiser) => validAdvertiserIds.has(advertiser.id))
+    .map((advertiser) => {
+      const organisation = advertising.organisations.find((candidate) => candidate.id === advertiser.advertiserOrganisationId);
+      return {
+        id: advertiser.id,
+        advertiserId: advertiser.id,
+        title: organisation?.name ?? "Local advertiser",
+        label: advertiser.commercialMetadata.publicPlacement === "sponsored" ? "Sponsored" as const : "Local business" as const,
+        summary: stringValue(advertiser.commercialMetadata.publicSummary) ?? "Local family-friendly business.",
+        href: `/areas/${territory.slug}/businesses/${advertiser.id}`,
+        tags: advertiser.tags
+      };
+    });
+}
+
+export function assertPublicNewsletterSocialLinkage(
+  data: PublicProjectionData,
+  territory: PublicTerritory
+) {
+  const publicContentIds = new Set(publicContentProjections(data, territory).map((item) => item.id));
+  const socialLinked = data.socialPublications
+    .filter((publication) => !publication.deletedAt && publication.territoryId === territory.id && publication.publishState === "published")
+    .every((publication) =>
+      Boolean(publication.contentItemId && publicContentIds.has(publication.contentItemId) && publication.variantId && publication.variantVersionId)
+    );
+  return socialLinked;
+}
+
 export async function getPublicHomepage(db: PublicDb, slug: string): Promise<PublicHomepage | undefined> {
-  const territory = territoryFromSlug(slug);
+  const territory = await territoryFromSlugForDb(db, slug);
   if (!territory) {
     return undefined;
   }
@@ -325,31 +580,12 @@ export async function getPublicHomepage(db: PublicDb, slug: string): Promise<Pub
     loadPublishingData(db),
     loadAdvertisingData(db)
   ]);
-  const approvedContent = publishing.contentItems
-    .filter((item) => !item.deletedAt)
-    .filter((item) => item.status === "approved" || item.status === "published")
-    .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
-    .map((item) => contentCard(item, territory));
+  const approvedContent = publicContentProjections(publishing, territory);
   const localStories = approvedContent.filter((item) => item.source === "local");
   const networkStories = approvedContent.filter((item) => item.source === "network");
   const stories = [...localStories, ...networkStories].slice(0, 4);
-  const territoryEdition = publishing.territoryEditions
-    .filter((edition) => !edition.deletedAt && edition.territoryId === territory.id)
-    .sort((left, right) => (right.publicationDate ?? "").localeCompare(left.publicationDate ?? ""))[0];
-  const placements = advertising.advertisers
-    .filter((advertiser) => !advertiser.deletedAt && advertiser.status === "active")
-    .filter((advertiser) => advertiser.owningTerritoryId === territory.id)
-    .map((advertiser) => {
-      const organisation = advertising.organisations.find((candidate) => candidate.id === advertiser.advertiserOrganisationId);
-      return {
-        id: advertiser.id,
-        title: organisation?.name ?? "Local advertiser",
-        label: "Local business" as const,
-        summary: "Trusted local family business.",
-        href: `/areas/${territory.slug}/businesses/${advertiser.id}`
-      };
-    })
-    .slice(0, 4);
+  const magazine = latestPublishedMagazine(publishing, territory);
+  const placements = publicAdvertiserPlacements(advertising, publishing, territory).slice(0, 4);
   const emptyStates: PublicHomepage["emptyStates"] = [];
 
   if (stories.length === 0) {
@@ -373,13 +609,13 @@ export async function getPublicHomepage(db: PublicDb, slug: string): Promise<Pub
     stories,
     whatsOn: approvedContent.filter((item) => item.type === "event").slice(0, 6),
     thingsToDo: approvedContent.filter((item) => ["article", "guide"].includes(item.type)).slice(0, 6),
-    magazine: territoryEdition
+    magazine: magazine
       ? {
-          id: territoryEdition.id,
-          slug: territorySlug(territoryEdition.title),
-          title: territoryEdition.title,
-          status: territoryEdition.status,
-          issueDate: territoryEdition.publicationDate
+          id: magazine.edition.id,
+          slug: territorySlug(magazine.edition.title),
+          title: magazine.edition.title,
+          status: magazine.edition.status,
+          issueDate: magazine.edition.publicationDate
         }
       : undefined,
     placements,
@@ -398,7 +634,7 @@ export async function getPublicDiscovery(
   kind: PublicDiscoveryKind,
   filters: PublicDiscoveryFilters = {}
 ): Promise<PublicDiscoveryResult | undefined> {
-  const territory = territoryFromSlug(slug);
+  const territory = await territoryFromSlugForDb(db, slug);
   if (!territory) {
     return undefined;
   }
@@ -408,23 +644,16 @@ export async function getPublicDiscovery(
   const category = (filters.category ?? "all").trim().toLowerCase();
   const date = filters.date ?? "all";
   const contentTypes = kind === "whats_on" ? new Set(["event"]) : new Set(["article", "guide", "evergreen"]);
-  const publicItems = publishing.contentItems
-    .filter((item) => !item.deletedAt)
-    .filter((item) => item.status === "approved" || item.status === "published")
-    .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
-    .filter((item) => contentTypes.has(item.contentType))
-    .map((item) => contentCard(item, territory))
+  const publicItems = publicContentProjections(publishing, territory)
+    .filter((item) => contentTypes.has(item.type))
     .filter((item) => matchesQuery(item, query))
     .filter((item) => matchesCategory(item, category))
     .filter((item) => matchesDate(item, date))
     .sort((left, right) => (left.startDate ?? "9999-12-31").localeCompare(right.startDate ?? "9999-12-31"));
   const categories = Array.from(
     new Set(
-      publishing.contentItems
-        .filter((item) => !item.deletedAt)
-        .filter((item) => item.status === "approved" || item.status === "published")
-        .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
-        .filter((item) => contentTypes.has(item.contentType))
+      publicContentProjections(publishing, territory)
+        .filter((item) => contentTypes.has(item.type))
         .flatMap((item) => item.categories)
         .map((value) => value.toLowerCase())
     )
@@ -452,7 +681,7 @@ export async function getPublicCommercialDiscovery(
   slug: string,
   kind: PublicCommercialKind
 ): Promise<PublicCommercialResult | undefined> {
-  const territory = territoryFromSlug(slug);
+  const territory = await territoryFromSlugForDb(db, slug);
   if (!territory) {
     return undefined;
   }
@@ -468,28 +697,9 @@ export async function getPublicCommercialDiscovery(
       : new Set<string>();
   const items = kind === "businesses"
     ? []
-    : publishing.contentItems
-      .filter((item) => !item.deletedAt)
-      .filter((item) => item.status === "approved" || item.status === "published")
-      .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
-      .filter((item) => contentTypes.has(item.contentType))
-      .map((item) => contentCard(item, territory));
-  const placements = advertising.advertisers
-    .filter((advertiser) => !advertiser.deletedAt)
-    .filter((advertiser) => advertiser.status === "active")
-    .filter((advertiser) => advertiser.owningTerritoryId === territory.id)
-    .map((advertiser) => {
-      const organisation = advertising.organisations.find((candidate) => candidate.id === advertiser.advertiserOrganisationId);
-      return {
-        id: advertiser.id,
-        advertiserId: advertiser.id,
-        title: organisation?.name ?? "Local advertiser",
-        label: advertiser.commercialMetadata.publicPlacement === "sponsored" ? "Sponsored" as const : "Local business" as const,
-        summary: stringValue(advertiser.commercialMetadata.publicSummary) ?? "Local family-friendly business.",
-        href: `/areas/${territory.slug}/businesses/${advertiser.id}`,
-        tags: advertiser.tags
-      };
-    });
+    : publicContentProjections(publishing, territory)
+      .filter((item) => contentTypes.has(item.type));
+  const placements = publicAdvertiserPlacements(advertising, publishing, territory);
   const visiblePlacements = kind === "businesses"
     ? placements
     : placements.filter((placement) => placement.label === "Sponsored").slice(0, 4);
@@ -509,61 +719,31 @@ export async function getPublicCommercialDiscovery(
 }
 
 export async function getPublicMagazine(db: PublicDb, slug: string): Promise<PublicMagazine | undefined> {
-  const territory = territoryFromSlug(slug);
+  const territory = await territoryFromSlugForDb(db, slug);
   if (!territory) {
     return undefined;
   }
 
   const publishing = await loadPublishingData(db);
-  const editions = publishing.territoryEditions
-    .filter((edition) => !edition.deletedAt)
-    .filter((edition) => edition.territoryId === territory.id)
-    .filter((edition) => edition.status === "published" && edition.digitalStatus === "generated")
-    .sort((left, right) => (right.publicationDate ?? "").localeCompare(left.publicationDate ?? ""));
-  const edition = editions[0];
-  if (!edition) {
+  const magazine = latestPublishedMagazine(publishing, territory);
+  if (!magazine) {
     return {
       territory,
       emptyState: "The digital magazine for this area is not public yet. Published generated outputs will appear here."
     };
   }
-
-  const output = publishing.publicationOutputs
-    .filter((candidate) => !candidate.deletedAt)
-    .filter((candidate) => candidate.territoryEditionId === edition.id)
-    .filter((candidate) => candidate.outputType === "digital" && candidate.status === "generated")
-    .sort((left, right) => right.version - left.version)[0];
-  if (!output) {
-    return {
-      territory,
-      emptyState: "The digital magazine for this area is not public yet. Published generated outputs will appear here."
-    };
-  }
-
-  const pages = publishing.editionPages
-    .filter((page) => !page.deletedAt && page.territoryEditionId === edition.id)
-    .filter((page) => page.status === "published")
-    .sort((left, right) => left.pageNumber - right.pageNumber)
-    .map((page) => ({
-      pageNumber: page.pageNumber,
-      title: page.assignedContentId
-        ? publishing.contentItems.find((item) => item.id === page.assignedContentId)?.title ?? `Page ${page.pageNumber}`
-        : `Page ${page.pageNumber}`,
-      status: page.status,
-      href: `/areas/${territory.slug}/magazine/${territorySlug(edition.title)}/pages/${page.pageNumber}`
-    }));
 
   return {
     territory,
     edition: {
-      id: edition.id,
-      slug: territorySlug(edition.title),
-      title: edition.title,
-      issueDate: edition.publicationDate,
-      pageCount: edition.pageCount,
-      outputVersion: output.version,
-      artifact: output.artifact,
-      pages
+      id: magazine.edition.id,
+      slug: territorySlug(magazine.edition.title),
+      title: magazine.edition.title,
+      issueDate: magazine.edition.publicationDate,
+      pageCount: magazine.edition.pageCount,
+      outputVersion: magazine.output.version,
+      artifact: magazine.output.artifact,
+      pages: publishedMagazinePages(publishing, magazine, territory)
     }
   };
 }
@@ -573,7 +753,7 @@ export async function getPublicParentHub(
   slug: string,
   contactId?: string | null
 ): Promise<PublicParentHub | undefined> {
-  const territory = territoryFromSlug(slug);
+  const territory = await territoryFromSlugForDb(db, slug);
   if (!territory) {
     return undefined;
   }
@@ -607,8 +787,10 @@ export async function getPublicParentHub(
       .filter((subscription) => subscription.contactId === contact.id && subscription.status === "subscribed" && !subscription.deletedAt)
       .map((subscription) => subscription.territoryId)
   ]);
-  const followedTerritories = foundationSeed.territories
+  const publishing = await loadPublishingData(db);
+  const followedTerritories = publishing.territories
     .filter((candidate) => followedIds.has(candidate.id))
+    .filter(isPublicTerritoryRecord)
     .map((candidate) => ({
       id: candidate.id,
       slug: territorySlug(candidate.name),
@@ -654,7 +836,7 @@ export async function getPublicRecommendations(
   slug: string,
   contactId?: string | null
 ): Promise<PublicRecommendations | undefined> {
-  const territory = territoryFromSlug(slug);
+  const territory = await territoryFromSlugForDb(db, slug);
   if (!territory) {
     return undefined;
   }
@@ -672,15 +854,11 @@ export async function getPublicRecommendations(
     ...(profile?.offerPreferences ?? []),
     ...(profile?.competitionPreferences ?? [])
   ].map((value) => value.toLowerCase()));
-  const items = publishing.contentItems
-    .filter((item) => !item.deletedAt)
-    .filter((item) => item.status === "approved" || item.status === "published")
-    .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
+  const items = publicContentProjections(publishing, territory)
     .map((item) => {
-      const card = contentCard(item, territory);
       return {
-        ...card,
-        reasons: recommendationReasons(card, preferenceTerms, territory)
+        ...item,
+        reasons: recommendationReasons(item, preferenceTerms, territory)
       };
     })
     .filter((item) => item.reasons.length > 0 || !profile)
@@ -822,7 +1000,4 @@ function redactAnalyticsMetadata(metadata: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(metadata).filter(([key]) => !blocked.has(key)));
 }
 
-export const defaultPublicTerritorySlug = territorySlug(
-  foundationSeed.territories.find((territory) => territory.id === fixtureIds.territories.suttonColdfield)?.name ??
-    "sutton-coldfield"
-);
+export const defaultPublicTerritorySlug = "sutton-coldfield";

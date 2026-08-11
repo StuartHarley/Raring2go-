@@ -1,4 +1,5 @@
-import { createPublicAnalyticsEvent, type PublicAnalyticsEventType } from "@raring2go/public";
+import { createDb } from "@raring2go/db";
+import { createPublicAnalyticsEventForDb, type PublicAnalyticsEventType } from "@raring2go/public";
 import { NextResponse } from "next/server";
 
 const allowedEventTypes = new Set<PublicAnalyticsEventType>([
@@ -17,8 +18,9 @@ export async function POST(request: Request) {
   }
 
   let event;
+  const { db, sql } = createDb();
   try {
-    event = createPublicAnalyticsEvent({
+    event = await createPublicAnalyticsEventForDb(db, {
       eventType: body.eventType,
       territorySlug: body.territorySlug,
       path: body.path,
@@ -29,6 +31,8 @@ export async function POST(request: Request) {
     });
   } catch {
     return NextResponse.json({ error: "Invalid public analytics event." }, { status: 400 });
+  } finally {
+    await sql.end();
   }
 
   return NextResponse.json({ accepted: true, event }, { status: 202 });
