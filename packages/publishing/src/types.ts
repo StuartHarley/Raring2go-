@@ -261,6 +261,10 @@ export type PublishingData = {
   contentAiTasks: ContentAiTask[];
   contentWebsitePublishingJobs: ContentWebsitePublishingJob[];
   contentDomainEvents: ContentDomainEvent[];
+  socialAccounts: SocialAccount[];
+  socialPublications: SocialPublication[];
+  socialPublishJobs: SocialPublishJob[];
+  socialProviderEvents: SocialProviderEvent[];
   territories: PublishingTerritory[];
 };
 
@@ -418,4 +422,98 @@ export type ContentLibraryItem = {
   localisations: ContentLocalisation[];
   health: string[];
   editionStatus: "unused" | "assigned" | "placed" | "preflight_ready" | "published";
+};
+
+export type SocialAccount = {
+  id: string;
+  channel: "facebook" | "instagram" | "linkedin" | (string & {});
+  organisationId?: string | null;
+  territoryId?: string | null;
+  externalAccountReference: string;
+  displayName: string;
+  connectionStatus: string;
+  connectionHealth: string;
+  capabilityMetadata: Record<string, unknown>;
+  providerMetadata: Record<string, unknown>;
+  active: boolean;
+  lastSyncedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type SocialPublication = {
+  id: string;
+  contentItemId: string;
+  variantId?: string | null;
+  variantVersionId?: string | null;
+  territoryId: string;
+  socialAccountId: string;
+  channel: string;
+  approvalState: "draft" | "needs_review" | "approved" | (string & {});
+  publishState: "draft" | "needs_review" | "approved" | "scheduled" | "publishing" | "published" | "failed" | "cancelled" | (string & {});
+  scheduledAt?: string | null;
+  timezone: string;
+  immutableSnapshot: Record<string, unknown>;
+  mediaArtifactReferences: Array<Record<string, unknown>>;
+  cta?: string | null;
+  linkUrl?: string | null;
+  advertiserId?: string | null;
+  commercialBookingId?: string | null;
+  publishedExternalReference?: string | null;
+  retryCount: number;
+  maxRetries: number;
+  failureMetadata: Record<string, unknown>;
+  createdByUserId?: string | null;
+  approvedByUserId?: string | null;
+  scheduledByUserId?: string | null;
+  publishedByUserId?: string | null;
+  approvedAt?: string | null;
+  publishedAt?: string | null;
+  idempotencyKey: string;
+  deletedAt?: Date | null;
+};
+
+export type SocialPublishJob = {
+  id: string;
+  publicationId: string;
+  status: "queued" | "running" | "completed" | "failed" | (string & {});
+  runAfter: string;
+  attempts: number;
+  maxAttempts: number;
+  providerKey: string;
+  providerRequest: Record<string, unknown>;
+  providerResponse: Record<string, unknown>;
+  lastError?: string | null;
+  lockedAt?: string | null;
+  completedAt?: string | null;
+  idempotencyKey: string;
+};
+
+export type SocialProviderEvent = {
+  id: string;
+  publicationId?: string | null;
+  providerKey: string;
+  providerEventId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  receivedAt: string;
+  processedAt?: string | null;
+};
+
+export type SocialQueueItem = {
+  publication: SocialPublication;
+  account?: SocialAccount;
+  content?: ContentItem;
+  variant?: ContentChannelVariant;
+  job?: SocialPublishJob;
+  warnings: string[];
+};
+
+export type SocialPublishingProvider = {
+  key: string;
+  publish(input: {
+    publication: SocialPublication;
+    account: SocialAccount;
+  }): Promise<{ externalReference?: string | null; status: "published" | "failed"; metadata?: Record<string, unknown> }>;
+  fetchStatus?(externalReference: string): Promise<Record<string, unknown>>;
+  cancel?(externalReference: string): Promise<Record<string, unknown>>;
 };

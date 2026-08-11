@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createSeasonWithMasterEdition,
   approveContentVariant,
+  approveSocialPublication,
   approveTemplateVersion,
   applyLocalContentOverride,
   assignPageTemplateAndContent,
@@ -11,6 +12,7 @@ import {
   createCentralContentItem,
   createCanonicalContentItem,
   createEditionFlatplan,
+  createNetworkSocialQueueSuggestions,
   createTemplateRevision,
   distributeContentToTerritoryEditions,
   distributeContentToNetwork,
@@ -22,7 +24,9 @@ import {
   listEditionSummaries,
   localiseContentForTerritory,
   prepareWebsitePublishing,
+  publishDueSocialJob,
   publishTemplateVersion,
+  queueSocialPublication,
   applySafePreflightFixes,
   propagateMasterContentCorrection,
   readContentWorkspace,
@@ -31,6 +35,9 @@ import {
   restoreContentVersion,
   reorderEditionPages,
   runPagePreflight,
+  scheduleSocialPublication,
+  cancelSocialPublication,
+  socialContentGaps,
   submitPageForReview
 } from "./service";
 import type { PublishingData } from "./types";
@@ -102,13 +109,28 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "content.ai", "generate", "network"),
     grant(ids.roles.hq, "content.ai", "approve", "network"),
     grant(ids.roles.hq, "content.website", "publish", "network"),
+    grant(ids.roles.hq, "social", "view", "network"),
+    grant(ids.roles.hq, "social", "create", "network"),
+    grant(ids.roles.hq, "social", "edit", "network"),
+    grant(ids.roles.hq, "social", "approve", "network"),
+    grant(ids.roles.hq, "social", "schedule", "network"),
+    grant(ids.roles.hq, "social", "publish", "network"),
+    grant(ids.roles.hq, "social", "cancel", "network"),
+    grant(ids.roles.hq, "social", "manage_accounts", "network"),
+    grant(ids.roles.hq, "social", "network_distribute", "network"),
     grant(ids.roles.local, "edition.page", "edit", "own_territory"),
     grant(ids.roles.local, "edition.content", "edit_local", "own_territory"),
     grant(ids.roles.local, "edition.preflight", "override", "own_territory"),
     grant(ids.roles.local, "edition", "view", "own_territory"),
     grant(ids.roles.local, "content", "view", "own_territory"),
     grant(ids.roles.local, "content", "localise", "own_territory"),
-    grant(ids.roles.local, "content.ai", "generate", "own_territory")
+    grant(ids.roles.local, "content.ai", "generate", "own_territory"),
+    grant(ids.roles.local, "social", "view", "own_territory"),
+    grant(ids.roles.local, "social", "create", "own_territory"),
+    grant(ids.roles.local, "social", "edit", "own_territory"),
+    grant(ids.roles.local, "social", "approve", "own_territory"),
+    grant(ids.roles.local, "social", "schedule", "own_territory"),
+    grant(ids.roles.local, "social", "cancel", "own_territory")
   ],
   territories: [
     {
@@ -709,6 +731,86 @@ describe("publishing edition model", () => {
     })).rejects.toThrow("outside the active territory");
     expect(listContentLibrary(hqContext(), permissions, publishingData)[0]!.health).toContain("advertiser_obligation");
   });
+
+  it("queues, approves, schedules and publishes approved social variants idempotently", async () => {
+    const publishingData = socialData();
+    const recorder = audit();
+    const publication = await queueSocialPublication(localContext(), permissions, recorder, publishingData, {
+      id: "social_pub_1",
+      variantId: "variant_facebook",
+      territoryId: ids.territories.own,
+      socialAccountId: "account_facebook",
+      idempotencyKey: "queue:facebook:1",
+      cta: "Read more"
+    });
+    const duplicate = await queueSocialPublication(localContext(), permissions, recorder, publishingData, {
+      ...publication,
+      variantId: "variant_facebook",
+      territoryId: ids.territories.own,
+      socialAccountId: "account_facebook"
+    });
+    await approveSocialPublication(localContext(), permissions, recorder, publishingData, publication.id);
+    await scheduleSocialPublication(localContext(), permissions, recorder, publishingData, publication.id, "2026-08-12T09:00:00.000Z", "Europe/London");
+    await scheduleSocialPublication(localContext(), permissions, recorder, publishingData, publication.id, "2026-08-12T10:00:00.000Z", "Europe/London");
+    await publishDueSocialJob(hqContext(), permissions, recorder, publishingData, devSocialProvider(), publishingData.socialPublishJobs[0]!.id);
+    await publishDueSocialJob(hqContext(), permissions, recorder, publishingData, devSocialProvider(), publishingData.socialPublishJobs[0]!.id);
+
+    expect(duplicate.id).toBe(publication.id);
+    expect(publication).toMatchObject({
+      publishState: "published",
+      scheduledAt: "2026-08-12T10:00:00.000Z",
+      timezone: "Europe/London",
+      publishedExternalReference: "dev-social_pub_1"
+    });
+    expect(publishingData.socialPublishJobs[0]).toMatchObject({ status: "completed", attempts: 1 });
+    expect(recorder.events.map((event) => event.action)).toContain(auditActions.socialPublished);
+  });
+
+  it("rejects unapproved variants, cross-territory accounts and invalid lifecycle transitions", async () => {
+    const publishingData = socialData();
+    publishingData.contentChannelVariants[0]!.status = "ai_draft";
+
+    await expect(queueSocialPublication(localContext(), permissions, audit(), publishingData, {
+      id: "social_pub_denied",
+      variantId: "variant_facebook",
+      territoryId: ids.territories.own,
+      socialAccountId: "account_facebook",
+      idempotencyKey: "denied"
+    })).rejects.toThrow("Only approved");
+
+    publishingData.contentChannelVariants[0]!.status = "approved";
+    await expect(queueSocialPublication(localContext(), permissions, audit(), publishingData, {
+      id: "social_pub_cross",
+      variantId: "variant_facebook",
+      territoryId: ids.territories.other,
+      socialAccountId: "account_other",
+      idempotencyKey: "cross"
+    })).rejects.toThrow("outside the active territory");
+  });
+
+  it("handles provider failure retry, cancellation and network suggestions", async () => {
+    const publishingData = socialData();
+    const recorder = audit();
+    const publication = await queueSocialPublication(hqContext(), permissions, recorder, publishingData, {
+      id: "social_pub_retry",
+      variantId: "variant_facebook",
+      territoryId: ids.territories.own,
+      socialAccountId: "account_facebook",
+      idempotencyKey: "queue:retry"
+    });
+    await approveSocialPublication(hqContext(), permissions, recorder, publishingData, publication.id);
+    await scheduleSocialPublication(hqContext(), permissions, recorder, publishingData, publication.id, "2026-08-12T09:00:00.000Z");
+    await publishDueSocialJob(hqContext(), permissions, recorder, publishingData, failingSocialProvider(), publishingData.socialPublishJobs[0]!.id);
+
+    expect(publication).toMatchObject({ publishState: "failed", retryCount: 1 });
+    expect(publishingData.socialPublishJobs[0]!.status).toBe("queued");
+    await cancelSocialPublication(hqContext(), permissions, recorder, publishingData, publication.id);
+    expect(publication.publishState).toBe("cancelled");
+
+    const suggestions = await createNetworkSocialQueueSuggestions(hqContext(), permissions, recorder, publishingData, "variant_facebook", [ids.territories.own, ids.territories.other]);
+    expect(suggestions.map((suggestion) => suggestion.territoryId)).toEqual([ids.territories.own, ids.territories.other]);
+    expect(socialContentGaps(publishingData, "2026-08-11T00:00:00.000Z").some((gap) => gap.signals.includes("no_social_scheduled_next_7_days"))).toBe(true);
+  });
 });
 
 function hqContext() {
@@ -747,6 +849,10 @@ function emptyData(): PublishingData {
     contentAiTasks: [],
     contentWebsitePublishingJobs: [],
     contentDomainEvents: [],
+    socialAccounts: [],
+    socialPublications: [],
+    socialPublishJobs: [],
+    socialProviderEvents: [],
     territories: [
       {
         id: ids.territories.own,
@@ -903,6 +1009,92 @@ function canonicalVersion(item: ReturnType<typeof canonicalContent>, versionNumb
     changeSummary: versionNumber === 1 ? "Initial content" : "Updated content",
     provenance: { source: "human_editor" },
     createdByUserId: ids.users.hq
+  };
+}
+
+function socialData() {
+  const publishingData = emptyData();
+  const item = canonicalContent();
+  publishingData.contentItems.push(item);
+  publishingData.contentItemVersions.push(canonicalVersion(item, 1));
+  publishingData.contentChannelVariants.push({
+    id: "variant_facebook",
+    contentItemId: item.id,
+    channel: "facebook",
+    status: "approved",
+    currentVersionId: "variant_facebook_v1",
+    territoryId: null,
+    scheduledAt: null,
+    publishedAt: null,
+    provenance: { generatedBy: "ai" }
+  });
+  publishingData.contentChannelVariantVersions.push({
+    id: "variant_facebook_v1",
+    variantId: "variant_facebook",
+    versionNumber: 1,
+    status: "approved",
+    snapshot: { postCopy: "Family days out this week", cta: "Read more" },
+    generatedByTaskId: "task_facebook",
+    provenance: { generatedBy: "ai" },
+    createdByUserId: ids.users.hq,
+    approvedByUserId: ids.users.hq,
+    approvedAt: "2026-08-11"
+  });
+  publishingData.socialAccounts.push(
+    {
+      id: "account_facebook",
+      channel: "facebook",
+      organisationId: ids.organisations.franchise,
+      territoryId: ids.territories.own,
+      externalAccountReference: "dev-own-facebook",
+      displayName: "Own Facebook",
+      connectionStatus: "connected",
+      connectionHealth: "healthy",
+      capabilityMetadata: { publish: true },
+      providerMetadata: {},
+      active: true,
+      lastSyncedAt: "2026-08-11T00:00:00.000Z"
+    },
+    {
+      id: "account_other",
+      channel: "facebook",
+      organisationId: ids.organisations.other,
+      territoryId: ids.territories.other,
+      externalAccountReference: "dev-other-facebook",
+      displayName: "Other Facebook",
+      connectionStatus: "connected",
+      connectionHealth: "healthy",
+      capabilityMetadata: { publish: true },
+      providerMetadata: {},
+      active: true,
+      lastSyncedAt: "2026-08-11T00:00:00.000Z"
+    }
+  );
+  return publishingData;
+}
+
+function devSocialProvider() {
+  return {
+    key: "development",
+    async publish({ publication }: { publication: { id: string } }) {
+      return {
+        status: "published" as const,
+        externalReference: `dev-${publication.id}`,
+        metadata: { deterministic: true }
+      };
+    }
+  };
+}
+
+function failingSocialProvider() {
+  return {
+    key: "development",
+    async publish() {
+      return {
+        status: "failed" as const,
+        metadata: { reason: "temporary_failure" }
+      };
+    }
   };
 }
 

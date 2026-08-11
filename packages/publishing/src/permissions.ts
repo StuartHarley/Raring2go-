@@ -22,7 +22,16 @@ export const publishingCapabilities = {
   contentDistributeNetwork: { module: "content", action: "distribute_network" },
   contentAiGenerate: { module: "content.ai", action: "generate" },
   contentAiApprove: { module: "content.ai", action: "approve" },
-  contentWebsitePublish: { module: "content.website", action: "publish" }
+  contentWebsitePublish: { module: "content.website", action: "publish" },
+  socialView: { module: "social", action: "view" },
+  socialCreate: { module: "social", action: "create" },
+  socialEdit: { module: "social", action: "edit" },
+  socialApprove: { module: "social", action: "approve" },
+  socialSchedule: { module: "social", action: "schedule" },
+  socialPublish: { module: "social", action: "publish" },
+  socialCancel: { module: "social", action: "cancel" },
+  socialManageAccounts: { module: "social", action: "manage_accounts" },
+  socialNetworkDistribute: { module: "social", action: "network_distribute" }
 } as const;
 
 export type PublishingCapability = keyof typeof publishingCapabilities;

@@ -127,7 +127,16 @@ export const fixtureIds = {
     contentDistributeNetwork: "00000000-0000-4000-8000-000000000507",
     contentAiGenerate: "00000000-0000-4000-8000-000000000508",
     contentAiApprove: "00000000-0000-4000-8000-000000000509",
-    contentWebsitePublish: "00000000-0000-4000-8000-000000000510"
+    contentWebsitePublish: "00000000-0000-4000-8000-000000000510",
+    socialView: "00000000-0000-4000-8000-000000000511",
+    socialCreate: "00000000-0000-4000-8000-000000000512",
+    socialEdit: "00000000-0000-4000-8000-000000000513",
+    socialApprove: "00000000-0000-4000-8000-000000000514",
+    socialSchedule: "00000000-0000-4000-8000-000000000515",
+    socialPublish: "00000000-0000-4000-8000-000000000516",
+    socialCancel: "00000000-0000-4000-8000-000000000517",
+    socialManageAccounts: "00000000-0000-4000-8000-000000000518",
+    socialNetworkDistribute: "00000000-0000-4000-8000-000000000519"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -229,6 +238,16 @@ export const fixtureIds = {
     halfTermWebsite: "00000000-0000-4000-8000-000000000757",
     halfTermNewsletter: "00000000-0000-4000-8000-000000000758",
     halfTermFacebook: "00000000-0000-4000-8000-000000000759"
+  },
+  socialAccounts: {
+    suttonFacebook: "00000000-0000-4000-8000-000000000760",
+    suttonInstagram: "00000000-0000-4000-8000-000000000761"
+  },
+  socialPublications: {
+    halfTermFacebookSutton: "00000000-0000-4000-8000-000000000762"
+  },
+  socialPublishJobs: {
+    halfTermFacebookSutton: "00000000-0000-4000-8000-000000000763"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -1031,6 +1050,60 @@ export const foundationSeed = {
       module: "content.website",
       action: "publish",
       description: "Prepare provider-neutral website publishing jobs."
+    },
+    {
+      id: fixtureIds.permissions.socialView,
+      module: "social",
+      action: "view",
+      description: "View social accounts, queues and calendars."
+    },
+    {
+      id: fixtureIds.permissions.socialCreate,
+      module: "social",
+      action: "create",
+      description: "Create social queue items from approved content variants."
+    },
+    {
+      id: fixtureIds.permissions.socialEdit,
+      module: "social",
+      action: "edit",
+      description: "Edit draft or scheduled social queue items."
+    },
+    {
+      id: fixtureIds.permissions.socialApprove,
+      module: "social",
+      action: "approve",
+      description: "Approve social queue items."
+    },
+    {
+      id: fixtureIds.permissions.socialSchedule,
+      module: "social",
+      action: "schedule",
+      description: "Schedule, reschedule and bulk schedule social queue items."
+    },
+    {
+      id: fixtureIds.permissions.socialPublish,
+      module: "social",
+      action: "publish",
+      description: "Run provider-neutral social publishing jobs."
+    },
+    {
+      id: fixtureIds.permissions.socialCancel,
+      module: "social",
+      action: "cancel",
+      description: "Cancel social queue items before publication."
+    },
+    {
+      id: fixtureIds.permissions.socialManageAccounts,
+      module: "social",
+      action: "manage_accounts",
+      description: "Manage provider-neutral social account connections."
+    },
+    {
+      id: fixtureIds.permissions.socialNetworkDistribute,
+      module: "social",
+      action: "network_distribute",
+      description: "Suggest social queue items across permitted territories."
     }
   ],
   advertisers: [
@@ -1509,7 +1582,7 @@ export const foundationSeed = {
       id: fixtureIds.contentChannelVariants.halfTermFacebook,
       contentItemId: fixtureIds.contentItems.halfTermGuide,
       channel: "facebook",
-      status: "ai_draft",
+      status: "approved",
       currentVersionId: fixtureIds.contentChannelVariantVersions.halfTermFacebookV1,
       territoryId: null,
       scheduledAt: null,
@@ -1546,13 +1619,13 @@ export const foundationSeed = {
       id: fixtureIds.contentChannelVariantVersions.halfTermFacebookV1,
       variantId: fixtureIds.contentChannelVariants.halfTermFacebook,
       versionNumber: 1,
-      status: "ai_draft",
+      status: "approved",
       snapshot: { postCopy: "Half term adventures are coming. Here are ideas for families.", cta: "Read more" },
       generatedByTaskId: fixtureIds.contentAiTasks.halfTermFacebook,
       provenance: { generatedBy: "ai" },
       createdByUserId: fixtureIds.users.superAdmin,
-      approvedByUserId: null,
-      approvedAt: null
+      approvedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2026-08-11"
     }
   ],
   contentAiTasks: [
@@ -1610,6 +1683,86 @@ export const foundationSeed = {
   ],
   contentWebsitePublishingJobs: [],
   contentDomainEvents: [],
+  socialAccounts: [
+    {
+      id: fixtureIds.socialAccounts.suttonFacebook,
+      channel: "facebook",
+      organisationId: fixtureIds.organisations.franchise,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      externalAccountReference: "dev-facebook-sutton",
+      displayName: "Raring2go Sutton Coldfield Facebook",
+      connectionStatus: "connected",
+      connectionHealth: "healthy",
+      capabilityMetadata: { publish: true, schedule: false },
+      providerMetadata: { providerKey: "development" },
+      active: true,
+      lastSyncedAt: "2026-08-11T09:00:00.000Z"
+    },
+    {
+      id: fixtureIds.socialAccounts.suttonInstagram,
+      channel: "instagram",
+      organisationId: fixtureIds.organisations.franchise,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      externalAccountReference: "dev-instagram-sutton",
+      displayName: "Raring2go Sutton Coldfield Instagram",
+      connectionStatus: "connected",
+      connectionHealth: "healthy",
+      capabilityMetadata: { publish: true, schedule: false },
+      providerMetadata: { providerKey: "development" },
+      active: true,
+      lastSyncedAt: "2026-08-11T09:00:00.000Z"
+    }
+  ],
+  socialPublications: [
+    {
+      id: fixtureIds.socialPublications.halfTermFacebookSutton,
+      contentItemId: fixtureIds.contentItems.halfTermGuide,
+      variantId: fixtureIds.contentChannelVariants.halfTermFacebook,
+      variantVersionId: fixtureIds.contentChannelVariantVersions.halfTermFacebookV1,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      socialAccountId: fixtureIds.socialAccounts.suttonFacebook,
+      channel: "facebook",
+      approvalState: "approved",
+      publishState: "published",
+      scheduledAt: "2026-08-12T09:00:00.000Z",
+      timezone: "Europe/London",
+      immutableSnapshot: { postCopy: "Half term adventures are coming. Here are ideas for families.", cta: "Read more" },
+      mediaArtifactReferences: [],
+      cta: "Read more",
+      linkUrl: "https://www.raring2go.co.uk/",
+      advertiserId: null,
+      commercialBookingId: null,
+      publishedExternalReference: "dev-social-half-term-facebook",
+      retryCount: 0,
+      maxRetries: 3,
+      failureMetadata: {},
+      createdByUserId: fixtureIds.users.superAdmin,
+      approvedByUserId: fixtureIds.users.superAdmin,
+      scheduledByUserId: fixtureIds.users.superAdmin,
+      publishedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2026-08-11T09:15:00.000Z",
+      publishedAt: "2026-08-12T09:00:10.000Z",
+      idempotencyKey: "seed:social:half-term-facebook-sutton"
+    }
+  ],
+  socialPublishJobs: [
+    {
+      id: fixtureIds.socialPublishJobs.halfTermFacebookSutton,
+      publicationId: fixtureIds.socialPublications.halfTermFacebookSutton,
+      status: "completed",
+      runAfter: "2026-08-12T09:00:00.000Z",
+      attempts: 1,
+      maxAttempts: 3,
+      providerKey: "development",
+      providerRequest: { publicationId: fixtureIds.socialPublications.halfTermFacebookSutton },
+      providerResponse: { externalReference: "dev-social-half-term-facebook" },
+      lastError: null,
+      lockedAt: "2026-08-12T09:00:00.000Z",
+      completedAt: "2026-08-12T09:00:10.000Z",
+      idempotencyKey: "social:publish:seed:half-term-facebook-sutton"
+    }
+  ],
+  socialProviderEvents: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

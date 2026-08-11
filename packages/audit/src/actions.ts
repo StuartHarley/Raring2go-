@@ -137,7 +137,15 @@ export const auditActions = {
   contentVariantApproved: "content.variant.approved",
   contentNetworkDistributed: "content.network.distributed",
   contentWebsiteReady: "content.website.ready",
-  contentPublished: "content.published"
+  contentPublished: "content.published",
+  socialQueued: "social.queued",
+  socialApproved: "social.approved",
+  socialScheduled: "social.scheduled",
+  socialPublishStarted: "social.publish.started",
+  socialPublished: "social.published",
+  socialPublishFailed: "social.publish.failed",
+  socialCancelled: "social.cancelled",
+  socialAccountChanged: "social.account.changed"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

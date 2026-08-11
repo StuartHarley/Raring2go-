@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
 import { users } from "./identity";
 import { organisations, territories } from "./tenancy";
@@ -508,5 +508,124 @@ export const contentDomainEvents = pgTable(
     uniqueIndex("content_domain_events_idempotency_uidx").on(table.idempotencyKey),
     index("content_domain_events_type_idx").on(table.eventType),
     index("content_domain_events_content_item_id_idx").on(table.contentItemId)
+  ]
+);
+
+export const socialAccounts = pgTable(
+  "social_accounts",
+  {
+    id,
+    channel: text("channel").notNull(),
+    organisationId: uuid("organisation_id").references(() => organisations.id),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    externalAccountReference: text("external_account_reference").notNull(),
+    displayName: text("display_name").notNull(),
+    connectionStatus: text("connection_status").notNull().default("connected"),
+    connectionHealth: text("connection_health").notNull().default("healthy"),
+    capabilityMetadata: jsonb("capability_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    providerMetadata: jsonb("provider_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    active: boolean("active").notNull().default(true),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("social_accounts_external_reference_uidx").on(table.channel, table.externalAccountReference),
+    index("social_accounts_channel_idx").on(table.channel),
+    index("social_accounts_territory_id_idx").on(table.territoryId),
+    index("social_accounts_connection_status_idx").on(table.connectionStatus),
+    index("social_accounts_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const socialPublications = pgTable(
+  "social_publications",
+  {
+    id,
+    contentItemId: uuid("content_item_id").notNull().references(() => contentItems.id),
+    variantId: uuid("variant_id").references(() => contentChannelVariants.id),
+    variantVersionId: uuid("variant_version_id").references(() => contentChannelVariantVersions.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    socialAccountId: uuid("social_account_id").notNull().references(() => socialAccounts.id),
+    channel: text("channel").notNull(),
+    approvalState: text("approval_state").notNull().default("draft"),
+    publishState: text("publish_state").notNull().default("draft"),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    timezone: text("timezone").notNull().default("Europe/London"),
+    immutableSnapshot: jsonb("immutable_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    mediaArtifactReferences: jsonb("media_artifact_references").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    cta: text("cta"),
+    linkUrl: text("link_url"),
+    advertiserId: uuid("advertiser_id"),
+    commercialBookingId: uuid("commercial_booking_id"),
+    publishedExternalReference: text("published_external_reference"),
+    retryCount: integer("retry_count").notNull().default(0),
+    maxRetries: integer("max_retries").notNull().default(3),
+    failureMetadata: jsonb("failure_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    scheduledByUserId: uuid("scheduled_by_user_id").references(() => users.id),
+    publishedByUserId: uuid("published_by_user_id").references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("social_publications_idempotency_uidx").on(table.idempotencyKey),
+    index("social_publications_content_item_id_idx").on(table.contentItemId),
+    index("social_publications_variant_id_idx").on(table.variantId),
+    index("social_publications_territory_id_idx").on(table.territoryId),
+    index("social_publications_account_id_idx").on(table.socialAccountId),
+    index("social_publications_publish_state_idx").on(table.publishState),
+    index("social_publications_scheduled_at_idx").on(table.scheduledAt),
+    index("social_publications_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const socialPublishJobs = pgTable(
+  "social_publish_jobs",
+  {
+    id,
+    publicationId: uuid("publication_id").notNull().references(() => socialPublications.id),
+    status: text("status").notNull().default("queued"),
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    providerKey: text("provider_key").notNull().default("development"),
+    providerRequest: jsonb("provider_request").$type<Record<string, unknown>>().notNull().default({}),
+    providerResponse: jsonb("provider_response").$type<Record<string, unknown>>().notNull().default({}),
+    lastError: text("last_error"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("social_publish_jobs_idempotency_uidx").on(table.idempotencyKey),
+    index("social_publish_jobs_publication_id_idx").on(table.publicationId),
+    index("social_publish_jobs_status_idx").on(table.status),
+    index("social_publish_jobs_run_after_idx").on(table.runAfter)
+  ]
+);
+
+export const socialProviderEvents = pgTable(
+  "social_provider_events",
+  {
+    id,
+    publicationId: uuid("publication_id").references(() => socialPublications.id),
+    providerKey: text("provider_key").notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("social_provider_events_uidx").on(table.providerKey, table.providerEventId),
+    index("social_provider_events_publication_id_idx").on(table.publicationId),
+    index("social_provider_events_event_type_idx").on(table.eventType)
   ]
 );

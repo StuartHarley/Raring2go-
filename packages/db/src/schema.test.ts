@@ -53,6 +53,10 @@ import {
   contentItems,
   contentLocalisations,
   contentWebsitePublishingJobs,
+  socialAccounts,
+  socialProviderEvents,
+  socialPublications,
+  socialPublishJobs,
   auditEvents,
   franchiseArtifactReferences,
   franchiseAgreements,
@@ -282,6 +286,19 @@ describe("foundation schema", () => {
     expect(contentDomainEvents.idempotencyKey.name).toBe("idempotency_key");
     expect((contentItems as unknown as Record<string, unknown>).wordpressPostId).toBeUndefined();
     expect((contentChannelVariants as unknown as Record<string, unknown>).mailchimpBlockId).toBeUndefined();
+  });
+
+  it("models provider-neutral social accounts, queue items and publish jobs", () => {
+    expect(socialAccounts.channel.name).toBe("channel");
+    expect(socialAccounts.externalAccountReference.name).toBe("external_account_reference");
+    expect(socialAccounts.connectionHealth.name).toBe("connection_health");
+    expect(socialPublications.variantId.name).toBe("variant_id");
+    expect(socialPublications.immutableSnapshot.name).toBe("immutable_snapshot");
+    expect(socialPublications.timezone.name).toBe("timezone");
+    expect(socialPublishJobs.idempotencyKey.name).toBe("idempotency_key");
+    expect(socialProviderEvents.providerEventId.name).toBe("provider_event_id");
+    expect((socialAccounts as unknown as Record<string, unknown>).accessToken).toBeUndefined();
+    expect((socialPublications as unknown as Record<string, unknown>).facebookPostId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

@@ -25,6 +25,11 @@ import type {
   PublishingActorContext,
   PublishingData,
   Season,
+  SocialAccount,
+  SocialPublication,
+  SocialPublishJob,
+  SocialPublishingProvider,
+  SocialQueueItem,
   TerritoryEdition,
   TerritoryEditionContent
 } from "./types";
@@ -155,6 +160,51 @@ export function readContentWorkspace(
     websiteJobs: data.contentWebsitePublishingJobs.filter((job) => job.contentItemId === item.id && !job.deletedAt),
     events: data.contentDomainEvents.filter((event) => event.contentItemId === item.id)
   };
+}
+
+export function listSocialQueue(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  data: PublishingData
+): SocialQueueItem[] {
+  requirePublishingPermission(context, permissions, "socialView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  return data.socialPublications
+    .filter((publication) => !publication.deletedAt)
+    .filter((publication) => visibleTerritoryIds == null || visibleTerritoryIds.has(publication.territoryId))
+    .map((publication) => ({
+      publication,
+      account: data.socialAccounts.find((account) => account.id === publication.socialAccountId && !account.deletedAt),
+      content: data.contentItems.find((item) => item.id === publication.contentItemId && !item.deletedAt),
+      variant: publication.variantId ? data.contentChannelVariants.find((variant) => variant.id === publication.variantId && !variant.deletedAt) : undefined,
+      job: data.socialPublishJobs.find((job) => job.publicationId === publication.id),
+      warnings: socialWarnings(publication, data)
+    }))
+    .sort((left, right) => (left.publication.scheduledAt ?? "").localeCompare(right.publication.scheduledAt ?? ""));
+}
+
+export function socialContentGaps(data: PublishingData, nowIso = new Date().toISOString()) {
+  const sevenDays = new Date(nowIso);
+  sevenDays.setDate(sevenDays.getDate() + 7);
+  return data.territories
+    .filter((territory) => territory.status === "active")
+    .map((territory) => {
+      const upcoming = data.socialPublications.filter((publication) =>
+        publication.territoryId === territory.id &&
+        publication.publishState === "scheduled" &&
+        publication.scheduledAt &&
+        new Date(publication.scheduledAt) <= sevenDays
+      );
+      return {
+        territoryId: territory.id,
+        territoryName: territory.name,
+        signals: [
+          ...(upcoming.length === 0 ? ["no_social_scheduled_next_7_days"] : []),
+          ...(data.socialPublications.some((publication) => publication.territoryId === territory.id && publication.publishState === "failed") ? ["scheduled_post_failed"] : []),
+          ...(data.contentChannelVariants.some((variant) => variant.status === "approved" && !data.socialPublications.some((publication) => publication.variantId === variant.id)) ? ["approved_variants_not_queued"] : [])
+        ]
+      };
+    });
 }
 
 export async function createSeasonWithMasterEdition(
@@ -680,6 +730,234 @@ export async function prepareWebsitePublishing(
     variantId: variant.id
   }, item.territoryId);
   return job;
+}
+
+export async function registerSocialAccount(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  account: SocialAccount
+) {
+  requirePublishingPermission(context, permissions, "socialManageAccounts");
+  if (account.territoryId) ensureContextCanAccessTerritory(context, account.territoryId);
+  data.socialAccounts.push(account);
+  await audit.record(auditEvent(context, auditActions.socialAccountChanged, "social_account", account.id, {
+    channel: account.channel,
+    connectionStatus: account.connectionStatus
+  }, account.territoryId));
+  return account;
+}
+
+export async function queueSocialPublication(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  input: {
+    id: string;
+    variantId: string;
+    territoryId: string;
+    socialAccountId: string;
+    idempotencyKey: string;
+    cta?: string | null;
+    linkUrl?: string | null;
+  }
+) {
+  requirePublishingPermission(context, permissions, "socialCreate");
+  const existing = data.socialPublications.find((publication) => publication.idempotencyKey === input.idempotencyKey && !publication.deletedAt);
+  if (existing) return existing;
+  ensureContextCanAccessTerritory(context, input.territoryId);
+  const account = requireSocialAccount(data, input.socialAccountId);
+  if (account.territoryId !== input.territoryId) {
+    throw new Error("Social account is outside the selected territory.");
+  }
+  const variant = requireContentVariant(data, input.variantId);
+  if (variant.status !== "approved") {
+    throw new Error("Only approved content variants can be queued for social publishing.");
+  }
+  if (variant.channel !== account.channel) {
+    throw new Error("Social account channel must match the content variant channel.");
+  }
+  const item = requireCanonicalContent(data, variant.contentItemId);
+  const version = variant.currentVersionId ? requireVariantVersion(data, variant.currentVersionId) : undefined;
+  if (!version || version.status !== "approved") {
+    throw new Error("Queued social publication requires an approved variant version.");
+  }
+  const publication: SocialPublication = {
+    id: input.id,
+    contentItemId: item.id,
+    variantId: variant.id,
+    variantVersionId: version.id,
+    territoryId: input.territoryId,
+    socialAccountId: account.id,
+    channel: account.channel,
+    approvalState: "draft",
+    publishState: "draft",
+    scheduledAt: null,
+    timezone: "Europe/London",
+    immutableSnapshot: { ...version.snapshot },
+    mediaArtifactReferences: [],
+    cta: input.cta ?? null,
+    linkUrl: input.linkUrl ?? null,
+    advertiserId: item.advertiserId ?? null,
+    commercialBookingId: item.commercialBookingId ?? null,
+    publishedExternalReference: null,
+    retryCount: 0,
+    maxRetries: 3,
+    failureMetadata: {},
+    createdByUserId: context.userId,
+    approvedByUserId: null,
+    scheduledByUserId: null,
+    publishedByUserId: null,
+    approvedAt: null,
+    publishedAt: null,
+    idempotencyKey: input.idempotencyKey
+  };
+  data.socialPublications.push(publication);
+  await recordSocialAuditAndEvent(context, audit, data, auditActions.socialQueued, publication, { variantId: variant.id });
+  return publication;
+}
+
+export async function approveSocialPublication(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  publicationId: string
+) {
+  requirePublishingPermission(context, permissions, "socialApprove");
+  const publication = requireSocialPublication(data, publicationId);
+  ensureContextCanAccessTerritory(context, publication.territoryId);
+  if (publication.publishState !== "draft" && publication.publishState !== "needs_review") {
+    throw new Error("Only draft or review social publications can be approved.");
+  }
+  publication.approvalState = "approved";
+  publication.publishState = "approved";
+  publication.approvedByUserId = context.userId;
+  publication.approvedAt = now();
+  await recordSocialAuditAndEvent(context, audit, data, auditActions.socialApproved, publication, {});
+  return publication;
+}
+
+export async function scheduleSocialPublication(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  publicationId: string,
+  scheduledAt: string,
+  timezone = "Europe/London"
+) {
+  requirePublishingPermission(context, permissions, "socialSchedule");
+  const publication = requireSocialPublication(data, publicationId);
+  ensureContextCanAccessTerritory(context, publication.territoryId);
+  if (publication.approvalState !== "approved") {
+    throw new Error("Social publication must be approved before scheduling.");
+  }
+  if (publication.publishState !== "approved" && publication.publishState !== "scheduled") {
+    throw new Error("Only approved or scheduled social publications can be scheduled.");
+  }
+  publication.scheduledAt = scheduledAt;
+  publication.timezone = timezone;
+  publication.publishState = "scheduled";
+  publication.scheduledByUserId = context.userId;
+  upsertSocialPublishJob(data, publication);
+  await recordSocialAuditAndEvent(context, audit, data, auditActions.socialScheduled, publication, { scheduledAt, timezone });
+  return publication;
+}
+
+export async function cancelSocialPublication(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  publicationId: string
+) {
+  requirePublishingPermission(context, permissions, "socialCancel");
+  const publication = requireSocialPublication(data, publicationId);
+  ensureContextCanAccessTerritory(context, publication.territoryId);
+  if (publication.publishState === "published") {
+    throw new Error("Published social publications cannot be cancelled.");
+  }
+  publication.publishState = "cancelled";
+  data.socialPublishJobs
+    .filter((job) => job.publicationId === publication.id && job.status === "queued")
+    .forEach((job) => { job.status = "cancelled"; });
+  await recordSocialAuditAndEvent(context, audit, data, auditActions.socialCancelled, publication, {});
+  return publication;
+}
+
+export async function publishDueSocialJob(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  provider: SocialPublishingProvider,
+  jobId: string
+) {
+  requirePublishingPermission(context, permissions, "socialPublish");
+  const job = data.socialPublishJobs.find((candidate) => candidate.id === jobId);
+  if (!job) throw new Error("Social publish job was not found.");
+  if (job.status === "completed") return requireSocialPublication(data, job.publicationId);
+  const publication = requireSocialPublication(data, job.publicationId);
+  ensureContextCanAccessTerritory(context, publication.territoryId);
+  const account = requireSocialAccount(data, publication.socialAccountId);
+  if (publication.publishState !== "scheduled" && publication.publishState !== "failed") {
+    throw new Error("Only scheduled or retryable failed publications can be published.");
+  }
+  publication.publishState = "publishing";
+  job.status = "running";
+  job.attempts += 1;
+  job.lockedAt = now();
+  await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublishStarted, publication, { jobId: job.id });
+  const result = await provider.publish({ publication, account });
+  job.providerResponse = result.metadata ?? {};
+  job.completedAt = now();
+  if (result.status === "published") {
+    job.status = "completed";
+    publication.publishState = "published";
+    publication.publishedAt = now();
+    publication.publishedByUserId = context.userId;
+    publication.publishedExternalReference = result.externalReference ?? `dev-${publication.id}`;
+    await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublished, publication, {
+      externalReference: publication.publishedExternalReference
+    });
+  } else {
+    job.status = job.attempts >= job.maxAttempts ? "failed" : "queued";
+    publication.publishState = "failed";
+    publication.retryCount += 1;
+    publication.failureMetadata = result.metadata ?? { reason: "provider_failure" };
+    await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublishFailed, publication, {
+      attempts: job.attempts
+    });
+  }
+  return publication;
+}
+
+export async function createNetworkSocialQueueSuggestions(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  variantId: string,
+  territoryIds: string[]
+) {
+  requirePublishingPermission(context, permissions, "socialNetworkDistribute");
+  const created: SocialPublication[] = [];
+  for (const territoryId of territoryIds) {
+    const variant = requireContentVariant(data, variantId);
+    const account = data.socialAccounts.find((candidate) => candidate.territoryId === territoryId && candidate.channel === variant.channel && candidate.active && !candidate.deletedAt);
+    if (!account) continue;
+    created.push(await queueSocialPublication(context, permissions, audit, data, {
+      id: crypto.randomUUID(),
+      variantId,
+      territoryId,
+      socialAccountId: account.id,
+      idempotencyKey: `social:suggest:${variantId}:${territoryId}`
+    }));
+  }
+  return created;
 }
 
 export async function distributeContentToTerritoryEditions(
@@ -1212,6 +1490,97 @@ function requireContentVariant(data: PublishingData, variantId: string) {
     throw new Error("Content channel variant was not found.");
   }
   return variant;
+}
+
+function requireVariantVersion(data: PublishingData, variantVersionId: string) {
+  const version = data.contentChannelVariantVersions.find((candidate) => candidate.id === variantVersionId && !candidate.deletedAt);
+  if (!version) {
+    throw new Error("Content channel variant version was not found.");
+  }
+  return version;
+}
+
+function requireSocialAccount(data: PublishingData, accountId: string) {
+  const account = data.socialAccounts.find((candidate) => candidate.id === accountId && candidate.active && !candidate.deletedAt);
+  if (!account) {
+    throw new Error("Social account was not found or is inactive.");
+  }
+  return account;
+}
+
+function requireSocialPublication(data: PublishingData, publicationId: string) {
+  const publication = data.socialPublications.find((candidate) => candidate.id === publicationId && !candidate.deletedAt);
+  if (!publication) {
+    throw new Error("Social publication was not found.");
+  }
+  return publication;
+}
+
+function upsertSocialPublishJob(data: PublishingData, publication: SocialPublication) {
+  const existing = data.socialPublishJobs.find((job) => job.publicationId === publication.id && job.status !== "completed");
+  if (existing) {
+    existing.runAfter = publication.scheduledAt ?? now();
+    existing.providerRequest = { publicationId: publication.id, channel: publication.channel };
+    return existing;
+  }
+  const job: SocialPublishJob = {
+    id: crypto.randomUUID(),
+    publicationId: publication.id,
+    status: "queued",
+    runAfter: publication.scheduledAt ?? now(),
+    attempts: 0,
+    maxAttempts: publication.maxRetries,
+    providerKey: "development",
+    providerRequest: { publicationId: publication.id, channel: publication.channel },
+    providerResponse: {},
+    lastError: null,
+    lockedAt: null,
+    completedAt: null,
+    idempotencyKey: `social:publish:${publication.id}`
+  };
+  data.socialPublishJobs.push(job);
+  return job;
+}
+
+function socialWarnings(publication: SocialPublication, data: PublishingData) {
+  const warnings = [];
+  if (publication.publishState === "failed") warnings.push("scheduled_post_failed");
+  if (publication.commercialBookingId && publication.publishState !== "scheduled" && publication.publishState !== "published") warnings.push("advertiser_social_obligation_unscheduled");
+  if (publication.approvalState !== "approved") warnings.push("content_waiting_approval");
+  const duplicates = data.socialPublications.filter((candidate) =>
+    candidate.id !== publication.id &&
+    candidate.territoryId === publication.territoryId &&
+    candidate.channel === publication.channel &&
+    candidate.immutableSnapshot.postCopy === publication.immutableSnapshot.postCopy &&
+    !candidate.deletedAt
+  );
+  if (duplicates.length > 0) warnings.push("duplicate_content_warning");
+  return warnings;
+}
+
+async function recordSocialAuditAndEvent(
+  context: PublishingActorContext,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  action: string,
+  publication: SocialPublication,
+  payload: Record<string, unknown>
+) {
+  await audit.record(auditEvent(context, action, "social_publication", publication.id, payload, publication.territoryId));
+  data.contentDomainEvents.push({
+    id: crypto.randomUUID(),
+    eventType: action,
+    contentItemId: publication.contentItemId,
+    territoryId: publication.territoryId,
+    payload: { publicationId: publication.id, ...payload },
+    occurredAt: today(),
+    idempotencyKey: `${action}:${publication.id}:${data.contentDomainEvents.length + 1}`,
+    processedAt: null
+  });
+}
+
+function now() {
+  return new Date().toISOString();
 }
 
 function requireContentLocalisation(data: PublishingData, localisationId: string) {

@@ -53,6 +53,9 @@ import {
   magazineTemplateVersions,
   masterEditions,
   seasons,
+  socialAccounts,
+  socialPublications,
+  socialPublishJobs,
   territories,
   territoryEditions,
   userRoleAssignments,
@@ -328,7 +331,16 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.contentDistributeNetwork,
         fixtureIds.permissions.contentAiGenerate,
         fixtureIds.permissions.contentAiApprove,
-        fixtureIds.permissions.contentWebsitePublish
+        fixtureIds.permissions.contentWebsitePublish,
+        fixtureIds.permissions.socialView,
+        fixtureIds.permissions.socialCreate,
+        fixtureIds.permissions.socialEdit,
+        fixtureIds.permissions.socialApprove,
+        fixtureIds.permissions.socialSchedule,
+        fixtureIds.permissions.socialPublish,
+        fixtureIds.permissions.socialCancel,
+        fixtureIds.permissions.socialManageAccounts,
+        fixtureIds.permissions.socialNetworkDistribute
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -514,7 +526,13 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.newsletterFactoryContribute,
         fixtureIds.permissions.contentView,
         fixtureIds.permissions.contentLocalise,
-        fixtureIds.permissions.contentAiGenerate
+        fixtureIds.permissions.contentAiGenerate,
+        fixtureIds.permissions.socialView,
+        fixtureIds.permissions.socialCreate,
+        fixtureIds.permissions.socialEdit,
+        fixtureIds.permissions.socialApprove,
+        fixtureIds.permissions.socialSchedule,
+        fixtureIds.permissions.socialCancel
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,
@@ -1069,6 +1087,70 @@ export async function seedDatabase(databaseUrl?: string) {
       ...version,
       approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
     }))).onConflictDoNothing();
+
+    await db.insert(socialAccounts).values(foundationSeed.socialAccounts.map((account) => ({
+      ...account,
+      capabilityMetadata: { ...account.capabilityMetadata },
+      providerMetadata: { ...account.providerMetadata },
+      lastSyncedAt: account.lastSyncedAt ? new Date(account.lastSyncedAt) : null
+    }))).onConflictDoUpdate({
+      target: socialAccounts.id,
+      set: {
+        channel: sql`excluded.channel`,
+        organisationId: sql`excluded.organisation_id`,
+        territoryId: sql`excluded.territory_id`,
+        externalAccountReference: sql`excluded.external_account_reference`,
+        displayName: sql`excluded.display_name`,
+        connectionStatus: sql`excluded.connection_status`,
+        connectionHealth: sql`excluded.connection_health`,
+        capabilityMetadata: sql`excluded.capability_metadata`,
+        providerMetadata: sql`excluded.provider_metadata`,
+        active: sql`excluded.active`,
+        lastSyncedAt: sql`excluded.last_synced_at`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(socialPublications).values(foundationSeed.socialPublications.map((publication) => ({
+      ...publication,
+      scheduledAt: publication.scheduledAt ? new Date(publication.scheduledAt) : null,
+      approvedAt: publication.approvedAt ? new Date(publication.approvedAt) : null,
+      publishedAt: publication.publishedAt ? new Date(publication.publishedAt) : null,
+      immutableSnapshot: { ...publication.immutableSnapshot },
+      mediaArtifactReferences: [...publication.mediaArtifactReferences],
+      failureMetadata: { ...publication.failureMetadata }
+    }))).onConflictDoUpdate({
+      target: socialPublications.id,
+      set: {
+        approvalState: sql`excluded.approval_state`,
+        publishState: sql`excluded.publish_state`,
+        scheduledAt: sql`excluded.scheduled_at`,
+        timezone: sql`excluded.timezone`,
+        immutableSnapshot: sql`excluded.immutable_snapshot`,
+        publishedExternalReference: sql`excluded.published_external_reference`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(socialPublishJobs).values(foundationSeed.socialPublishJobs.map((job) => ({
+      ...job,
+      runAfter: new Date(job.runAfter),
+      providerRequest: { ...job.providerRequest },
+      providerResponse: { ...job.providerResponse },
+      lockedAt: job.lockedAt ? new Date(job.lockedAt) : null,
+      completedAt: job.completedAt ? new Date(job.completedAt) : null
+    }))).onConflictDoUpdate({
+      target: socialPublishJobs.id,
+      set: {
+        status: sql`excluded.status`,
+        attempts: sql`excluded.attempts`,
+        providerResponse: sql`excluded.provider_response`,
+        completedAt: sql`excluded.completed_at`,
+        updatedAt: sql`now()`
+      }
+    });
 
     const franchiseSeed = foundationSeed.franchises.map((franchise) => {
       const endDate = (franchise as { endDate?: string }).endDate;

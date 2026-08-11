@@ -197,6 +197,13 @@
       "when": 1786442230092,
       "tag": "0027_cynical_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786442912724,
+      "tag": "0028_tired_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

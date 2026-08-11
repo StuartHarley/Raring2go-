@@ -16,6 +16,10 @@ import {
   preflightResults,
   publicationOutputs,
   seasons,
+  socialAccounts,
+  socialProviderEvents,
+  socialPublications,
+  socialPublishJobs,
   territories,
   territoryEditionContent,
   territoryEditions
@@ -49,6 +53,10 @@ export async function loadPublishingData(db: DrizzleDb): Promise<PublishingData>
     contentAiTaskRows,
     contentWebsiteJobRows,
     contentDomainEventRows,
+    socialAccountRows,
+    socialPublicationRows,
+    socialJobRows,
+    socialProviderEventRows,
     territoryRows
   ] = await Promise.all([
     db.select().from(seasons),
@@ -70,6 +78,10 @@ export async function loadPublishingData(db: DrizzleDb): Promise<PublishingData>
     db.select().from(contentAiTasks),
     db.select().from(contentWebsitePublishingJobs),
     db.select().from(contentDomainEvents),
+    db.select().from(socialAccounts),
+    db.select().from(socialPublications),
+    db.select().from(socialPublishJobs),
+    db.select().from(socialProviderEvents),
     db.select().from(territories)
   ]);
 
@@ -153,6 +165,27 @@ export async function loadPublishingData(db: DrizzleDb): Promise<PublishingData>
       occurredAt: dateString(row.occurredAt),
       processedAt: dateString(row.processedAt)
     })) as PublishingData["contentDomainEvents"],
+    socialAccounts: socialAccountRows.map((row) => ({
+      ...row,
+      lastSyncedAt: dateTimeString(row.lastSyncedAt)
+    })) as PublishingData["socialAccounts"],
+    socialPublications: socialPublicationRows.map((row) => ({
+      ...row,
+      scheduledAt: dateTimeString(row.scheduledAt),
+      approvedAt: dateTimeString(row.approvedAt),
+      publishedAt: dateTimeString(row.publishedAt)
+    })) as PublishingData["socialPublications"],
+    socialPublishJobs: socialJobRows.map((row) => ({
+      ...row,
+      runAfter: dateTimeString(row.runAfter),
+      lockedAt: dateTimeString(row.lockedAt),
+      completedAt: dateTimeString(row.completedAt)
+    })) as PublishingData["socialPublishJobs"],
+    socialProviderEvents: socialProviderEventRows.map((row) => ({
+      ...row,
+      receivedAt: dateTimeString(row.receivedAt),
+      processedAt: dateTimeString(row.processedAt)
+    })) as PublishingData["socialProviderEvents"],
     territories: territoryRows as PublishingData["territories"]
   };
 }
@@ -160,6 +193,14 @@ export async function loadPublishingData(db: DrizzleDb): Promise<PublishingData>
 function dateString(value: unknown) {
   if (value instanceof Date) {
     return value.toISOString().slice(0, 10);
+  }
+
+  return (value ?? null) as string | null;
+}
+
+function dateTimeString(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString();
   }
 
   return (value ?? null) as string | null;

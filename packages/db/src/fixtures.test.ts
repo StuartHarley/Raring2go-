@@ -120,7 +120,16 @@ describe("foundation fixtures", () => {
       "content",
       "content.ai",
       "content.ai",
-      "content.website"
+      "content.website",
+      "social",
+      "social",
+      "social",
+      "social",
+      "social",
+      "social",
+      "social",
+      "social",
+      "social"
     ]);
   });
 
@@ -323,6 +332,15 @@ describe("foundation fixtures", () => {
       "newsletter",
       "facebook"
     ]);
+    expect(foundationSeed.socialAccounts.map((account) => account.channel)).toEqual([
+      "facebook",
+      "instagram"
+    ]);
+    expect(foundationSeed.socialPublications[0]).toMatchObject({
+      id: fixtureIds.socialPublications.halfTermFacebookSutton,
+      publishState: "published",
+      territoryId: fixtureIds.territories.suttonColdfield
+    });
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

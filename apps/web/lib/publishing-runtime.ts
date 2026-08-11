@@ -2,6 +2,8 @@ import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import {
   listEditionControlRoom,
   listContentLibrary,
+  listSocialQueue,
+  socialContentGaps,
   readContentWorkspace,
   loadPublishingData
 } from "@raring2go/publishing";
@@ -42,10 +44,12 @@ export const publishingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionGenerateDigital, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentAiGenerate, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.socialView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.editionView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.editionPageEdit, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentAiGenerate, "own_territory")
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentAiGenerate, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.socialView, "own_territory")
   ],
   territories: foundationSeed.territories.map((territory) => ({
     id: territory.id,
@@ -97,6 +101,14 @@ export async function readContentWorkspaceView(
 ) {
   const data = await readPublishingData();
   return readContentWorkspace(context, publishingPermissionData, data, contentItemId);
+}
+
+export async function readSocialQueue(context: PublishingActorContext) {
+  const data = await readPublishingData();
+  return {
+    queue: listSocialQueue(context, publishingPermissionData, data),
+    gaps: socialContentGaps(data)
+  };
 }
 
 async function readPublishingData(): Promise<PublishingData> {

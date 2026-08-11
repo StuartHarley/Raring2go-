@@ -64,6 +64,23 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
       </section>
 
       <section className="app-panel franchise-panel">
+        <p className="eyebrow">Social queue</p>
+        <h2>Approved social variants</h2>
+        <div className="franchise-list">
+          {["facebook", "instagram", "linkedin"].map((channel) => {
+            const variant = libraryItem.variants.find((candidate) => candidate.channel === channel);
+            return (
+              <div key={channel}>
+                <strong>{channel}</strong>
+                <span>{variant?.status === "approved" ? `Add ${channel} to queue` : "Review and approve variant first"}</span>
+                <span>MKT-005 schedules approved variants through /app/social.</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="app-panel franchise-panel">
         <p className="eyebrow">Network distribution</p>
         <h2>Territory derivations</h2>
         <div className="franchise-list">
