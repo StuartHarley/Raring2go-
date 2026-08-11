@@ -35,6 +35,7 @@ export type ScannerConfig = {
 
 export type ScanDependencies = {
   fetchObject?: (storageKey: string) => Promise<{ body: Readable; byteSize?: number | null }>;
+  pingClamd?: (input: { host: string; port: number; timeoutMs: number }) => Promise<boolean>;
   scanStream?: (body: Readable, input: { maxFileBytes: number; timeoutMs: number }) => Promise<ClamScanOutcome>;
   now?: () => Date;
 };
@@ -174,6 +175,61 @@ export function createClamdStreamScanner(config: Pick<ScannerConfig, "clamdHost"
   );
 }
 
+export async function pingClamd(input: { host: string; port: number; timeoutMs: number }): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new Socket();
+    const timeout = setTimeout(() => finish(false), input.timeoutMs);
+    let settled = false;
+    let response = "";
+
+    function finish(value: boolean) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      socket.destroy();
+      resolve(value);
+    }
+
+    socket.on("error", () => finish(false));
+    socket.on("data", (chunk) => {
+      response += chunk.toString("utf8");
+
+      if (response.includes("PONG")) {
+        finish(true);
+      }
+    });
+    socket.on("close", () => finish(response.includes("PONG")));
+    socket.connect(input.port, input.host, () => {
+      socket.write("zPING\0");
+    });
+  });
+}
+
+export async function waitForClamd(input: {
+  host: string;
+  port: number;
+  timeoutMs: number;
+  intervalMs?: number;
+  ping?: (input: { host: string; port: number; timeoutMs: number }) => Promise<boolean>;
+}) {
+  const startedAt = Date.now();
+  const ping = input.ping ?? pingClamd;
+  const intervalMs = input.intervalMs ?? 500;
+
+  while (Date.now() - startedAt < input.timeoutMs) {
+    if (await ping({ host: input.host, port: input.port, timeoutMs: Math.min(1_000, input.timeoutMs) })) {
+      return true;
+    }
+
+    await delay(intervalMs);
+  }
+
+  return false;
+}
+
 export async function scanStreamWithClamd(
   body: Readable,
   input: { host: string; port: number; maxFileBytes: number; timeoutMs: number }
@@ -287,4 +343,8 @@ function numberFromEnv(value: string | undefined, fallback: number) {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

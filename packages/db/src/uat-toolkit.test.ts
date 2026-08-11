@@ -228,7 +228,7 @@ describe("UAT ClamAV scanner verification", () => {
     expect(checks).toContainEqual(expect.objectContaining({
       status: "RED",
       label: "ClamAV verification",
-      detail: expect.stringContaining("Expected clean")
+      detail: expect.stringContaining("scanner_unavailable")
     }));
   });
 

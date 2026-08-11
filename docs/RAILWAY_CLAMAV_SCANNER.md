@@ -11,7 +11,7 @@ The service:
 
 - runs `clamd` in the same container;
 - updates ClamAV definitions with `freshclam` on startup;
-- exposes `GET /health` for Railway health checks;
+- exposes `GET /health` for Railway health checks; health is only `200` when `clamd` answers PING;
 - exposes authenticated `POST /scan`;
 - accepts only the existing app adapter shape:
 
@@ -47,7 +47,7 @@ Statuses are `clean`, `infected` or `failed`. The app maps `infected` to a rejec
 4. Configure the Railway health check path as `/health`.
 5. Configure the environment variables below.
 6. Deploy.
-7. Confirm `/health` returns `{"ok":true}`.
+7. Confirm `/health` returns `{"ok":true,"clamd":"ready"}`.
 8. Run a controlled scan against a harmless test object in the private R2 bucket.
 9. Run a controlled EICAR test object only in the approved UAT bucket/path, then delete it.
 
@@ -62,6 +62,7 @@ MAX_FILE_BYTES=26214400
 SCAN_TIMEOUT_MS=30000
 CLAMD_HOST=127.0.0.1
 CLAMD_PORT=3310
+CLAMD_READY_TIMEOUT_MS=30000
 R2_ACCOUNT_ID=
 R2_BUCKET=
 R2_ACCESS_KEY_ID=
@@ -98,9 +99,13 @@ CLAMAV_SCANNER_API_KEY=<secret>
 
 `CLAMAV_SCANNER_WEBHOOK_SECRET` is not required for this minimal synchronous scanner.
 
-## Definition Updates
+## Startup And Definition Updates
 
-The container runs `freshclam` during startup. For pilot UAT, redeploy or restart the Railway service regularly if it runs long-lived.
+The container runs `freshclam` during startup, starts `clamd`, then the Node service waits for `clamd` to answer PING on `127.0.0.1:3310`. If ClamAV does not become ready before `CLAMD_READY_TIMEOUT_MS`, the container exits so Railway does not route scan traffic to an unready scanner.
+
+The startup log prints non-secret ClamAV database directory information to help diagnose missing definitions or permissions. It does not log file bodies, R2 credentials or scanner API keys.
+
+For pilot UAT, redeploy or restart the Railway service regularly if it runs long-lived.
 
 Production hardening can later add a scheduled `freshclam` refresh side process or split ClamAV into a dedicated scanner image. Until definitions are available and `clamd` accepts scans, the service fails closed with `failed`.
 
@@ -125,6 +130,7 @@ Do not send real customer files to public malware-analysis services.
 
 - Missing/invalid API key: HTTP 401.
 - Invalid request shape: HTTP 400 with safe message.
+- Health while `clamd` is unavailable: HTTP 503 with `{"ok":false,"clamd":"unavailable"}`.
 - R2 fetch failure: provider-neutral `failed`.
 - ClamAV unavailable: provider-neutral `failed`.
 - Oversized file: provider-neutral `failed`.

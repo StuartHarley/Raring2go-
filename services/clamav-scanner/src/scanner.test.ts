@@ -4,6 +4,7 @@ import {
   parseClamdResponse,
   scanFile,
   validateScanRequest,
+  waitForClamd,
   type ScannerConfig
 } from "./scanner.js";
 import { createScannerServer } from "./server.js";
@@ -95,6 +96,68 @@ describe("ClamAV scanner service", () => {
 
     expect(missing.status).toBe(401);
     expect(invalid.status).toBe(401);
+  });
+
+  it("reports healthy only when clamd is ready", async () => {
+    const server = createScannerServer(config, {
+      pingClamd: async () => true
+    }).listen(0);
+    servers.push(server);
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+
+    const response = await fetch(`http://127.0.0.1:${port}/health`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      clamd: "ready"
+    });
+  });
+
+  it("reports unhealthy when clamd is unavailable", async () => {
+    const server = createScannerServer(config, {
+      pingClamd: async () => false
+    }).listen(0);
+    servers.push(server);
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+
+    const response = await fetch(`http://127.0.0.1:${port}/health`);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      clamd: "unavailable"
+    });
+  });
+
+  it("waits for clamd readiness before startup proceeds", async () => {
+    let attempts = 0;
+    const ready = await waitForClamd({
+      host: "127.0.0.1",
+      port: 3310,
+      timeoutMs: 50,
+      intervalMs: 1,
+      ping: async () => {
+        attempts += 1;
+        return attempts === 2;
+      }
+    });
+
+    expect(ready).toBe(true);
+  });
+
+  it("times out when clamd never becomes ready", async () => {
+    const ready = await waitForClamd({
+      host: "127.0.0.1",
+      port: 3310,
+      timeoutMs: 5,
+      intervalMs: 1,
+      ping: async () => false
+    });
+
+    expect(ready).toBe(false);
   });
 
   it("fails closed when the scanner is unavailable", async () => {

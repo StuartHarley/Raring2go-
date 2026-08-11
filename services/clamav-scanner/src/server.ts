@@ -1,12 +1,28 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { scanFile, validateScanRequest, type ScanDependencies, type ScannerConfig } from "./scanner.js";
+import {
+  pingClamd,
+  scanFile,
+  validateScanRequest,
+  waitForClamd,
+  type ScanDependencies,
+  type ScannerConfig
+} from "./scanner.js";
 
 export function createScannerServer(config: ScannerConfig, dependencies: ScanDependencies = {}) {
   return createServer(async (request, response) => {
     response.setHeader("x-content-type-options", "nosniff");
 
     if (request.method === "GET" && request.url === "/health") {
-      sendJson(response, 200, { ok: true });
+      const ready = await (dependencies.pingClamd ?? pingClamd)({
+        host: config.clamdHost,
+        port: config.clamdPort,
+        timeoutMs: Math.min(config.timeoutMs, 1_000)
+      });
+
+      sendJson(response, ready ? 200 : 503, {
+        ok: ready,
+        clamd: ready ? "ready" : "unavailable"
+      });
       return;
     }
 
@@ -40,10 +56,19 @@ export function createScannerServer(config: ScannerConfig, dependencies: ScanDep
 if (process.argv[1]?.endsWith("server.js") || process.argv[1]?.endsWith("server.ts")) {
   const config = loadConfigOrExit();
   const port = Number(process.env.PORT ?? 3000);
-  const server = createScannerServer(config);
+  const ready = await waitForClamd({
+    host: config.clamdHost,
+    port: config.clamdPort,
+    timeoutMs: numberFromEnv(process.env.CLAMD_READY_TIMEOUT_MS, 30_000)
+  });
 
-  server.listen(port, () => {
-    console.info(`Raring2go ClamAV scanner listening on port ${port}.`);
+  if (!ready) {
+    console.error("ClamAV clamd did not become ready before startup timeout.");
+    process.exit(1);
+  }
+
+  createScannerServer(config).listen(port, () => {
+    console.info(`Raring2go ClamAV scanner listening on port ${port}; clamd is ready.`);
   });
 }
 

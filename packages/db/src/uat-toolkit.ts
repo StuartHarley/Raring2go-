@@ -220,7 +220,7 @@ export async function verifyClamAvScan(input: {
     const cleanResult = await scannerProvider.scan(cleanReference);
 
     if (cleanResult.status !== "clean") {
-      throw new Error(`Expected clean scan result, received ${cleanResult.status}.`);
+      throw new Error(`Expected clean scan result, received ${cleanResult.status}${safeFindings(cleanResult.findings)}.`);
     }
 
     checks.push({
@@ -232,7 +232,7 @@ export async function verifyClamAvScan(input: {
     const eicarResult = await scannerProvider.scan(eicarReference);
 
     if (eicarResult.status !== "infected") {
-      throw new Error(`Expected infected/rejected scan result for EICAR, received ${eicarResult.status}.`);
+      throw new Error(`Expected infected/rejected scan result for EICAR, received ${eicarResult.status}${safeFindings(eicarResult.findings)}.`);
     }
 
     checks.push({
@@ -918,6 +918,14 @@ function safeDiagnostic(value: string, source: NodeJS.ProcessEnv = process.env) 
   }
 
   return output;
+}
+
+function safeFindings(findings: string[] | undefined) {
+  const safe = (findings ?? [])
+    .filter((finding) => /^[a-z0-9_.:-]+$/i.test(finding))
+    .slice(0, 5);
+
+  return safe.length ? `; findings: ${safe.join(", ")}` : "";
 }
 
 async function describeStorageHttpFailure(action: "download" | "upload", response: Response) {
