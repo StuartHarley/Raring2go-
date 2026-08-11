@@ -26,6 +26,7 @@ import type {
   NewsletterFactoryRun,
   MarketingActorContext,
   MarketingAnalyticsOverview,
+  MarketingCommandCentre,
   MarketingData,
   PreferenceCentreView,
   TerritoryNewsletterEdition
@@ -251,6 +252,84 @@ export function listMarketingAnalytics(
         value: social.filter((publication) => publication.publishState === "published").length
       }
     ]
+  };
+}
+
+export function listMarketingCommandCentre(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData
+): MarketingCommandCentre {
+  const analytics = listMarketingAnalytics(context, permissions, data);
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  const territoryAllowed = (territoryId?: string | null) => visibleTerritoryIds == null || !territoryId || visibleTerritoryIds.has(territoryId);
+  const territories = data.territories.filter((territory) => territoryAllowed(territory.id));
+  const actionItems: MarketingCommandCentre["actionItems"] = [];
+
+  for (const execution of data.journeyExecutions.filter((candidate) => candidate.status === "failed")) {
+    const entry = data.journeyAudienceEntries.find((candidate) => candidate.id === execution.entryId);
+    if (territoryAllowed(entry?.territoryId)) {
+      actionItems.push({
+        id: `journey-${execution.id}`,
+        severity: "critical",
+        territoryId: entry?.territoryId,
+        title: `Journey step failed: ${execution.failureReason ?? execution.currentStepKey ?? execution.id}`,
+        source: "journey"
+      });
+    }
+  }
+
+  for (const publication of data.socialPublications.filter((candidate) => candidate.publishState === "failed" && territoryAllowed(candidate.territoryId))) {
+    actionItems.push({
+      id: `social-${publication.id}`,
+      severity: "warning",
+      territoryId: publication.territoryId,
+      title: `Social publication failed on ${publication.channel}`,
+      source: "social"
+    });
+  }
+
+  for (const territory of territories) {
+    const subscribers = data.subscriptions.filter((subscription) => subscription.territoryId === territory.id && subscription.status === "subscribed" && !subscription.deletedAt).length;
+    const upcomingNewsletterSends = data.emailCampaigns.filter((campaign) => campaign.territoryId === territory.id && campaign.status === "scheduled" && !campaign.deletedAt).length;
+    const activeJourneys = data.journeys.filter((journey) => journey.status === "active" && (!journey.territoryId || journey.territoryId === territory.id) && !journey.deletedAt).length;
+    const scheduledSocial = data.socialPublications.filter((publication) => publication.territoryId === territory.id && publication.publishState === "scheduled" && !publication.deletedAt).length;
+
+    if (subscribers === 0) {
+      actionItems.push({
+        id: `audience-${territory.id}`,
+        severity: "warning",
+        territoryId: territory.id,
+        title: "Territory has no active subscribers",
+        source: "audience"
+      });
+    }
+
+    if (upcomingNewsletterSends === 0) {
+      actionItems.push({
+        id: `newsletter-${territory.id}`,
+        severity: "info",
+        territoryId: territory.id,
+        title: "No upcoming newsletter send scheduled",
+        source: "newsletter"
+      });
+    }
+  }
+
+  return {
+    analytics,
+    actionItems,
+    territoryHealth: territories.map((territory) => ({
+      territoryId: territory.id,
+      subscribers: data.subscriptions.filter((subscription) => subscription.territoryId === territory.id && subscription.status === "subscribed" && !subscription.deletedAt).length,
+      upcomingNewsletterSends: data.emailCampaigns.filter((campaign) => campaign.territoryId === territory.id && campaign.status === "scheduled" && !campaign.deletedAt).length,
+      activeJourneys: data.journeys.filter((journey) => journey.status === "active" && (!journey.territoryId || journey.territoryId === territory.id) && !journey.deletedAt).length,
+      failedJourneyRuns: data.journeyExecutions.filter((execution) => {
+        const entry = data.journeyAudienceEntries.find((candidate) => candidate.id === execution.entryId);
+        return execution.status === "failed" && entry?.territoryId === territory.id;
+      }).length,
+      scheduledSocial: data.socialPublications.filter((publication) => publication.territoryId === territory.id && publication.publishState === "scheduled" && !publication.deletedAt).length
+    }))
   };
 }
 

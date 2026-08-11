@@ -4,6 +4,7 @@ import {
   getPreferenceCentre,
   listJourneys,
   listMarketingAnalytics,
+  listMarketingCommandCentre,
   listNewsletterFactory,
   loadMarketingData
 } from "@raring2go/marketing";
@@ -102,6 +103,16 @@ export async function readMarketingAnalytics(context: MarketingActorContext) {
 
   try {
     return listMarketingAnalytics(context, marketingPermissionData, await loadMarketingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readMarketingCommandCentre(context: MarketingActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    return listMarketingCommandCentre(context, marketingPermissionData, await loadMarketingData(db));
   } finally {
     await sql.end();
   }

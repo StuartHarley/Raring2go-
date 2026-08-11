@@ -160,6 +160,16 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory"
   },
   {
+    id: "marketing-command",
+    label: "Marketing Command",
+    href: "/app/marketing-command",
+    capability: {
+      module: "marketing.analytics",
+      action: "view"
+    },
+    contextLevel: "network"
+  },
+  {
     id: "content",
     label: "Content Studio",
     href: "/app/content",

@@ -482,3 +482,22 @@ export type MarketingAnalyticsOverview = {
     value: number;
   }>;
 };
+
+export type MarketingCommandCentre = {
+  analytics: MarketingAnalyticsOverview;
+  actionItems: Array<{
+    id: string;
+    severity: "info" | "warning" | "critical";
+    territoryId?: string | null;
+    title: string;
+    source: "audience" | "newsletter" | "journey" | "social" | "content" | "advertiser";
+  }>;
+  territoryHealth: Array<{
+    territoryId: string;
+    subscribers: number;
+    upcomingNewsletterSends: number;
+    activeJourneys: number;
+    failedJourneyRuns: number;
+    scheduledSocial: number;
+  }>;
+};

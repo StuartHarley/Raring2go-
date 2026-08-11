@@ -17,6 +17,7 @@ import {
   getPreferenceCentre,
   listJourneys,
   listMarketingAnalytics,
+  listMarketingCommandCentre,
   listNewsletterFactory,
   pauseJourney,
   previewSegment,
@@ -255,6 +256,56 @@ describe("marketing audience foundation", () => {
     expect(analytics.journeys.completed).toBe(1);
     expect(analytics.social.published).toBe(1);
     expect(analytics.attribution.every((item) => item.source === "platform")).toBe(true);
+  });
+
+  it("surfaces command centre action items from scoped channel health", () => {
+    const data = seededData();
+    data.journeyAudienceEntries.push({
+      id: "journey_entry_1",
+      journeyId: "journey_1",
+      journeyVersionId: "journey_version_1",
+      contactId: ids.contact,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: "consent_1",
+      status: "active",
+      enteredAt: "2026-08-12T10:00:00.000Z",
+      exitedAt: null,
+      exitReason: null,
+      idempotencyKey: "journey:entry:1",
+      metadata: {}
+    });
+    data.journeyExecutions.push({
+      id: "journey_execution_1",
+      entryId: "journey_entry_1",
+      journeyId: "journey_1",
+      status: "failed",
+      currentStepKey: "welcome-email",
+      runAfter: "2026-08-12T10:00:00.000Z",
+      attempts: 3,
+      maxAttempts: 3,
+      failureReason: "provider unavailable",
+      completedAt: null,
+      idempotencyKey: "journey:execution:1"
+    });
+    data.socialPublications.push({
+      id: "social_1",
+      territoryId: ids.territories.own,
+      channel: "facebook",
+      publishState: "failed",
+      approvalState: "approved",
+      scheduledAt: "2026-08-12T09:00:00.000Z",
+      publishedAt: null,
+      providerMetrics: null
+    });
+
+    const command = listMarketingCommandCentre(localContext(), permissions, data);
+
+    expect(command.actionItems.map((item) => item.source)).toEqual(
+      expect.arrayContaining(["journey", "social"])
+    );
+    expect(command.territoryHealth).toHaveLength(1);
+    expect(command.territoryHealth[0]?.failedJourneyRuns).toBe(1);
   });
 
   it("creates native email campaigns, snapshots eligible recipients and records delivery idempotently", async () => {
