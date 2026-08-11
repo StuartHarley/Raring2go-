@@ -2,9 +2,13 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   createMetaFacebookPagePublishingProvider,
+  createConnectedMetaFacebookPagePublishingProvider,
   createSocialPublishingProviderFromEnv,
   sanitizeProviderMetadata
 } from "./social";
+import { createMemoryProviderConnectionRepository } from "./connections";
+import { createEncryptedSecretStore, createMemorySecretRepository } from "./secrets";
+import { randomBytes } from "node:crypto";
 
 const publication = {
   id: "social_pub_1",
@@ -150,6 +154,89 @@ describe("Meta Facebook Page social provider", () => {
       ok: true,
       nested: {
         id: "post_1"
+      }
+    });
+  });
+
+  it("publishes through a scoped provider connection without global token fallback", async () => {
+    const secretRepository = createMemorySecretRepository();
+    const secretStore = createEncryptedSecretStore({
+      repository: secretRepository,
+      encryptionKey: randomBytes(32).toString("base64"),
+      keyVersion: "v1"
+    });
+    const secret = await secretStore.set({
+      providerConnectionId: "connection_1",
+      value: "connection-token",
+      additionalAuthenticatedData: "connection_1"
+    });
+    const connectionRepository = createMemoryProviderConnectionRepository([{
+      id: "connection_1",
+      provider: "meta",
+      connectionType: "facebook_page",
+      externalAccountId: "page_1",
+      externalAccountDisplayName: "Raring2go Sutton Coldfield",
+      status: "connected",
+      grantedScopes: [],
+      lastHealthStatus: "healthy",
+      secretRef: secret.secretRef,
+      providerSafeMetadata: {}
+    }]);
+    const calls: string[] = [];
+    const provider = createConnectedMetaFacebookPagePublishingProvider({
+      connectionRepository,
+      secretStore,
+      fetch: async (input) => {
+        calls.push(String(input));
+        return new Response(JSON.stringify({ id: "page_1_post_1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+    });
+
+    await expect(provider.publish({
+      publication,
+      account: { ...account, providerConnectionId: "connection_1" }
+    })).resolves.toMatchObject({
+      status: "published",
+      externalReference: "page_1_post_1"
+    });
+    expect(calls[0]).toContain("access_token=connection-token");
+  });
+
+  it("blocks publishing when the scoped provider connection is revoked", async () => {
+    const secretRepository = createMemorySecretRepository();
+    const secretStore = createEncryptedSecretStore({
+      repository: secretRepository,
+      encryptionKey: randomBytes(32).toString("base64"),
+      keyVersion: "v1"
+    });
+    const connectionRepository = createMemoryProviderConnectionRepository([{
+      id: "connection_1",
+      provider: "meta",
+      connectionType: "facebook_page",
+      externalAccountId: "page_1",
+      externalAccountDisplayName: "Raring2go Sutton Coldfield",
+      status: "revoked",
+      grantedScopes: [],
+      lastHealthStatus: "revoked",
+      secretRef: null,
+      providerSafeMetadata: {}
+    }]);
+    const provider = createConnectedMetaFacebookPagePublishingProvider({
+      connectionRepository,
+      secretStore
+    });
+
+    await expect(provider.publish({
+      publication,
+      account: { ...account, providerConnectionId: "connection_1" }
+    })).resolves.toMatchObject({
+      status: "failed",
+      metadata: {
+        reason: "connection_unusable",
+        recoverable: true
       }
     });
   });

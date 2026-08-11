@@ -4,6 +4,7 @@ export * from "./audit";
 export * from "./auth";
 export * from "./franchise";
 export * from "./identity";
+export * from "./integrations";
 export * from "./marketing";
 export * from "./publishing";
 export * from "./rbac";

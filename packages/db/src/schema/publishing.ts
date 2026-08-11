@@ -1,6 +1,7 @@
 import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
 import { users } from "./identity";
+import { providerConnections } from "./integrations";
 import { organisations, territories } from "./tenancy";
 
 export const seasons = pgTable(
@@ -518,6 +519,7 @@ export const socialAccounts = pgTable(
     channel: text("channel").notNull(),
     organisationId: uuid("organisation_id").references(() => organisations.id),
     territoryId: uuid("territory_id").references(() => territories.id),
+    providerConnectionId: uuid("provider_connection_id").references(() => providerConnections.id),
     externalAccountReference: text("external_account_reference").notNull(),
     displayName: text("display_name").notNull(),
     connectionStatus: text("connection_status").notNull().default("connected"),
@@ -532,6 +534,7 @@ export const socialAccounts = pgTable(
   (table) => [
     uniqueIndex("social_accounts_external_reference_uidx").on(table.channel, table.externalAccountReference),
     index("social_accounts_channel_idx").on(table.channel),
+    index("social_accounts_provider_connection_idx").on(table.providerConnectionId),
     index("social_accounts_territory_id_idx").on(table.territoryId),
     index("social_accounts_connection_status_idx").on(table.connectionStatus),
     index("social_accounts_deleted_at_idx").on(table.deletedAt)

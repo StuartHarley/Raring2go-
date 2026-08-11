@@ -30,15 +30,26 @@ Configure secrets through local `.env` or deployment-platform secrets. Never com
 
 - `SOCIAL_PROVIDER=meta-facebook-page`
 - `META_GRAPH_API_VERSION=v20.0`
-- `META_FACEBOOK_PAGE_ID`
-- `META_FACEBOOK_PAGE_ACCESS_TOKEN`
-- `META_APP_SECRET` if webhooks are enabled
+- `META_APP_ID`
+- `META_APP_SECRET`
+- `META_OAUTH_REDIRECT_URI`
+- `META_OAUTH_SCOPES`
+- `INTEGRATION_SECRET_ENCRYPTION_KEY`
+- `INTEGRATION_SECRET_KEY_VERSION`
+
+`META_FACEBOOK_PAGE_ID` and `META_FACEBOOK_PAGE_ACCESS_TOKEN` are retained only as an explicit development/emergency compatibility path. Normal pilot/production operation uses Meta OAuth, `provider_connections` safe metadata and SecretStore-backed Page tokens.
 
 The development provider remains available with `SOCIAL_PROVIDER=development`.
 
+### OAuth Security Notes
+
+Meta connection requests use server-generated OAuth state that is hashed before persistence, short-lived, bound to the authenticated user and requested organisation/territory context, and consumed once. Return paths are restricted to internal application paths.
+
+The current server-side Meta flow does not depend on PKCE because the confidential application exchanges the code server-side with the Meta app secret. If Meta app configuration or review requirements later require PKCE for this app type, the existing OAuth transaction model already stores a code-verifier hash so the exchange can be upgraded without changing the provider connection or social publishing domain model.
+
 ### Page Connection Model
 
-Raring2go social account records store provider-neutral account identity and public connection health only. The Facebook Page ID is matched as the account's external account reference; the Page access token stays in environment/deployment secrets and is never stored in normal social account, audit, publication or job records.
+Raring2go social account records store provider-neutral account identity and public connection health only. The Facebook Page ID is matched as the account's external account reference. Page token material is stored only through SecretStore, encrypted with an application key supplied through deployment secrets; it is never stored in normal social account, audit, publication or job records.
 
 ### Token Lifecycle
 

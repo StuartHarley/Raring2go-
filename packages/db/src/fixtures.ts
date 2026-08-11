@@ -144,7 +144,12 @@ export const fixtureIds = {
     journeyActivate: "00000000-0000-4000-8000-000000000524",
     journeyPause: "00000000-0000-4000-8000-000000000525",
     journeyExecute: "00000000-0000-4000-8000-000000000526",
-    marketingAnalyticsView: "00000000-0000-4000-8000-000000000527"
+    marketingAnalyticsView: "00000000-0000-4000-8000-000000000527",
+    integrationsView: "00000000-0000-4000-8000-000000000528",
+    integrationsConnect: "00000000-0000-4000-8000-000000000529",
+    integrationsReconnect: "00000000-0000-4000-8000-000000000530",
+    integrationsRevoke: "00000000-0000-4000-8000-000000000531",
+    integrationsTest: "00000000-0000-4000-8000-000000000532"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1181,6 +1186,36 @@ export const foundationSeed = {
       module: "marketing.analytics",
       action: "view",
       description: "View marketing analytics derived from real audience and channel records."
+    },
+    {
+      id: fixtureIds.permissions.integrationsView,
+      module: "integrations",
+      action: "view",
+      description: "View provider connection health and safe metadata."
+    },
+    {
+      id: fixtureIds.permissions.integrationsConnect,
+      module: "integrations",
+      action: "connect",
+      description: "Connect provider accounts through approved OAuth or connection flows."
+    },
+    {
+      id: fixtureIds.permissions.integrationsReconnect,
+      module: "integrations",
+      action: "reconnect",
+      description: "Reconnect or refresh provider account credentials."
+    },
+    {
+      id: fixtureIds.permissions.integrationsRevoke,
+      module: "integrations",
+      action: "revoke",
+      description: "Disconnect provider accounts and invalidate usable credentials."
+    },
+    {
+      id: fixtureIds.permissions.integrationsTest,
+      module: "integrations",
+      action: "test",
+      description: "Test provider connection health without exposing secrets."
     }
   ],
   advertisers: [

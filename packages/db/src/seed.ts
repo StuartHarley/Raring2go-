@@ -355,7 +355,12 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.journeyActivate,
         fixtureIds.permissions.journeyPause,
         fixtureIds.permissions.journeyExecute,
-        fixtureIds.permissions.marketingAnalyticsView
+        fixtureIds.permissions.marketingAnalyticsView,
+        fixtureIds.permissions.integrationsView,
+        fixtureIds.permissions.integrationsConnect,
+        fixtureIds.permissions.integrationsReconnect,
+        fixtureIds.permissions.integrationsRevoke,
+        fixtureIds.permissions.integrationsTest
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -548,6 +553,11 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.socialApprove,
         fixtureIds.permissions.socialSchedule,
         fixtureIds.permissions.socialCancel,
+        fixtureIds.permissions.integrationsView,
+        fixtureIds.permissions.integrationsConnect,
+        fixtureIds.permissions.integrationsReconnect,
+        fixtureIds.permissions.integrationsRevoke,
+        fixtureIds.permissions.integrationsTest,
         fixtureIds.permissions.journeyView,
         fixtureIds.permissions.journeyExecute,
         fixtureIds.permissions.marketingAnalyticsView

@@ -103,4 +103,34 @@ Storage/scanning:
 
 Status: AMBER.
 
-The existing application adapter boundaries and safe failure behaviour are ready. UAT-001A/001B should now implement provider connection lifecycle, scoped permissions and SecretStore-backed Meta OAuth before live Facebook Page verification is attempted. Email, Vercel/Cloudflare and storage/scanning remain UAT-001C to UAT-001E platform infrastructure configuration items.
+Implemented status:
+
+- UAT-001A/UAT-001B provider connection framework and Meta OAuth connection foundation are implemented.
+- `provider_connections` stores safe connection metadata only.
+- Secret material is stored through SecretStore using AES-256-GCM and an environment-supplied encryption key.
+- Meta OAuth start/callback routes are present.
+- `/app/settings/connections` is present for capability-scoped Facebook Page connection management.
+- Existing social publishing can resolve Facebook Page credentials through the scoped provider connection boundary.
+
+Automated test status:
+
+- `pnpm install` passed.
+- `pnpm db:generate` created `0032_luxuriant_moon_knight.sql`.
+- `pnpm db:migrate` passed.
+- `pnpm db:seed` passed.
+- `pnpm lint` passed.
+- `pnpm typecheck` passed.
+- `pnpm test` passed.
+- `pnpm build` passed.
+- Integration tests cover encrypted secret storage, wrong-key/tamper failure, OAuth state expiry/replay/mismatch, audit-safe connection changes, cross-territory revoke denial, scoped publishing credential resolution and revoked connection publish failure.
+
+Configuration still required:
+
+- Project-owned Meta app credentials.
+- Pilot Facebook Page ownership.
+- `INTEGRATION_SECRET_ENCRYPTION_KEY` and `INTEGRATION_SECRET_KEY_VERSION` in the target environment.
+- `META_APP_ID`, `META_APP_SECRET`, `META_OAUTH_REDIRECT_URI`, `META_OAUTH_SCOPES` and `META_GRAPH_API_VERSION`.
+
+Live verification still required:
+
+- A genuine Facebook Page post must be published and externally verified before Meta live-post readiness can be marked complete.

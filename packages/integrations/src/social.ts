@@ -1,4 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { ProviderConnectionRepository } from "./connections";
+import { getConnectionCredential } from "./connections";
+import type { SecretStore } from "./secrets";
 
 export type SocialProviderStatus =
   | "healthy"
@@ -25,6 +28,7 @@ export type SocialPublishingProvider = {
     account: {
       id: string;
       channel: string;
+      providerConnectionId?: string | null;
       externalAccountReference: string;
       displayName: string;
       capabilityMetadata: Record<string, unknown>;
@@ -76,6 +80,13 @@ export function createDevelopmentSocialPublishingProvider(): SocialPublishingPro
 export function createMetaFacebookPagePublishingProvider(input: {
   pageId?: string;
   pageAccessToken?: string;
+  resolvePageAccessToken?: (input: {
+    account: {
+      id: string;
+      externalAccountReference: string;
+      providerConnectionId?: string | null;
+    };
+  }) => Promise<{ pageId: string; pageAccessToken: string }>;
   graphApiVersion?: string;
   fetch?: typeof fetch;
 }): SocialPublishingProvider {
@@ -85,10 +96,10 @@ export function createMetaFacebookPagePublishingProvider(input: {
   return {
     key: providerKey,
     async health() {
-      if (!input.pageId || !input.pageAccessToken) {
+      if (!input.pageId && !input.resolvePageAccessToken) {
         return {
           status: "missing_credentials",
-          message: "Meta Facebook Page publishing requires META_FACEBOOK_PAGE_ID and META_FACEBOOK_PAGE_ACCESS_TOKEN.",
+          message: "Meta Facebook Page publishing requires a scoped provider connection or development Page credentials.",
           metadata: { channel: "facebook_page" }
         };
       }
@@ -110,7 +121,21 @@ export function createMetaFacebookPagePublishingProvider(input: {
         };
       }
 
-      if (!input.pageId || !input.pageAccessToken) {
+      let credentials: { pageId: string; pageAccessToken: string } | undefined;
+      try {
+        credentials = await resolveCredentials(input, account);
+      } catch (error) {
+        return {
+          status: "failed",
+          metadata: {
+            reason: "connection_unusable",
+            recoverable: true,
+            message: error instanceof Error ? error.message : "Credential resolution failed."
+          }
+        };
+      }
+
+      if (!credentials) {
         return {
           status: "failed",
           metadata: {
@@ -120,8 +145,8 @@ export function createMetaFacebookPagePublishingProvider(input: {
         };
       }
 
-      const externalAccountReference = account.externalAccountReference || input.pageId;
-      if (externalAccountReference !== input.pageId) {
+      const externalAccountReference = account.externalAccountReference || credentials.pageId;
+      if (externalAccountReference !== credentials.pageId) {
         return {
           status: "failed",
           metadata: {
@@ -133,8 +158,8 @@ export function createMetaFacebookPagePublishingProvider(input: {
 
       const fetcher = input.fetch ?? fetch;
       const body = facebookPostPayload(publication);
-      const url = new URL(`https://graph.facebook.com/${graphApiVersion}/${input.pageId}/feed`);
-      url.searchParams.set("access_token", input.pageAccessToken);
+      const url = new URL(`https://graph.facebook.com/${graphApiVersion}/${credentials.pageId}/feed`);
+      url.searchParams.set("access_token", credentials.pageAccessToken);
 
       try {
         const response = await fetcher(url, {
@@ -239,6 +264,42 @@ export function createMetaFacebookPagePublishingProvider(input: {
   };
 }
 
+async function resolveCredentials(
+  input: {
+    pageId?: string;
+    pageAccessToken?: string;
+    resolvePageAccessToken?: (input: {
+      account: {
+        id: string;
+        externalAccountReference: string;
+        providerConnectionId?: string | null;
+      };
+    }) => Promise<{ pageId: string; pageAccessToken: string }>;
+  },
+  account: {
+    id: string;
+    externalAccountReference: string;
+    providerConnectionId?: string | null;
+  }
+) {
+  try {
+    return input.resolvePageAccessToken
+      ? await input.resolvePageAccessToken({ account })
+      : input.pageId && input.pageAccessToken
+        ? { pageId: input.pageId, pageAccessToken: input.pageAccessToken }
+        : undefined;
+  } catch (error) {
+    throw new SocialCredentialResolutionError(error instanceof Error ? error.message : "Credential resolution failed.");
+  }
+}
+
+class SocialCredentialResolutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SocialCredentialResolutionError";
+  }
+}
+
 export function createSocialPublishingProviderFromEnv(
   source: NodeJS.ProcessEnv = process.env
 ) {
@@ -257,6 +318,37 @@ export function createSocialPublishingProviderFromEnv(
   }
 
   throw new Error(`Unsupported social provider: ${provider}`);
+}
+
+export function createConnectedMetaFacebookPagePublishingProvider(input: {
+  connectionRepository: ProviderConnectionRepository;
+  secretStore: SecretStore;
+  graphApiVersion?: string;
+  fetch?: typeof fetch;
+}) {
+  return createMetaFacebookPagePublishingProvider({
+    graphApiVersion: input.graphApiVersion,
+    fetch: input.fetch,
+    async resolvePageAccessToken({ account }) {
+      if (!account.providerConnectionId) {
+        throw new Error("Social account is not linked to a provider connection.");
+      }
+      const connection = await input.connectionRepository.getConnection(account.providerConnectionId);
+      if (!connection) {
+        throw new Error("Provider connection was not found.");
+      }
+      if (connection.externalAccountId !== account.externalAccountReference) {
+        throw new Error("Provider connection does not match the social account.");
+      }
+      return {
+        pageId: connection.externalAccountId,
+        pageAccessToken: await getConnectionCredential({
+          connection,
+          secretStore: input.secretStore
+        })
+      };
+    }
+  });
 }
 
 export function sanitizeProviderMetadata(value: unknown): Record<string, unknown> {

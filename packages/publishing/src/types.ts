@@ -429,6 +429,7 @@ export type SocialAccount = {
   channel: "facebook" | "instagram" | "linkedin" | (string & {});
   organisationId?: string | null;
   territoryId?: string | null;
+  providerConnectionId?: string | null;
   externalAccountReference: string;
   displayName: string;
   connectionStatus: string;

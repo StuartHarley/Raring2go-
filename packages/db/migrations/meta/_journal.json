@@ -225,6 +225,13 @@
       "when": 1786451520699,
       "tag": "0031_glorious_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786461439036,
+      "tag": "0032_luxuriant_moon_knight",
+      "breakpoints": true
     }
   ]
 }

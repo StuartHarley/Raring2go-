@@ -53,6 +53,9 @@ importers:
       '@raring2go/franchise':
         specifier: workspace:*
         version: link:../../packages/franchise
+      '@raring2go/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@raring2go/marketing':
         specifier: workspace:*
         version: link:../../packages/marketing
@@ -68,6 +71,9 @@ importers:
       '@raring2go/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
       next:
         specifier: 16.3.0
         version: 16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@26.2.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -186,7 +192,20 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
 
-  packages/integrations: {}
+  packages/integrations:
+    dependencies:
+      '@raring2go/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
 
   packages/marketing:
     dependencies:
