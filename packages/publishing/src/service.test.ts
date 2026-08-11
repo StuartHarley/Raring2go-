@@ -12,6 +12,8 @@ import {
   createTemplateRevision,
   distributeContentToTerritoryEditions,
   generateTerritoryEditions,
+  generateDigitalOutput,
+  generatePrintOutput,
   listEditionSummaries,
   publishTemplateVersion,
   applySafePreflightFixes,
@@ -78,6 +80,8 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "edition.content", "edit_local", "network"),
     grant(ids.roles.hq, "edition.content", "manage_locked", "network"),
     grant(ids.roles.hq, "edition.preflight", "override", "network"),
+    grant(ids.roles.hq, "edition.output", "generate_print", "network"),
+    grant(ids.roles.hq, "edition.output", "generate_digital", "network"),
     grant(ids.roles.local, "edition.page", "edit", "own_territory"),
     grant(ids.roles.local, "edition.content", "edit_local", "own_territory"),
     grant(ids.roles.local, "edition.preflight", "override", "own_territory"),
@@ -482,6 +486,70 @@ describe("publishing edition model", () => {
       issues: []
     });
   });
+
+  it("generates print and digital outputs from the same approved territory edition", async () => {
+    const publishingData = await printReadyEditionData();
+    const edition = publishingData.territoryEditions[0]!;
+    const recorder = audit();
+
+    const print = await generatePrintOutput(hqContext(), permissions, recorder, publishingData, edition.id, {
+      idempotencyKey: "print-autumn-sutton-v1",
+      artifact: { storageKey: "outputs/autumn-sutton-print-v1.pdf", format: "pdfx" }
+    });
+    const duplicatePrint = await generatePrintOutput(hqContext(), permissions, recorder, publishingData, edition.id, {
+      idempotencyKey: "print-autumn-sutton-v1",
+      artifact: { storageKey: "ignored.pdf" }
+    });
+    const digital = await generateDigitalOutput(hqContext(), permissions, recorder, publishingData, edition.id, {
+      idempotencyKey: "digital-autumn-sutton-v1",
+      artifact: { storageKey: "outputs/autumn-sutton-digital-v1.html", format: "html" },
+      metadata: { canonicalUrl: "/editions/autumn-sutton" }
+    });
+
+    expect(duplicatePrint.id).toBe(print.id);
+    expect(publishingData.publicationOutputs).toHaveLength(2);
+    expect(print.sourcePageSnapshot.map((page) => page.pageNumber)).toEqual([1, 2, 3, 4]);
+    expect(digital.sourcePageSnapshot).toEqual(print.sourcePageSnapshot);
+    expect(digital.metadata).toMatchObject({
+      accessibility: "required",
+      links: "tracked",
+      canonicalUrl: "/editions/autumn-sutton"
+    });
+    expect(edition).toMatchObject({
+      printStatus: "generated",
+      digitalStatus: "generated"
+    });
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.publishingPrintGenerate,
+      auditActions.publishingDigitalGenerate
+    ]);
+  });
+
+  it("blocks output generation until pages are ready and print preflight has passed", async () => {
+    const publishingData = await editableFlatplanData(4);
+    const edition = publishingData.territoryEditions[0]!;
+    edition.status = "approved";
+    publishingData.editionPages.forEach((page) => {
+      page.readiness = "ready";
+      page.status = "print_ready";
+    });
+    publishingData.editionPages[2]!.readiness = "blocked";
+
+    await expect(
+      generateDigitalOutput(hqContext(), permissions, audit(), publishingData, edition.id, {
+        idempotencyKey: "digital-blocked",
+        artifact: { storageKey: "outputs/blocked.html" }
+      })
+    ).rejects.toThrow("ready and clear");
+
+    publishingData.editionPages[2]!.readiness = "ready";
+    await expect(
+      generatePrintOutput(hqContext(), permissions, audit(), publishingData, edition.id, {
+        idempotencyKey: "print-no-preflight",
+        artifact: { storageKey: "outputs/no-preflight.pdf" }
+      })
+    ).rejects.toThrow("successful preflight");
+  });
 });
 
 function hqContext() {
@@ -503,6 +571,7 @@ function emptyData(): PublishingData {
     editionPages: [],
     editionPageRevisions: [],
     preflightResults: [],
+    publicationOutputs: [],
     territories: [
       {
         id: ids.territories.own,
@@ -618,10 +687,38 @@ function contentItem() {
   };
 }
 
-async function editableFlatplanData() {
+async function editableFlatplanData(pageCount = 36) {
   const publishingData = seededData();
+  publishingData.masterEditions[0]!.pageCount = pageCount;
   await generateTerritoryEditions(hqContext(), permissions, audit(), publishingData, ids.master, [ids.territories.own]);
   await createEditionFlatplan(hqContext(), permissions, audit(), publishingData, publishingData.territoryEditions[0]!.id);
+  return publishingData;
+}
+
+async function printReadyEditionData(pageCount = 4) {
+  const publishingData = await editableFlatplanData(pageCount);
+  const edition = publishingData.territoryEditions[0]!;
+  edition.status = "approved";
+  publishingData.editionPages.forEach((page, index) => {
+    page.pageNumber = index + 1;
+    page.spreadNumber = Math.ceil(page.pageNumber / 2);
+    page.status = "print_ready";
+    page.readiness = "ready";
+    page.issues = [];
+    publishingData.preflightResults.push({
+      id: `preflight_${page.pageNumber}`,
+      entityType: "edition_page",
+      entityId: page.id,
+      territoryEditionId: edition.id,
+      status: "passed",
+      checks: [],
+      fixes: [],
+      originalArtifact: { storageKey: `pages/page-${page.pageNumber}.pdf` },
+      derivedArtifact: {},
+      unfixableIssues: [],
+      createdByUserId: ids.users.hq
+    });
+  });
   return publishingData;
 }
 

@@ -12,6 +12,7 @@ import type {
   PreflightCheck,
   PreflightFix,
   PreflightResult,
+  PublicationOutput,
   PublishingActorContext,
   PublishingData,
   Season,
@@ -644,6 +645,75 @@ export async function applySafePreflightFixes(
   return result;
 }
 
+export async function generatePrintOutput(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string,
+  input: {
+    idempotencyKey: string;
+    artifact: Record<string, unknown>;
+    preflightResultId?: string | null;
+    corrections?: Array<Record<string, unknown>>;
+  }
+) {
+  requirePublishingPermission(context, permissions, "generatePrint");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  const existing = findOutputByIdempotencyKey(data, input.idempotencyKey);
+  if (existing) {
+    return existing;
+  }
+  assertEditionReadyForOutput(data, edition, "print");
+  const output = createPublicationOutput(context, data, edition, "print", input);
+  edition.printStatus = "generated";
+  await audit.record(auditEvent(context, auditActions.publishingPrintGenerate, "publication_output", output.id, {
+    territoryEditionId: edition.id,
+    version: output.version,
+    pageCount: output.sourcePageSnapshot.length
+  }, edition.territoryId));
+  return output;
+}
+
+export async function generateDigitalOutput(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string,
+  input: {
+    idempotencyKey: string;
+    artifact: Record<string, unknown>;
+    corrections?: Array<Record<string, unknown>>;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  requirePublishingPermission(context, permissions, "generateDigital");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  const existing = findOutputByIdempotencyKey(data, input.idempotencyKey);
+  if (existing) {
+    return existing;
+  }
+  assertEditionReadyForOutput(data, edition, "digital");
+  const output = createPublicationOutput(context, data, edition, "digital", {
+    ...input,
+    metadata: {
+      accessibility: "required",
+      links: "tracked",
+      ...input.metadata
+    }
+  });
+  edition.digitalStatus = "generated";
+  await audit.record(auditEvent(context, auditActions.publishingDigitalGenerate, "publication_output", output.id, {
+    territoryEditionId: edition.id,
+    version: output.version,
+    pageCount: output.sourcePageSnapshot.length
+  }, edition.territoryId));
+  return output;
+}
+
 function requirePublishingPermission(
   context: PublishingActorContext,
   permissions: PermissionData,
@@ -742,6 +812,79 @@ function requirePreflightResult(data: PublishingData, resultId: string) {
     throw new Error("Preflight result was not found.");
   }
   return result;
+}
+
+function findOutputByIdempotencyKey(data: PublishingData, idempotencyKey: string) {
+  return data.publicationOutputs.find((candidate) => candidate.idempotencyKey === idempotencyKey && !candidate.deletedAt);
+}
+
+function assertEditionReadyForOutput(data: PublishingData, edition: TerritoryEdition, outputType: "print" | "digital") {
+  if (edition.status !== "approved" && edition.status !== "published") {
+    throw new Error("Only approved territory editions can generate outputs.");
+  }
+  const pages = data.editionPages.filter((page) => page.territoryEditionId === edition.id && !page.deletedAt);
+  if (pages.length !== edition.pageCount) {
+    throw new Error("Every edition page must exist before output generation.");
+  }
+  if (pages.some((page) => page.readiness !== "ready" || page.issues.length > 0)) {
+    throw new Error("Every edition page must be ready and clear of issues before output generation.");
+  }
+  if (outputType === "print") {
+    const latestPagePreflights = pages.map((page) =>
+      data.preflightResults.find((result) => result.entityType === "edition_page" && result.entityId === page.id && !result.deletedAt)
+    );
+    if (latestPagePreflights.some((result) => !result || (result.status !== "passed" && result.status !== "fixed"))) {
+      throw new Error("Print output requires successful preflight for every page.");
+    }
+  }
+}
+
+function createPublicationOutput(
+  context: PublishingActorContext,
+  data: PublishingData,
+  edition: TerritoryEdition,
+  outputType: "print" | "digital",
+  input: {
+    idempotencyKey: string;
+    artifact: Record<string, unknown>;
+    preflightResultId?: string | null;
+    corrections?: Array<Record<string, unknown>>;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  const version = Math.max(
+    0,
+    ...data.publicationOutputs
+      .filter((output) => output.territoryEditionId === edition.id && output.outputType === outputType && !output.deletedAt)
+      .map((output) => output.version)
+  ) + 1;
+  const pages = data.editionPages
+    .filter((page) => page.territoryEditionId === edition.id && !page.deletedAt)
+    .sort((left, right) => left.pageNumber - right.pageNumber);
+  const output: PublicationOutput = {
+    id: crypto.randomUUID(),
+    territoryEditionId: edition.id,
+    outputType,
+    status: "generated",
+    version,
+    sourcePageSnapshot: pages.map((page) => ({
+      id: page.id,
+      pageNumber: page.pageNumber,
+      templateVersionId: page.templateVersionId,
+      assignedContentId: page.assignedContentId,
+      status: page.status,
+      readiness: page.readiness
+    })),
+    artifact: input.artifact,
+    preflightResultId: input.preflightResultId ?? null,
+    idempotencyKey: input.idempotencyKey,
+    corrections: input.corrections ?? [],
+    metadata: input.metadata ?? {},
+    generatedByUserId: context.userId,
+    generatedAt: today()
+  };
+  data.publicationOutputs.push(output);
+  return output;
 }
 
 function ensureContextCanAccessEdition(context: PublishingActorContext, edition: TerritoryEdition) {

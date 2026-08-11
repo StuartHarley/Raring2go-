@@ -216,6 +216,23 @@ export type PreflightResult = {
   deletedAt?: Date | null;
 };
 
+export type PublicationOutput = {
+  id: string;
+  territoryEditionId: string;
+  outputType: "print" | "digital" | (string & {});
+  status: "generated" | "superseded" | "failed" | (string & {});
+  version: number;
+  sourcePageSnapshot: Array<Record<string, unknown>>;
+  artifact: Record<string, unknown>;
+  preflightResultId?: string | null;
+  idempotencyKey: string;
+  corrections: Array<Record<string, unknown>>;
+  metadata: Record<string, unknown>;
+  generatedByUserId?: string | null;
+  generatedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
 export type PublishingTerritory = {
   id: string;
   franchiseOrganisationId?: string | null;
@@ -235,6 +252,7 @@ export type PublishingData = {
   editionPages: EditionPage[];
   editionPageRevisions: EditionPageRevision[];
   preflightResults: PreflightResult[];
+  publicationOutputs: PublicationOutput[];
   territories: PublishingTerritory[];
 };
 

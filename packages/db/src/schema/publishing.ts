@@ -279,3 +279,30 @@ export const preflightResults = pgTable(
     index("preflight_results_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const publicationOutputs = pgTable(
+  "publication_outputs",
+  {
+    id,
+    territoryEditionId: uuid("territory_edition_id").notNull().references(() => territoryEditions.id),
+    outputType: text("output_type").notNull(),
+    status: text("status").notNull(),
+    version: integer("version").notNull(),
+    sourcePageSnapshot: jsonb("source_page_snapshot").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    artifact: jsonb("artifact").$type<Record<string, unknown>>().notNull().default({}),
+    preflightResultId: uuid("preflight_result_id").references(() => preflightResults.id),
+    idempotencyKey: text("idempotency_key").notNull(),
+    corrections: jsonb("corrections").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    generatedByUserId: uuid("generated_by_user_id").references(() => users.id),
+    generatedAt: date("generated_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("publication_outputs_idempotency_uidx").on(table.idempotencyKey),
+    index("publication_outputs_territory_edition_id_idx").on(table.territoryEditionId),
+    index("publication_outputs_type_status_idx").on(table.outputType, table.status),
+    index("publication_outputs_deleted_at_idx").on(table.deletedAt)
+  ]
+);

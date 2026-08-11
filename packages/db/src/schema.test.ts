@@ -31,6 +31,7 @@ import {
   onboardingTemplates,
   onboardingTemplateTasks,
   preflightResults,
+  publicationOutputs,
   organisations,
   seasons,
   territories,
@@ -189,5 +190,16 @@ describe("foundation schema", () => {
     expect(preflightResults.derivedArtifact.name).toBe("derived_artifact");
     expect(preflightResults.unfixableIssues.name).toBe("unfixable_issues");
     expect((preflightResults as unknown as Record<string, unknown>).indesignDocumentId).toBeUndefined();
+  });
+
+  it("models generated print and digital outputs from territory editions", () => {
+    expect(publicationOutputs.territoryEditionId.name).toBe("territory_edition_id");
+    expect(publicationOutputs.outputType.name).toBe("output_type");
+    expect(publicationOutputs.sourcePageSnapshot.name).toBe("source_page_snapshot");
+    expect(publicationOutputs.artifact.name).toBe("artifact");
+    expect(publicationOutputs.idempotencyKey.name).toBe("idempotency_key");
+    expect(publicationOutputs.corrections.name).toBe("corrections");
+    expect((publicationOutputs as unknown as Record<string, unknown>).printEditionId).toBeUndefined();
+    expect((publicationOutputs as unknown as Record<string, unknown>).digitalEditionId).toBeUndefined();
   });
 });
