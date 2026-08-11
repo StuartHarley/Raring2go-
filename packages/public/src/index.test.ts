@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fixtureIds, foundationSeed } from "@raring2go/db";
 import {
+  createPublicAnalyticsEvent,
   defaultPublicTerritorySlug,
   getPublicDiscovery,
   getPublicHomepage,
@@ -58,6 +59,46 @@ describe("@raring2go/public homepage", () => {
         })
       ])
     );
+  });
+});
+
+describe("@raring2go/public analytics", () => {
+  it("creates privacy-aware provider-neutral public events", () => {
+    const event = createPublicAnalyticsEvent({
+      eventType: "discovery_item_clicked",
+      territorySlug: defaultPublicTerritorySlug,
+      path: `/areas/${defaultPublicTerritorySlug}/whats-on`,
+      entityType: "content",
+      entityId: "content_1",
+      metadata: {
+        email: "parent@example.com",
+        userAgent: "Browser",
+        source: "card"
+      }
+    }, new Date("2026-08-11T10:00:00.000Z"));
+
+    expect(event).toMatchObject({
+      eventType: "discovery_item_clicked",
+      territorySlug: "sutton-coldfield",
+      privacy: {
+        rawIpStored: false,
+        userAgentStored: false,
+        providerNeutral: true
+      },
+      metadata: {
+        source: "card"
+      }
+    });
+    expect(event.metadata).not.toHaveProperty("email");
+    expect(event.metadata).not.toHaveProperty("userAgent");
+  });
+
+  it("rejects unsafe public analytics paths", () => {
+    expect(() => createPublicAnalyticsEvent({
+      eventType: "magazine_opened",
+      territorySlug: defaultPublicTerritorySlug,
+      path: "https://evil.example/path"
+    })).toThrow("safe internal path");
   });
 });
 

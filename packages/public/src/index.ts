@@ -186,6 +186,40 @@ export type PublicSeoRoute = {
   priority: number;
 };
 
+export type PublicAnalyticsEventType =
+  | "newsletter_signup_started"
+  | "newsletter_signup_completed"
+  | "discovery_item_clicked"
+  | "magazine_opened"
+  | "commercial_placement_clicked";
+
+export type PublicAnalyticsInput = {
+  eventType: PublicAnalyticsEventType;
+  territorySlug: string;
+  path: string;
+  entityType?: "content" | "advertiser" | "edition" | "newsletter";
+  entityId?: string;
+  sessionId?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type PublicAnalyticsEvent = {
+  eventType: PublicAnalyticsEventType;
+  territoryId: string;
+  territorySlug: string;
+  path: string;
+  entityType?: PublicAnalyticsInput["entityType"];
+  entityId?: string;
+  sessionId?: string;
+  occurredAt: string;
+  metadata: Record<string, unknown>;
+  privacy: {
+    rawIpStored: false;
+    userAgentStored: false;
+    providerNeutral: true;
+  };
+};
+
 export const publicHomepageTemplate: PublicHomepage["template"] = {
   key: "r2go-territory-homepage",
   version: 1,
@@ -231,6 +265,33 @@ export function publicTerritoryStructuredData(homepage: PublicHomepage, baseUrl 
       "@type": "SearchAction",
       target: `${baseUrl}/areas/${homepage.territory.slug}/whats-on?q={search_term_string}`,
       "query-input": "required name=search_term_string"
+    }
+  };
+}
+
+export function createPublicAnalyticsEvent(input: PublicAnalyticsInput, occurredAt = new Date()): PublicAnalyticsEvent {
+  const territory = territoryFromSlug(input.territorySlug);
+  if (!territory) {
+    throw new Error("Unknown public territory.");
+  }
+  if (!input.path.startsWith("/") || input.path.startsWith("//") || input.path.includes("://")) {
+    throw new Error("Public analytics path must be a safe internal path.");
+  }
+
+  return {
+    eventType: input.eventType,
+    territoryId: territory.id,
+    territorySlug: territory.slug,
+    path: input.path,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    sessionId: input.sessionId,
+    occurredAt: occurredAt.toISOString(),
+    metadata: redactAnalyticsMetadata(input.metadata ?? {}),
+    privacy: {
+      rawIpStored: false,
+      userAgentStored: false,
+      providerNeutral: true
     }
   };
 }
@@ -754,6 +815,11 @@ function recommendationReasons(card: PublicContentCard, preferenceTerms: Set<str
     reasons.push("Upcoming family event");
   }
   return reasons;
+}
+
+function redactAnalyticsMetadata(metadata: Record<string, unknown>) {
+  const blocked = new Set(["email", "emailAddress", "ip", "ipAddress", "userAgent", "name", "phone"]);
+  return Object.fromEntries(Object.entries(metadata).filter(([key]) => !blocked.has(key)));
 }
 
 export const defaultPublicTerritorySlug = territorySlug(
