@@ -64,6 +64,13 @@
       "when": 1786430105691,
       "tag": "0008_last_hiroim",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786431190142,
+      "tag": "0009_tricky_dragon_man",
+      "breakpoints": true
     }
   ]
 }

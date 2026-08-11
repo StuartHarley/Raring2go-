@@ -44,7 +44,22 @@ describe("foundation fixtures", () => {
       "franchise.onboarding",
       "franchise.onboarding",
       "franchise.onboarding",
-      "franchise.onboarding"
+      "franchise.onboarding",
+      "edition",
+      "edition",
+      "edition",
+      "edition",
+      "edition",
+      "edition.template",
+      "edition.template",
+      "edition.template",
+      "edition.template",
+      "edition.page",
+      "edition.content",
+      "edition.content",
+      "edition.preflight",
+      "edition.output",
+      "edition.output"
     ]);
   });
 
@@ -103,6 +118,22 @@ describe("foundation fixtures", () => {
     );
     expect(foundationSeed.onboardingTemplatePhases).toHaveLength(7);
     expect(foundationSeed.onboardingTemplateTasks.map((task) => task.readinessGate)).toContain(true);
+  });
+
+  it("includes deterministic publishing edition fixtures", () => {
+    expect(fixtureIds.seasons.autumn2026).toBe(
+      "00000000-0000-4000-8000-000000001001"
+    );
+    expect(foundationSeed.seasons[0]?.key).toBe("autumn-2026");
+    expect(foundationSeed.masterEditions[0]?.seasonId).toBe(
+      fixtureIds.seasons.autumn2026
+    );
+    expect(foundationSeed.territoryEditions[0]).toMatchObject({
+      masterEditionId: fixtureIds.masterEditions.autumn2026,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      printStatus: "not_started",
+      digitalStatus: "not_started"
+    });
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

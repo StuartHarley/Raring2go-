@@ -67,7 +67,17 @@ export const auditActions = {
   franchiseOnboardingBlockerResolve: "franchise.onboarding.blocker.resolve",
   franchiseOnboardingLaunchReady: "franchise.onboarding.launch.ready",
   franchiseOnboardingLaunchApprove: "franchise.onboarding.launch.approve",
-  franchiseOnboardingLaunch: "franchise.onboarding.launch"
+  franchiseOnboardingLaunch: "franchise.onboarding.launch",
+  publishingEditionCreate: "publishing.edition.create",
+  publishingEditionUpdate: "publishing.edition.update",
+  publishingEditionApprove: "publishing.edition.approve",
+  publishingEditionPublish: "publishing.edition.publish",
+  publishingTemplateChange: "publishing.template.change",
+  publishingPageAssign: "publishing.page.assign",
+  publishingContentOverride: "publishing.content.override",
+  publishingPreflightOverride: "publishing.preflight.override",
+  publishingPrintGenerate: "publishing.print.generate",
+  publishingDigitalGenerate: "publishing.digital.generate"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

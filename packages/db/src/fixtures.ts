@@ -51,7 +51,22 @@ export const fixtureIds = {
     onboardingTaskComplete: "00000000-0000-4000-8000-000000000431",
     onboardingTaskAssign: "00000000-0000-4000-8000-000000000432",
     onboardingApproveMilestone: "00000000-0000-4000-8000-000000000433",
-    onboardingApproveLaunch: "00000000-0000-4000-8000-000000000434"
+    onboardingApproveLaunch: "00000000-0000-4000-8000-000000000434",
+    editionView: "00000000-0000-4000-8000-000000000435",
+    editionCreate: "00000000-0000-4000-8000-000000000436",
+    editionEdit: "00000000-0000-4000-8000-000000000437",
+    editionApprove: "00000000-0000-4000-8000-000000000438",
+    editionRelease: "00000000-0000-4000-8000-000000000439",
+    editionTemplateCreate: "00000000-0000-4000-8000-000000000440",
+    editionTemplateEdit: "00000000-0000-4000-8000-000000000441",
+    editionTemplateApprove: "00000000-0000-4000-8000-000000000442",
+    editionTemplatePublish: "00000000-0000-4000-8000-000000000443",
+    editionPageEdit: "00000000-0000-4000-8000-000000000444",
+    editionLocalContentEdit: "00000000-0000-4000-8000-000000000445",
+    editionLockedContentManage: "00000000-0000-4000-8000-000000000446",
+    editionPreflightOverride: "00000000-0000-4000-8000-000000000447",
+    editionGeneratePrint: "00000000-0000-4000-8000-000000000448",
+    editionGenerateDigital: "00000000-0000-4000-8000-000000000449"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -110,6 +125,15 @@ export const fixtureIds = {
     mediaPackReady: "00000000-0000-4000-8000-000000000952",
     editionSelected: "00000000-0000-4000-8000-000000000953",
     launchApproved: "00000000-0000-4000-8000-000000000954"
+  },
+  seasons: {
+    autumn2026: "00000000-0000-4000-8000-000000001001"
+  },
+  masterEditions: {
+    autumn2026: "00000000-0000-4000-8000-000000001002"
+  },
+  territoryEditions: {
+    suttonAutumn2026: "00000000-0000-4000-8000-000000001003"
   },
   invitations: {
     franchiseStaff: "00000000-0000-4000-8000-000000000801"
@@ -383,6 +407,96 @@ export const foundationSeed = {
       module: "franchise.onboarding",
       action: "approve_launch",
       description: "Approve franchise launch."
+    },
+    {
+      id: fixtureIds.permissions.editionView,
+      module: "edition",
+      action: "view",
+      description: "View edition records."
+    },
+    {
+      id: fixtureIds.permissions.editionCreate,
+      module: "edition",
+      action: "create",
+      description: "Create master and territory edition records."
+    },
+    {
+      id: fixtureIds.permissions.editionEdit,
+      module: "edition",
+      action: "edit",
+      description: "Edit edition schedules, status and readiness."
+    },
+    {
+      id: fixtureIds.permissions.editionApprove,
+      module: "edition",
+      action: "approve",
+      description: "Approve editions for production."
+    },
+    {
+      id: fixtureIds.permissions.editionRelease,
+      module: "edition",
+      action: "release",
+      description: "Release or publish approved editions."
+    },
+    {
+      id: fixtureIds.permissions.editionTemplateCreate,
+      module: "edition.template",
+      action: "create",
+      description: "Create magazine templates."
+    },
+    {
+      id: fixtureIds.permissions.editionTemplateEdit,
+      module: "edition.template",
+      action: "edit",
+      description: "Edit magazine template drafts."
+    },
+    {
+      id: fixtureIds.permissions.editionTemplateApprove,
+      module: "edition.template",
+      action: "approve",
+      description: "Approve magazine template versions."
+    },
+    {
+      id: fixtureIds.permissions.editionTemplatePublish,
+      module: "edition.template",
+      action: "publish",
+      description: "Publish approved magazine template versions."
+    },
+    {
+      id: fixtureIds.permissions.editionPageEdit,
+      module: "edition.page",
+      action: "edit",
+      description: "Edit edition pages and flatplan assignments."
+    },
+    {
+      id: fixtureIds.permissions.editionLocalContentEdit,
+      module: "edition.content",
+      action: "edit_local",
+      description: "Edit local edition content in permitted zones."
+    },
+    {
+      id: fixtureIds.permissions.editionLockedContentManage,
+      module: "edition.content",
+      action: "manage_locked",
+      description: "Manage HQ locked edition content."
+    },
+    {
+      id: fixtureIds.permissions.editionPreflightOverride,
+      module: "edition.preflight",
+      action: "override",
+      description: "Override preflight failures with authority."
+    },
+    {
+      id: fixtureIds.permissions.editionGeneratePrint,
+      module: "edition.output",
+      action: "generate_print",
+      description: "Generate print edition output."
+    },
+    {
+      id: fixtureIds.permissions.editionGenerateDigital,
+      module: "edition.output",
+      action: "generate_digital",
+      description: "Generate digital edition output."
     }
   ],
   franchises: [
@@ -710,6 +824,65 @@ export const foundationSeed = {
       ],
       readinessGate: true,
       sortOrder: 1
+    }
+  ],
+  seasons: [
+    {
+      id: fixtureIds.seasons.autumn2026,
+      key: "autumn-2026",
+      name: "Autumn 2026",
+      year: 2026,
+      season: "autumn",
+      status: "planned",
+      accent: "autumn",
+      publicationDate: "2026-09-01",
+      bookingDeadline: "2026-07-24",
+      artworkDeadline: "2026-08-07",
+      editorialDeadline: "2026-08-12",
+      proofDeadline: "2026-08-19",
+      printDeadline: "2026-08-21",
+      distributionDate: "2026-08-28"
+    }
+  ],
+  masterEditions: [
+    {
+      id: fixtureIds.masterEditions.autumn2026,
+      seasonId: fixtureIds.seasons.autumn2026,
+      organisationId: fixtureIds.organisations.hq,
+      title: "Autumn 2026 Master Edition",
+      status: "draft",
+      pageCount: 36,
+      version: 1,
+      readiness: "not_ready",
+      publicationArchive: {},
+      locked: false,
+      createdByUserId: fixtureIds.users.superAdmin
+    }
+  ],
+  territoryEditions: [
+    {
+      id: fixtureIds.territoryEditions.suttonAutumn2026,
+      masterEditionId: fixtureIds.masterEditions.autumn2026,
+      seasonId: fixtureIds.seasons.autumn2026,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      franchiseOrganisationId: fixtureIds.organisations.franchise,
+      editorUserId: fixtureIds.users.franchisee,
+      title: "Autumn 2026 Sutton Coldfield",
+      status: "draft",
+      publicationDate: "2026-09-01",
+      bookingDeadline: "2026-07-24",
+      artworkDeadline: "2026-08-07",
+      editorialDeadline: "2026-08-12",
+      proofDeadline: "2026-08-19",
+      printDeadline: "2026-08-21",
+      distributionDate: "2026-08-28",
+      pageCount: 36,
+      printStatus: "not_started",
+      digitalStatus: "not_started",
+      readiness: "not_ready",
+      version: 1,
+      publicationArchive: {},
+      generatedFromMasterVersion: 1
     }
   ]
 } as const;

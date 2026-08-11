@@ -21,11 +21,14 @@ import {
   franchiseOnboardingProgrammes,
   franchiseOnboardingTasks,
   franchises,
+  masterEditions,
   onboardingTemplatePhases,
   onboardingTemplates,
   onboardingTemplateTasks,
   organisations,
+  seasons,
   territories,
+  territoryEditions,
   users
 } from "./schema";
 
@@ -116,5 +119,18 @@ describe("foundation schema", () => {
     expect(franchiseOnboardingTasks.dueDateOverridden.name).toBe("due_date_overridden");
     expect(franchiseOnboardingBlockers.status.name).toBe("status");
     expect((franchiseOnboardingProgrammes as unknown as Record<string, unknown>).royaltyPlanId).toBeUndefined();
+  });
+
+  it("models one master edition generating territory editions for print and digital", () => {
+    expect(seasons.key.name).toBe("key");
+    expect(seasons.publicationDate.name).toBe("publication_date");
+    expect(masterEditions.seasonId.name).toBe("season_id");
+    expect(masterEditions.pageCount.name).toBe("page_count");
+    expect(territoryEditions.masterEditionId.name).toBe("master_edition_id");
+    expect(territoryEditions.territoryId.name).toBe("territory_id");
+    expect(territoryEditions.printStatus.name).toBe("print_status");
+    expect(territoryEditions.digitalStatus.name).toBe("digital_status");
+    expect(territoryEditions.generatedFromMasterVersion.name).toBe("generated_from_master_version");
+    expect((territoryEditions as unknown as Record<string, unknown>).digitalEditionId).toBeUndefined();
   });
 });

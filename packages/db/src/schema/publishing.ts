@@ -1,0 +1,95 @@
+import { boolean, date, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { id, softDelete, timestamps } from "./common";
+import { users } from "./identity";
+import { organisations, territories } from "./tenancy";
+
+export const seasons = pgTable(
+  "seasons",
+  {
+    id,
+    key: text("key").notNull().unique(),
+    name: text("name").notNull(),
+    year: integer("year").notNull(),
+    season: text("season").notNull(),
+    status: text("status").notNull().default("planned"),
+    accent: text("accent").notNull().default("spring"),
+    publicationDate: date("publication_date", { mode: "date" }),
+    bookingDeadline: date("booking_deadline", { mode: "date" }),
+    artworkDeadline: date("artwork_deadline", { mode: "date" }),
+    editorialDeadline: date("editorial_deadline", { mode: "date" }),
+    proofDeadline: date("proof_deadline", { mode: "date" }),
+    printDeadline: date("print_deadline", { mode: "date" }),
+    distributionDate: date("distribution_date", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("seasons_key_idx").on(table.key),
+    index("seasons_year_idx").on(table.year),
+    index("seasons_status_idx").on(table.status),
+    index("seasons_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const masterEditions = pgTable(
+  "master_editions",
+  {
+    id,
+    seasonId: uuid("season_id").notNull().references(() => seasons.id),
+    organisationId: uuid("organisation_id").notNull().references(() => organisations.id),
+    title: text("title").notNull(),
+    status: text("status").notNull().default("draft"),
+    pageCount: integer("page_count").notNull(),
+    version: integer("version").notNull().default(1),
+    readiness: text("readiness").notNull().default("not_ready"),
+    publicationArchive: jsonb("publication_archive").$type<Record<string, unknown>>().notNull().default({}),
+    locked: boolean("locked").notNull().default(false),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("master_editions_season_version_uidx").on(table.seasonId, table.version),
+    index("master_editions_season_id_idx").on(table.seasonId),
+    index("master_editions_status_idx").on(table.status),
+    index("master_editions_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const territoryEditions = pgTable(
+  "territory_editions",
+  {
+    id,
+    masterEditionId: uuid("master_edition_id").notNull().references(() => masterEditions.id),
+    seasonId: uuid("season_id").notNull().references(() => seasons.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    franchiseOrganisationId: uuid("franchise_organisation_id").references(() => organisations.id),
+    editorUserId: uuid("editor_user_id").references(() => users.id),
+    title: text("title").notNull(),
+    status: text("status").notNull().default("draft"),
+    publicationDate: date("publication_date", { mode: "date" }),
+    bookingDeadline: date("booking_deadline", { mode: "date" }),
+    artworkDeadline: date("artwork_deadline", { mode: "date" }),
+    editorialDeadline: date("editorial_deadline", { mode: "date" }),
+    proofDeadline: date("proof_deadline", { mode: "date" }),
+    printDeadline: date("print_deadline", { mode: "date" }),
+    distributionDate: date("distribution_date", { mode: "date" }),
+    pageCount: integer("page_count").notNull(),
+    printStatus: text("print_status").notNull().default("not_started"),
+    digitalStatus: text("digital_status").notNull().default("not_started"),
+    readiness: text("readiness").notNull().default("not_ready"),
+    version: integer("version").notNull().default(1),
+    publicationArchive: jsonb("publication_archive").$type<Record<string, unknown>>().notNull().default({}),
+    generatedFromMasterVersion: integer("generated_from_master_version").notNull(),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("territory_editions_master_territory_uidx").on(table.masterEditionId, table.territoryId),
+    uniqueIndex("territory_editions_season_territory_uidx").on(table.seasonId, table.territoryId),
+    index("territory_editions_territory_id_idx").on(table.territoryId),
+    index("territory_editions_status_idx").on(table.status),
+    index("territory_editions_readiness_idx").on(table.readiness),
+    index("territory_editions_deleted_at_idx").on(table.deletedAt)
+  ]
+);
