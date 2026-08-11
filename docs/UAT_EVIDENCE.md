@@ -8,6 +8,10 @@ This log records UAT and controlled-pilot evidence. It is not a product feature 
 
 Date: 2026-08-11
 
+Updated architecture note:
+
+UAT-001 is now split into UAT-001A to UAT-001E. Dynamic OAuth credentials such as Facebook Page tokens must not be managed as Vercel environment variables after connection. They require a persisted provider connection record plus a secure `SecretStore` boundary. Vercel environment variables remain appropriate for platform-level encryption keys, app secrets and infrastructure credentials.
+
 Scope:
 
 - Meta Facebook Page provider boundary.
@@ -99,4 +103,4 @@ Storage/scanning:
 
 Status: AMBER.
 
-The application boundaries and safe failure behaviour are ready. Real provider credentials and live operational verification are still required before UAT-001 can be marked GREEN.
+The existing application adapter boundaries and safe failure behaviour are ready. UAT-001A/001B should now implement provider connection lifecycle, scoped permissions and SecretStore-backed Meta OAuth before live Facebook Page verification is attempted. Email, Vercel/Cloudflare and storage/scanning remain UAT-001C to UAT-001E platform infrastructure configuration items.

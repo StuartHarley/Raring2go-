@@ -18,18 +18,85 @@ The current platform remains feature-frozen during this phase except for defect 
 
 ## UAT-001 — Real Provider Configuration
 
-### Provider setup checklist
+UAT-001 is split into five staged tickets so the pilot does not confuse platform-level infrastructure secrets with dynamic connected-account OAuth tokens.
 
-The following items are required before controlled pilot unless explicitly accepted as an AMBER workaround.
+### UAT-001A — Provider Connection Framework
 
-#### Meta / Facebook Page
+Build a small common connection foundation before implementing more provider-specific flows.
+
+Normal database records should hold safe operational metadata only:
+
+- organisation and/or territory scope;
+- provider;
+- connection type;
+- external account ID;
+- external account display name;
+- status;
+- granted scopes;
+- token expiry metadata;
+- last successful health check;
+- last failure summary;
+- connected by;
+- connected at;
+- revoked at;
+- provider-safe metadata.
+
+Secret material must sit behind a secure boundary:
+
+- `SecretStore.get()`;
+- `SecretStore.set()`;
+- `SecretStore.delete()`.
+
+The first implementation may encrypt token blobs using an application encryption key stored in Vercel secrets. Longer term, the same `SecretStore` contract can move to a managed secrets/KMS provider without changing social, email or storage domain code.
+
+Services should remain intentionally small:
+
+- `startConnection()`;
+- `completeConnection()`;
+- `getConnectionHealth()`;
+- `refreshConnection()`;
+- `revokeConnection()`.
+
+Connection capabilities:
+
+- `integrations.view`;
+- `integrations.connect`;
+- `integrations.reconnect`;
+- `integrations.revoke`;
+- `integrations.test`.
+
+Every material connection event must write audit events with zero secret values:
+
+- `integration.connected`;
+- `integration.reconnected`;
+- `integration.revoked`;
+- `integration.health_failed`;
+- `integration.credentials_rotated`.
+
+Pass condition: connection lifecycle, permissions, health checks and secret storage are reusable by provider adapters without creating a giant generic OAuth framework.
+
+### UAT-001B — Meta OAuth Connection
+
+Meta/Facebook Page is the first real implementation of the provider connection framework. It should replace manual Page-token entry for normal operations.
+
+Target UX:
+
+- Settings -> Connections -> Social;
+- Facebook starts as `Not connected`;
+- user selects `Connect Facebook`;
+- Meta OAuth completes;
+- user grants/selects Page access;
+- Raring2go shows Page name, connection status and last checked time;
+- actions: `Test connection`, `Reconnect`, `Disconnect`.
+
+HQ should be able to see territory social connection health across the network where permissions allow. Franchise users may connect their own Page only if HQ grants the scoped capability.
 
 - [ ] Confirm the pilot Facebook Page and responsible business/admin owner.
 - [ ] Confirm or create the Meta developer app used for Page publishing.
 - [ ] Confirm current Meta permissions/review requirements for the Page publishing capabilities used by the adapter.
-- [ ] Configure `SOCIAL_PROVIDER=meta-facebook-page` in the pilot environment.
-- [ ] Configure `META_FACEBOOK_PAGE_ID` in deployment secrets.
-- [ ] Configure `META_FACEBOOK_PAGE_ACCESS_TOKEN` in deployment secrets.
+- [ ] Implement Meta OAuth start/callback using provider-neutral connection services.
+- [ ] Store Facebook Page token material through `SecretStore`, not in normal social/domain records.
+- [ ] Store Page ID/name/status/scopes/expiry in `provider_connections`.
 - [ ] Configure `META_APP_SECRET` if webhooks are enabled.
 - [ ] Record token expiry/renewal/rotation owner and procedure.
 - [ ] Confirm secrets never appear in normal domain records, logs or audit metadata.
@@ -50,11 +117,21 @@ Use one non-sensitive approved content variant and the agreed pilot Page.
 9. Exercise a controlled invalid/revoked-token scenario and confirm the item becomes visible, recoverable failure state without leaking secrets.
 10. Record evidence, date, tester, account/Page and outcome in the UAT evidence log.
 
-Pass condition: one genuine post is published through the production adapter, reconciles internally, and retry/failure behaviour is proven.
+Pass condition: one genuine post is published through the production adapter using a connected Facebook Page, reconciles internally, and retry/failure behaviour is proven.
 
-#### Real email and domain setup
+### UAT-001C — Email Provider and Domain Setup
 
-The platform remains authoritative for audience, consent, suppression, campaigns, newsletter versions, journeys and delivery history. The email provider remains transport only.
+Do not force email into OAuth unless the selected provider genuinely requires it. Raring2go owns email centrally; the provider is transport only.
+
+The admin/system-health view should expose safe operational status:
+
+- email delivery connected/healthy;
+- sending domain;
+- SPF/DKIM/DMARC state;
+- last provider check;
+- bounce/complaint webhook state.
+
+Territories may have sender identity/configuration, but they should not own the core provider credentials.
 
 - [ ] Select/approve the production-capable email transport already supported by the integration boundary.
 - [ ] Configure sender domain/subdomain for the pilot.
@@ -71,9 +148,35 @@ The platform remains authoritative for audience, consent, suppression, campaigns
 
 Pass condition: passwordless/service mail and one controlled newsletter send use the real provider, delivery state reconciles correctly, and suppression/bounce behaviour is proven.
 
-#### Real storage and scanning setup
+### UAT-001D — Vercel and Cloudflare Deployment Integration
+
+Treat Vercel and Cloudflare as platform infrastructure, not franchise/user-facing provider connections.
+
+Vercel owns:
+
+- production and preview environments;
+- platform-level secrets;
+- scheduled/background execution boundary;
+- webhook/API routes;
+- deployment controls.
+
+Cloudflare owns or may own:
+
+- DNS;
+- SPF/DKIM/DMARC records;
+- WAF/security posture;
+- Turnstile if introduced later;
+- R2 if selected for storage.
+
+HQ/Super Admin can eventually see system health, but franchise users should not see Cloudflare or Vercel OAuth/connect controls.
+
+Pass condition: production/preview environment ownership, Cloudflare DNS/security responsibilities and deployment secret boundaries are documented and ready for controlled pilot.
+
+### UAT-001E — Storage and Scanning Provider Setup
 
 The platform must continue to use the provider-neutral `@raring2go/storage` boundary and private-by-default object access.
+
+Storage/scanning is centrally configured infrastructure, not territory OAuth. Cloudflare R2 should be assessed because Cloudflare is already part of the target platform stack, but the decision must be made against the existing storage abstraction rather than hard-coded into the domain.
 
 - [ ] Select/approve the production storage backend for pilot.
 - [ ] Configure provider credentials through deployment secrets.
