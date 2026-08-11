@@ -93,6 +93,28 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "today"
   },
   {
+    id: "search",
+    label: "Search",
+    href: "/app/search",
+    capability: {
+      module: "advertiser",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "today"
+  },
+  {
+    id: "action-centre",
+    label: "Action Centre",
+    href: "/app/action-centre",
+    capability: {
+      module: "advertiser",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "today"
+  },
+  {
     id: "franchisees",
     label: "Franchisees",
     href: "/app/franchisees",

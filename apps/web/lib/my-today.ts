@@ -226,7 +226,19 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
   return {
     metrics,
     attention: attention.sort(comparePriority).slice(0, 8),
-    workflows
+    workflows: [
+      {
+        label: "Action Centre",
+        href: "/app/action-centre" as Route,
+        status: `${attention.length} visible action${attention.length === 1 ? "" : "s"}`
+      },
+      {
+        label: "Global Search",
+        href: "/app/search" as Route,
+        status: "Find records across visible modules"
+      },
+      ...workflows
+    ]
   };
 }
 

@@ -122,6 +122,8 @@ describe("buildMyToday", () => {
       "Commercial"
     ]);
     expect(today.workflows.map((workflow) => workflow.label)).toEqual([
+      "Action Centre",
+      "Global Search",
       "Franchisee 360",
       "Advertiser workflow",
       "Edition Factory"
@@ -133,7 +135,11 @@ describe("buildMyToday", () => {
 
     expect(today.metrics.map((metric) => metric.label)).toEqual(["Compliance actions"]);
     expect(today.attention).toHaveLength(1);
-    expect(today.workflows.map((workflow) => workflow.label)).toEqual(["Franchisee 360"]);
+    expect(today.workflows.map((workflow) => workflow.label)).toEqual([
+      "Action Centre",
+      "Global Search",
+      "Franchisee 360"
+    ]);
   });
 });
 

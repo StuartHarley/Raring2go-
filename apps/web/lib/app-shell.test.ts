@@ -164,6 +164,8 @@ describe("app shell context and capabilities", () => {
 
     if (shell.kind === "authenticated") {
       expect(shell.navigation.map((item) => item.id)).toEqual([
+        "search",
+        "action-centre",
         "franchisees",
         "advertisers",
         "audience",
