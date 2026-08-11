@@ -38,6 +38,8 @@ describe("ClamAV scanner service", () => {
   });
 
   it("returns clean for a clean file", async () => {
+    expect(parseClamdResponse("stream: OK\0")).toEqual({ status: "clean" });
+
     const result = await scanFile(request, config, {
       fetchObject: async () => ({ body: Readable.from("hello"), byteSize: 5 }),
       scanStream: async () => ({ status: "clean" }),
@@ -56,6 +58,10 @@ describe("ClamAV scanner service", () => {
 
   it("maps EICAR test signature detection to infected/rejected status", async () => {
     expect(parseClamdResponse("stream: Eicar-Test-Signature FOUND")).toEqual({
+      status: "infected",
+      signature: "Eicar-Test-Signature"
+    });
+    expect(parseClamdResponse("stream: Eicar-Test-Signature FOUND\0")).toEqual({
       status: "infected",
       signature: "Eicar-Test-Signature"
     });

@@ -290,7 +290,7 @@ export async function scanStreamWithClamd(
 }
 
 export function parseClamdResponse(value: string): ClamScanOutcome {
-  const trimmed = value.trim();
+  const trimmed = value.replace(/\0/g, "").trim();
 
   if (trimmed.endsWith("OK")) {
     return { status: "clean" };
