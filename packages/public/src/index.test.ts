@@ -16,7 +16,8 @@ import {
   resolvePublicTerritory,
   getPublicCommercialDiscovery,
   publicHomepageTemplate,
-  territoryFromSlug
+  territoryFromSlug,
+  websitePublishingDecision
 } from ".";
 
 const db = {
@@ -59,6 +60,16 @@ describe("@raring2go/public homepage", () => {
       "newsletter",
       "community"
     ]);
+  });
+
+  it("documents Next.js as the canonical public publishing experience", () => {
+    expect(websitePublishingDecision).toMatchObject({
+      canonicalPublicExperience: "nextjs",
+      legacyCmsBridge: "not_configured",
+      contentOwnership: "raring2go_platform",
+      publicRenderingBoundary: "@raring2go/public"
+    });
+    expect(websitePublishingDecision.bridgePolicy).toContain("Do not fork public content");
   });
 
   it("does not expose draft content on the public homepage", async () => {

@@ -253,6 +253,15 @@ export const publicHomepageTemplate: PublicHomepage["template"] = {
   ]
 };
 
+export const websitePublishingDecision = {
+  canonicalPublicExperience: "nextjs",
+  legacyCmsBridge: "not_configured",
+  contentOwnership: "raring2go_platform",
+  publicRenderingBoundary: "@raring2go/public",
+  bridgePolicy:
+    "Do not fork public content into a parallel CMS. Transitional exports must be provider-neutral projections from approved platform records."
+} as const;
+
 export function publicSeoRoutes(baseUrl = "http://localhost:3000"): PublicSeoRoute[] {
   return publicSeoRoutesFromTerritories(foundationSeed.territories, baseUrl);
 }
