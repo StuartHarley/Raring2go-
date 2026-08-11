@@ -53,7 +53,57 @@ Social: Meta Facebook Page via provider connection/OAuth.
     - Confirm `www.raring2go.co.uk` has not changed.
     - Confirm provider callback routes reject invalid requests without leaking secrets.
 
-## 2. Environment Variable Matrix
+## 2. UAT Operations Toolkit
+
+After provider secrets are configured manually, use the committed toolkit to reduce setup mistakes. The toolkit never prints secret values, does not send email, does not publish social posts, does not reset databases and does not run the full development seed.
+
+Normal workflow:
+
+1. Configure provider secrets manually in Vercel/Neon/Postmark/Cloudflare/Meta.
+2. Run `pnpm uat:check`.
+3. Run `pnpm uat:db:setup`.
+4. Run `pnpm uat:smoke`.
+5. Complete only the remaining live verification steps and record evidence.
+
+### `pnpm uat:check`
+
+Validates:
+
+- `APP_ENV=preview` or explicit `UAT_CONFIRMATION=RARING2GO_UAT`;
+- required UAT environment variables;
+- obvious production/main database target markers;
+- Neon/Postgres connectivity;
+- Postmark, R2, Meta, SecretStore and ClamAV configuration presence without calling providers.
+
+Output uses GREEN / AMBER / RED:
+
+- GREEN: ready for the checked item.
+- AMBER: configuration is incomplete or live verification remains.
+- RED: unsafe or blocking; stop before continuing.
+
+### `pnpm uat:db:setup`
+
+Runs only safe UAT database setup:
+
+- refuses to run without `APP_ENV=preview` or explicit UAT confirmation;
+- refuses obvious production/main database targets;
+- runs committed migrations;
+- runs the minimal `pnpm db:seed:uat` path idempotently;
+- verifies the UAT admin user, HQ organisation, membership, role assignment, core auth/RBAC tables and migration state.
+
+It does not run `pnpm db:seed` and does not create demo product fixtures.
+
+### `pnpm uat:smoke`
+
+Checks deployed route configuration where practical:
+
+- internal app sign-in route from `APP_URL`;
+- public UAT route from `NEXT_PUBLIC_SITE_URL`;
+- optional territory route if `UAT_SMOKE_TERRITORY_SLUG` is set.
+
+Network failures are reported as AMBER so they can be rerun from an environment with deployment access.
+
+## 3. Environment Variable Matrix
 
 Never include real secret values in Git, chat, screenshots or evidence notes.
 
@@ -93,8 +143,10 @@ Never include real secret values in Git, chat, screenshots or evidence notes.
 | Scanner | `CLAMAV_SCANNER_API_KEY` | yes | yes if scanning tested | random API token | yes | Scanner API authentication. |
 | Scanner | `CLAMAV_SCANNER_WEBHOOK_SECRET` | yes if callbacks used | yes if callbacks tested | random high-entropy string | yes | Scan-result callback signature secret. |
 | Public URLs | `NEXT_PUBLIC_SITE_URL` | yes | yes | `https://mis.raring2go.co.uk` | no | Public UAT/pilot base URL. |
+| Public URLs | `UAT_SMOKE_TERRITORY_SLUG` | no | no | `sutton-coldfield` | no | Optional public territory route for `pnpm uat:smoke`. |
+| Safety | `UAT_CONFIRMATION` | no | no | `RARING2GO_UAT` | no | Explicit non-preview UAT confirmation. Prefer `APP_ENV=preview`. |
 
-## 3. Cloudflare DNS Checklist
+## 4. Cloudflare DNS Checklist
 
 Records for `app.raring2go.co.uk`:
 
@@ -131,7 +183,7 @@ Why `www.raring2go.co.uk` remains untouched:
 - The new public pilot is isolated on `mis`.
 - A future cutover needs SEO mapping, redirect proof and rollback planning.
 
-## 4. Postmark Live Configuration Runbook
+## 5. Postmark Live Configuration Runbook
 
 Automated tested:
 
@@ -165,7 +217,7 @@ Live evidence required:
 
 Codex must not send live emails without explicit credentials and approval.
 
-## 5. Cloudflare R2 Live Setup Procedure
+## 6. Cloudflare R2 Live Setup Procedure
 
 1. Create a private R2 bucket, for example `raring2go-pilot`.
 2. Confirm public bucket access is disabled.
@@ -181,7 +233,7 @@ Codex must not send live emails without explicit credentials and approval.
 
 No public bucket or R2 public custom domain should be configured for this phase.
 
-## 6. ClamAV Scanner Deployment Recommendation
+## 7. ClamAV Scanner Deployment Recommendation
 
 Current adapter expectation:
 
@@ -221,7 +273,7 @@ Operational requirements:
 
 Decision required if no private container runtime is available: choose the pilot scanner host before live storage/scanning can become GREEN.
 
-## 7. Meta Live Verification Procedure
+## 8. Meta Live Verification Procedure
 
 Do not change Meta code for this phase.
 
@@ -245,7 +297,7 @@ Do not change Meta code for this phase.
 
 Do not mark Meta GREEN until the actual Page post exists and retry/revoke behaviour has been observed.
 
-## 8. Neon Database And Backup Checklist
+## 9. Neon Database And Backup Checklist
 
 Pilot database requirements:
 
@@ -271,22 +323,24 @@ Decision required:
 - Confirm Neon project/region, production branch/database and preview branching strategy.
 - Confirm Neon backup/PITR retention available on the selected plan.
 
-## 9. Recommended Order Of Operations
+## 10. Recommended Order Of Operations
 
 1. Create Neon project and separate production/preview branches or databases.
 2. Create Vercel project and configure non-provider core environment variables.
 3. Configure `app.raring2go.co.uk` and `mis.raring2go.co.uk` in Vercel/Cloudflare.
-4. Deploy preview, run migrations, run smoke tests.
-5. Run the minimal UAT seed only: `pnpm db:seed:uat`.
-6. Confirm the `UAT_ADMIN_EMAIL` passwordless sign-in reaches `/app`.
-7. Configure Postmark and `mail.raring2go.co.uk` DNS.
-8. Configure R2 bucket and private scanner runtime.
-9. Configure Meta app and OAuth callback.
-10. Run live verification matrix in order: Vercel/public, email, storage/scanning, Meta, backup/restore.
-11. Record evidence and defects.
-12. Only then consider UAT-002 internal user testing.
+4. Configure Postmark and `mail.raring2go.co.uk` DNS.
+5. Configure R2 bucket and private scanner runtime.
+6. Configure Meta app and OAuth callback.
+7. Deploy preview.
+8. Run `pnpm uat:check`.
+9. Run `pnpm uat:db:setup`.
+10. Run `pnpm uat:smoke`.
+11. Confirm the `UAT_ADMIN_EMAIL` passwordless sign-in reaches `/app`.
+12. Run live verification matrix in order: Vercel/public, email, storage/scanning, Meta, backup/restore.
+13. Record evidence and defects.
+14. Only then consider UAT-002 internal user testing.
 
-## 10. Decisions Required
+## 11. Decisions Required
 
 - Neon project region and production/preview branch naming.
 - Neon backup/PITR retention and restore rehearsal owner.

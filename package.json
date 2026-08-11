@@ -16,7 +16,10 @@
     "dev": "turbo run dev --filter=@raring2go/web",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "uat:check": "pnpm --filter @raring2go/db uat:check",
+    "uat:db:setup": "pnpm --filter @raring2go/db uat:db:setup",
+    "uat:smoke": "pnpm --filter @raring2go/db uat:smoke"
   },
   "devDependencies": {
     "@types/node": "26.2.0",

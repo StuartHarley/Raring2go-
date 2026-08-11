@@ -14,7 +14,10 @@
     "db:seed:uat": "tsx src/seed-uat.ts",
     "lint": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "uat:check": "tsx src/uat-toolkit.ts check",
+    "uat:db:setup": "tsx src/uat-toolkit.ts db:setup",
+    "uat:smoke": "tsx src/uat-toolkit.ts smoke"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
