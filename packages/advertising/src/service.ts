@@ -21,6 +21,7 @@ import type {
   ArtworkVersion,
   CampaignFulfilment,
   CatalogueView,
+  CommercialCommandCentreView,
   CommercialBooking,
   CommercialBookingItem,
   CommercialProductionRequest,
@@ -59,6 +60,85 @@ export function listAdvertisers(
     .filter((advertiser) => visibleTerritoryIds == null || visibleTerritoryIds.has(advertiser.owningTerritoryId))
     .map((advertiser) => assembleAdvertiser360(data, advertiser))
     .sort((left, right) => left.organisation.name.localeCompare(right.organisation.name));
+}
+
+export function getCommercialCommandCentre(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  data: AdvertisingData
+): CommercialCommandCentreView {
+  requireAdvertisingPermission(context, permissions, "analyticsView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  const visibleAdvertisers = data.advertisers
+    .filter((advertiser) => !advertiser.deletedAt && advertiser.status !== "archived")
+    .filter((advertiser) => visibleTerritoryIds == null || visibleTerritoryIds.has(advertiser.owningTerritoryId));
+  const visibleAdvertiserIds = new Set(visibleAdvertisers.map((advertiser) => advertiser.id));
+  const opportunities = data.opportunities.filter((opportunity) => visibleAdvertiserIds.has(opportunity.advertiserId) && !opportunity.deletedAt);
+  const bookings = data.bookings.filter((booking) => visibleAdvertiserIds.has(booking.advertiserId) && !booking.deletedAt);
+  const invoices = data.invoices.filter((invoice) => visibleAdvertiserIds.has(invoice.advertiserId) && !invoice.deletedAt);
+  const payments = data.payments.filter((payment) => visibleAdvertiserIds.has(payment.advertiserId) && !payment.deletedAt);
+  const artwork = data.artworkRequirements.filter((requirement) => visibleAdvertiserIds.has(requirement.advertiserId) && !requirement.deletedAt);
+  const fulfilments = data.campaignFulfilments.filter((fulfilment) => visibleAdvertiserIds.has(fulfilment.advertiserId) && !fulfilment.deletedAt);
+  const renewals = data.renewalPrompts.filter((renewal) => visibleAdvertiserIds.has(renewal.advertiserId) && !renewal.deletedAt);
+  const openOpportunities = opportunities.filter((opportunity) => {
+    const stage = data.pipelineStages.find((candidate) => candidate.id === opportunity.stageId);
+    return !stage?.isClosed;
+  });
+  const territoryBenchmarks = [...new Set(visibleAdvertisers.map((advertiser) => advertiser.owningTerritoryId))]
+    .sort()
+    .map((territoryId) => {
+      const territoryAdvertisers = visibleAdvertisers.filter((advertiser) => advertiser.owningTerritoryId === territoryId);
+      const territoryAdvertiserIds = new Set(territoryAdvertisers.map((advertiser) => advertiser.id));
+      const territoryBookings = bookings.filter((booking) => territoryAdvertiserIds.has(booking.advertiserId));
+      const territoryInvoices = invoices.filter((invoice) => territoryAdvertiserIds.has(invoice.advertiserId));
+      const territoryOpportunities = opportunities.filter((opportunity) => territoryAdvertiserIds.has(opportunity.advertiserId));
+      const territoryClosed = territoryOpportunities.filter((opportunity) => data.pipelineStages.find((stage) => stage.id === opportunity.stageId)?.isClosed);
+      const territoryWon = territoryOpportunities.filter((opportunity) => data.pipelineStages.find((stage) => stage.id === opportunity.stageId)?.outcome === "won");
+      const territory = data.territories.find((candidate) => candidate.id === territoryId);
+      return {
+        territoryId,
+        territoryName: territory?.name,
+        advertisers: territoryAdvertisers.length,
+        bookedValueMinor: territoryBookings.reduce((sum, booking) => sum + booking.totalValueMinor, 0),
+        annualAdvertiserValueMinor: territoryAdvertisers.reduce((sum, advertiser) => sum + advertiser.annualAdvertiserValueMinor, 0),
+        averageSaleValueMinor: average(territoryAdvertisers.map((advertiser) => advertiser.averageSaleValueMinor)),
+        overdueDebtMinor: territoryInvoices
+          .filter((invoice) => invoice.dueDate && invoice.dueDate < today() && invoice.balanceMinor > 0)
+          .reduce((sum, invoice) => sum + invoice.balanceMinor, 0),
+        conversionRate: territoryClosed.length === 0 ? 0 : Math.round((territoryWon.length / territoryClosed.length) * 100),
+        retentionRate: percentage(territoryAdvertisers.filter((advertiser) => advertiser.relationshipState === "retained").length, territoryAdvertisers.length),
+        openRenewals: renewals.filter((renewal) => renewal.territoryId === territoryId && renewal.status === "open").length
+      };
+    });
+
+  return {
+    scope: context.territoryId ? "territory" : "network",
+    totals: {
+      advertisers: visibleAdvertisers.length,
+      activeAdvertisers: visibleAdvertisers.filter((advertiser) => advertiser.status === "active").length,
+      newAdvertisers: visibleAdvertisers.filter((advertiser) => advertiser.relationshipState === "new").length,
+      retainedAdvertisers: visibleAdvertisers.filter((advertiser) => advertiser.relationshipState === "retained").length,
+      lapsedAdvertisers: visibleAdvertisers.filter((advertiser) => advertiser.relationshipState === "lapsed").length,
+      pipelineValueMinor: openOpportunities.reduce((sum, opportunity) => sum + opportunity.estimatedValueMinor, 0),
+      weightedPipelineMinor: openOpportunities.reduce((sum, opportunity) => sum + Math.round((opportunity.estimatedValueMinor * opportunity.probability) / 100), 0),
+      bookedValueMinor: bookings.reduce((sum, booking) => sum + booking.totalValueMinor, 0),
+      invoicedMinor: invoices.reduce((sum, invoice) => sum + invoice.totalMinor, 0),
+      paidMinor: payments.reduce((sum, payment) => sum + payment.allocatedMinor, 0),
+      overdueDebtMinor: invoices
+        .filter((invoice) => invoice.dueDate && invoice.dueDate < today() && invoice.balanceMinor > 0)
+        .reduce((sum, invoice) => sum + invoice.balanceMinor, 0),
+      openArtwork: artwork.filter((requirement) => requirement.status !== "production_ready").length,
+      openFulfilments: fulfilments.filter((fulfilment) => fulfilment.status !== "fulfilled").length,
+      openRenewals: renewals.filter((renewal) => renewal.status === "open").length
+    },
+    territoryBenchmarks,
+    attention: {
+      overdueDebtAdvertiserIds: [...new Set(invoices.filter((invoice) => invoice.dueDate && invoice.dueDate < today() && invoice.balanceMinor > 0).map((invoice) => invoice.advertiserId))],
+      artworkAdvertiserIds: [...new Set(artwork.filter((requirement) => requirement.status !== "production_ready").map((requirement) => requirement.advertiserId))],
+      fulfilmentAdvertiserIds: [...new Set(fulfilments.filter((fulfilment) => fulfilment.status !== "fulfilled").map((fulfilment) => fulfilment.advertiserId))],
+      renewalAdvertiserIds: [...new Set(renewals.filter((renewal) => renewal.status === "open").map((renewal) => renewal.advertiserId))]
+    }
+  };
 }
 
 export function getAdvertiser360(
@@ -1561,6 +1641,20 @@ function financeSummary(data: AdvertisingData, advertiserId: string) {
       .reduce((sum, invoice) => sum + invoice.balanceMinor, 0),
     unallocatedPaymentsMinor: payments.reduce((sum, payment) => sum + payment.unallocatedMinor, 0)
   };
+}
+
+function average(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function percentage(value: number, total: number) {
+  if (total === 0) {
+    return 0;
+  }
+  return Math.round((value / total) * 100);
 }
 
 function requireOrganisation(data: AdvertisingData, organisationId: string) {

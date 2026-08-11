@@ -38,6 +38,9 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
         <Link href={"/app/advertisers/catalogue" as Route} className="app-link-button">
           View catalogue
         </Link>
+        <Link href={"/app/advertisers/command-centre" as Route} className="app-link-button">
+          Commercial command
+        </Link>
         <div className="franchise-metrics">
           <article>
             <span>Advertisers</span>

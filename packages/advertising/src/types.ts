@@ -620,3 +620,41 @@ export type CatalogueView = {
   priceBookItems: PriceBookItem[];
   inventorySlots: InventorySlot[];
 };
+
+export type CommercialCommandCentreView = {
+  scope: "network" | "territory";
+  totals: {
+    advertisers: number;
+    activeAdvertisers: number;
+    newAdvertisers: number;
+    retainedAdvertisers: number;
+    lapsedAdvertisers: number;
+    pipelineValueMinor: number;
+    weightedPipelineMinor: number;
+    bookedValueMinor: number;
+    invoicedMinor: number;
+    paidMinor: number;
+    overdueDebtMinor: number;
+    openArtwork: number;
+    openFulfilments: number;
+    openRenewals: number;
+  };
+  territoryBenchmarks: Array<{
+    territoryId: string;
+    territoryName?: string;
+    advertisers: number;
+    bookedValueMinor: number;
+    annualAdvertiserValueMinor: number;
+    averageSaleValueMinor: number;
+    overdueDebtMinor: number;
+    conversionRate: number;
+    retentionRate: number;
+    openRenewals: number;
+  }>;
+  attention: {
+    overdueDebtAdvertiserIds: string[];
+    artworkAdvertiserIds: string[];
+    fulfilmentAdvertiserIds: string[];
+    renewalAdvertiserIds: string[];
+  };
+};

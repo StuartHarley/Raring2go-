@@ -15,6 +15,7 @@ import {
   createRenewalPromptFromProofPack,
   editDraftInvoice,
   getAdvertiser360,
+  getCommercialCommandCentre,
   issueCreditNote,
   issueInvoice,
   submitArtworkVersion,
@@ -118,6 +119,7 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.proof", "create", "network"),
     grant(ids.roles.hq, "advertiser.renewal", "view", "network"),
     grant(ids.roles.hq, "advertiser.renewal", "manage", "network"),
+    grant(ids.roles.hq, "advertiser.analytics", "view", "network"),
     grant(ids.roles.local, "advertiser", "view", "own_territory"),
     grant(ids.roles.local, "advertiser", "create", "own_territory"),
     grant(ids.roles.local, "advertiser", "edit", "own_territory"),
@@ -149,7 +151,8 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "advertiser.proof", "view", "own_territory"),
     grant(ids.roles.local, "advertiser.proof", "create", "own_territory"),
     grant(ids.roles.local, "advertiser.renewal", "view", "own_territory"),
-    grant(ids.roles.local, "advertiser.renewal", "manage", "own_territory")
+    grant(ids.roles.local, "advertiser.renewal", "manage", "own_territory"),
+    grant(ids.roles.local, "advertiser.analytics", "view", "own_territory")
   ],
   territories: [
     {
@@ -964,6 +967,145 @@ describe("advertiser CRM foundation", () => {
       performanceReference: {},
       metadata: {}
     }, "event_cross")).rejects.toThrow("territory");
+  });
+
+  it("builds a permission-scoped commercial command centre and territory benchmarks", () => {
+    const data = seededData();
+    seedAcceptedBooking(data);
+    data.bookings.push({
+      id: "booking_other",
+      proposalId: "proposal_other",
+      advertiserId: ids.otherAdvertiser,
+      opportunityId: null,
+      territoryId: ids.territories.other,
+      status: "booked",
+      bookedOn: "2026-08-11",
+      totalValueMinor: 90000,
+      currency: "GBP",
+      metadata: {}
+    });
+    data.invoices.push({
+      id: "invoice_overdue",
+      issuerOrganisationId: ids.organisations.franchise,
+      advertiserId: ids.advertiser,
+      customerOrganisationId: ids.organisations.advertiser,
+      territoryId: ids.territories.own,
+      bookingId: "booking_autumn",
+      invoiceNumber: "R2G-00001",
+      status: "issued",
+      issueDate: "2026-07-01",
+      dueDate: "2026-07-31",
+      voidedAt: null,
+      currency: "GBP",
+      subtotalMinor: 52500,
+      taxMinor: 10500,
+      totalMinor: 63000,
+      amountPaidMinor: 0,
+      balanceMinor: 63000,
+      billingSnapshot: {},
+      paymentTermsSnapshot: {},
+      issuedSnapshot: {}
+    });
+    data.payments.push({
+      id: "payment_1",
+      issuerOrganisationId: ids.organisations.franchise,
+      advertiserId: ids.advertiser,
+      payerOrganisationId: ids.organisations.advertiser,
+      amountMinor: 21000,
+      allocatedMinor: 21000,
+      unallocatedMinor: 0,
+      currency: "GBP",
+      receivedDate: "2026-08-01",
+      method: "bank_transfer",
+      providerKey: null,
+      externalReference: null,
+      providerEventId: null,
+      status: "received",
+      metadata: {}
+    });
+    data.artworkRequirements.push({
+      id: "artwork_open",
+      productionRequestId: "production_missing",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      territoryEditionId: null,
+      editionPageId: null,
+      inventorySlotId: null,
+      sourceType: "advertiser_supplied",
+      status: "requested",
+      specification: {},
+      dimensions: {},
+      contentFields: {},
+      deadline: null,
+      approvedVersionId: null,
+      proofReference: {},
+      advertiserApprovedAt: null,
+      productionApprovedAt: null
+    });
+    data.campaignFulfilments.push({
+      id: "fulfilment_open",
+      bookingId: "booking_autumn",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      status: "scheduled",
+      channel: "print",
+      scheduledOn: "2026-09-01",
+      fulfilledOn: null,
+      placementReference: {},
+      performanceReference: {},
+      metadata: {}
+    });
+    data.renewalPrompts.push({
+      id: "renewal_open",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      sourceBookingId: "booking_autumn",
+      sourceProofPackId: null,
+      status: "open",
+      dueOn: "2026-10-01",
+      assignedToUserId: ids.users.local,
+      opportunityId: null,
+      renewalSnapshot: {},
+      metadata: {}
+    });
+
+    const network = getCommercialCommandCentre(hqContext(), permissions, data);
+    const local = getCommercialCommandCentre(localContext(), permissions, data);
+    const noAnalyticsPermission: PermissionData = {
+      ...permissions,
+      rolePermissions: permissions.rolePermissions.filter((grant) => grant.permission.module !== "advertiser.analytics")
+    };
+
+    expect(network).toMatchObject({
+      scope: "network",
+      totals: {
+        advertisers: 2,
+        bookedValueMinor: 142500,
+        overdueDebtMinor: 63000,
+        paidMinor: 21000,
+        openArtwork: 1,
+        openFulfilments: 1,
+        openRenewals: 1
+      }
+    });
+    expect(network.territoryBenchmarks).toHaveLength(2);
+    expect(local).toMatchObject({
+      scope: "territory",
+      totals: {
+        advertisers: 1,
+        bookedValueMinor: 52500
+      },
+      attention: {
+        overdueDebtAdvertiserIds: [ids.advertiser],
+        artworkAdvertiserIds: [ids.advertiser],
+        fulfilmentAdvertiserIds: [ids.advertiser],
+        renewalAdvertiserIds: [ids.advertiser]
+      }
+    });
+    expect(local.territoryBenchmarks).toHaveLength(1);
+    expect(() => getCommercialCommandCentre(localContext(), noAnalyticsPermission, data)).toThrow("No permission grant");
   });
 });
 

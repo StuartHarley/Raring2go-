@@ -290,7 +290,8 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.proofView,
         fixtureIds.permissions.proofCreate,
         fixtureIds.permissions.renewalView,
-        fixtureIds.permissions.renewalManage
+        fixtureIds.permissions.renewalManage,
+        fixtureIds.permissions.analyticsView
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -458,7 +459,8 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.proofView,
         fixtureIds.permissions.proofCreate,
         fixtureIds.permissions.renewalView,
-        fixtureIds.permissions.renewalManage
+        fixtureIds.permissions.renewalManage,
+        fixtureIds.permissions.analyticsView
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,

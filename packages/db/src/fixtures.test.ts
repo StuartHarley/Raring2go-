@@ -94,7 +94,8 @@ describe("foundation fixtures", () => {
       "advertiser.proof",
       "advertiser.proof",
       "advertiser.renewal",
-      "advertiser.renewal"
+      "advertiser.renewal",
+      "advertiser.analytics"
     ]);
   });
 

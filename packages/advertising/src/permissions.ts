@@ -33,7 +33,8 @@ export const advertisingCapabilities = {
   proofView: { module: "advertiser.proof", action: "view" },
   proofCreate: { module: "advertiser.proof", action: "create" },
   renewalView: { module: "advertiser.renewal", action: "view" },
-  renewalManage: { module: "advertiser.renewal", action: "manage" }
+  renewalManage: { module: "advertiser.renewal", action: "manage" },
+  analyticsView: { module: "advertiser.analytics", action: "view" }
 } as const;
 
 export type AdvertisingCapability = keyof typeof advertisingCapabilities;

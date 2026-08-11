@@ -1,5 +1,6 @@
 import {
   getAdvertiser360,
+  getCommercialCommandCentre,
   listCatalogue,
   listAdvertisers,
   listPipeline,
@@ -35,6 +36,7 @@ export const advertisingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.fulfilmentView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.proofView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.renewalView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.analyticsView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.advertiserView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.opportunityView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.catalogueView, "own_territory"),
@@ -76,6 +78,16 @@ export async function readCatalogue(context: AdvertisingActorContext) {
 
   try {
     return listCatalogue(context, advertisingPermissionData, await loadAdvertisingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readCommercialCommandCentre(context: AdvertisingActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    return getCommercialCommandCentre(context, advertisingPermissionData, await loadAdvertisingData(db));
   } finally {
     await sql.end();
   }

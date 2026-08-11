@@ -101,7 +101,8 @@ export const fixtureIds = {
     proofView: "00000000-0000-4000-8000-000000000481",
     proofCreate: "00000000-0000-4000-8000-000000000482",
     renewalView: "00000000-0000-4000-8000-000000000483",
-    renewalManage: "00000000-0000-4000-8000-000000000484"
+    renewalManage: "00000000-0000-4000-8000-000000000484",
+    analyticsView: "00000000-0000-4000-8000-000000000485"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -806,6 +807,12 @@ export const foundationSeed = {
       module: "advertiser.renewal",
       action: "manage",
       description: "Create and manage advertiser renewal prompts."
+    },
+    {
+      id: fixtureIds.permissions.analyticsView,
+      module: "advertiser.analytics",
+      action: "view",
+      description: "View commercial command centre metrics and territory benchmarks."
     }
   ],
   advertisers: [

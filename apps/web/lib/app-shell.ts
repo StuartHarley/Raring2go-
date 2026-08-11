@@ -110,6 +110,16 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory"
   },
   {
+    id: "commercial-command",
+    label: "Commercial Command",
+    href: "/app/advertisers/command-centre",
+    capability: {
+      module: "advertiser.analytics",
+      action: "view"
+    },
+    contextLevel: "network"
+  },
+  {
     id: "editions",
     label: "Edition Factory",
     href: "/app/editions",
@@ -244,6 +254,18 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.advertiserView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.analyticsView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.analyticsView,
       scope: "own_territory",
       constraints: {}
     }
