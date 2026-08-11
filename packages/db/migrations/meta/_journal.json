@@ -218,6 +218,13 @@
       "when": 1786444597756,
       "tag": "0030_rapid_doctor_doom",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786451520699,
+      "tag": "0031_glorious_spectrum",
+      "breakpoints": true
     }
   ]
 }

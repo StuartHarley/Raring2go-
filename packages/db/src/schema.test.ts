@@ -10,6 +10,7 @@ import {
   audienceConsentEvents,
   audienceContacts,
   audiencePreferenceProfiles,
+  publicAnalyticsEvents,
   audienceSavedContent,
   audienceSegments,
   audienceSuppressions,
@@ -159,6 +160,17 @@ describe("foundation schema", () => {
     expect(advertiserMetricSnapshots.packageMix.name).toBe("package_mix");
     expect(advertiserMetricSnapshots.digitalMix.name).toBe("digital_mix");
     expect(advertiserMetricSnapshots.overdueDebtMinor.name).toBe("overdue_debt_minor");
+  });
+
+  it("models privacy-conscious public analytics events", () => {
+    expect(publicAnalyticsEvents.eventType.name).toBe("event_type");
+    expect(publicAnalyticsEvents.territoryId.name).toBe("territory_id");
+    expect(publicAnalyticsEvents.parentUserId.name).toBe("parent_user_id");
+    expect(publicAnalyticsEvents.metadata.name).toBe("metadata");
+    expect(publicAnalyticsEvents.privacy.name).toBe("privacy");
+    expect(publicAnalyticsEvents.retainUntil.name).toBe("retain_until");
+    expect((publicAnalyticsEvents as unknown as Record<string, unknown>).headers).toBeUndefined();
+    expect((publicAnalyticsEvents as unknown as Record<string, unknown>).cookies).toBeUndefined();
   });
 
   it("models configurable pipeline stages and territory-scoped opportunities", () => {

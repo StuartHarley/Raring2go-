@@ -86,13 +86,18 @@ describe("@raring2go/public analytics", () => {
       metadata: {
         email: "parent@example.com",
         userAgent: "Browser",
-        source: "card"
+        source: "card",
+        unknownPayload: "drop-me"
       }
     }, new Date("2026-08-11T10:00:00.000Z"));
 
     expect(event).toMatchObject({
       eventType: "discovery_item_clicked",
       territorySlug: "sutton-coldfield",
+      retainUntil: "2028-02-11T10:00:00.000Z",
+      attribution: {
+        source: "card"
+      },
       privacy: {
         rawIpStored: false,
         userAgentStored: false,
@@ -104,6 +109,7 @@ describe("@raring2go/public analytics", () => {
     });
     expect(event.metadata).not.toHaveProperty("email");
     expect(event.metadata).not.toHaveProperty("userAgent");
+    expect(event.metadata).not.toHaveProperty("unknownPayload");
   });
 
   it("rejects unsafe public analytics paths", () => {

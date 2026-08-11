@@ -187,11 +187,16 @@ export type PublicSeoRoute = {
 };
 
 export type PublicAnalyticsEventType =
+  | "territory_viewed"
+  | "content_viewed"
   | "newsletter_signup_started"
   | "newsletter_signup_completed"
+  | "content_saved"
   | "discovery_item_clicked"
   | "magazine_opened"
-  | "commercial_placement_clicked";
+  | "magazine_page_interaction"
+  | "commercial_placement_clicked"
+  | "public_conversion";
 
 export type PublicAnalyticsInput = {
   eventType: PublicAnalyticsEventType;
@@ -212,6 +217,8 @@ export type PublicAnalyticsEvent = {
   entityId?: string;
   sessionId?: string;
   occurredAt: string;
+  retainUntil: string;
+  attribution: Record<string, unknown>;
   metadata: Record<string, unknown>;
   privacy: {
     rawIpStored: false;
@@ -322,13 +329,21 @@ function createPublicAnalyticsEventForTerritory(
     entityId: input.entityId,
     sessionId: input.sessionId,
     occurredAt: occurredAt.toISOString(),
-    metadata: redactAnalyticsMetadata(input.metadata ?? {}),
+    retainUntil: analyticsRetainUntil(occurredAt).toISOString(),
+    attribution: analyticsAttribution(input.metadata ?? {}),
+    metadata: publicAnalyticsMetadata(input.metadata ?? {}),
     privacy: {
       rawIpStored: false,
       userAgentStored: false,
       providerNeutral: true
     }
   };
+}
+
+function analyticsRetainUntil(occurredAt: Date) {
+  const retainUntil = new Date(occurredAt);
+  retainUntil.setUTCMonth(retainUntil.getUTCMonth() + 18);
+  return retainUntil;
 }
 
 export function territorySlug(name: string) {
@@ -1002,6 +1017,31 @@ function recommendationReasons(card: PublicContentCard, preferenceTerms: Set<str
     reasons.push("Upcoming family event");
   }
   return reasons;
+}
+
+function publicAnalyticsMetadata(metadata: Record<string, unknown>) {
+  const allowed = new Set([
+    "source",
+    "channel",
+    "campaign",
+    "component",
+    "position",
+    "interaction",
+    "conversionType",
+    "utmSource",
+    "utmMedium",
+    "utmCampaign"
+  ]);
+  return redactAnalyticsMetadata(
+    Object.fromEntries(Object.entries(metadata).filter(([key]) => allowed.has(key)))
+  );
+}
+
+function analyticsAttribution(metadata: Record<string, unknown>) {
+  const allowed = new Set(["source", "channel", "campaign", "utmSource", "utmMedium", "utmCampaign"]);
+  return redactAnalyticsMetadata(
+    Object.fromEntries(Object.entries(metadata).filter(([key]) => allowed.has(key)))
+  );
 }
 
 function redactAnalyticsMetadata(metadata: Record<string, unknown>) {
