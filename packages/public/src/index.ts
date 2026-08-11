@@ -142,6 +142,33 @@ export type PublicMagazine = {
   emptyState?: string;
 };
 
+export type PublicParentHub = {
+  territory: PublicTerritory;
+  authenticated: boolean;
+  contact?: {
+    id: string;
+    email: string;
+    name: string;
+  };
+  followedTerritories: Array<{ id: string; slug: string; name: string }>;
+  savedContent: Array<{
+    id: string;
+    title: string;
+    contentType: string;
+    savedAt: string;
+    href: string;
+  }>;
+  preferences?: {
+    interests: string[];
+    eventCategories: string[];
+    offerPreferences: string[];
+    competitionPreferences: string[];
+    newsletterFrequency: string;
+    personalisationEnabled: boolean;
+  };
+  emptyState?: string;
+};
+
 export const publicHomepageTemplate: PublicHomepage["template"] = {
   key: "r2go-territory-homepage",
   version: 1,
@@ -428,6 +455,87 @@ export async function getPublicMagazine(db: PublicDb, slug: string): Promise<Pub
       artifact: output.artifact,
       pages
     }
+  };
+}
+
+export async function getPublicParentHub(
+  db: PublicDb,
+  slug: string,
+  contactId?: string | null
+): Promise<PublicParentHub | undefined> {
+  const territory = territoryFromSlug(slug);
+  if (!territory) {
+    return undefined;
+  }
+
+  if (!contactId) {
+    return {
+      territory,
+      authenticated: false,
+      followedTerritories: [],
+      savedContent: [],
+      emptyState: "Sign in to see saved articles, followed areas and local preferences."
+    };
+  }
+
+  const marketing = await loadMarketingData(db);
+  const contact = marketing.contacts.find((candidate) => candidate.id === contactId && !candidate.deletedAt);
+  if (!contact) {
+    return {
+      territory,
+      authenticated: false,
+      followedTerritories: [],
+      savedContent: [],
+      emptyState: "Sign in to see saved articles, followed areas and local preferences."
+    };
+  }
+
+  const profile = marketing.preferenceProfiles.find((candidate) => candidate.contactId === contact.id && !candidate.deletedAt);
+  const followedIds = new Set([
+    ...(profile?.followedTerritoryIds ?? []),
+    ...marketing.subscriptions
+      .filter((subscription) => subscription.contactId === contact.id && subscription.status === "subscribed" && !subscription.deletedAt)
+      .map((subscription) => subscription.territoryId)
+  ]);
+  const followedTerritories = foundationSeed.territories
+    .filter((candidate) => followedIds.has(candidate.id))
+    .map((candidate) => ({
+      id: candidate.id,
+      slug: territorySlug(candidate.name),
+      name: candidate.name
+    }));
+  const savedContent = marketing.savedContent
+    .filter((saved) => saved.contactId === contact.id && !saved.deletedAt)
+    .filter((saved) => !saved.territoryId || saved.territoryId === territory.id || followedIds.has(saved.territoryId))
+    .map((saved) => ({
+      id: saved.id,
+      title: saved.title,
+      contentType: saved.contentType,
+      savedAt: saved.savedAt,
+      href: `/areas/${territory.slug}/${saved.contentType === "event" ? "whats-on" : "activities"}/${territorySlug(saved.title)}`
+    }));
+
+  return {
+    territory,
+    authenticated: true,
+    contact: {
+      id: contact.id,
+      email: contact.email,
+      name: [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.email
+    },
+    followedTerritories,
+    savedContent,
+    preferences: profile
+      ? {
+          interests: profile.interests,
+          eventCategories: profile.eventCategories,
+          offerPreferences: profile.offerPreferences,
+          competitionPreferences: profile.competitionPreferences,
+          newsletterFrequency: profile.newsletterFrequency,
+          personalisationEnabled: profile.personalisationEnabled
+        }
+      : undefined,
+    emptyState: savedContent.length === 0 ? "Saved content will appear here when this parent saves public articles, events or offers." : undefined
   };
 }
 

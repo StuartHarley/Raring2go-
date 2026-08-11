@@ -4,6 +4,7 @@ import {
   getPublicDiscovery,
   getPublicHomepage,
   getPublicMagazine,
+  getPublicParentHub,
   territoryFromSlug,
   type PublicDiscoveryFilters,
   type PublicDiscoveryKind,
@@ -52,6 +53,16 @@ export async function readPublicMagazine(slug: string) {
 
   try {
     return await getPublicMagazine(db, slug);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPublicParentHub(slug: string, contactId?: string | null) {
+  const { db, sql } = createDb();
+
+  try {
+    return await getPublicParentHub(db, slug, contactId);
   } finally {
     await sql.end();
   }

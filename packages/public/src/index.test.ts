@@ -5,6 +5,7 @@ import {
   getPublicDiscovery,
   getPublicHomepage,
   getPublicMagazine,
+  getPublicParentHub,
   getPublicCommercialDiscovery,
   publicHomepageTemplate,
   territoryFromSlug
@@ -54,6 +55,30 @@ describe("@raring2go/public homepage", () => {
         })
       ])
     );
+  });
+});
+
+describe("@raring2go/public parent hub", () => {
+  it("returns a sign-in prompt without a parent contact", async () => {
+    const hub = await getPublicParentHub(db, defaultPublicTerritorySlug);
+
+    expect(hub).toMatchObject({
+      authenticated: false,
+      savedContent: []
+    });
+    expect(hub?.emptyState).toContain("Sign in");
+  });
+
+  it("uses native audience preferences and saved content for parent accounts", async () => {
+    const hub = await getPublicParentHub(db, defaultPublicTerritorySlug, fixtureIds.audienceContacts.parentOne);
+
+    expect(hub?.authenticated).toBe(true);
+    expect(hub?.followedTerritories.map((territory) => territory.slug)).toEqual(["sutton-coldfield", "solihull"]);
+    expect(hub?.savedContent.map((item) => item.title)).toEqual(["Half term ideas near you"]);
+    expect(hub?.preferences).toMatchObject({
+      interests: ["days-out", "school-holidays"],
+      personalisationEnabled: true
+    });
   });
 });
 
@@ -253,6 +278,29 @@ function rowsFor(table: unknown): Array<Record<string, unknown>> {
     [importTable("socialPublishJobs"), seed.socialPublishJobs ?? []],
     [importTable("socialProviderEvents"), seed.socialProviderEvents ?? []],
     [importTable("territories"), seed.territories ?? []],
+    [importTable("audienceContacts"), seed.audienceContacts ?? []],
+    [importTable("audienceTerritorySubscriptions"), seed.audienceSubscriptions ?? []],
+    [importTable("audienceConsentEvents"), seed.audienceConsentEvents ?? []],
+    [importTable("audienceSuppressions"), seed.audienceSuppressions ?? []],
+    [importTable("audienceSegments"), seed.audienceSegments ?? []],
+    [importTable("audienceSegmentMembers"), seed.audienceSegmentMembers ?? []],
+    [importTable("audienceImports"), seed.audienceImports ?? []],
+    [importTable("audienceActivityEvents"), seed.audienceActivityEvents ?? []],
+    [importTable("audiencePreferenceProfiles"), seed.audiencePreferenceProfiles ?? []],
+    [importTable("audienceSavedContent"), seed.audienceSavedContent ?? []],
+    [importTable("emailTemplates"), seed.emailTemplates ?? []],
+    [importTable("emailCampaigns"), seed.emailCampaigns ?? []],
+    [importTable("emailCampaignVersions"), seed.emailCampaignVersions ?? []],
+    [importTable("emailRecipientSnapshots"), seed.emailRecipientSnapshots ?? []],
+    [importTable("emailDeliveryRecords"), seed.emailDeliveryRecords ?? []],
+    [importTable("networkNewsletterMasters"), seed.networkNewsletterMasters ?? []],
+    [importTable("territoryNewsletterEditions"), seed.territoryNewsletterEditions ?? []],
+    [importTable("newsletterFactoryRuns"), seed.newsletterFactoryRuns ?? []],
+    [importTable("marketingJourneys"), seed.marketingJourneys ?? []],
+    [importTable("marketingJourneyVersions"), seed.marketingJourneyVersions ?? []],
+    [importTable("marketingJourneyAudienceEntries"), seed.marketingJourneyAudienceEntries ?? []],
+    [importTable("marketingJourneyExecutions"), seed.marketingJourneyExecutions ?? []],
+    [importTable("marketingJourneyStepExecutions"), seed.marketingJourneyStepExecutions ?? []],
     [importTable("advertisers"), seed.advertisers ?? []],
     [importTable("advertiserContacts"), seed.advertiserContacts ?? []],
     [importTable("advertiserActivityEvents"), seed.advertiserActivityEvents ?? []],
