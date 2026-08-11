@@ -1,5 +1,6 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { canEditFranchise, readFranchise360 } from "../../../../../lib/franchise-runtime";
+import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import {
@@ -71,6 +72,11 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
 
   return (
     <AppShell request={request}>
+      <Breadcrumbs items={[
+        { label: "Franchise", href: "/app/franchisees" },
+        { label: "Franchisee 360", href: "/app/franchisees" },
+        { label: view.organisation.name }
+      ]} />
       <article className="franchise-360">
         <header className="franchise-hero">
           <p className="eyebrow">Franchisee 360</p>
@@ -94,6 +100,35 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             </a>
           ))}
         </nav>
+        <RelatedRecords
+          title="Franchise operating journey"
+          records={[
+            {
+              label: "Agreement",
+              title: view.agreement ? view.agreement.status : "No current agreement",
+              description: "Agreement generation, approval and execution history",
+              href: "#agreement"
+            },
+            {
+              label: "Compliance",
+              title: `${view.complianceActions.filter((action) => action.status === "open").length} open action(s)`,
+              description: "Required evidence, insurance and HQ verification",
+              href: "#compliance"
+            },
+            {
+              label: "Onboarding",
+              title: view.onboarding.programme?.status ?? "Not started",
+              description: "Launch milestones, blockers and readiness",
+              href: "#onboarding"
+            },
+            {
+              label: "Territory",
+              title: view.territory.name,
+              description: "Operational territory context for publishing and commercial activity",
+              href: "/app/territory"
+            }
+          ]}
+        />
         <section id="overview" className="app-panel">
           <p className="eyebrow">Overview</p>
           <dl className="franchise-facts">

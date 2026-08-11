@@ -1,5 +1,6 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readContentWorkspaceView } from "../../../../../lib/publishing-runtime";
+import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 
@@ -23,6 +24,11 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
 
   return (
     <AppShell request={request}>
+      <Breadcrumbs items={[
+        { label: "Publishing", href: "/app/content" },
+        { label: "Content Studio", href: "/app/content" },
+        { label: libraryItem.item.title }
+      ]} />
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Source</p>
         <h2>{libraryItem.item.title}</h2>
@@ -46,6 +52,35 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
           </article>
         </div>
       </section>
+
+      <RelatedRecords
+        title="Editorial distribution"
+        records={[
+          {
+            label: "Edition",
+            title: `${libraryItem.localisations.length} territory derivation(s)`,
+            description: "Magazine placement and local override context",
+            href: "/app/editions"
+          },
+          {
+            label: "Website",
+            title: `${websiteJobs.length} publishing job(s)`,
+            description: "Website-ready state from approved content variants"
+          },
+          {
+            label: "Newsletter",
+            title: `${libraryItem.variants.filter((variant) => variant.channel === "newsletter").length} newsletter variant(s)`,
+            description: "Reusable blocks for network or local newsletters",
+            href: "/app/newsletters"
+          },
+          {
+            label: "Social",
+            title: `${libraryItem.variants.filter((variant) => ["facebook", "instagram", "linkedin"].includes(variant.channel)).length} social variant(s)`,
+            description: "Approved social variants feed the publishing queue",
+            href: "/app/social"
+          }
+        ]}
+      />
 
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Channels</p>

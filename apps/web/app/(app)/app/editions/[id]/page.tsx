@@ -1,5 +1,6 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readTerritoryEdition } from "../../../../../lib/publishing-runtime";
+import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 
@@ -19,6 +20,11 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
 
   return (
     <AppShell request={request}>
+      <Breadcrumbs items={[
+        { label: "Publishing", href: "/app/editions" },
+        { label: "Edition Factory", href: "/app/editions" },
+        { label: result.row.territoryEdition.title }
+      ]} />
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Edition Studio</p>
         <h2>{result.row.territoryEdition.title}</h2>
@@ -45,6 +51,35 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
           </article>
         </div>
       </section>
+
+      <RelatedRecords
+        title="Edition workflow"
+        records={[
+          {
+            label: "Content",
+            title: `${result.content.length} content item(s)`,
+            description: "Assigned inherited/local content for this edition",
+            href: "/app/content"
+          },
+          {
+            label: "Commercial",
+            title: "Advertiser inventory and artwork",
+            description: "Bookings and artwork readiness feed page placement",
+            href: "/app/advertisers"
+          },
+          {
+            label: "Preflight",
+            title: `${result.pages.filter((page) => page.readiness !== "ready").length} page(s) need readiness attention`,
+            description: "Print readiness checks before output generation",
+            status: result.pages.some((page) => page.readiness === "blocked") ? "Needs attention" : "No blocking page failures"
+          },
+          {
+            label: "Outputs",
+            title: `${result.outputs.length} publication output(s)`,
+            description: "Print and digital artefacts from the same edition snapshot"
+          }
+        ]}
+      />
 
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Flatplan</p>

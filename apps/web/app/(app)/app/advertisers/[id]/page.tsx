@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readAdvertiser360 } from "../../../../../lib/advertising-runtime";
+import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 
@@ -21,6 +22,10 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
 
   return (
     <AppShell request={request}>
+      <Breadcrumbs items={[
+        { label: "Commercial", href: "/app/advertisers" as Route },
+        { label: result.organisation.name }
+      ]} />
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Advertiser 360</p>
         <h2>{result.organisation.name}</h2>
@@ -78,6 +83,36 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           </article>
         </div>
       </section>
+
+      <RelatedRecords
+        title="Advertiser workflow"
+        records={[
+          {
+            label: "Pipeline",
+            title: `${result.opportunities.length} opportunity record(s)`,
+            description: "Lead and sales follow-up context",
+            href: "/app/advertisers/pipeline" as Route
+          },
+          {
+            label: "Acceptance",
+            title: `${result.acceptances.length} commercial acceptance(s)`,
+            description: "Proposal acceptance and booking confirmation",
+            href: `/app/advertisers/${result.advertiser.id}/acceptance` as Route
+          },
+          {
+            label: "Edition Factory",
+            title: `${result.bookings.length} booking(s) feeding inventory`,
+            description: "Accepted bookings reserve edition inventory and production handoff",
+            href: "/app/editions" as Route
+          },
+          {
+            label: "Proof Pack",
+            title: `${result.proofPacks.length} proof pack(s)`,
+            description: "Campaign evidence, proof and renewal context",
+            status: result.renewalPrompts.some((prompt) => prompt.status === "open") ? "Renewal attention" : "No open renewal"
+          }
+        ]}
+      />
 
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Contacts</p>

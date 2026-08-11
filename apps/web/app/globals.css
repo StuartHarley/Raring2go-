@@ -154,7 +154,20 @@ p {
 
 .app-sidebar nav {
   display: grid;
-  gap: 8px;
+  gap: 18px;
+}
+
+.app-nav-group {
+  display: grid;
+  gap: 7px;
+}
+
+.app-nav-group h3 {
+  color: var(--r2-text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  margin: 0 0 2px;
+  text-transform: uppercase;
 }
 
 .app-sidebar a,
@@ -200,6 +213,30 @@ p {
   flex-wrap: wrap;
   gap: 8px;
   align-content: start;
+}
+
+.app-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--r2-text-muted);
+  font-size: 0.9rem;
+}
+
+.app-breadcrumbs span:not(:last-child)::after {
+  content: "/";
+  margin-left: 8px;
+  color: var(--r2-border-default);
+}
+
+.app-breadcrumbs a {
+  color: var(--r2-brand-purple);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.app-breadcrumbs strong {
+  color: var(--r2-text-primary);
 }
 
 .app-panel,
@@ -308,6 +345,41 @@ p {
 
 .franchise-list span {
   color: var(--r2-text-muted);
+}
+
+.workflow-context {
+  border-left: 4px solid var(--r2-brand-purple);
+}
+
+.workflow-links {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.workflow-links a,
+.workflow-links div {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  color: var(--r2-text-primary);
+  padding: 14px;
+  text-decoration: none;
+}
+
+.workflow-links span {
+  color: var(--r2-brand-purple);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.workflow-links small,
+.workflow-links em {
+  color: var(--r2-text-muted);
+  font-style: normal;
 }
 
 .app-link-button {

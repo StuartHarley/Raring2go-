@@ -37,6 +37,7 @@ export type NavigationDescriptor = {
   href: string;
   capability: ShellCapability;
   contextLevel: "territory" | "network" | "system";
+  group: "today" | "franchise" | "commercial" | "publishing" | "marketing" | "administration";
 };
 
 export type ResolvedShell = {
@@ -77,7 +78,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "territory",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "today"
   },
   {
     id: "territory",
@@ -87,7 +89,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "territory",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "today"
   },
   {
     id: "franchisees",
@@ -97,7 +100,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "franchise",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "franchise"
   },
   {
     id: "advertisers",
@@ -107,7 +111,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "advertiser",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "commercial"
   },
   {
     id: "audience",
@@ -117,7 +122,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "marketing.audience",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "marketing"
   },
   {
     id: "preferences",
@@ -127,7 +133,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "marketing.audience",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "marketing"
   },
   {
     id: "newsletters",
@@ -137,7 +144,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "marketing.email",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "marketing"
   },
   {
     id: "journeys",
@@ -147,7 +155,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "marketing.journey",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "marketing"
   },
   {
     id: "marketing-analytics",
@@ -157,7 +166,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "marketing.analytics",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "marketing"
   },
   {
     id: "marketing-command",
@@ -167,7 +177,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "marketing.analytics",
       action: "view"
     },
-    contextLevel: "network"
+    contextLevel: "network",
+    group: "marketing"
   },
   {
     id: "content",
@@ -177,7 +188,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "content",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "publishing"
   },
   {
     id: "social",
@@ -187,7 +199,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "social",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "marketing"
   },
   {
     id: "commercial-command",
@@ -197,7 +210,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "advertiser.analytics",
       action: "view"
     },
-    contextLevel: "network"
+    contextLevel: "network",
+    group: "commercial"
   },
   {
     id: "editions",
@@ -207,7 +221,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "edition",
       action: "view"
     },
-    contextLevel: "territory"
+    contextLevel: "territory",
+    group: "publishing"
   },
   {
     id: "roles",
@@ -217,7 +232,8 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "roles",
       action: "view"
     },
-    contextLevel: "network"
+    contextLevel: "network",
+    group: "administration"
   },
   {
     id: "system",
@@ -227,8 +243,18 @@ export const shellNavigation: NavigationDescriptor[] = [
       module: "system",
       action: "administer"
     },
-    contextLevel: "system"
+    contextLevel: "system",
+    group: "administration"
   }
+];
+
+export const navigationGroups: Array<{ id: NavigationDescriptor["group"]; label: string }> = [
+  { id: "today", label: "Today" },
+  { id: "franchise", label: "Franchise" },
+  { id: "commercial", label: "Commercial" },
+  { id: "publishing", label: "Publishing" },
+  { id: "marketing", label: "Marketing" },
+  { id: "administration", label: "Administration" }
 ];
 
 const sessionsByKey: Record<string, AuthSession> = {

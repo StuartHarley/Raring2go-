@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
-import { resolveShell } from "../../lib/app-shell";
+import { navigationGroups, resolveShell } from "../../lib/app-shell";
 import { safeReturnTo } from "../../lib/auth-runtime";
 import type { RequestedShellContext } from "../../lib/app-shell";
 
@@ -45,11 +45,23 @@ export async function AppShell({
           <h1>Business-in-a-Box</h1>
         </div>
         <nav>
-          {shell.navigation.map((item) => (
-            <Link key={item.id} href={withContext(item.href, request)}>
-              {item.label}
-            </Link>
-          ))}
+          {navigationGroups.map((group) => {
+            const items = shell.navigation.filter((item) => item.group === group.id);
+            if (items.length === 0) {
+              return null;
+            }
+
+            return (
+              <section key={group.id} className="app-nav-group" aria-labelledby={`nav-${group.id}`}>
+                <h3 id={`nav-${group.id}`}>{group.label}</h3>
+                {items.map((item) => (
+                  <Link key={item.id} href={withContext(item.href, request)}>
+                    {item.label}
+                  </Link>
+                ))}
+              </section>
+            );
+          })}
         </nav>
       </aside>
       <section className="app-workspace">
