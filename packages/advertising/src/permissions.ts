@@ -12,7 +12,9 @@ export const advertisingCapabilities = {
   inventoryReserve: { module: "advertiser.inventory", action: "reserve" },
   proposalView: { module: "advertiser.proposal", action: "view" },
   proposalCreate: { module: "advertiser.proposal", action: "create" },
-  bookingAccept: { module: "advertiser.booking", action: "accept" }
+  bookingAccept: { module: "advertiser.booking", action: "accept" },
+  proposalAccept: { module: "advertiser.proposal", action: "accept" },
+  proposalRespond: { module: "advertiser.proposal", action: "respond" }
 } as const;
 
 export type AdvertisingCapability = keyof typeof advertisingCapabilities;

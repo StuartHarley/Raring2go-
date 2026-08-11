@@ -2,6 +2,7 @@ import { auditActions } from "@raring2go/audit";
 import { describe, expect, it } from "vitest";
 import {
   addAdvertiserContact,
+  acceptProposalCommercially,
   acceptProposalAsBooking,
   changeOpportunityStage,
   createAdvertiser,
@@ -13,6 +14,7 @@ import {
   listPipeline,
   recordAdvertiserActivity,
   reserveInventorySlot,
+  respondToProposal,
   updateAdvertiser
 } from "./service";
 import type { AdvertisingData } from "./types";
@@ -85,6 +87,8 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.proposal", "view", "network"),
     grant(ids.roles.hq, "advertiser.proposal", "create", "network"),
     grant(ids.roles.hq, "advertiser.booking", "accept", "network"),
+    grant(ids.roles.hq, "advertiser.proposal", "accept", "network"),
+    grant(ids.roles.hq, "advertiser.proposal", "respond", "network"),
     grant(ids.roles.local, "advertiser", "view", "own_territory"),
     grant(ids.roles.local, "advertiser", "create", "own_territory"),
     grant(ids.roles.local, "advertiser", "edit", "own_territory"),
@@ -97,7 +101,9 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "advertiser.inventory", "reserve", "own_territory"),
     grant(ids.roles.local, "advertiser.proposal", "view", "own_territory"),
     grant(ids.roles.local, "advertiser.proposal", "create", "own_territory"),
-    grant(ids.roles.local, "advertiser.booking", "accept", "own_territory")
+    grant(ids.roles.local, "advertiser.booking", "accept", "own_territory"),
+    grant(ids.roles.local, "advertiser.proposal", "accept", "own_territory"),
+    grant(ids.roles.local, "advertiser.proposal", "respond", "own_territory")
   ],
   territories: [
     {
@@ -334,6 +340,156 @@ describe("advertiser CRM foundation", () => {
       auditActions.advertiserBookingCreate
     ]);
   });
+
+  it("records simple commercial acceptance with immutable snapshot, events and idempotent booking confirmation", async () => {
+    const data = seededData();
+    seedProposal(data);
+    const recorder = audit();
+    const acceptance = await acceptProposalCommercially(localContext(), permissions, recorder, data, {
+      acceptanceId: "acceptance_autumn",
+      proposalId: "proposal_autumn",
+      termsId: "terms_standard",
+      acceptedByContactId: ids.contact,
+      acceptedAt: "2026-08-11",
+      idempotencyKey: "acceptance:proposal_autumn",
+      requestMetadata: { ip: "127.0.0.1", userAgent: "vitest" },
+      bookingId: "booking_autumn",
+      bookingItemIdPrefix: "booking_item_autumn",
+      reservationIdPrefix: "reservation_autumn",
+      productionRequestIdPrefix: "production_autumn",
+      domainEventId: "event_acceptance"
+    });
+    const duplicate = await acceptProposalCommercially(localContext(), permissions, recorder, data, {
+      acceptanceId: "acceptance_duplicate",
+      proposalId: "proposal_autumn",
+      termsId: "terms_standard",
+      acceptedByContactId: ids.contact,
+      acceptedAt: "2026-08-11",
+      idempotencyKey: "acceptance:proposal_autumn",
+      requestMetadata: {},
+      bookingId: "booking_duplicate",
+      bookingItemIdPrefix: "booking_item_duplicate",
+      reservationIdPrefix: "reservation_duplicate",
+      productionRequestIdPrefix: "production_duplicate",
+      domainEventId: "event_duplicate"
+    });
+
+    data.proposals[0]!.totalValueMinor = 1;
+
+    expect(duplicate).toBe(acceptance);
+    expect(acceptance).toMatchObject({
+      status: "accepted",
+      method: "simple",
+      bookingId: "booking_autumn"
+    });
+    expect(acceptance.commercialSnapshot).toMatchObject({
+      proposal: { totalValueMinor: 52500 },
+      terms: { version: "2026.1" }
+    });
+    expect(data.bookings).toHaveLength(1);
+    expect(data.domainEvents.map((event) => event.eventType)).toEqual([
+      "advertiser.proposal.accepted",
+      "advertiser.booking.confirmed"
+    ]);
+    expect(getAdvertiser360(localContext(), permissions, data, ids.advertiser).acceptances).toHaveLength(1);
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.advertiserProposalAccept,
+      auditActions.advertiserBookingCreate,
+      auditActions.advertiserProposalAccept,
+      auditActions.advertiserBookingConfirm
+    ]);
+  });
+
+  it("rejects expired, superseded, cross-territory and cross-advertiser acceptance attempts", async () => {
+    const expired = seededData();
+    seedProposal(expired, { validUntil: "2026-08-01" });
+    await expect(simpleAcceptance(expired)).rejects.toThrow("Expired proposals");
+
+    const superseded = seededData();
+    seedProposal(superseded, { metadata: { current: false, supersededBy: "proposal_v2" } });
+    await expect(simpleAcceptance(superseded)).rejects.toThrow("Superseded proposal");
+
+    const otherTerritory = seededData();
+    seedProposal(otherTerritory);
+    await expect(simpleAcceptance(otherTerritory, {
+      context: {
+        userId: ids.users.local,
+        organisationId: ids.organisations.otherFranchise,
+        territoryId: ids.territories.other
+      }
+    })).rejects.toThrow();
+
+    const wrongContact = seededData();
+    seedProposal(wrongContact);
+    wrongContact.contacts[0]!.advertiserId = ids.otherAdvertiser;
+    await expect(simpleAcceptance(wrongContact)).rejects.toThrow("contact must belong");
+  });
+
+  it("records rejection and change-request responses without confirming a booking", async () => {
+    const rejected = seededData();
+    seedProposal(rejected);
+    const recorder = audit();
+    const response = await respondToProposal(localContext(), permissions, recorder, rejected, {
+      acceptanceId: "response_rejected",
+      proposalId: "proposal_autumn",
+      termsId: "terms_standard",
+      acceptedByContactId: ids.contact,
+      response: "rejected",
+      respondedAt: "2026-08-11",
+      idempotencyKey: "response:rejected",
+      requestMetadata: {},
+      domainEventId: "event_rejected"
+    });
+
+    expect(response.status).toBe("rejected");
+    expect(rejected.bookings).toHaveLength(0);
+    expect(rejected.domainEvents[0]?.eventType).toBe("advertiser.proposal.rejected");
+
+    const change = seededData();
+    seedProposal(change);
+    const changeResponse = await respondToProposal(localContext(), permissions, audit(), change, {
+      acceptanceId: "response_change",
+      proposalId: "proposal_autumn",
+      termsId: "terms_standard",
+      acceptedByContactId: ids.contact,
+      response: "change_requested",
+      respondedAt: "2026-08-11",
+      idempotencyKey: "response:change",
+      requestMetadata: {},
+      domainEventId: "event_change"
+    });
+    expect(changeResponse.status).toBe("change_requested");
+    expect(change.domainEvents[0]?.eventType).toBe("advertiser.proposal.change_requested");
+  });
+
+  it("keeps signature-required acceptance provider-neutral and pending", async () => {
+    const data = seededData();
+    seedProposal(data);
+    const acceptance = await acceptProposalCommercially(localContext(), permissions, audit(), data, {
+      acceptanceId: "acceptance_signature",
+      proposalId: "proposal_autumn",
+      termsId: "terms_standard",
+      acceptedByContactId: ids.contact,
+      acceptedAt: "2026-08-11",
+      idempotencyKey: "acceptance:signature",
+      requestMetadata: {},
+      bookingId: "booking_signature",
+      bookingItemIdPrefix: "booking_item_signature",
+      reservationIdPrefix: "reservation_signature",
+      productionRequestIdPrefix: "production_signature",
+      method: "signature_required",
+      providerMetadata: { providerKey: "test-provider" },
+      domainEventId: "event_signature"
+    });
+
+    expect(acceptance).toMatchObject({
+      status: "pending_signature",
+      acceptedAt: null,
+      bookingId: null
+    });
+    expect(data.bookings).toHaveLength(0);
+    expect(data.domainEvents).toHaveLength(0);
+  });
 });
 
 function hqContext() {
@@ -370,6 +526,9 @@ function emptyData(): AdvertisingData {
     bookings: [],
     bookingItems: [],
     productionRequests: [],
+    terms: [],
+    acceptances: [],
+    domainEvents: [],
     organisations: [
       { id: ids.organisations.hq, kind: "hq", name: "HQ" },
       { id: ids.organisations.franchise, kind: "franchise", name: "Own Franchise" },
@@ -449,7 +608,70 @@ function seededData() {
     status: "available",
     metadata: {}
   });
+  data.terms.push({
+    id: "terms_standard",
+    key: "standard-advertiser-terms",
+    version: "2026.1",
+    status: "approved",
+    title: "Standard terms",
+    contentHash: "sha256:terms",
+    contentSnapshot: { cancellation: "standard" },
+    approvedAt: "2026-01-01"
+  });
   return data;
+}
+
+function seedProposal(data: AdvertisingData, patch: Partial<AdvertisingData["proposals"][number]> = {}) {
+  data.proposals.push({
+    id: "proposal_autumn",
+    advertiserId: ids.advertiser,
+    opportunityId: ids.opportunity,
+    territoryId: ids.territories.own,
+    status: "sent",
+    version: 1,
+    title: "Autumn proposal",
+    totalValueMinor: 52500,
+    currency: "GBP",
+    validUntil: "2026-08-31",
+    sentOn: "2026-08-11",
+    acceptedOn: null,
+    metadata: { current: true },
+    ...patch
+  });
+  data.proposalItems.push({
+    id: "proposal_item_autumn",
+    proposalId: "proposal_autumn",
+    productId: ids.product,
+    inventorySlotId: ids.slot,
+    description: "Full page advert",
+    quantity: 1,
+    unitPriceMinor: 52500,
+    totalPriceMinor: 52500,
+    currency: "GBP",
+    metadata: {}
+  });
+}
+
+function simpleAcceptance(
+  data: AdvertisingData,
+  options: {
+    context?: { userId: string; organisationId: string; territoryId: string };
+  } = {}
+) {
+  return acceptProposalCommercially(options.context ?? localContext(), permissions, audit(), data, {
+    acceptanceId: "acceptance_autumn",
+    proposalId: "proposal_autumn",
+    termsId: "terms_standard",
+    acceptedByContactId: ids.contact,
+    acceptedAt: "2026-08-11",
+    idempotencyKey: "acceptance:proposal_autumn",
+    requestMetadata: {},
+    bookingId: "booking_autumn",
+    bookingItemIdPrefix: "booking_item_autumn",
+    reservationIdPrefix: "reservation_autumn",
+    productionRequestIdPrefix: "production_autumn",
+    domainEventId: "event_acceptance"
+  });
 }
 
 function pipelineStages() {

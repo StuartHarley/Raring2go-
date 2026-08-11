@@ -73,7 +73,9 @@ describe("foundation fixtures", () => {
       "advertiser.inventory",
       "advertiser.proposal",
       "advertiser.proposal",
-      "advertiser.booking"
+      "advertiser.booking",
+      "advertiser.proposal",
+      "advertiser.proposal"
     ]);
   });
 
@@ -215,6 +217,16 @@ describe("foundation fixtures", () => {
     });
     expect(foundationSeed.commercialBookings).toEqual([]);
     expect(foundationSeed.commercialProductionRequests).toEqual([]);
+  });
+
+  it("includes deterministic advertiser terms without acceptance side effects", () => {
+    expect(foundationSeed.advertiserTerms[0]).toMatchObject({
+      key: "standard-advertiser-terms",
+      version: "2026.1",
+      status: "approved"
+    });
+    expect(foundationSeed.advertiserProposalAcceptances).toEqual([]);
+    expect(foundationSeed.advertiserDomainEvents).toEqual([]);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

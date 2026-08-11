@@ -1,3 +1,5 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readAdvertiser360 } from "../../../../../lib/advertising-runtime";
 import { AppShell } from "../../../layout";
@@ -26,6 +28,9 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           Canonical advertiser relationship record for contacts, activity,
           commercial value and future bookings.
         </p>
+        <Link href={`/app/advertisers/${result.advertiser.id}/acceptance` as Route} className="app-link-button">
+          Review acceptance
+        </Link>
         <div className="franchise-metrics">
           <article>
             <span>Relationship</span>
@@ -54,6 +59,10 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           <article>
             <span>Bookings</span>
             <strong>{result.bookings.length}</strong>
+          </article>
+          <article>
+            <span>Acceptances</span>
+            <strong>{result.acceptances.length}</strong>
           </article>
         </div>
       </section>
@@ -111,6 +120,10 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           )}
         </div>
         <div className="franchise-facts">
+          <div>
+            <dt>Commercial acceptances</dt>
+            <dd>{result.acceptances.length}</dd>
+          </div>
           <div>
             <dt>Accepted bookings</dt>
             <dd>{result.bookings.length}</dd>

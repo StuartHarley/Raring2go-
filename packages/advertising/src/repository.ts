@@ -1,7 +1,10 @@
 import {
   advertiserActivityEvents,
   advertiserContacts,
+  advertiserDomainEvents,
   advertiserMetricSnapshots,
+  advertiserProposalAcceptances,
+  advertiserTerms,
   advertisers,
   commercialBookingItems,
   commercialBookings,
@@ -46,6 +49,9 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     bookingRows,
     bookingItemRows,
     productionRequestRows,
+    termsRows,
+    acceptanceRows,
+    domainEventRows,
     organisationRows,
     territoryRows
   ] = await Promise.all([
@@ -66,6 +72,9 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     db.select().from(commercialBookings),
     db.select().from(commercialBookingItems),
     db.select().from(commercialProductionRequests),
+    db.select().from(advertiserTerms),
+    db.select().from(advertiserProposalAcceptances),
+    db.select().from(advertiserDomainEvents),
     db.select().from(organisations),
     db.select().from(territories)
   ]);
@@ -116,6 +125,19 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
       ...row,
       dueOn: dateString(row.dueOn)
     })) as AdvertisingData["productionRequests"],
+    terms: termsRows.map((row) => ({
+      ...row,
+      approvedAt: dateString(row.approvedAt)
+    })) as AdvertisingData["terms"],
+    acceptances: acceptanceRows.map((row) => ({
+      ...row,
+      acceptedAt: dateString(row.acceptedAt),
+      rejectedAt: dateString(row.rejectedAt)
+    })) as AdvertisingData["acceptances"],
+    domainEvents: domainEventRows.map((row) => ({
+      ...row,
+      processedAt: dateString(row.processedAt)
+    })) as AdvertisingData["domainEvents"],
     organisations: organisationRows as AdvertisingData["organisations"],
     territories: territoryRows as AdvertisingData["territories"]
   };

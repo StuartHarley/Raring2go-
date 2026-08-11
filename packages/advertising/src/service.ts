@@ -5,6 +5,9 @@ import type {
   Advertiser360,
   AdvertiserActivityEvent,
   AdvertiserContact,
+  AdvertiserDomainEvent,
+  AdvertiserProposalAcceptance,
+  AdvertiserTerms,
   AdvertiserRecord,
   AdvertisingActorContext,
   AdvertisingData,
@@ -496,6 +499,188 @@ export async function acceptProposalAsBooking(
   return booking;
 }
 
+export async function acceptProposalCommercially(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: {
+    acceptanceId: string;
+    proposalId: string;
+    termsId: string;
+    acceptedByContactId: string;
+    acceptedAt: string;
+    idempotencyKey: string;
+    requestMetadata: Record<string, unknown>;
+    bookingId: string;
+    bookingItemIdPrefix: string;
+    reservationIdPrefix: string;
+    productionRequestIdPrefix: string;
+    method?: "simple" | "signature_required";
+    providerMetadata?: Record<string, unknown>;
+    domainEventId: string;
+  }
+) {
+  requireAdvertisingPermission(context, permissions, "proposalAccept");
+  const existing = data.acceptances.find((candidate) => candidate.idempotencyKey === input.idempotencyKey && !candidate.deletedAt);
+  if (existing) {
+    return existing;
+  }
+  const proposal = requireProposal(data, input.proposalId);
+  const advertiser = requireAdvertiser(data, proposal.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  const terms = requireTerms(data, input.termsId);
+  const contact = data.contacts.find((candidate) => candidate.id === input.acceptedByContactId && !candidate.deletedAt);
+  if (!contact || contact.advertiserId !== advertiser.id) {
+    throw new Error("Acceptance contact must belong to the advertiser.");
+  }
+  ensureProposalAcceptable(data, proposal, terms, input.acceptedAt);
+
+  const acceptance: AdvertiserProposalAcceptance = {
+    id: input.acceptanceId,
+    proposalId: proposal.id,
+    advertiserId: advertiser.id,
+    territoryId: proposal.territoryId,
+    termsId: terms.id,
+    bookingId: null,
+    method: input.method ?? "simple",
+    status: input.method === "signature_required" ? "pending_signature" : "accepted",
+    acceptedByContactId: contact.id,
+    acceptedAt: input.method === "signature_required" ? null : input.acceptedAt,
+    rejectedAt: null,
+    requestMetadata: { ...input.requestMetadata },
+    commercialSnapshot: commercialSnapshot(data, proposal, terms),
+    providerMetadata: input.method === "signature_required" ? { ...(input.providerMetadata ?? {}) } : {},
+    idempotencyKey: input.idempotencyKey
+  };
+
+  data.acceptances.push(acceptance);
+  if (acceptance.status === "accepted") {
+    const booking = await acceptProposalAsBooking(context, permissions, audit, data, {
+      proposalId: proposal.id,
+      bookingId: input.bookingId,
+      bookingItemIdPrefix: input.bookingItemIdPrefix,
+      reservationIdPrefix: input.reservationIdPrefix,
+      productionRequestIdPrefix: input.productionRequestIdPrefix,
+      acceptedOn: input.acceptedAt
+    });
+    acceptance.bookingId = booking.id;
+    emitAdvertiserEvent(data, {
+      id: input.domainEventId,
+      eventType: "advertiser.proposal.accepted",
+      entityType: "commercial_proposal",
+      entityId: proposal.id,
+      advertiserId: advertiser.id,
+      territoryId: proposal.territoryId,
+      payload: {
+        acceptanceId: acceptance.id,
+        bookingId: booking.id,
+        method: acceptance.method
+      },
+      idempotencyKey: `advertiser.proposal.accepted:${acceptance.id}`
+    });
+    emitAdvertiserEvent(data, {
+      id: `${input.domainEventId}_booking`,
+      eventType: "advertiser.booking.confirmed",
+      entityType: "commercial_booking",
+      entityId: booking.id,
+      advertiserId: advertiser.id,
+      territoryId: proposal.territoryId,
+      payload: {
+        proposalId: proposal.id,
+        acceptanceId: acceptance.id
+      },
+      idempotencyKey: `advertiser.booking.confirmed:${booking.id}`
+    });
+  }
+  await audit.record(auditEvent(context, auditActions.advertiserProposalAccept, advertiser, {
+    proposalId: proposal.id,
+    acceptanceId: acceptance.id,
+    method: acceptance.method,
+    status: acceptance.status
+  }));
+  if (acceptance.bookingId) {
+    await audit.record(auditEvent(context, auditActions.advertiserBookingConfirm, advertiser, {
+      proposalId: proposal.id,
+      bookingId: acceptance.bookingId
+    }));
+  }
+  return acceptance;
+}
+
+export async function respondToProposal(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: {
+    acceptanceId: string;
+    proposalId: string;
+    termsId: string;
+    acceptedByContactId: string;
+    response: "rejected" | "change_requested";
+    respondedAt: string;
+    idempotencyKey: string;
+    requestMetadata: Record<string, unknown>;
+    domainEventId: string;
+  }
+) {
+  requireAdvertisingPermission(context, permissions, "proposalRespond");
+  const existing = data.acceptances.find((candidate) => candidate.idempotencyKey === input.idempotencyKey && !candidate.deletedAt);
+  if (existing) {
+    return existing;
+  }
+  const proposal = requireProposal(data, input.proposalId);
+  const advertiser = requireAdvertiser(data, proposal.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  const terms = requireTerms(data, input.termsId);
+  const contact = data.contacts.find((candidate) => candidate.id === input.acceptedByContactId && !candidate.deletedAt);
+  if (!contact || contact.advertiserId !== advertiser.id) {
+    throw new Error("Response contact must belong to the advertiser.");
+  }
+  ensureProposalAcceptable(data, proposal, terms, input.respondedAt);
+  proposal.status = input.response;
+  const acceptance: AdvertiserProposalAcceptance = {
+    id: input.acceptanceId,
+    proposalId: proposal.id,
+    advertiserId: advertiser.id,
+    territoryId: proposal.territoryId,
+    termsId: terms.id,
+    bookingId: null,
+    method: "simple",
+    status: input.response,
+    acceptedByContactId: contact.id,
+    acceptedAt: null,
+    rejectedAt: input.respondedAt,
+    requestMetadata: { ...input.requestMetadata },
+    commercialSnapshot: commercialSnapshot(data, proposal, terms),
+    providerMetadata: {},
+    idempotencyKey: input.idempotencyKey
+  };
+  data.acceptances.push(acceptance);
+  emitAdvertiserEvent(data, {
+    id: input.domainEventId,
+    eventType: input.response === "rejected" ? "advertiser.proposal.rejected" : "advertiser.proposal.change_requested",
+    entityType: "commercial_proposal",
+    entityId: proposal.id,
+    advertiserId: advertiser.id,
+    territoryId: proposal.territoryId,
+    payload: {
+      acceptanceId: acceptance.id,
+      response: input.response
+    },
+    idempotencyKey: `advertiser.proposal.${input.response}:${acceptance.id}`
+  });
+  await audit.record(auditEvent(context, input.response === "rejected"
+    ? auditActions.advertiserProposalReject
+    : auditActions.advertiserProposalChangeRequest, advertiser, {
+    proposalId: proposal.id,
+    acceptanceId: acceptance.id,
+    response: input.response
+  }));
+  return acceptance;
+}
+
 function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserRecord): Advertiser360 {
   return {
     advertiser,
@@ -508,6 +693,7 @@ function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserReco
     proposals: data.proposals.filter((proposal) => proposal.advertiserId === advertiser.id && !proposal.deletedAt),
     bookings: data.bookings.filter((booking) => booking.advertiserId === advertiser.id && !booking.deletedAt),
     productionRequests: data.productionRequests.filter((request) => request.advertiserId === advertiser.id && !request.deletedAt),
+    acceptances: data.acceptances.filter((acceptance) => acceptance.advertiserId === advertiser.id && !acceptance.deletedAt),
     activity: data.activityEvents
       .filter((event) => event.advertiserId === advertiser.id && !event.deletedAt)
       .slice()
@@ -613,6 +799,74 @@ function requireProposal(data: AdvertisingData, proposalId: string) {
     throw new Error("Proposal was not found.");
   }
   return proposal;
+}
+
+function requireTerms(data: AdvertisingData, termsId: string): AdvertiserTerms {
+  const terms = data.terms.find((candidate) => candidate.id === termsId && !candidate.deletedAt);
+  if (!terms || terms.status !== "approved") {
+    throw new Error("Approved advertiser terms were not found.");
+  }
+  return terms;
+}
+
+function ensureProposalAcceptable(
+  data: AdvertisingData,
+  proposal: CommercialProposal,
+  terms: AdvertiserTerms,
+  todayDate: string
+) {
+  if (proposal.status !== "sent") {
+    throw new Error("Only sent proposals can be accepted or responded to.");
+  }
+  if (proposal.validUntil && proposal.validUntil < todayDate) {
+    throw new Error("Expired proposals cannot be accepted.");
+  }
+  if (proposal.metadata.current === false || proposal.metadata.supersededBy) {
+    throw new Error("Superseded proposal versions cannot be accepted.");
+  }
+  if (terms.status !== "approved") {
+    throw new Error("Only approved terms can be accepted.");
+  }
+  if (data.acceptances.some((candidate) => candidate.proposalId === proposal.id && !candidate.deletedAt)) {
+    throw new Error("Proposal already has an acceptance response.");
+  }
+}
+
+function commercialSnapshot(data: AdvertisingData, proposal: CommercialProposal, terms: AdvertiserTerms) {
+  const items = data.proposalItems.filter((item) => item.proposalId === proposal.id && !item.deletedAt);
+  return {
+    proposal: {
+      id: proposal.id,
+      version: proposal.version,
+      title: proposal.title,
+      totalValueMinor: proposal.totalValueMinor,
+      currency: proposal.currency,
+      validUntil: proposal.validUntil
+    },
+    items: items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      inventorySlotId: item.inventorySlotId ?? null,
+      description: item.description,
+      quantity: item.quantity,
+      unitPriceMinor: item.unitPriceMinor,
+      totalPriceMinor: item.totalPriceMinor,
+      currency: item.currency
+    })),
+    terms: {
+      id: terms.id,
+      key: terms.key,
+      version: terms.version,
+      contentHash: terms.contentHash
+    }
+  };
+}
+
+function emitAdvertiserEvent(data: AdvertisingData, event: AdvertiserDomainEvent) {
+  if (data.domainEvents.some((candidate) => candidate.idempotencyKey === event.idempotencyKey)) {
+    return;
+  }
+  data.domainEvents.push(event);
 }
 
 function requireOrganisation(data: AdvertisingData, organisationId: string) {

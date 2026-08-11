@@ -5,6 +5,7 @@ import {
   auditEvents,
   advertiserActivityEvents,
   advertiserContacts,
+  advertiserTerms,
   advertiserMetricSnapshots,
   advertisers,
   commercialPackages,
@@ -267,7 +268,9 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.inventoryReserve,
         fixtureIds.permissions.proposalView,
         fixtureIds.permissions.proposalCreate,
-        fixtureIds.permissions.bookingAccept
+        fixtureIds.permissions.bookingAccept,
+        fixtureIds.permissions.proposalAccept,
+        fixtureIds.permissions.proposalRespond
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -403,6 +406,18 @@ export async function seedDatabase(databaseUrl?: string) {
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.bookingAccept,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.proposalAccept,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.proposalRespond,
         scope: "own_territory",
         constraints: {}
       }
@@ -723,6 +738,25 @@ export async function seedDatabase(databaseUrl?: string) {
         totalPriceMinor: sql`excluded.total_price_minor`,
         currency: sql`excluded.currency`,
         metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(advertiserTerms).values(foundationSeed.advertiserTerms.map((terms) => ({
+      ...terms,
+      approvedAt: terms.approvedAt ? new Date(terms.approvedAt) : null,
+      contentSnapshot: { ...terms.contentSnapshot }
+    }))).onConflictDoUpdate({
+      target: advertiserTerms.id,
+      set: {
+        key: sql`excluded.key`,
+        version: sql`excluded.version`,
+        status: sql`excluded.status`,
+        title: sql`excluded.title`,
+        contentHash: sql`excluded.content_hash`,
+        contentSnapshot: sql`excluded.content_snapshot`,
+        approvedAt: sql`excluded.approved_at`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

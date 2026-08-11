@@ -80,7 +80,9 @@ export const fixtureIds = {
     inventoryReserve: "00000000-0000-4000-8000-000000000460",
     proposalView: "00000000-0000-4000-8000-000000000461",
     proposalCreate: "00000000-0000-4000-8000-000000000462",
-    bookingAccept: "00000000-0000-4000-8000-000000000463"
+    bookingAccept: "00000000-0000-4000-8000-000000000463",
+    proposalAccept: "00000000-0000-4000-8000-000000000464",
+    proposalRespond: "00000000-0000-4000-8000-000000000465"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -133,6 +135,9 @@ export const fixtureIds = {
   },
   commercialProductionRequests: {
     exampleAutumnArtwork: "00000000-0000-4000-8000-000000000720"
+  },
+  advertiserTerms: {
+    standard2026: "00000000-0000-4000-8000-000000000721"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -653,6 +658,18 @@ export const foundationSeed = {
       module: "advertiser.booking",
       action: "accept",
       description: "Accept proposals into commercial bookings."
+    },
+    {
+      id: fixtureIds.permissions.proposalAccept,
+      module: "advertiser.proposal",
+      action: "accept",
+      description: "Accept advertiser proposals under approved commercial terms."
+    },
+    {
+      id: fixtureIds.permissions.proposalRespond,
+      module: "advertiser.proposal",
+      action: "respond",
+      description: "Reject or request changes to advertiser proposals."
     }
   ],
   advertisers: [
@@ -913,6 +930,23 @@ export const foundationSeed = {
   commercialBookings: [],
   commercialBookingItems: [],
   commercialProductionRequests: [],
+  advertiserTerms: [
+    {
+      id: fixtureIds.advertiserTerms.standard2026,
+      key: "standard-advertiser-terms",
+      version: "2026.1",
+      status: "approved",
+      title: "Standard Advertiser Booking Terms",
+      contentHash: "sha256:standard-advertiser-terms-2026-1",
+      contentSnapshot: {
+        cancellation: "Standard cancellation terms apply.",
+        artwork: "Artwork must meet production deadlines and brand safety requirements."
+      },
+      approvedAt: "2026-01-01"
+    }
+  ],
+  advertiserProposalAcceptances: [],
+  advertiserDomainEvents: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

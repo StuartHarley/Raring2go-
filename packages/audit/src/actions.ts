@@ -89,7 +89,11 @@ export const auditActions = {
   advertiserInventoryReserve: "advertiser.inventory.reserve",
   advertiserProposalCreate: "advertiser.proposal.create",
   advertiserProposalAccept: "advertiser.proposal.accept",
-  advertiserBookingCreate: "advertiser.booking.create"
+  advertiserProposalReject: "advertiser.proposal.reject",
+  advertiserProposalChangeRequest: "advertiser.proposal.change.request",
+  advertiserProposalViewed: "advertiser.proposal.viewed",
+  advertiserBookingCreate: "advertiser.booking.create",
+  advertiserBookingConfirm: "advertiser.booking.confirm"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

@@ -9,7 +9,10 @@ import {
   agreementSigners,
   advertiserActivityEvents,
   advertiserContacts,
+  advertiserDomainEvents,
   advertiserMetricSnapshots,
+  advertiserProposalAcceptances,
+  advertiserTerms,
   advertisers,
   commercialPackages,
   commercialProducts,
@@ -145,6 +148,16 @@ describe("foundation schema", () => {
     expect(commercialProductionRequests.bookingItemId.name).toBe("booking_item_id");
     expect((commercialBookings as unknown as Record<string, unknown>).invoiceId).toBeUndefined();
     expect((commercialProposals as unknown as Record<string, unknown>).signatureEnvelopeId).toBeUndefined();
+  });
+
+  it("models advertiser commercial acceptance without forcing e-sign", () => {
+    expect(advertiserTerms.contentHash.name).toBe("content_hash");
+    expect(advertiserProposalAcceptances.method.name).toBe("method");
+    expect(advertiserProposalAcceptances.commercialSnapshot.name).toBe("commercial_snapshot");
+    expect(advertiserProposalAcceptances.providerMetadata.name).toBe("provider_metadata");
+    expect(advertiserDomainEvents.idempotencyKey.name).toBe("idempotency_key");
+    expect((advertiserProposalAcceptances as unknown as Record<string, unknown>).signingOrder).toBeUndefined();
+    expect((advertiserProposalAcceptances as unknown as Record<string, unknown>).certificateArtifactId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

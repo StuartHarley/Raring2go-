@@ -195,7 +195,7 @@ export type CommercialProposal = {
   advertiserId: string;
   opportunityId?: string | null;
   territoryId: string;
-  status: "draft" | "sent" | "accepted" | "declined" | "expired" | (string & {});
+  status: "draft" | "sent" | "accepted" | "rejected" | "change_requested" | "declined" | "expired" | (string & {});
   version: number;
   title: string;
   totalValueMinor: number;
@@ -263,6 +263,49 @@ export type CommercialProductionRequest = {
   deletedAt?: Date | null;
 };
 
+export type AdvertiserTerms = {
+  id: string;
+  key: string;
+  version: string;
+  status: string;
+  title: string;
+  contentHash: string;
+  contentSnapshot: Record<string, unknown>;
+  approvedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type AdvertiserProposalAcceptance = {
+  id: string;
+  proposalId: string;
+  advertiserId: string;
+  territoryId: string;
+  termsId: string;
+  bookingId?: string | null;
+  method: "simple" | "signature_required" | (string & {});
+  status: "accepted" | "rejected" | "change_requested" | "pending_signature" | (string & {});
+  acceptedByContactId?: string | null;
+  acceptedAt?: string | null;
+  rejectedAt?: string | null;
+  requestMetadata: Record<string, unknown>;
+  commercialSnapshot: Record<string, unknown>;
+  providerMetadata: Record<string, unknown>;
+  idempotencyKey: string;
+  deletedAt?: Date | null;
+};
+
+export type AdvertiserDomainEvent = {
+  id: string;
+  eventType: string;
+  entityType: string;
+  entityId: string;
+  advertiserId?: string | null;
+  territoryId?: string | null;
+  payload: Record<string, unknown>;
+  idempotencyKey: string;
+  processedAt?: string | null;
+};
+
 export type AdvertisingOrganisation = {
   id: string;
   kind: string;
@@ -295,6 +338,9 @@ export type AdvertisingData = {
   bookings: CommercialBooking[];
   bookingItems: CommercialBookingItem[];
   productionRequests: CommercialProductionRequest[];
+  terms: AdvertiserTerms[];
+  acceptances: AdvertiserProposalAcceptance[];
+  domainEvents: AdvertiserDomainEvent[];
   organisations: AdvertisingOrganisation[];
   territories: AdvertisingTerritory[];
 };
@@ -308,6 +354,7 @@ export type Advertiser360 = {
   proposals: CommercialProposal[];
   bookings: CommercialBooking[];
   productionRequests: CommercialProductionRequest[];
+  acceptances: AdvertiserProposalAcceptance[];
   activity: AdvertiserActivityEvent[];
   latestMetrics?: AdvertiserMetricSnapshot;
 };

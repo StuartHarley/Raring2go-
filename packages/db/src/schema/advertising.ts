@@ -414,3 +414,75 @@ export const commercialProductionRequests = pgTable(
     index("commercial_production_requests_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const advertiserTerms = pgTable(
+  "advertiser_terms",
+  {
+    id,
+    key: text("key").notNull(),
+    version: text("version").notNull(),
+    status: text("status").notNull().default("draft"),
+    title: text("title").notNull(),
+    contentHash: text("content_hash").notNull(),
+    contentSnapshot: jsonb("content_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    approvedAt: date("approved_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("advertiser_terms_key_version_uidx").on(table.key, table.version),
+    index("advertiser_terms_status_idx").on(table.status),
+    index("advertiser_terms_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const advertiserProposalAcceptances = pgTable(
+  "advertiser_proposal_acceptances",
+  {
+    id,
+    proposalId: uuid("proposal_id").notNull().references(() => commercialProposals.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    termsId: uuid("terms_id").notNull().references(() => advertiserTerms.id),
+    bookingId: uuid("booking_id").references(() => commercialBookings.id),
+    method: text("method").notNull(),
+    status: text("status").notNull(),
+    acceptedByContactId: uuid("accepted_by_contact_id").references(() => advertiserContacts.id),
+    acceptedAt: date("accepted_at", { mode: "date" }),
+    rejectedAt: date("rejected_at", { mode: "date" }),
+    requestMetadata: jsonb("request_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    commercialSnapshot: jsonb("commercial_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    providerMetadata: jsonb("provider_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    idempotencyKey: text("idempotency_key").notNull(),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("advertiser_proposal_acceptances_idempotency_uidx").on(table.idempotencyKey),
+    index("advertiser_proposal_acceptances_proposal_id_idx").on(table.proposalId),
+    index("advertiser_proposal_acceptances_advertiser_id_idx").on(table.advertiserId),
+    index("advertiser_proposal_acceptances_status_idx").on(table.status),
+    index("advertiser_proposal_acceptances_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const advertiserDomainEvents = pgTable(
+  "advertiser_domain_events",
+  {
+    id,
+    eventType: text("event_type").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    advertiserId: uuid("advertiser_id").references(() => advertisers.id),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    idempotencyKey: text("idempotency_key").notNull(),
+    processedAt: date("processed_at", { mode: "date" }),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("advertiser_domain_events_idempotency_uidx").on(table.idempotencyKey),
+    index("advertiser_domain_events_type_idx").on(table.eventType),
+    index("advertiser_domain_events_entity_idx").on(table.entityType, table.entityId)
+  ]
+);
