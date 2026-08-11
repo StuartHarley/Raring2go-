@@ -17,7 +17,13 @@ import {
   franchiseDocuments,
   franchiseDomainEvents,
   franchiseInsurancePolicies,
+  franchiseOnboardingBlockers,
+  franchiseOnboardingProgrammes,
+  franchiseOnboardingTasks,
   franchises,
+  onboardingTemplatePhases,
+  onboardingTemplates,
+  onboardingTemplateTasks,
   organisations,
   territories,
   users
@@ -98,5 +104,17 @@ describe("foundation schema", () => {
     expect(franchiseComplianceReminders.complianceActionId.name).toBe("compliance_action_id");
     expect(franchiseComplianceReminders.scheduledFor.name).toBe("scheduled_for");
     expect((franchiseComplianceActions as unknown as Record<string, unknown>).workflowDefinitionId).toBeUndefined();
+  });
+
+  it("models configurable onboarding templates and launch programmes", () => {
+    expect(onboardingTemplates.key.name).toBe("key");
+    expect(onboardingTemplatePhases.templateId.name).toBe("template_id");
+    expect(onboardingTemplateTasks.dueRule.name).toBe("due_rule");
+    expect(onboardingTemplateTasks.dependencyRules.name).toBe("dependency_rules");
+    expect(franchiseOnboardingProgrammes.idempotencyKey.name).toBe("idempotency_key");
+    expect(franchiseOnboardingProgrammes.targetLaunchDate.name).toBe("target_launch_date");
+    expect(franchiseOnboardingTasks.dueDateOverridden.name).toBe("due_date_overridden");
+    expect(franchiseOnboardingBlockers.status.name).toBe("status");
+    expect((franchiseOnboardingProgrammes as unknown as Record<string, unknown>).royaltyPlanId).toBeUndefined();
   });
 });

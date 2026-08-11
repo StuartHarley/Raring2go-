@@ -12,13 +12,21 @@ import {
   declineSigningAction,
   ensureComplianceActionsAction,
   generateAgreementAction,
+  approveLaunchAction,
+  approveOnboardingTaskAction,
+  changeOnboardingTargetAction,
+  completeOnboardingTaskAction,
+  markLaunchedAction,
+  raiseOnboardingBlockerAction,
   rejectComplianceAction,
   rejectInsuranceAction,
   resolveComplianceActionAction,
+  resolveOnboardingBlockerAction,
   resendSignatureAction,
   sendAgreementForSignatureAction,
   submitComplianceEvidenceAction,
   submitAgreementAction,
+  startOnboardingAction,
   updateFranchiseAction,
   upsertInsuranceAction,
   uploadDocumentAction,
@@ -57,6 +65,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     voidCurrent,
     canEdit,
     complianceActions,
+    onboardingActions,
     documentActions
   } = result;
 
@@ -74,6 +83,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             "Performance",
             "Agreement",
             "Compliance",
+            "Onboarding",
             "Training",
             "Support",
             "Documents",
@@ -138,6 +148,18 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             <div>
               <dt>Open actions</dt>
               <dd>{view.complianceActions.filter((action) => action.status === "open").length}</dd>
+            </div>
+            <div>
+              <dt>Launch target</dt>
+              <dd>{view.onboarding.programme?.targetLaunchDate ?? "Not started"}</dd>
+            </div>
+            <div>
+              <dt>Launch progress</dt>
+              <dd>{view.onboarding.progress}%</dd>
+            </div>
+            <div>
+              <dt>Launch readiness</dt>
+              <dd>{view.onboarding.readiness}</dd>
             </div>
           </dl>
           {canEdit ? (
@@ -446,6 +468,116 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             </form>
           ) : null}
         </section>
+        <section id="onboarding" className="app-panel">
+          <p className="eyebrow">Onboarding</p>
+          <h3>Launch command centre</h3>
+          {view.onboarding.programme ? (
+            <>
+              <dl className="franchise-facts">
+                <div>
+                  <dt>Progress</dt>
+                  <dd>{view.onboarding.progress}%</dd>
+                </div>
+                <div>
+                  <dt>Target launch</dt>
+                  <dd>{view.onboarding.programme.targetLaunchDate}</dd>
+                </div>
+                <div>
+                  <dt>Readiness</dt>
+                  <dd>{view.onboarding.readiness}</dd>
+                </div>
+                <div>
+                  <dt>Current phase</dt>
+                  <dd>{view.onboarding.currentPhase ?? "Complete"}</dd>
+                </div>
+                <div>
+                  <dt>Overdue</dt>
+                  <dd>{view.onboarding.overdueTasks}</dd>
+                </div>
+                <div>
+                  <dt>Blocked</dt>
+                  <dd>{view.onboarding.blockedTasks}</dd>
+                </div>
+              </dl>
+              {canEdit ? (
+                <div className="franchise-actions">
+                  <form action={onboardingActions.changeTarget} className="franchise-form">
+                    <label>
+                      Target launch
+                      <input name="targetLaunchDate" type="date" defaultValue={view.onboarding.programme.targetLaunchDate} />
+                    </label>
+                    <button type="submit">Update target</button>
+                  </form>
+                  <form action={onboardingActions.approveLaunch}><button type="submit">Approve launch</button></form>
+                  <form action={onboardingActions.markLaunched}><button type="submit">Mark launched</button></form>
+                </div>
+              ) : null}
+              <div className="franchise-list">
+                {view.onboarding.tasks.map((task) => (
+                  <div key={task.id}>
+                    <strong>{task.phaseName}: {task.title}</strong>
+                    <span>{task.status} - {task.ownerType}</span>
+                    <span>{task.dueDate ? `Due ${task.dueDate}` : "No due date"}</span>
+                    {task.status === "blocked" ? <span>Blocked by dependency</span> : null}
+                    <div className="franchise-actions">
+                      <form action={onboardingActions.tasks[task.id]?.complete}>
+                        <button type="submit">Complete</button>
+                      </form>
+                      {canEdit ? (
+                        <form action={onboardingActions.tasks[task.id]?.approve}>
+                          <button type="submit">Approve</button>
+                        </form>
+                      ) : null}
+                    </div>
+                    {canEdit ? (
+                      <form action={onboardingActions.tasks[task.id]?.raiseBlocker} className="franchise-form">
+                        <label>
+                          Blocker
+                          <input name="title" defaultValue="Needs attention" />
+                        </label>
+                        <label>
+                          Notes
+                          <input name="notes" />
+                        </label>
+                        <button type="submit">Raise blocker</button>
+                      </form>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              {view.onboarding.blockers.length > 0 ? (
+                <div className="franchise-list">
+                  {view.onboarding.blockers.map((blocker) => (
+                    <div key={blocker.id}>
+                      <strong>{blocker.title}</strong>
+                      <span>{blocker.status}</span>
+                      <span>{blocker.notes ?? "No notes"}</span>
+                      {canEdit && blocker.status === "open" ? (
+                        <form action={onboardingActions.blockers[blocker.id]?.resolve}>
+                          <button type="submit">Resolve blocker</button>
+                        </form>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="franchise-empty">
+              <h3>No onboarding programme yet</h3>
+              <p>Start a guided launch plan from the executed agreement or create one manually.</p>
+              {canEdit ? (
+                <form action={onboardingActions.start} className="franchise-form">
+                  <label>
+                    Target launch
+                    <input name="targetLaunchDate" type="date" defaultValue="2026-11-01" />
+                  </label>
+                  <button type="submit">Start onboarding</button>
+                </form>
+              ) : null}
+            </div>
+          )}
+        </section>
         {Object.entries(view.placeholders).map(([key]) => (
           <section key={key} id={key} className="app-panel">
             <p className="eyebrow">{key}</p>
@@ -505,6 +637,36 @@ async function loadFranchise360(
     const uploadDocument = uploadDocumentAction.bind(null, context, id);
     const upsertInsurance = upsertInsuranceAction.bind(null, context, id);
     const ensureActions = ensureComplianceActionsAction.bind(null, context, id);
+    const onboardingActions = {
+      start: startOnboardingAction.bind(null, context, id),
+      changeTarget: view.onboarding.programme
+        ? changeOnboardingTargetAction.bind(null, context, id, view.onboarding.programme.id)
+        : undefined,
+      approveLaunch: view.onboarding.programme
+        ? approveLaunchAction.bind(null, context, id, view.onboarding.programme.id)
+        : undefined,
+      markLaunched: view.onboarding.programme
+        ? markLaunchedAction.bind(null, context, id, view.onboarding.programme.id)
+        : undefined,
+      tasks: Object.fromEntries(
+        view.onboarding.tasks.map((task) => [
+          task.id,
+          {
+            complete: completeOnboardingTaskAction.bind(null, context, id, task.id),
+            approve: approveOnboardingTaskAction.bind(null, context, id, task.id),
+            raiseBlocker: raiseOnboardingBlockerAction.bind(null, context, id, task.id)
+          }
+        ])
+      ),
+      blockers: Object.fromEntries(
+        view.onboarding.blockers.map((blocker) => [
+          blocker.id,
+          {
+            resolve: resolveOnboardingBlockerAction.bind(null, context, id, blocker.id)
+          }
+        ])
+      )
+    };
     const documentActions = Object.fromEntries(
       view.documents.map((document) => [
         document.id,
@@ -571,6 +733,7 @@ async function loadFranchise360(
       view,
       voidCurrent,
       complianceActions,
+      onboardingActions,
       documentActions
     };
   } catch (error) {

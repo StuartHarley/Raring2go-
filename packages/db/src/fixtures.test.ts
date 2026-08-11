@@ -37,7 +37,14 @@ describe("foundation fixtures", () => {
       "franchise.compliance",
       "franchise.compliance",
       "franchise.compliance",
-      "franchise.compliance"
+      "franchise.compliance",
+      "franchise.onboarding",
+      "franchise.onboarding",
+      "franchise.onboarding",
+      "franchise.onboarding",
+      "franchise.onboarding",
+      "franchise.onboarding",
+      "franchise.onboarding"
     ]);
   });
 
@@ -85,6 +92,17 @@ describe("foundation fixtures", () => {
     expect(foundationSeed.complianceRecords[0]?.evidenceDocumentId).toBe(
       fixtureIds.franchiseDocuments.suttonInsurance
     );
+  });
+
+  it("includes a deterministic onboarding launch template fixture", () => {
+    expect(fixtureIds.onboardingTemplates.starter).toBe(
+      "00000000-0000-4000-8000-000000000940"
+    );
+    expect(foundationSeed.onboardingTemplates[0]?.key).toBe(
+      "raring2go-starter-launch"
+    );
+    expect(foundationSeed.onboardingTemplatePhases).toHaveLength(7);
+    expect(foundationSeed.onboardingTemplateTasks.map((task) => task.readinessGate)).toContain(true);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

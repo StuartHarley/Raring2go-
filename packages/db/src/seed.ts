@@ -15,6 +15,9 @@ import {
   franchises,
   franchiseInsurancePolicies,
   memberships,
+  onboardingTemplatePhases,
+  onboardingTemplateTasks,
+  onboardingTemplates,
   organisations,
   permissions,
   rolePermissions,
@@ -210,7 +213,14 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.complianceSubmitEvidence,
         fixtureIds.permissions.complianceVerify,
         fixtureIds.permissions.complianceManageActions,
-        fixtureIds.permissions.complianceViewNetwork
+        fixtureIds.permissions.complianceViewNetwork,
+        fixtureIds.permissions.onboardingView,
+        fixtureIds.permissions.onboardingManage,
+        fixtureIds.permissions.onboardingTemplateManage,
+        fixtureIds.permissions.onboardingTaskComplete,
+        fixtureIds.permissions.onboardingTaskAssign,
+        fixtureIds.permissions.onboardingApproveMilestone,
+        fixtureIds.permissions.onboardingApproveLaunch
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -238,6 +248,18 @@ export async function seedDatabase(databaseUrl?: string) {
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.complianceSubmitEvidence,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.onboardingView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.onboardingTaskComplete,
         scope: "own_territory",
         constraints: {}
       }
@@ -477,6 +499,51 @@ export async function seedDatabase(databaseUrl?: string) {
         verifiedByUserId: sql`excluded.verified_by_user_id`,
         verifiedAt: sql`excluded.verified_at`,
         rejectedReason: sql`excluded.rejected_reason`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(onboardingTemplates).values([...foundationSeed.onboardingTemplates]).onConflictDoUpdate({
+      target: onboardingTemplates.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        status: sql`excluded.status`,
+        readinessRules: sql`excluded.readiness_rules`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(onboardingTemplatePhases).values([...foundationSeed.onboardingTemplatePhases]).onConflictDoUpdate({
+      target: onboardingTemplatePhases.id,
+      set: {
+        templateId: sql`excluded.template_id`,
+        name: sql`excluded.name`,
+        sortOrder: sql`excluded.sort_order`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(onboardingTemplateTasks).values(foundationSeed.onboardingTemplateTasks.map((task) => ({
+      ...task,
+      dueRule: { ...task.dueRule },
+      dependencyRules: [...task.dependencyRules]
+    }))).onConflictDoUpdate({
+      target: onboardingTemplateTasks.id,
+      set: {
+        phaseId: sql`excluded.phase_id`,
+        title: sql`excluded.title`,
+        description: sql`excluded.description`,
+        ownerType: sql`excluded.owner_type`,
+        required: sql`excluded.required`,
+        approvalRequired: sql`excluded.approval_required`,
+        dueRule: sql`excluded.due_rule`,
+        dependencyRules: sql`excluded.dependency_rules`,
+        readinessGate: sql`excluded.readiness_gate`,
+        sortOrder: sql`excluded.sort_order`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

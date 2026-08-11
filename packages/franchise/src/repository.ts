@@ -16,6 +16,12 @@ import {
   franchiseAgreements,
   franchiseInsurancePolicies,
   franchiseContacts,
+  franchiseOnboardingBlockers,
+  franchiseOnboardingProgrammes,
+  franchiseOnboardingTasks,
+  onboardingTemplatePhases,
+  onboardingTemplateTasks,
+  onboardingTemplates,
   franchises,
   organisations,
   territories,
@@ -47,6 +53,12 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     complianceRecordRows,
     complianceActionRows,
     complianceReminderRows,
+    onboardingTemplateRows,
+    onboardingTemplatePhaseRows,
+    onboardingTemplateTaskRows,
+    onboardingProgrammeRows,
+    onboardingTaskRows,
+    onboardingBlockerRows,
     domainEventRows,
     activityRows
   ] = await Promise.all([
@@ -69,6 +81,12 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
     db.select().from(franchiseComplianceRecords),
     db.select().from(franchiseComplianceActions),
     db.select().from(franchiseComplianceReminders),
+    db.select().from(onboardingTemplates),
+    db.select().from(onboardingTemplatePhases),
+    db.select().from(onboardingTemplateTasks),
+    db.select().from(franchiseOnboardingProgrammes),
+    db.select().from(franchiseOnboardingTasks),
+    db.select().from(franchiseOnboardingBlockers),
     db.select().from(franchiseDomainEvents),
     db.select().from(auditEvents).orderBy(desc(auditEvents.createdAt)).limit(50)
   ]);
@@ -142,6 +160,25 @@ export async function loadFranchiseData(db: FranchiseDb): Promise<FranchiseData>
       ...reminder,
       scheduledFor: dateToString(reminder.scheduledFor),
       sentAt: dateToString(reminder.sentAt)
+    })),
+    onboardingTemplates: onboardingTemplateRows,
+    onboardingTemplatePhases: onboardingTemplatePhaseRows,
+    onboardingTemplateTasks: onboardingTemplateTaskRows,
+    onboardingProgrammes: onboardingProgrammeRows.map((programme: any) => ({
+      ...programme,
+      targetLaunchDate: dateToString(programme.targetLaunchDate),
+      actualLaunchDate: dateToString(programme.actualLaunchDate),
+      launchApprovedAt: dateToString(programme.launchApprovedAt)
+    })),
+    onboardingTasks: onboardingTaskRows.map((task: any) => ({
+      ...task,
+      dueDate: dateToString(task.dueDate),
+      approvedAt: dateToString(task.approvedAt),
+      completedAt: dateToString(task.completedAt)
+    })),
+    onboardingBlockers: onboardingBlockerRows.map((blocker: any) => ({
+      ...blocker,
+      resolvedAt: dateToString(blocker.resolvedAt)
     })),
     domainEvents: domainEventRows.map((event: any) => ({
       ...event,
@@ -426,6 +463,94 @@ export async function updateComplianceActionRecord(
     status: action.status,
     resolvedAt: action.resolvedAt ? new Date(action.resolvedAt) : null
   }).where(eq(franchiseComplianceActions.id, action.id));
+}
+
+export async function insertOnboardingProgrammeGraph(
+  db: FranchiseDb,
+  programme: NonNullable<FranchiseData["onboardingProgrammes"]>[number],
+  tasks: NonNullable<FranchiseData["onboardingTasks"]>
+) {
+  await db.insert(franchiseOnboardingProgrammes).values({
+    ...programme,
+    targetLaunchDate: new Date(programme.targetLaunchDate),
+    actualLaunchDate: programme.actualLaunchDate ? new Date(programme.actualLaunchDate) : null,
+    launchApprovedAt: programme.launchApprovedAt ? new Date(programme.launchApprovedAt) : null
+  }).onConflictDoNothing();
+
+  if (tasks.length > 0) {
+    await db.insert(franchiseOnboardingTasks).values(tasks.map((task) => ({
+      ...task,
+      dueDate: task.dueDate ? new Date(task.dueDate) : null,
+      approvedAt: task.approvedAt ? new Date(task.approvedAt) : null,
+      completedAt: task.completedAt ? new Date(task.completedAt) : null
+    }))).onConflictDoNothing();
+  }
+}
+
+export async function updateOnboardingProgrammeRecord(
+  db: FranchiseDb,
+  programme: NonNullable<FranchiseData["onboardingProgrammes"]>[number]
+) {
+  await db.update(franchiseOnboardingProgrammes).set({
+    status: programme.status,
+    targetLaunchDate: new Date(programme.targetLaunchDate),
+    actualLaunchDate: programme.actualLaunchDate ? new Date(programme.actualLaunchDate) : null,
+    launchReadiness: programme.launchReadiness,
+    launchApprovedByUserId: programme.launchApprovedByUserId,
+    launchApprovedAt: programme.launchApprovedAt ? new Date(programme.launchApprovedAt) : null
+  }).where(eq(franchiseOnboardingProgrammes.id, programme.id));
+}
+
+export async function updateOnboardingTaskRecord(
+  db: FranchiseDb,
+  task: NonNullable<FranchiseData["onboardingTasks"]>[number]
+) {
+  await db.update(franchiseOnboardingTasks).set({
+    ownerUserId: task.ownerUserId,
+    status: task.status,
+    approvedByUserId: task.approvedByUserId,
+    approvedAt: task.approvedAt ? new Date(task.approvedAt) : null,
+    dueDate: task.dueDate ? new Date(task.dueDate) : null,
+    dueDateOverridden: task.dueDateOverridden,
+    completedByUserId: task.completedByUserId,
+    completedAt: task.completedAt ? new Date(task.completedAt) : null,
+    evidenceDocumentId: task.evidenceDocumentId
+  }).where(eq(franchiseOnboardingTasks.id, task.id));
+}
+
+export async function insertOnboardingBlockerRecord(
+  db: FranchiseDb,
+  blocker: NonNullable<FranchiseData["onboardingBlockers"]>[number]
+) {
+  await db.insert(franchiseOnboardingBlockers).values({
+    ...blocker,
+    resolvedAt: blocker.resolvedAt ? new Date(blocker.resolvedAt) : null
+  }).onConflictDoNothing();
+}
+
+export async function updateOnboardingBlockerRecord(
+  db: FranchiseDb,
+  blocker: NonNullable<FranchiseData["onboardingBlockers"]>[number]
+) {
+  await db.update(franchiseOnboardingBlockers).set({
+    status: blocker.status,
+    resolvedByUserId: blocker.resolvedByUserId,
+    resolvedAt: blocker.resolvedAt ? new Date(blocker.resolvedAt) : null
+  }).where(eq(franchiseOnboardingBlockers.id, blocker.id));
+}
+
+export async function insertDomainEvents(
+  db: FranchiseDb,
+  events: NonNullable<FranchiseData["domainEvents"]>
+) {
+  if (events.length === 0) {
+    return;
+  }
+
+  await db.insert(franchiseDomainEvents).values(events.map((event) => ({
+    ...event,
+    processedAt: event.processedAt ? new Date(event.processedAt) : null
+  }))).onConflictDoNothing();
 }
 
 export async function updateFranchiseRecord(

@@ -44,7 +44,14 @@ export const fixtureIds = {
     complianceSubmitEvidence: "00000000-0000-4000-8000-000000000424",
     complianceVerify: "00000000-0000-4000-8000-000000000425",
     complianceManageActions: "00000000-0000-4000-8000-000000000426",
-    complianceViewNetwork: "00000000-0000-4000-8000-000000000427"
+    complianceViewNetwork: "00000000-0000-4000-8000-000000000427",
+    onboardingView: "00000000-0000-4000-8000-000000000428",
+    onboardingManage: "00000000-0000-4000-8000-000000000429",
+    onboardingTemplateManage: "00000000-0000-4000-8000-000000000430",
+    onboardingTaskComplete: "00000000-0000-4000-8000-000000000431",
+    onboardingTaskAssign: "00000000-0000-4000-8000-000000000432",
+    onboardingApproveMilestone: "00000000-0000-4000-8000-000000000433",
+    onboardingApproveLaunch: "00000000-0000-4000-8000-000000000434"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -82,6 +89,27 @@ export const fixtureIds = {
   },
   complianceRecords: {
     suttonPublicLiabilityInsurance: "00000000-0000-4000-8000-000000000939"
+  },
+  onboardingTemplates: {
+    starter: "00000000-0000-4000-8000-000000000940"
+  },
+  onboardingTemplatePhases: {
+    setup: "00000000-0000-4000-8000-000000000941",
+    systems: "00000000-0000-4000-8000-000000000942",
+    training: "00000000-0000-4000-8000-000000000943",
+    commercial: "00000000-0000-4000-8000-000000000944",
+    editorial: "00000000-0000-4000-8000-000000000945",
+    audience: "00000000-0000-4000-8000-000000000946",
+    readiness: "00000000-0000-4000-8000-000000000947"
+  },
+  onboardingTemplateTasks: {
+    agreementExecuted: "00000000-0000-4000-8000-000000000948",
+    complianceComplete: "00000000-0000-4000-8000-000000000949",
+    accessReady: "00000000-0000-4000-8000-000000000950",
+    trainingComplete: "00000000-0000-4000-8000-000000000951",
+    mediaPackReady: "00000000-0000-4000-8000-000000000952",
+    editionSelected: "00000000-0000-4000-8000-000000000953",
+    launchApproved: "00000000-0000-4000-8000-000000000954"
   },
   invitations: {
     franchiseStaff: "00000000-0000-4000-8000-000000000801"
@@ -313,6 +341,48 @@ export const foundationSeed = {
       module: "franchise.compliance",
       action: "view_network",
       description: "View network compliance overview."
+    },
+    {
+      id: fixtureIds.permissions.onboardingView,
+      module: "franchise.onboarding",
+      action: "view",
+      description: "View onboarding launch plans."
+    },
+    {
+      id: fixtureIds.permissions.onboardingManage,
+      module: "franchise.onboarding",
+      action: "manage",
+      description: "Create and manage onboarding programmes."
+    },
+    {
+      id: fixtureIds.permissions.onboardingTemplateManage,
+      module: "franchise.onboarding",
+      action: "template_manage",
+      description: "Manage onboarding templates."
+    },
+    {
+      id: fixtureIds.permissions.onboardingTaskComplete,
+      module: "franchise.onboarding",
+      action: "task_complete",
+      description: "Complete onboarding tasks."
+    },
+    {
+      id: fixtureIds.permissions.onboardingTaskAssign,
+      module: "franchise.onboarding",
+      action: "task_assign",
+      description: "Assign onboarding task ownership."
+    },
+    {
+      id: fixtureIds.permissions.onboardingApproveMilestone,
+      module: "franchise.onboarding",
+      action: "approve_milestone",
+      description: "Approve onboarding milestones."
+    },
+    {
+      id: fixtureIds.permissions.onboardingApproveLaunch,
+      module: "franchise.onboarding",
+      action: "approve_launch",
+      description: "Approve franchise launch."
     }
   ],
   franchises: [
@@ -495,6 +565,151 @@ export const foundationSeed = {
       evidenceDocumentId: fixtureIds.franchiseDocuments.suttonInsurance,
       status: "pending_review",
       expiresAt: "2026-09-21"
+    }
+  ],
+  onboardingTemplates: [
+    {
+      id: fixtureIds.onboardingTemplates.starter,
+      key: "raring2go-starter-launch",
+      name: "Raring2go Starter Launch",
+      status: "active",
+      readinessRules: {
+        gates: ["agreement_executed", "mandatory_compliance", "readiness_tasks"]
+      }
+    }
+  ],
+  onboardingTemplatePhases: [
+    {
+      id: fixtureIds.onboardingTemplatePhases.setup,
+      templateId: fixtureIds.onboardingTemplates.starter,
+      name: "Franchise setup",
+      sortOrder: 1
+    },
+    {
+      id: fixtureIds.onboardingTemplatePhases.systems,
+      templateId: fixtureIds.onboardingTemplates.starter,
+      name: "Systems & access",
+      sortOrder: 2
+    },
+    {
+      id: fixtureIds.onboardingTemplatePhases.training,
+      templateId: fixtureIds.onboardingTemplates.starter,
+      name: "Training",
+      sortOrder: 3
+    },
+    {
+      id: fixtureIds.onboardingTemplatePhases.commercial,
+      templateId: fixtureIds.onboardingTemplates.starter,
+      name: "Commercial launch",
+      sortOrder: 4
+    },
+    {
+      id: fixtureIds.onboardingTemplatePhases.editorial,
+      templateId: fixtureIds.onboardingTemplates.starter,
+      name: "Editorial & publishing setup",
+      sortOrder: 5
+    },
+    {
+      id: fixtureIds.onboardingTemplatePhases.audience,
+      templateId: fixtureIds.onboardingTemplates.starter,
+      name: "Audience & marketing",
+      sortOrder: 6
+    },
+    {
+      id: fixtureIds.onboardingTemplatePhases.readiness,
+      templateId: fixtureIds.onboardingTemplates.starter,
+      name: "Launch readiness",
+      sortOrder: 7
+    }
+  ],
+  onboardingTemplateTasks: [
+    {
+      id: fixtureIds.onboardingTemplateTasks.agreementExecuted,
+      phaseId: fixtureIds.onboardingTemplatePhases.setup,
+      title: "Agreement executed",
+      ownerType: "hq",
+      required: true,
+      approvalRequired: false,
+      dueRule: { type: "after_agreement_execution", days: 0 },
+      dependencyRules: [{ type: "executed_agreement", title: "Agreement executed" }],
+      readinessGate: true,
+      sortOrder: 1
+    },
+    {
+      id: fixtureIds.onboardingTemplateTasks.complianceComplete,
+      phaseId: fixtureIds.onboardingTemplatePhases.setup,
+      title: "Mandatory compliance complete",
+      ownerType: "franchisee",
+      required: true,
+      approvalRequired: true,
+      dueRule: { type: "after_agreement_execution", days: 14 },
+      dependencyRules: [{ type: "compliance_requirement", key: "public-liability-insurance", title: "Public liability insurance" }],
+      readinessGate: true,
+      sortOrder: 2
+    },
+    {
+      id: fixtureIds.onboardingTemplateTasks.accessReady,
+      phaseId: fixtureIds.onboardingTemplatePhases.systems,
+      title: "Systems and access ready",
+      ownerType: "hq",
+      required: true,
+      approvalRequired: true,
+      dueRule: { type: "before_target_launch", days: 45 },
+      dependencyRules: [],
+      readinessGate: true,
+      sortOrder: 1
+    },
+    {
+      id: fixtureIds.onboardingTemplateTasks.trainingComplete,
+      phaseId: fixtureIds.onboardingTemplatePhases.training,
+      title: "Critical training complete",
+      ownerType: "franchisee",
+      required: true,
+      approvalRequired: true,
+      dueRule: { type: "before_target_launch", days: 30 },
+      dependencyRules: [],
+      readinessGate: true,
+      sortOrder: 1
+    },
+    {
+      id: fixtureIds.onboardingTemplateTasks.mediaPackReady,
+      phaseId: fixtureIds.onboardingTemplatePhases.commercial,
+      title: "Media pack and first sales activity ready",
+      ownerType: "hq",
+      required: true,
+      approvalRequired: true,
+      dueRule: { type: "before_target_launch", days: 28 },
+      dependencyRules: [],
+      readinessGate: false,
+      sortOrder: 1
+    },
+    {
+      id: fixtureIds.onboardingTemplateTasks.editionSelected,
+      phaseId: fixtureIds.onboardingTemplatePhases.editorial,
+      title: "First magazine edition selected",
+      ownerType: "hq",
+      required: true,
+      approvalRequired: true,
+      dueRule: { type: "before_target_launch", days: 21 },
+      dependencyRules: [],
+      readinessGate: false,
+      sortOrder: 1
+    },
+    {
+      id: fixtureIds.onboardingTemplateTasks.launchApproved,
+      phaseId: fixtureIds.onboardingTemplatePhases.readiness,
+      title: "Final launch approval",
+      ownerType: "hq",
+      required: true,
+      approvalRequired: true,
+      dueRule: { type: "before_target_launch", days: 7 },
+      dependencyRules: [
+        { type: "task", id: fixtureIds.onboardingTemplateTasks.agreementExecuted, title: "Agreement executed" },
+        { type: "task", id: fixtureIds.onboardingTemplateTasks.complianceComplete, title: "Compliance complete" },
+        { type: "task", id: fixtureIds.onboardingTemplateTasks.trainingComplete, title: "Training complete" }
+      ],
+      readinessGate: true,
+      sortOrder: 1
     }
   ]
 } as const;

@@ -94,5 +94,33 @@ export const franchiseCapabilities = {
   complianceViewNetwork: {
     module: "franchise.compliance",
     action: "view_network"
+  },
+  onboardingView: {
+    module: "franchise.onboarding",
+    action: "view"
+  },
+  onboardingManage: {
+    module: "franchise.onboarding",
+    action: "manage"
+  },
+  onboardingTemplateManage: {
+    module: "franchise.onboarding",
+    action: "template_manage"
+  },
+  onboardingTaskComplete: {
+    module: "franchise.onboarding",
+    action: "task_complete"
+  },
+  onboardingTaskAssign: {
+    module: "franchise.onboarding",
+    action: "task_assign"
+  },
+  onboardingApproveMilestone: {
+    module: "franchise.onboarding",
+    action: "approve_milestone"
+  },
+  onboardingApproveLaunch: {
+    module: "franchise.onboarding",
+    action: "approve_launch"
   }
 } as const;

@@ -451,3 +451,145 @@ export const franchiseComplianceReminders = pgTable(
     index("franchise_compliance_reminders_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const onboardingTemplates = pgTable(
+  "onboarding_templates",
+  {
+    id,
+    key: text("key").notNull().unique(),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("active"),
+    readinessRules: jsonb("readiness_rules").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("onboarding_templates_key_idx").on(table.key),
+    index("onboarding_templates_status_idx").on(table.status),
+    index("onboarding_templates_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const onboardingTemplatePhases = pgTable(
+  "onboarding_template_phases",
+  {
+    id,
+    templateId: uuid("template_id").notNull().references(() => onboardingTemplates.id),
+    name: text("name").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("onboarding_template_phases_template_id_idx").on(table.templateId),
+    index("onboarding_template_phases_sort_order_idx").on(table.sortOrder),
+    index("onboarding_template_phases_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const onboardingTemplateTasks = pgTable(
+  "onboarding_template_tasks",
+  {
+    id,
+    phaseId: uuid("phase_id").notNull().references(() => onboardingTemplatePhases.id),
+    title: text("title").notNull(),
+    description: text("description"),
+    ownerType: text("owner_type").notNull().default("hq"),
+    required: boolean("required").notNull().default(true),
+    approvalRequired: boolean("approval_required").notNull().default(false),
+    dueRule: jsonb("due_rule").$type<Record<string, unknown>>().notNull().default({}),
+    dependencyRules: jsonb("dependency_rules").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    readinessGate: boolean("readiness_gate").notNull().default(false),
+    sortOrder: integer("sort_order").notNull(),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("onboarding_template_tasks_phase_id_idx").on(table.phaseId),
+    index("onboarding_template_tasks_sort_order_idx").on(table.sortOrder),
+    index("onboarding_template_tasks_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const franchiseOnboardingProgrammes = pgTable(
+  "franchise_onboarding_programmes",
+  {
+    id,
+    franchiseId: uuid("franchise_id").notNull().references(() => franchises.id),
+    templateId: uuid("template_id").notNull().references(() => onboardingTemplates.id),
+    sourceAgreementId: uuid("source_agreement_id").references(() => franchiseAgreements.id),
+    status: text("status").notNull().default("active"),
+    targetLaunchDate: date("target_launch_date", { mode: "date" }).notNull(),
+    actualLaunchDate: date("actual_launch_date", { mode: "date" }),
+    launchReadiness: text("launch_readiness").notNull().default("not_ready"),
+    launchApprovedByUserId: uuid("launch_approved_by_user_id").references(() => users.id),
+    launchApprovedAt: date("launch_approved_at", { mode: "date" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("franchise_onboarding_programmes_idempotency_uidx").on(table.idempotencyKey),
+    index("franchise_onboarding_programmes_franchise_id_idx").on(table.franchiseId),
+    index("franchise_onboarding_programmes_status_idx").on(table.status),
+    index("franchise_onboarding_programmes_target_launch_date_idx").on(table.targetLaunchDate),
+    index("franchise_onboarding_programmes_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const franchiseOnboardingTasks = pgTable(
+  "franchise_onboarding_tasks",
+  {
+    id,
+    programmeId: uuid("programme_id").notNull().references(() => franchiseOnboardingProgrammes.id),
+    templateTaskId: uuid("template_task_id").references(() => onboardingTemplateTasks.id),
+    phaseName: text("phase_name").notNull(),
+    title: text("title").notNull(),
+    ownerType: text("owner_type").notNull(),
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
+    status: text("status").notNull().default("not_started"),
+    required: boolean("required").notNull().default(true),
+    approvalRequired: boolean("approval_required").notNull().default(false),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: date("approved_at", { mode: "date" }),
+    dueDate: date("due_date", { mode: "date" }),
+    dueDateOverridden: boolean("due_date_overridden").notNull().default(false),
+    completedByUserId: uuid("completed_by_user_id").references(() => users.id),
+    completedAt: date("completed_at", { mode: "date" }),
+    evidenceDocumentId: uuid("evidence_document_id").references(() => franchiseDocuments.id),
+    dependencyRules: jsonb("dependency_rules").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    readinessGate: boolean("readiness_gate").notNull().default(false),
+    sortOrder: integer("sort_order").notNull(),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("franchise_onboarding_tasks_programme_id_idx").on(table.programmeId),
+    index("franchise_onboarding_tasks_status_idx").on(table.status),
+    index("franchise_onboarding_tasks_due_date_idx").on(table.dueDate),
+    index("franchise_onboarding_tasks_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const franchiseOnboardingBlockers = pgTable(
+  "franchise_onboarding_blockers",
+  {
+    id,
+    programmeId: uuid("programme_id").notNull().references(() => franchiseOnboardingProgrammes.id),
+    taskId: uuid("task_id").references(() => franchiseOnboardingTasks.id),
+    status: text("status").notNull().default("open"),
+    title: text("title").notNull(),
+    notes: text("notes"),
+    raisedByUserId: uuid("raised_by_user_id").references(() => users.id),
+    resolvedByUserId: uuid("resolved_by_user_id").references(() => users.id),
+    resolvedAt: date("resolved_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("franchise_onboarding_blockers_programme_id_idx").on(table.programmeId),
+    index("franchise_onboarding_blockers_task_id_idx").on(table.taskId),
+    index("franchise_onboarding_blockers_status_idx").on(table.status),
+    index("franchise_onboarding_blockers_deleted_at_idx").on(table.deletedAt)
+  ]
+);

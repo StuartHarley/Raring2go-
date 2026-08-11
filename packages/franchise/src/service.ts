@@ -25,7 +25,12 @@ import type {
   ComplianceRecordStatus,
   FranchiseComplianceAction,
   FranchiseComplianceReminder,
-  NetworkComplianceOverviewRow
+  NetworkComplianceOverviewRow,
+  FranchiseOnboardingProgramme,
+  FranchiseOnboardingTask,
+  FranchiseOnboardingBlocker,
+  NetworkOnboardingOverviewRow,
+  OnboardingReadiness
 } from "./types";
 
 type FranchiseAuditRecorder = {
@@ -102,6 +107,7 @@ export function getFranchise360(
   const complianceReminders = (data.complianceReminders ?? []).filter(
     (reminder) => reminder.franchiseId === franchise.id && !reminder.deletedAt
   );
+  const onboarding = onboardingSummaryFor(context, data, franchise);
 
   return {
     franchise,
@@ -115,6 +121,7 @@ export function getFranchise360(
     compliance,
     complianceActions,
     complianceReminders,
+    onboarding,
     activity: (data.activity ?? []).filter(
       (event) => event.entityType === "franchise" && event.entityId === franchise.id
     ),
@@ -124,6 +131,43 @@ export function getFranchise360(
       support: "deferred"
     }
   };
+}
+
+export function listNetworkOnboardingOverview(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  data: FranchiseData
+): NetworkOnboardingOverviewRow[] {
+  requirePermission(permissionRequest(context, undefined, "onboardingManage"), permissions);
+  return listActiveFranchises(context, permissions, data)
+    .map((franchise) => {
+      const onboarding = onboardingSummaryFor(context, data, franchise);
+      const agreement = currentAgreement(data, franchise.id);
+      const riskStatus: NetworkOnboardingOverviewRow["riskStatus"] = onboarding.programme?.status === "launched"
+        ? "launched"
+        : onboarding.blockedTasks > 0
+          ? "blocked"
+          : onboarding.overdueTasks > 0 || onboarding.readiness === "at_risk"
+            ? "at_risk"
+            : "on_track";
+      return {
+        franchise,
+        organisation: data.organisations.find((organisation) => organisation.id === franchise.franchiseOrganisationId),
+        territory: data.territories.find((territory) => territory.id === franchise.primaryTerritoryId),
+        agreementExecutedAt: agreement?.executedAt ?? null,
+        targetLaunchDate: onboarding.programme?.targetLaunchDate ?? null,
+        progress: onboarding.progress,
+        readiness: onboarding.readiness,
+        overdueTasks: onboarding.overdueTasks,
+        blockedTasks: onboarding.blockedTasks,
+        currentPhase: onboarding.currentPhase,
+        riskStatus
+      };
+    })
+    .sort((left, right) => {
+      const rank = { blocked: 0, at_risk: 1, on_track: 2, launched: 3 };
+      return rank[left.riskStatus] - rank[right.riskStatus];
+    });
 }
 
 export function listNetworkComplianceOverview(
@@ -813,6 +857,234 @@ export async function resolveComplianceAction(
   return action;
 }
 
+export async function startOnboardingFromExecutedAgreement(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  agreementId: string,
+  input: { programmeId?: string; targetLaunchDate?: string } = {}
+) {
+  const agreement = requireAgreement(data, agreementId);
+  if (agreement.status !== "executed") {
+    throw new Error("Only executed agreements can start onboarding.");
+  }
+  const franchise = requireFranchise(data, agreement.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingManage");
+  const template = activeOnboardingTemplate(data);
+  const idempotencyKey = `franchise:${franchise.id}:agreement:${agreement.id}:onboarding`;
+  const existing = (data.onboardingProgrammes ?? []).find(
+    (programme) => programme.idempotencyKey === idempotencyKey && !programme.deletedAt
+  );
+  if (existing) {
+    return { programme: existing, tasks: [], duplicate: true };
+  }
+
+  return await createOnboardingProgramme(context, audit, data, franchise, template.id, {
+    id: input.programmeId ?? randomUUID(),
+    sourceAgreementId: agreement.id,
+    targetLaunchDate: input.targetLaunchDate ?? addDays(agreement.executedAt ?? today(), 90),
+    idempotencyKey
+  });
+}
+
+export async function manuallyCreateOnboardingProgramme(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  franchiseId: string,
+  input: { programmeId?: string; templateId?: string; targetLaunchDate: string }
+) {
+  const franchise = requireFranchise(data, franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingManage");
+  const templateId = input.templateId ?? activeOnboardingTemplate(data).id;
+  const idempotencyKey = `franchise:${franchise.id}:manual:onboarding`;
+  return await createOnboardingProgramme(context, audit, data, franchise, templateId, {
+    id: input.programmeId ?? randomUUID(),
+    sourceAgreementId: currentAgreement(data, franchise.id)?.id ?? null,
+    targetLaunchDate: input.targetLaunchDate,
+    idempotencyKey
+  });
+}
+
+export async function completeOnboardingTask(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  taskId: string,
+  evidenceDocumentId?: string | null
+) {
+  const task = requireOnboardingTask(data, taskId);
+  const programme = requireOnboardingProgramme(data, task.programmeId);
+  const franchise = requireFranchise(data, programme.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingTaskComplete");
+  const blocked = blockedReasonsForTask(data, franchise, task);
+  if (blocked.length > 0) {
+    task.status = "blocked";
+    throw new Error(`Task is blocked: ${blocked.join("; ")}`);
+  }
+  assertEvidenceDocumentBelongsToFranchise(data, franchise, evidenceDocumentId);
+  task.evidenceDocumentId = evidenceDocumentId ?? task.evidenceDocumentId ?? null;
+  task.status = task.approvalRequired ? "completed" : "approved";
+  task.completedByUserId = context.userId;
+  task.completedAt = today();
+  emitDomainEvent(data, "franchise.onboarding.task.completed", "franchise_onboarding_task", task.id, franchise, { title: task.title });
+  await audit.record(onboardingAuditEvent(context, auditActions.franchiseOnboardingTaskComplete, franchise, "franchise_onboarding_task", task.id, { status: task.status }));
+  refreshProgrammeReadiness(data, programme, franchise);
+  return task;
+}
+
+export async function approveOnboardingTask(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  taskId: string
+) {
+  const task = requireOnboardingTask(data, taskId);
+  const programme = requireOnboardingProgramme(data, task.programmeId);
+  const franchise = requireFranchise(data, programme.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingApproveMilestone");
+  task.status = "approved";
+  task.approvedByUserId = context.userId;
+  task.approvedAt = today();
+  emitDomainEvent(data, "franchise.onboarding.milestone.completed", "franchise_onboarding_task", task.id, franchise, { title: task.title });
+  await audit.record(onboardingAuditEvent(context, auditActions.franchiseOnboardingTaskApprove, franchise, "franchise_onboarding_task", task.id, { status: task.status }));
+  refreshProgrammeReadiness(data, programme, franchise);
+  return task;
+}
+
+export async function changeOnboardingTargetLaunchDate(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  programmeId: string,
+  targetLaunchDate: string
+) {
+  const programme = requireOnboardingProgramme(data, programmeId);
+  const franchise = requireFranchise(data, programme.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingManage");
+  programme.targetLaunchDate = targetLaunchDate;
+  for (const task of (data.onboardingTasks ?? []).filter((candidate) => candidate.programmeId === programme.id && !candidate.dueDateOverridden)) {
+    const templateTask = (data.onboardingTemplateTasks ?? []).find((candidate) => candidate.id === task.templateTaskId);
+    task.dueDate = calculateDueDate(templateTask?.dueRule ?? { type: "manual" }, currentAgreement(data, franchise.id)?.executedAt ?? today(), targetLaunchDate);
+  }
+  emitDomainEvent(data, "franchise.onboarding.target_launch.changed", "franchise_onboarding_programme", programme.id, franchise, { targetLaunchDate });
+  await audit.record(onboardingAuditEvent(context, auditActions.franchiseOnboardingDateOverride, franchise, "franchise_onboarding_programme", programme.id, { targetLaunchDate }));
+  return programme;
+}
+
+export async function raiseOnboardingBlocker(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  taskId: string,
+  input: {
+    id?: string;
+    title: string;
+    notes?: string | null;
+  }
+) {
+  const task = requireOnboardingTask(data, taskId);
+  const programme = requireOnboardingProgramme(data, task.programmeId);
+  const franchise = requireFranchise(data, programme.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingManage");
+  task.status = "blocked";
+  const blocker: FranchiseOnboardingBlocker = {
+    id: input.id ?? randomUUID(),
+    programmeId: programme.id,
+    taskId: task.id,
+    status: "open",
+    title: input.title,
+    notes: input.notes,
+    raisedByUserId: context.userId
+  };
+  data.onboardingBlockers = [...(data.onboardingBlockers ?? []), blocker];
+  refreshProgrammeReadiness(data, programme, franchise);
+  emitDomainEvent(data, "franchise.onboarding.blocker.raised", "franchise_onboarding_blocker", blocker.id, franchise, { taskId: task.id, title: input.title });
+  await audit.record(onboardingAuditEvent(context, auditActions.franchiseOnboardingBlockerRaise, franchise, "franchise_onboarding_blocker", blocker.id, { taskId: task.id, title: input.title }));
+  return { blocker, task, programme };
+}
+
+export async function resolveOnboardingBlocker(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  blockerId: string
+) {
+  const blocker = (data.onboardingBlockers ?? []).find((candidate) => candidate.id === blockerId && candidate.deletedAt == null);
+  if (!blocker) {
+    throw new Error("Onboarding blocker was not found.");
+  }
+  const programme = requireOnboardingProgramme(data, blocker.programmeId);
+  const franchise = requireFranchise(data, programme.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingManage");
+  blocker.status = "resolved";
+  blocker.resolvedByUserId = context.userId;
+  blocker.resolvedAt = today();
+  if (blocker.taskId) {
+    const task = requireOnboardingTask(data, blocker.taskId);
+    if (task.status === "blocked") {
+      task.status = "not_started";
+    }
+  }
+  refreshProgrammeReadiness(data, programme, franchise);
+  emitDomainEvent(data, "franchise.onboarding.blocker.resolved", "franchise_onboarding_blocker", blocker.id, franchise, {});
+  await audit.record(onboardingAuditEvent(context, auditActions.franchiseOnboardingBlockerResolve, franchise, "franchise_onboarding_blocker", blocker.id, { status: blocker.status }));
+  return { blocker, programme };
+}
+
+export async function approveLaunch(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  programmeId: string
+) {
+  const programme = requireOnboardingProgramme(data, programmeId);
+  const franchise = requireFranchise(data, programme.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingApproveLaunch");
+  refreshProgrammeReadiness(data, programme, franchise);
+  if (programme.launchReadiness !== "ready") {
+    throw new Error("Launch cannot be approved before mandatory gates are ready.");
+  }
+  programme.status = "approved";
+  programme.launchReadiness = "approved";
+  programme.launchApprovedByUserId = context.userId;
+  programme.launchApprovedAt = today();
+  emitDomainEvent(data, "franchise.onboarding.launch.approved", "franchise_onboarding_programme", programme.id, franchise, {});
+  await audit.record(onboardingAuditEvent(context, auditActions.franchiseOnboardingLaunchApprove, franchise, "franchise_onboarding_programme", programme.id, { status: programme.status }));
+  return programme;
+}
+
+export async function markFranchiseLaunched(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  programmeId: string
+) {
+  const programme = requireOnboardingProgramme(data, programmeId);
+  const franchise = requireFranchise(data, programme.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "onboardingApproveLaunch");
+  if (programme.status !== "approved") {
+    throw new Error("Launch must be approved before marking franchise launched.");
+  }
+  programme.status = "launched";
+  programme.launchReadiness = "launched";
+  programme.actualLaunchDate = today();
+  franchise.lifecycleStage = "trading";
+  franchise.launchDate = today();
+  emitDomainEvent(data, "franchise.onboarding.franchise.launched", "franchise_onboarding_programme", programme.id, franchise, {});
+  await audit.record(onboardingAuditEvent(context, auditActions.franchiseOnboardingLaunch, franchise, "franchise_onboarding_programme", programme.id, { status: programme.status }));
+  return programme;
+}
+
 export function assertNoDuplicatedIdentityData(franchise: FranchiseRecord) {
   const forbiddenKeys = ["legalName", "companyNumber", "vatNumber", "territoryName"];
   const record = franchise as unknown as Record<string, unknown>;
@@ -1341,6 +1613,248 @@ function addDomainEvent(
   });
 }
 
+async function createOnboardingProgramme(
+  context: FranchiseActorContext,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  franchise: FranchiseRecord,
+  templateId: string,
+  input: {
+    id: string;
+    sourceAgreementId?: string | null;
+    targetLaunchDate: string;
+    idempotencyKey: string;
+  }
+) {
+  const template = (data.onboardingTemplates ?? []).find(
+    (candidate) => candidate.id === templateId && candidate.status === "active" && !candidate.deletedAt
+  );
+  if (!template) {
+    throw new Error("Onboarding template was not found.");
+  }
+
+  const programme: FranchiseOnboardingProgramme = {
+    id: input.id,
+    franchiseId: franchise.id,
+    templateId,
+    sourceAgreementId: input.sourceAgreementId ?? null,
+    status: "active",
+    targetLaunchDate: input.targetLaunchDate,
+    launchReadiness: "not_ready",
+    idempotencyKey: input.idempotencyKey
+  };
+  const agreementExecutedAt = currentAgreement(data, franchise.id)?.executedAt ?? today();
+  const phases = (data.onboardingTemplatePhases ?? [])
+    .filter((phase) => phase.templateId === template.id && !phase.deletedAt)
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+  const tasks = phases.flatMap((phase) =>
+    (data.onboardingTemplateTasks ?? [])
+      .filter((task) => task.phaseId === phase.id && !task.deletedAt)
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((task): FranchiseOnboardingTask => ({
+        id: randomUUID(),
+        programmeId: programme.id,
+        templateTaskId: task.id,
+        phaseName: phase.name,
+        title: task.title,
+        ownerType: task.ownerType,
+        status: "not_started",
+        required: task.required,
+        approvalRequired: task.approvalRequired,
+        dueDate: calculateDueDate(task.dueRule, agreementExecutedAt, input.targetLaunchDate),
+        dueDateOverridden: false,
+        dependencyRules: task.dependencyRules,
+        readinessGate: task.readinessGate,
+        sortOrder: phase.sortOrder * 100 + task.sortOrder
+      }))
+  );
+
+  data.onboardingProgrammes ??= [];
+  data.onboardingTasks ??= [];
+  data.onboardingProgrammes.push(programme);
+  data.onboardingTasks.push(...tasks);
+  franchise.lifecycleStage = "onboarding";
+  franchise.onboardingStatus = "active";
+  emitDomainEvent(data, "franchise.onboarding.started", "franchise_onboarding_programme", programme.id, franchise, { taskCount: tasks.length });
+  for (const task of tasks) {
+    emitDomainEvent(data, "franchise.onboarding.task.assigned", "franchise_onboarding_task", task.id, franchise, { title: task.title, ownerType: task.ownerType });
+  }
+  await audit.record(onboardingAuditEvent(context, auditActions.franchiseOnboardingStart, franchise, "franchise_onboarding_programme", programme.id, { targetLaunchDate: programme.targetLaunchDate, taskCount: tasks.length }));
+  return { programme, tasks, duplicate: false };
+}
+
+function activeOnboardingTemplate(data: FranchiseData) {
+  const template = (data.onboardingTemplates ?? []).find(
+    (candidate) => candidate.status === "active" && !candidate.deletedAt
+  );
+  if (!template) {
+    throw new Error("No active onboarding template is available.");
+  }
+  return template;
+}
+
+function requireOnboardingProgramme(data: FranchiseData, programmeId: string) {
+  const programme = (data.onboardingProgrammes ?? []).find(
+    (candidate) => candidate.id === programmeId && !candidate.deletedAt
+  );
+  if (!programme) {
+    throw new Error("Onboarding programme was not found.");
+  }
+  return programme;
+}
+
+function requireOnboardingTask(data: FranchiseData, taskId: string) {
+  const task = (data.onboardingTasks ?? []).find(
+    (candidate) => candidate.id === taskId && !candidate.deletedAt
+  );
+  if (!task) {
+    throw new Error("Onboarding task was not found.");
+  }
+  return task;
+}
+
+function onboardingSummaryFor(
+  context: FranchiseActorContext,
+  data: FranchiseData,
+  franchise: FranchiseRecord
+) {
+  const programme = (data.onboardingProgrammes ?? []).find(
+    (candidate) => candidate.franchiseId === franchise.id && !candidate.deletedAt && candidate.status !== "cancelled"
+  );
+  if (!programme) {
+    return {
+      tasks: [],
+      blockers: [],
+      progress: 0,
+      currentPhase: null,
+      overdueTasks: 0,
+      blockedTasks: 0,
+      assignedToMe: [],
+      upcomingTasks: [],
+      completedMilestones: [],
+      readiness: "not_ready" as const,
+      launchReady: false
+    };
+  }
+  const tasks = (data.onboardingTasks ?? [])
+    .filter((task) => task.programmeId === programme.id && !task.deletedAt)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((task) => ({
+      ...task,
+      status: blockedReasonsForTask(data, franchise, task).length > 0 && !["completed", "approved"].includes(task.status)
+        ? "blocked" as const
+        : task.status
+    }));
+  const blockers = (data.onboardingBlockers ?? []).filter(
+    (blocker) => blocker.programmeId === programme.id && !blocker.deletedAt
+  );
+  const complete = tasks.filter((task) => ["completed", "approved"].includes(task.status)).length;
+  const progress = tasks.length === 0 ? 0 : Math.round((complete / tasks.length) * 100);
+  const openTasks = tasks.filter((task) => !["completed", "approved"].includes(task.status));
+  const overdueTasks = openTasks.filter((task) => task.dueDate && task.dueDate < today()).length;
+  const blockedTasks = tasks.filter((task) => task.status === "blocked").length + blockers.filter((blocker) => blocker.status === "open").length;
+  const readiness = calculateReadiness(data, franchise, programme, tasks);
+  return {
+    programme: { ...programme, launchReadiness: readiness },
+    tasks,
+    blockers,
+    progress,
+    currentPhase: openTasks[0]?.phaseName ?? tasks.at(-1)?.phaseName ?? null,
+    overdueTasks,
+    blockedTasks,
+    assignedToMe: tasks.filter((task) => task.ownerUserId === context.userId || (task.ownerType === "franchisee" && franchise.primaryOwnerUserId === context.userId)),
+    upcomingTasks: openTasks.filter((task) => task.dueDate).slice(0, 5),
+    completedMilestones: [...new Set(tasks.filter((task) => ["completed", "approved"].includes(task.status)).map((task) => task.phaseName))],
+    readiness,
+    launchReady: readiness === "ready"
+  };
+}
+
+function calculateReadiness(
+  data: FranchiseData,
+  franchise: FranchiseRecord,
+  programme: FranchiseOnboardingProgramme,
+  tasks: FranchiseOnboardingTask[]
+): OnboardingReadiness {
+  if (programme.status === "launched") return "launched";
+  if (programme.status === "approved") return "approved";
+  const agreementReady = currentAgreement(data, franchise.id)?.status === "executed";
+  const complianceReady = complianceSummaryFor(data, franchise, franchiseDocumentsFor(data, franchise)).actionsRequired === 0;
+  const taskReady = tasks.filter((task) => task.required && task.readinessGate).every((task) => task.status === "approved" || (!task.approvalRequired && task.status === "completed"));
+  const blocked = tasks.some((task) => task.status === "blocked");
+  if (agreementReady && complianceReady && taskReady) return "ready";
+  return blocked || tasks.some((task) => task.dueDate && task.dueDate < today() && !["completed", "approved"].includes(task.status)) ? "at_risk" : "not_ready";
+}
+
+function refreshProgrammeReadiness(data: FranchiseData, programme: FranchiseOnboardingProgramme, franchise: FranchiseRecord) {
+  const tasks = (data.onboardingTasks ?? []).filter((task) => task.programmeId === programme.id && !task.deletedAt);
+  const readiness = calculateReadiness(data, franchise, programme, tasks);
+  if (programme.launchReadiness !== "ready" && readiness === "ready") {
+    emitDomainEvent(data, "franchise.onboarding.launch.ready", "franchise_onboarding_programme", programme.id, franchise, {});
+  }
+  programme.launchReadiness = readiness;
+  if (readiness === "ready") {
+    programme.status = "ready";
+  }
+}
+
+function blockedReasonsForTask(data: FranchiseData, franchise: FranchiseRecord, task: FranchiseOnboardingTask) {
+  return task.dependencyRules.flatMap((rule) => {
+    if (rule.type === "executed_agreement") {
+      return currentAgreement(data, franchise.id)?.status === "executed" ? [] : ["Agreement must be executed"];
+    }
+    if (rule.type === "task" && rule.id) {
+      const dependency = (data.onboardingTasks ?? []).find((candidate) => candidate.templateTaskId === rule.id || candidate.id === rule.id);
+      return dependency && ["completed", "approved"].includes(dependency.status) ? [] : [`Task dependency not complete: ${rule.title ?? rule.id}`];
+    }
+    if (rule.type === "compliance_requirement") {
+      const requirement = (data.complianceRequirements ?? []).find((candidate) => candidate.key === rule.key || candidate.id === rule.id);
+      const record = requirement ? (data.complianceRecords ?? []).find((candidate) => candidate.franchiseId === franchise.id && candidate.requirementId === requirement.id) : undefined;
+      return record?.status === "complete" ? [] : [`Compliance dependency not complete: ${rule.title ?? rule.key ?? rule.id}`];
+    }
+    if (rule.type === "document") {
+      return (data.documents ?? []).some((document) => document.franchiseId === franchise.id && (document.documentType === rule.key || document.id === rule.id) && !document.deletedAt) ? [] : [`Document dependency missing: ${rule.title ?? rule.key ?? rule.id}`];
+    }
+    return [];
+  });
+}
+
+function calculateDueDate(rule: { type?: string; days?: number }, agreementExecutedAt: string, targetLaunchDate: string) {
+  if (rule.type === "after_agreement_execution") return addDays(agreementExecutedAt, rule.days ?? 0);
+  if (rule.type === "before_target_launch") return addDays(targetLaunchDate, -(rule.days ?? 0));
+  if (rule.type === "after_target_launch") return addDays(targetLaunchDate, rule.days ?? 0);
+  return null;
+}
+
+function addDays(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function emitDomainEvent(
+  data: FranchiseData,
+  eventType: string,
+  entityType: string,
+  entityId: string,
+  franchise: FranchiseRecord,
+  payload: Record<string, unknown>
+) {
+  data.domainEvents ??= [];
+  const idempotencyKey = `${eventType}:${entityId}`;
+  if (data.domainEvents.some((event) => event.idempotencyKey === idempotencyKey)) return;
+  data.domainEvents.push({
+    id: randomUUID(),
+    eventType,
+    entityType,
+    entityId,
+    organisationId: franchise.franchiseOrganisationId,
+    territoryId: franchise.primaryTerritoryId,
+    idempotencyKey,
+    payload: { franchiseId: franchise.id, ...payload }
+  });
+}
+
 function assertRecordTerritory(
   context: FranchiseActorContext,
   franchise: FranchiseRecord
@@ -1488,6 +2002,36 @@ function complianceAuditEvent(
     metadata: {
       franchiseId: franchise?.id,
       source: "franchise_360"
+    }
+  };
+}
+
+function onboardingAuditEvent(
+  context: FranchiseActorContext,
+  action: string,
+  franchise: FranchiseRecord,
+  entityType: string,
+  entityId: string,
+  after: Record<string, unknown>
+): RecordAuditEventInput {
+  return {
+    action,
+    actor: {
+      type: "human",
+      userId: context.userId
+    },
+    entity: {
+      type: entityType,
+      id: entityId
+    },
+    scope: {
+      organisationId: franchise.franchiseOrganisationId,
+      territoryId: franchise.primaryTerritoryId
+    },
+    after,
+    metadata: {
+      franchiseId: franchise.id,
+      source: "franchise_onboarding"
     }
   };
 }

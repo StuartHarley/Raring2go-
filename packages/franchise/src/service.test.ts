@@ -7,6 +7,10 @@ import {
   archiveFranchiseDocument,
   cancelSignatureRequest,
   ensureComplianceActions,
+  approveLaunch,
+  approveOnboardingTask,
+  changeOnboardingTargetLaunchDate,
+  completeOnboardingTask,
   submitComplianceEvidence,
   upsertInsurancePolicy,
   createFranchise,
@@ -16,11 +20,16 @@ import {
   getFranchise360,
   listActiveFranchises,
   listNetworkComplianceOverview,
+  listNetworkOnboardingOverview,
+  manuallyCreateOnboardingProgramme,
+  raiseOnboardingBlocker,
   recordSignatureProviderEvent,
   reissueSignatureRequest,
   resendSignatureRequest,
   resolveComplianceAction,
+  resolveOnboardingBlocker,
   sendAgreementForSignature,
+  startOnboardingFromExecutedAgreement,
   submitAgreementForApproval,
   uploadFranchiseDocument,
   voidAgreement,
@@ -70,7 +79,14 @@ const ids = {
     complianceSubmitEvidence: "permission_compliance_submit_evidence",
     complianceVerify: "permission_compliance_verify",
     complianceManageActions: "permission_compliance_manage_actions",
-    complianceViewNetwork: "permission_compliance_view_network"
+    complianceViewNetwork: "permission_compliance_view_network",
+    onboardingView: "permission_onboarding_view",
+    onboardingManage: "permission_onboarding_manage",
+    onboardingTemplateManage: "permission_onboarding_template_manage",
+    onboardingTaskComplete: "permission_onboarding_task_complete",
+    onboardingTaskAssign: "permission_onboarding_task_assign",
+    onboardingApproveMilestone: "permission_onboarding_approve_milestone",
+    onboardingApproveLaunch: "permission_onboarding_approve_launch"
   },
   franchises: {
     own: "franchise_own",
@@ -130,6 +146,13 @@ const permissionData: PermissionData = {
     complianceGrant(ids.permissions.complianceVerify, "verify"),
     complianceGrant(ids.permissions.complianceManageActions, "manage_actions"),
     complianceGrant(ids.permissions.complianceViewNetwork, "view_network"),
+    onboardingGrant(ids.permissions.onboardingView, "view"),
+    onboardingGrant(ids.permissions.onboardingManage, "manage"),
+    onboardingGrant(ids.permissions.onboardingTemplateManage, "template_manage"),
+    onboardingGrant(ids.permissions.onboardingTaskComplete, "task_complete"),
+    onboardingGrant(ids.permissions.onboardingTaskAssign, "task_assign"),
+    onboardingGrant(ids.permissions.onboardingApproveMilestone, "approve_milestone"),
+    onboardingGrant(ids.permissions.onboardingApproveLaunch, "approve_launch"),
     {
       roleId: ids.roles.local,
       permission: {
@@ -172,6 +195,24 @@ const permissionData: PermissionData = {
         id: ids.permissions.complianceSubmitEvidence,
         module: "franchise.compliance",
         action: "submit_evidence"
+      },
+      scope: "own_territory"
+    },
+    {
+      roleId: ids.roles.local,
+      permission: {
+        id: ids.permissions.onboardingView,
+        module: "franchise.onboarding",
+        action: "view"
+      },
+      scope: "own_territory"
+    },
+    {
+      roleId: ids.roles.local,
+      permission: {
+        id: ids.permissions.onboardingTaskComplete,
+        module: "franchise.onboarding",
+        action: "task_complete"
       },
       scope: "own_territory"
     }
@@ -320,6 +361,110 @@ function data(): FranchiseData {
     complianceRecords: [],
     complianceActions: [],
     complianceReminders: [],
+    onboardingTemplates: [
+      {
+        id: "onboarding_template",
+        key: "starter",
+        name: "Starter onboarding",
+        status: "active",
+        readinessRules: {
+          mandatoryCompliance: true
+        }
+      }
+    ],
+    onboardingTemplatePhases: [
+      {
+        id: "phase_setup",
+        templateId: "onboarding_template",
+        name: "Franchise setup",
+        sortOrder: 10
+      },
+      {
+        id: "phase_launch",
+        templateId: "onboarding_template",
+        name: "Launch readiness",
+        sortOrder: 20
+      }
+    ],
+    onboardingTemplateTasks: [
+      {
+        id: "template_task_agreement",
+        phaseId: "phase_setup",
+        title: "Agreement executed",
+        ownerType: "hq",
+        required: true,
+        approvalRequired: false,
+        dueRule: {
+          type: "after_agreement_execution",
+          days: 0
+        },
+        dependencyRules: [
+          {
+            type: "executed_agreement"
+          }
+        ],
+        readinessGate: true,
+        sortOrder: 10
+      },
+      {
+        id: "template_task_compliance",
+        phaseId: "phase_setup",
+        title: "Mandatory compliance complete",
+        ownerType: "franchisee",
+        required: true,
+        approvalRequired: true,
+        dueRule: {
+          type: "before_target_launch",
+          days: 30
+        },
+        dependencyRules: [
+          {
+            type: "compliance_requirement",
+            key: "public-liability-insurance"
+          }
+        ],
+        readinessGate: true,
+        sortOrder: 20
+      },
+      {
+        id: "template_task_training",
+        phaseId: "phase_launch",
+        title: "Training completed",
+        ownerType: "franchisee",
+        required: true,
+        approvalRequired: true,
+        dueRule: {
+          type: "before_target_launch",
+          days: 14
+        },
+        dependencyRules: [],
+        readinessGate: true,
+        sortOrder: 30
+      },
+      {
+        id: "template_task_launch",
+        phaseId: "phase_launch",
+        title: "Final launch approval",
+        ownerType: "hq",
+        required: true,
+        approvalRequired: true,
+        dueRule: {
+          type: "before_target_launch",
+          days: 1
+        },
+        dependencyRules: [
+          {
+            type: "task",
+            id: "template_task_training"
+          }
+        ],
+        readinessGate: true,
+        sortOrder: 40
+      }
+    ],
+    onboardingProgrammes: [],
+    onboardingTasks: [],
+    onboardingBlockers: [],
     activity: [
       {
         id: "event_1",
@@ -1150,6 +1295,213 @@ describe("franchise service", () => {
     expect(view.agreement?.signatureRequest?.status).toBe("sent");
     expect(view.agreement?.signers).toHaveLength(2);
   });
+
+  it("starts onboarding from an executed agreement idempotently and writes audit/events", async () => {
+    const franchiseData = await executedAgreementData();
+    const recorder = audit();
+
+    const first = await startOnboardingFromExecutedAgreement(
+      hqContext(),
+      permissionData,
+      recorder,
+      franchiseData,
+      ids.agreements.draft,
+      { targetLaunchDate: "2026-11-01" }
+    );
+    const second = await startOnboardingFromExecutedAgreement(
+      hqContext(),
+      permissionData,
+      recorder,
+      franchiseData,
+      ids.agreements.draft,
+      { targetLaunchDate: "2026-11-01" }
+    );
+
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(true);
+    expect(franchiseData.onboardingProgrammes).toHaveLength(1);
+    expect(franchiseData.onboardingTasks).toHaveLength(4);
+    expect(franchiseData.franchises[0]).toMatchObject({
+      lifecycleStage: "onboarding",
+      onboardingStatus: "active"
+    });
+    expect(franchiseData.domainEvents?.filter((event) => event.eventType === "franchise.onboarding.started")).toHaveLength(1);
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseOnboardingStart
+    ]);
+  });
+
+  it("allows manual onboarding creation for authorised HQ users", async () => {
+    const franchiseData = data();
+
+    await manuallyCreateOnboardingProgramme(
+      hqContext(),
+      permissionData,
+      audit(),
+      franchiseData,
+      ids.franchises.own,
+      { targetLaunchDate: "2026-11-01" }
+    );
+
+    expect(franchiseData.onboardingProgrammes).toHaveLength(1);
+    expect(getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own).onboarding.progress).toBe(0);
+  });
+
+  it("blocks dependent onboarding tasks until compliance and previous tasks are complete", async () => {
+    const franchiseData = await executedOnboardingData();
+    const complianceTask = franchiseData.onboardingTasks!.find((task) => task.templateTaskId === "template_task_compliance")!;
+    const launchTask = franchiseData.onboardingTasks!.find((task) => task.templateTaskId === "template_task_launch")!;
+
+    await expect(
+      completeOnboardingTask(hqContext(), permissionData, audit(), franchiseData, complianceTask.id)
+    ).rejects.toThrow("Task is blocked");
+    await expect(
+      completeOnboardingTask(hqContext(), permissionData, audit(), franchiseData, launchTask.id)
+    ).rejects.toThrow("Task is blocked");
+  });
+
+  it("recalculates target-launch due dates while preserving task overrides", async () => {
+    const franchiseData = await executedOnboardingData();
+    const complianceTask = franchiseData.onboardingTasks!.find((task) => task.templateTaskId === "template_task_compliance")!;
+    const trainingTask = franchiseData.onboardingTasks!.find((task) => task.templateTaskId === "template_task_training")!;
+    trainingTask.dueDate = "2026-10-01";
+    trainingTask.dueDateOverridden = true;
+
+    await changeOnboardingTargetLaunchDate(
+      hqContext(),
+      permissionData,
+      audit(),
+      franchiseData,
+      franchiseData.onboardingProgrammes![0]!.id,
+      "2026-12-01"
+    );
+
+    expect(complianceTask.dueDate).toBe("2026-11-01");
+    expect(trainingTask.dueDate).toBe("2026-10-01");
+  });
+
+  it("enforces onboarding permissions and cross-territory isolation", async () => {
+    const franchiseData = await executedOnboardingData();
+    const trainingTask = franchiseData.onboardingTasks!.find((task) => task.templateTaskId === "template_task_training")!;
+
+    await expect(
+      approveOnboardingTask(
+        {
+          userId: ids.users.owner,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissionData,
+        audit(),
+        franchiseData,
+        trainingTask.id
+      )
+    ).rejects.toThrow("No permission grant");
+
+    const otherData = await executedOnboardingData(ids.franchises.other);
+    const otherTask = otherData.onboardingTasks!.find((task) => task.templateTaskId === "template_task_training")!;
+    await expect(
+      completeOnboardingTask(
+        {
+          userId: ids.users.owner,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissionData,
+        audit(),
+        otherData,
+        otherTask.id
+      )
+    ).rejects.toThrow("outside the active territory");
+  });
+
+  it("raises and resolves onboarding blockers with audit and events", async () => {
+    const franchiseData = await executedOnboardingData();
+    const recorder = audit();
+    const trainingTask = franchiseData.onboardingTasks!.find((task) => task.templateTaskId === "template_task_training")!;
+
+    const { blocker } = await raiseOnboardingBlocker(hqContext(), permissionData, recorder, franchiseData, trainingTask.id, {
+      id: "blocker_1",
+      title: "Access not ready",
+      notes: "Waiting for a shared inbox."
+    });
+    await resolveOnboardingBlocker(hqContext(), permissionData, recorder, franchiseData, blocker.id);
+
+    expect(franchiseData.onboardingBlockers?.[0]).toMatchObject({
+      status: "resolved",
+      resolvedByUserId: ids.users.hq
+    });
+    expect(trainingTask.status).toBe("not_started");
+    expect(franchiseData.domainEvents?.map((event) => event.eventType)).toEqual(
+      expect.arrayContaining([
+        "franchise.onboarding.blocker.raised",
+        "franchise.onboarding.blocker.resolved"
+      ])
+    );
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseOnboardingBlockerRaise,
+      auditActions.franchiseOnboardingBlockerResolve
+    ]);
+  });
+
+  it("requires readiness gates before launch approval and emits launch events", async () => {
+    const franchiseData = await executedOnboardingData();
+    const programme = franchiseData.onboardingProgrammes![0]!;
+    await expect(
+      approveLaunch(hqContext(), permissionData, audit(), franchiseData, programme.id)
+    ).rejects.toThrow("mandatory gates");
+
+    franchiseData.complianceRecords = [
+      {
+        id: "record_1",
+        franchiseId: ids.franchises.own,
+        requirementId: "requirement_insurance",
+        status: "complete",
+        verifiedByUserId: ids.users.hq,
+        verifiedAt: "2026-08-10"
+      }
+    ];
+    for (const task of franchiseData.onboardingTasks!) {
+      if (task.status !== "approved") {
+        await completeOnboardingTask(hqContext(), permissionData, audit(), franchiseData, task.id);
+      }
+      if (task.approvalRequired && task.status !== "approved") {
+        await approveOnboardingTask(hqContext(), permissionData, audit(), franchiseData, task.id);
+      }
+    }
+    const recorder = audit();
+    await approveLaunch(hqContext(), permissionData, recorder, franchiseData, programme.id);
+
+    expect(programme.status).toBe("approved");
+    expect(programme.launchReadiness).toBe("approved");
+    expect(franchiseData.domainEvents?.map((event) => event.eventType)).toContain("franchise.onboarding.launch.approved");
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.franchiseOnboardingLaunchApprove
+    ]);
+  });
+
+  it("surfaces HQ network onboarding risk from live programme state", async () => {
+    const franchiseData = await executedOnboardingData(undefined, "2026-08-01");
+
+    const [row] = listNetworkOnboardingOverview(hqContext(), permissionData, franchiseData);
+
+    expect(row).toMatchObject({
+      riskStatus: "blocked",
+      overdueTasks: expect.any(Number),
+      blockedTasks: expect.any(Number)
+    });
+    expect(() =>
+      listNetworkOnboardingOverview(
+        {
+          userId: ids.users.owner,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissionData,
+        franchiseData
+      )
+    ).toThrow("No permission grant");
+  });
 });
 
 function hqContext() {
@@ -1195,6 +1547,18 @@ function complianceGrant(id: string, action: string) {
   };
 }
 
+function onboardingGrant(id: string, action: string) {
+  return {
+    roleId: ids.roles.hq,
+    permission: {
+      id,
+      module: "franchise.onboarding",
+      action
+    },
+    scope: "network" as const
+  };
+}
+
 async function approvedAgreementData() {
   const franchiseData = data();
   await generateAgreement(hqContext(), permissionData, audit(), franchiseData, {
@@ -1208,6 +1572,35 @@ async function approvedAgreementData() {
   });
   await submitAgreementForApproval(hqContext(), permissionData, audit(), franchiseData, ids.agreements.draft);
   await approveAgreement(hqContext(), permissionData, audit(), franchiseData, ids.agreements.draft);
+  return franchiseData;
+}
+
+async function executedAgreementData(franchiseId: string = ids.franchises.own) {
+  const franchiseData = await approvedAgreementData();
+  if (franchiseId !== ids.franchises.own) {
+    franchiseData.franchiseAgreements![0] = {
+      ...franchiseData.franchiseAgreements![0]!,
+      franchiseId
+    };
+  }
+  franchiseData.franchiseAgreements![0] = {
+    ...franchiseData.franchiseAgreements![0]!,
+    status: "executed",
+    executedAt: "2026-08-10"
+  };
+  return franchiseData;
+}
+
+async function executedOnboardingData(franchiseId: string = ids.franchises.own, targetLaunchDate = "2026-11-01") {
+  const franchiseData = await executedAgreementData(franchiseId);
+  await startOnboardingFromExecutedAgreement(
+    hqContext(),
+    permissionData,
+    audit(),
+    franchiseData,
+    ids.agreements.draft,
+    { targetLaunchDate }
+  );
   return franchiseData;
 }
 

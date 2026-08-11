@@ -6,22 +6,30 @@ import {
   createFranchiseFromInput,
   addDocumentVersionForFranchise,
   approveCurrentAgreement,
+  approveLaunchForFranchise,
+  approveOnboardingTaskForFranchise,
   archiveDocumentForFranchise,
+  changeOnboardingTargetForFranchise,
   cancelCurrentSignatureRequest,
   completeCurrentAgreementSigning,
   completeNextSignerForCurrentAgreement,
+  completeOnboardingTaskForFranchise,
   declineCurrentAgreementSigning,
   ensureComplianceActionsForFranchise,
   generateAgreementForFranchise,
   resendCurrentSignatureRequest,
   resolveComplianceActionForFranchise,
+  raiseOnboardingBlockerForFranchise,
+  resolveOnboardingBlockerForFranchise,
   sendCurrentAgreementForSignature,
+  startOnboardingForFranchise,
   submitCurrentAgreement,
   submitComplianceEvidenceForFranchise,
   upsertInsuranceForFranchise,
   uploadDocumentForFranchise,
   verifyComplianceForFranchise,
   verifyInsuranceForFranchise,
+  markLaunchedForFranchise,
   voidCurrentAgreement,
   updateFranchiseFromInput
 } from "../../../../lib/franchise-runtime";
@@ -276,4 +284,98 @@ export async function resolveComplianceActionAction(
   await resolveComplianceActionForFranchise(context, franchiseId, actionId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
   revalidatePath("/app/franchisees");
+}
+
+export async function startOnboardingAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  formData: FormData
+) {
+  await startOnboardingForFranchise(
+    context,
+    franchiseId,
+    String(formData.get("targetLaunchDate") || "2026-11-01")
+  );
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees/onboarding");
+}
+
+export async function completeOnboardingTaskAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  taskId: string
+) {
+  await completeOnboardingTaskForFranchise(context, franchiseId, taskId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees/onboarding");
+}
+
+export async function approveOnboardingTaskAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  taskId: string
+) {
+  await approveOnboardingTaskForFranchise(context, franchiseId, taskId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees/onboarding");
+}
+
+export async function raiseOnboardingBlockerAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  taskId: string,
+  formData: FormData
+) {
+  await raiseOnboardingBlockerForFranchise(context, franchiseId, taskId, {
+    title: String(formData.get("title") || "Launch blocker"),
+    notes: String(formData.get("notes") || "")
+  });
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees/onboarding");
+}
+
+export async function resolveOnboardingBlockerAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  blockerId: string
+) {
+  await resolveOnboardingBlockerForFranchise(context, franchiseId, blockerId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees/onboarding");
+}
+
+export async function changeOnboardingTargetAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  programmeId: string,
+  formData: FormData
+) {
+  await changeOnboardingTargetForFranchise(
+    context,
+    franchiseId,
+    programmeId,
+    String(formData.get("targetLaunchDate") || "")
+  );
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees/onboarding");
+}
+
+export async function approveLaunchAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  programmeId: string
+) {
+  await approveLaunchForFranchise(context, franchiseId, programmeId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees/onboarding");
+}
+
+export async function markLaunchedAction(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  programmeId: string
+) {
+  await markLaunchedForFranchise(context, franchiseId, programmeId);
+  revalidatePath(`/app/franchisees/${franchiseId}`);
+  revalidatePath("/app/franchisees/onboarding");
 }

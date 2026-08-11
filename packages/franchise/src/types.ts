@@ -268,6 +268,146 @@ export type NetworkComplianceOverviewRow = {
   nextDueDate?: string | null;
 };
 
+export type OnboardingProgrammeStatus = "active" | "ready" | "approved" | "launched" | "cancelled";
+export type OnboardingTaskStatus = "not_started" | "blocked" | "in_progress" | "completed" | "approved";
+export type OnboardingReadiness = "not_ready" | "at_risk" | "ready" | "approved" | "launched";
+export type OnboardingOwnerType =
+  | "franchisee"
+  | "franchise_staff"
+  | "hq"
+  | "named_user"
+  | "team"
+  | "external";
+export type OnboardingDependencyRule = {
+  type:
+    | "task"
+    | "milestone"
+    | "compliance_requirement"
+    | "executed_agreement"
+    | "document"
+    | "integration_event";
+  id?: string;
+  key?: string;
+  title?: string;
+};
+export type OnboardingDueRule = {
+  type: "after_agreement_execution" | "before_target_launch" | "after_target_launch" | "manual";
+  days?: number;
+};
+
+export type OnboardingTemplate = {
+  id: string;
+  key: string;
+  name: string;
+  status: "active" | "archived";
+  readinessRules: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type OnboardingTemplatePhase = {
+  id: string;
+  templateId: string;
+  name: string;
+  sortOrder: number;
+  deletedAt?: Date | null;
+};
+
+export type OnboardingTemplateTask = {
+  id: string;
+  phaseId: string;
+  title: string;
+  description?: string | null;
+  ownerType: OnboardingOwnerType;
+  required: boolean;
+  approvalRequired: boolean;
+  dueRule: OnboardingDueRule;
+  dependencyRules: OnboardingDependencyRule[];
+  readinessGate: boolean;
+  sortOrder: number;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseOnboardingProgramme = {
+  id: string;
+  franchiseId: string;
+  templateId: string;
+  sourceAgreementId?: string | null;
+  status: OnboardingProgrammeStatus;
+  targetLaunchDate: string;
+  actualLaunchDate?: string | null;
+  launchReadiness: OnboardingReadiness;
+  launchApprovedByUserId?: string | null;
+  launchApprovedAt?: string | null;
+  idempotencyKey: string;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseOnboardingTask = {
+  id: string;
+  programmeId: string;
+  templateTaskId?: string | null;
+  phaseName: string;
+  title: string;
+  ownerType: OnboardingOwnerType;
+  ownerUserId?: string | null;
+  status: OnboardingTaskStatus;
+  required: boolean;
+  approvalRequired: boolean;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  dueDate?: string | null;
+  dueDateOverridden: boolean;
+  completedByUserId?: string | null;
+  completedAt?: string | null;
+  evidenceDocumentId?: string | null;
+  dependencyRules: OnboardingDependencyRule[];
+  readinessGate: boolean;
+  sortOrder: number;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseOnboardingBlocker = {
+  id: string;
+  programmeId: string;
+  taskId?: string | null;
+  status: "open" | "resolved";
+  title: string;
+  notes?: string | null;
+  raisedByUserId?: string | null;
+  resolvedByUserId?: string | null;
+  resolvedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type FranchiseOnboardingSummary = {
+  programme?: FranchiseOnboardingProgramme;
+  tasks: FranchiseOnboardingTask[];
+  blockers: FranchiseOnboardingBlocker[];
+  progress: number;
+  currentPhase?: string | null;
+  overdueTasks: number;
+  blockedTasks: number;
+  assignedToMe: FranchiseOnboardingTask[];
+  upcomingTasks: FranchiseOnboardingTask[];
+  completedMilestones: string[];
+  readiness: OnboardingReadiness;
+  launchReady: boolean;
+};
+
+export type NetworkOnboardingOverviewRow = {
+  franchise: FranchiseRecord;
+  organisation?: FranchiseOrganisation;
+  territory?: FranchiseTerritory;
+  agreementExecutedAt?: string | null;
+  targetLaunchDate?: string | null;
+  progress: number;
+  readiness: OnboardingReadiness;
+  overdueTasks: number;
+  blockedTasks: number;
+  currentPhase?: string | null;
+  riskStatus: "on_track" | "at_risk" | "blocked" | "launched";
+};
+
 export type AgreementSignatureRequest = {
   id: string;
   franchiseAgreementId: string;
@@ -341,6 +481,7 @@ export type Franchise360 = {
   compliance: FranchiseComplianceSummary;
   complianceActions: FranchiseComplianceAction[];
   complianceReminders: FranchiseComplianceReminder[];
+  onboarding: FranchiseOnboardingSummary;
   placeholders: {
     performance: "deferred";
     training: "deferred";
@@ -368,6 +509,12 @@ export type FranchiseData = {
   complianceRecords?: FranchiseComplianceRecord[];
   complianceActions?: FranchiseComplianceAction[];
   complianceReminders?: FranchiseComplianceReminder[];
+  onboardingTemplates?: OnboardingTemplate[];
+  onboardingTemplatePhases?: OnboardingTemplatePhase[];
+  onboardingTemplateTasks?: OnboardingTemplateTask[];
+  onboardingProgrammes?: FranchiseOnboardingProgramme[];
+  onboardingTasks?: FranchiseOnboardingTask[];
+  onboardingBlockers?: FranchiseOnboardingBlocker[];
   domainEvents?: FranchiseDomainEvent[];
   activity?: FranchiseAuditEvent[];
 };
