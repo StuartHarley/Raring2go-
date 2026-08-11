@@ -912,7 +912,7 @@ export async function publishDueSocialJob(
   job.lockedAt = now();
   await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublishStarted, publication, { jobId: job.id });
   const result = await provider.publish({ publication, account });
-  job.providerResponse = result.metadata ?? {};
+  job.providerResponse = sanitizeProviderMetadata(result.metadata ?? {});
   job.completedAt = now();
   if (result.status === "published") {
     job.status = "completed";
@@ -927,12 +927,34 @@ export async function publishDueSocialJob(
     job.status = job.attempts >= job.maxAttempts ? "failed" : "queued";
     publication.publishState = "failed";
     publication.retryCount += 1;
-    publication.failureMetadata = result.metadata ?? { reason: "provider_failure" };
+    publication.failureMetadata = sanitizeProviderMetadata(result.metadata ?? { reason: "provider_failure" });
     await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublishFailed, publication, {
       attempts: job.attempts
     });
   }
   return publication;
+}
+
+function sanitizeProviderMetadata(value: Record<string, unknown>): Record<string, unknown> {
+  const blocked = new Set([
+    "access_token",
+    "token",
+    "page_access_token",
+    "app_secret",
+    "client_secret",
+    "authorization"
+  ]);
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !blocked.has(key.toLowerCase()))
+      .map(([key, item]) => [
+        key,
+        item && typeof item === "object" && !Array.isArray(item)
+          ? sanitizeProviderMetadata(item as Record<string, unknown>)
+          : item
+      ])
+  );
 }
 
 export async function createNetworkSocialQueueSuggestions(

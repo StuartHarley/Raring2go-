@@ -11,3 +11,61 @@ Keep provider-specific code behind adapters. The product should be able to swap 
 - AI: common gateway exposing existing Raring2go content/events workflows plus future model/tool adapters.
 
 Every webhook must authenticate the sender, deduplicate events and retain the provider event ID in the audit/job history.
+
+## PIL-006 Meta Facebook Page Pilot
+
+The first live social pilot channel is a Facebook Page published through Meta Graph API. The product domain remains provider-neutral: Meta page IDs, access tokens, Graph payloads and webhook signatures belong only inside the social provider adapter or sanitized provider metadata.
+
+### Meta Requirements
+
+- A Meta developer app with Facebook Login/API access suitable for Page publishing.
+- A Facebook Page controlled by the pilot business/HQ account.
+- A Page access token with the least privileges required for Page publishing and status checks.
+- Required permissions/scopes should be confirmed against Meta's current review requirements before pilot, typically including Page-management/publishing capabilities such as `pages_manage_posts`, `pages_read_engagement` and any required business/page access permissions.
+- Instagram Business support must be added as a later Meta channel through the same provider boundary, not by changing the publishing domain model.
+
+### Environment Variables
+
+Configure secrets through local `.env` or deployment-platform secrets. Never commit real values.
+
+- `SOCIAL_PROVIDER=meta-facebook-page`
+- `META_GRAPH_API_VERSION=v20.0`
+- `META_FACEBOOK_PAGE_ID`
+- `META_FACEBOOK_PAGE_ACCESS_TOKEN`
+- `META_APP_SECRET` if webhooks are enabled
+
+The development provider remains available with `SOCIAL_PROVIDER=development`.
+
+### Page Connection Model
+
+Raring2go social account records store provider-neutral account identity and public connection health only. The Facebook Page ID is matched as the account's external account reference; the Page access token stays in environment/deployment secrets and is never stored in normal social account, audit, publication or job records.
+
+### Token Lifecycle
+
+Before controlled pilot:
+
+1. Create or select the Meta developer app.
+2. Connect the target Facebook Page.
+3. Generate the Page access token using an approved admin/business flow.
+4. Configure the token in local/preview/production secrets.
+5. Record expiry/renewal requirements in the pilot runbook.
+6. Rotate/revoke immediately if a token is exposed.
+
+Expired or revoked credentials must fail safely: the publish job remains failed/retryable, the provider error is visible, and no secret material is persisted.
+
+### Webhooks
+
+If Meta webhooks are enabled, configure callback delivery to the application route that processes social provider events. The adapter verifies `x-hub-signature-256` with `META_APP_SECRET`, maps provider event IDs for dedupe, and stores sanitized payloads only.
+
+### Controlled Live-Post Verification
+
+1. Use a non-sensitive approved content variant and a clearly labelled pilot Facebook Page.
+2. Confirm `SOCIAL_PROVIDER=meta-facebook-page`, `META_FACEBOOK_PAGE_ID` and `META_FACEBOOK_PAGE_ACCESS_TOKEN` are configured in the target environment.
+3. Queue, approve and schedule one Facebook publication through the normal Social queue.
+4. Run the publish job once.
+5. Confirm the Facebook Page post exists and matches the immutable publication snapshot.
+6. Confirm the internal publication is `published`, has an external provider reference, and appears in Marketing Command/My Today.
+7. Retry the same completed job and confirm no duplicate Facebook post is created.
+8. Revoke or replace the token in a controlled test and confirm failures are visible, recoverable and secret-free.
+
+Live Meta publishing has not been verified until the real Page token and target Page are configured by the project owner.

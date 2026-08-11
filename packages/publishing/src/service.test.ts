@@ -804,6 +804,8 @@ describe("publishing edition model", () => {
 
     expect(publication).toMatchObject({ publishState: "failed", retryCount: 1 });
     expect(publishingData.socialPublishJobs[0]!.status).toBe("queued");
+    expect(JSON.stringify(publishingData.socialPublishJobs[0]!.providerResponse)).not.toContain("secret-token");
+    expect(JSON.stringify(publication.failureMetadata)).not.toContain("secret-token");
     await cancelSocialPublication(hqContext(), permissions, recorder, publishingData, publication.id);
     expect(publication.publishState).toBe("cancelled");
 
@@ -1092,7 +1094,11 @@ function failingSocialProvider() {
     async publish() {
       return {
         status: "failed" as const,
-        metadata: { reason: "temporary_failure" }
+        metadata: {
+          reason: "temporary_failure",
+          access_token: "secret-token",
+          nested: { page_access_token: "secret-token", visible: true }
+        }
       };
     }
   };
