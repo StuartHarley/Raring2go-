@@ -134,6 +134,10 @@ describe("foundation fixtures", () => {
       printStatus: "not_started",
       digitalStatus: "not_started"
     });
+    expect(foundationSeed.magazineTemplateVersions[0]).toMatchObject({
+      templateId: fixtureIds.magazineTemplates.autumnCover,
+      status: "published"
+    });
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

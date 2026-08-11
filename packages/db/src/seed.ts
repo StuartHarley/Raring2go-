@@ -22,6 +22,8 @@ import {
   permissions,
   rolePermissions,
   roles,
+  magazineTemplates,
+  magazineTemplateVersions,
   masterEditions,
   seasons,
   territories,
@@ -666,6 +668,57 @@ export async function seedDatabase(databaseUrl?: string) {
         version: sql`excluded.version`,
         publicationArchive: sql`excluded.publication_archive`,
         generatedFromMasterVersion: sql`excluded.generated_from_master_version`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(magazineTemplates).values([...foundationSeed.magazineTemplates]).onConflictDoUpdate({
+      target: magazineTemplates.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        category: sql`excluded.category`,
+        status: sql`excluded.status`,
+        createdByUserId: sql`excluded.created_by_user_id`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(magazineTemplateVersions).values(foundationSeed.magazineTemplateVersions.map((version) => ({
+      ...version,
+      lockedElements: [...version.lockedElements],
+      editableZones: [...version.editableZones],
+      imageZones: [...version.imageZones],
+      copyZones: [...version.copyZones],
+      headlineZones: [...version.headlineZones],
+      advertiserZones: [...version.advertiserZones],
+      approvedAt: version.approvedAt ? new Date(version.approvedAt) : null,
+      publishedAt: version.publishedAt ? new Date(version.publishedAt) : null
+    }))).onConflictDoUpdate({
+      target: magazineTemplateVersions.id,
+      set: {
+        templateId: sql`excluded.template_id`,
+        version: sql`excluded.version`,
+        status: sql`excluded.status`,
+        pageDimensions: sql`excluded.page_dimensions`,
+        bleed: sql`excluded.bleed`,
+        trim: sql`excluded.trim`,
+        margins: sql`excluded.margins`,
+        grid: sql`excluded.grid`,
+        lockedElements: sql`excluded.locked_elements`,
+        editableZones: sql`excluded.editable_zones`,
+        imageZones: sql`excluded.image_zones`,
+        copyZones: sql`excluded.copy_zones`,
+        headlineZones: sql`excluded.headline_zones`,
+        advertiserZones: sql`excluded.advertiser_zones`,
+        footerFurniture: sql`excluded.footer_furniture`,
+        printRules: sql`excluded.print_rules`,
+        digitalEnhancements: sql`excluded.digital_enhancements`,
+        approvedByUserId: sql`excluded.approved_by_user_id`,
+        approvedAt: sql`excluded.approved_at`,
+        publishedAt: sql`excluded.published_at`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

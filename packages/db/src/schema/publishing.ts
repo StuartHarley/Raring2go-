@@ -93,3 +93,58 @@ export const territoryEditions = pgTable(
     index("territory_editions_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const magazineTemplates = pgTable(
+  "magazine_templates",
+  {
+    id,
+    key: text("key").notNull().unique(),
+    name: text("name").notNull(),
+    category: text("category").notNull(),
+    status: text("status").notNull().default("draft"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("magazine_templates_key_idx").on(table.key),
+    index("magazine_templates_category_idx").on(table.category),
+    index("magazine_templates_status_idx").on(table.status),
+    index("magazine_templates_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const magazineTemplateVersions = pgTable(
+  "magazine_template_versions",
+  {
+    id,
+    templateId: uuid("template_id").notNull().references(() => magazineTemplates.id),
+    version: integer("version").notNull(),
+    status: text("status").notNull().default("draft"),
+    pageDimensions: jsonb("page_dimensions").$type<Record<string, unknown>>().notNull(),
+    bleed: jsonb("bleed").$type<Record<string, unknown>>().notNull(),
+    trim: jsonb("trim").$type<Record<string, unknown>>().notNull(),
+    margins: jsonb("margins").$type<Record<string, unknown>>().notNull(),
+    grid: jsonb("grid").$type<Record<string, unknown>>().notNull(),
+    lockedElements: jsonb("locked_elements").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    editableZones: jsonb("editable_zones").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    imageZones: jsonb("image_zones").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    copyZones: jsonb("copy_zones").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    headlineZones: jsonb("headline_zones").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    advertiserZones: jsonb("advertiser_zones").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    footerFurniture: jsonb("footer_furniture").$type<Record<string, unknown>>().notNull().default({}),
+    printRules: jsonb("print_rules").$type<Record<string, unknown>>().notNull().default({}),
+    digitalEnhancements: jsonb("digital_enhancements").$type<Record<string, unknown>>().notNull().default({}),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: date("approved_at", { mode: "date" }),
+    publishedAt: date("published_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("magazine_template_versions_template_version_uidx").on(table.templateId, table.version),
+    index("magazine_template_versions_template_id_idx").on(table.templateId),
+    index("magazine_template_versions_status_idx").on(table.status),
+    index("magazine_template_versions_deleted_at_idx").on(table.deletedAt)
+  ]
+);

@@ -3,6 +3,8 @@ import { requirePermission, type PermissionData } from "@raring2go/permissions";
 import { publishingCapabilities, type PublishingCapability } from "./permissions";
 import type {
   EditionSummary,
+  MagazineTemplate,
+  MagazineTemplateVersion,
   MasterEdition,
   PublishingActorContext,
   PublishingData,
@@ -129,6 +131,121 @@ export async function generateTerritoryEditions(
   return created;
 }
 
+export function listMagazineTemplates(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  data: PublishingData
+) {
+  requirePublishingPermission(context, permissions, "templateEdit");
+  return data.magazineTemplates
+    .filter((template) => !template.deletedAt)
+    .map((template) => ({
+      template,
+      versions: data.magazineTemplateVersions
+        .filter((version) => version.templateId === template.id && !version.deletedAt)
+        .sort((left, right) => right.version - left.version)
+    }));
+}
+
+export async function createMagazineTemplate(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  input: {
+    template: MagazineTemplate;
+    version: MagazineTemplateVersion;
+  }
+) {
+  requirePublishingPermission(context, permissions, "templateCreate");
+  if (data.magazineTemplates.some((template) => template.key === input.template.key && !template.deletedAt)) {
+    throw new Error("Magazine template key already exists.");
+  }
+  if (input.version.templateId !== input.template.id || input.version.version !== 1) {
+    throw new Error("Initial magazine template version must be version 1 for the template.");
+  }
+  validateTemplateVersion(input.version);
+  data.magazineTemplates.push(input.template);
+  data.magazineTemplateVersions.push(input.version);
+  await audit.record(auditEvent(context, auditActions.publishingTemplateChange, "magazine_template", input.template.id, {
+    action: "create",
+    category: input.template.category,
+    version: input.version.version
+  }));
+  return input;
+}
+
+export async function createTemplateRevision(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  templateId: string,
+  revision: MagazineTemplateVersion
+) {
+  requirePublishingPermission(context, permissions, "templateEdit");
+  const template = requireMagazineTemplate(data, templateId);
+  const currentVersions = data.magazineTemplateVersions.filter((version) => version.templateId === template.id && !version.deletedAt);
+  const nextVersion = Math.max(0, ...currentVersions.map((version) => version.version)) + 1;
+  if (revision.templateId !== template.id || revision.version !== nextVersion) {
+    throw new Error("Template revision must use the next sequential version.");
+  }
+  validateTemplateVersion(revision);
+  data.magazineTemplateVersions.push(revision);
+  await audit.record(auditEvent(context, auditActions.publishingTemplateChange, "magazine_template_version", revision.id, {
+    action: "revise",
+    templateId,
+    version: revision.version
+  }));
+  return revision;
+}
+
+export async function approveTemplateVersion(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  versionId: string
+) {
+  requirePublishingPermission(context, permissions, "templateApprove");
+  const version = requireTemplateVersion(data, versionId);
+  if (version.status !== "draft") {
+    throw new Error("Only draft template versions can be approved.");
+  }
+  version.status = "approved";
+  version.approvedByUserId = context.userId;
+  version.approvedAt = today();
+  await audit.record(auditEvent(context, auditActions.publishingTemplateChange, "magazine_template_version", version.id, {
+    action: "approve",
+    version: version.version
+  }));
+  return version;
+}
+
+export async function publishTemplateVersion(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  versionId: string
+) {
+  requirePublishingPermission(context, permissions, "templatePublish");
+  const version = requireTemplateVersion(data, versionId);
+  if (version.status !== "approved") {
+    throw new Error("Only approved template versions can be published.");
+  }
+  version.status = "published";
+  version.publishedAt = today();
+  const template = requireMagazineTemplate(data, version.templateId);
+  template.status = "approved";
+  await audit.record(auditEvent(context, auditActions.publishingTemplateChange, "magazine_template_version", version.id, {
+    action: "publish",
+    templateId: template.id,
+    version: version.version
+  }));
+  return version;
+}
+
 function requirePublishingPermission(
   context: PublishingActorContext,
   permissions: PermissionData,
@@ -171,6 +288,35 @@ function requireMasterEdition(data: PublishingData, masterEditionId: string) {
     throw new Error("Master edition was not found.");
   }
   return masterEdition;
+}
+
+function requireMagazineTemplate(data: PublishingData, templateId: string) {
+  const template = data.magazineTemplates.find((candidate) => candidate.id === templateId && !candidate.deletedAt);
+  if (!template) {
+    throw new Error("Magazine template was not found.");
+  }
+  return template;
+}
+
+function requireTemplateVersion(data: PublishingData, versionId: string) {
+  const version = data.magazineTemplateVersions.find((candidate) => candidate.id === versionId && !candidate.deletedAt);
+  if (!version) {
+    throw new Error("Magazine template version was not found.");
+  }
+  return version;
+}
+
+function validateTemplateVersion(version: MagazineTemplateVersion) {
+  if (version.status !== "draft") {
+    throw new Error("New template versions must start as draft.");
+  }
+  if (version.lockedElements.length === 0 || version.editableZones.length === 0) {
+    throw new Error("Template versions require locked elements and editable zones.");
+  }
+}
+
+function today() {
+  return "2026-08-11";
 }
 
 function auditEvent(

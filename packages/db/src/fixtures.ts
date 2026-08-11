@@ -135,6 +135,12 @@ export const fixtureIds = {
   territoryEditions: {
     suttonAutumn2026: "00000000-0000-4000-8000-000000001003"
   },
+  magazineTemplates: {
+    autumnCover: "00000000-0000-4000-8000-000000001004"
+  },
+  magazineTemplateVersions: {
+    autumnCoverV1: "00000000-0000-4000-8000-000000001005"
+  },
   invitations: {
     franchiseStaff: "00000000-0000-4000-8000-000000000801"
   }
@@ -883,6 +889,55 @@ export const foundationSeed = {
       version: 1,
       publicationArchive: {},
       generatedFromMasterVersion: 1
+    }
+  ],
+  magazineTemplates: [
+    {
+      id: fixtureIds.magazineTemplates.autumnCover,
+      key: "autumn-cover",
+      name: "Autumn Front Cover",
+      category: "front_cover",
+      status: "approved",
+      createdByUserId: fixtureIds.users.superAdmin
+    }
+  ],
+  magazineTemplateVersions: [
+    {
+      id: fixtureIds.magazineTemplateVersions.autumnCoverV1,
+      templateId: fixtureIds.magazineTemplates.autumnCover,
+      version: 1,
+      status: "published",
+      pageDimensions: { width: 210, height: 297, unit: "mm" },
+      bleed: { top: 3, right: 3, bottom: 3, left: 3, unit: "mm" },
+      trim: { width: 210, height: 297, unit: "mm" },
+      margins: { top: 12, right: 12, bottom: 14, left: 12, unit: "mm" },
+      grid: { columns: 6, gutter: 4 },
+      lockedElements: [
+        { id: "masthead", type: "logo", rule: "do_not_distort_rotate_or_recolour" },
+        { id: "season-badge", type: "seasonal_accent", token: "autumn" }
+      ],
+      editableZones: [
+        { id: "local-cover-story", type: "headline", maxCharacters: 60 },
+        { id: "local-highlights", type: "highlight_list", maxItems: 4 }
+      ],
+      imageZones: [
+        { id: "hero-image", minDpi: 300, aspectRatio: "cover" }
+      ],
+      copyZones: [
+        { id: "strapline", maxWords: 14 }
+      ],
+      headlineZones: [
+        { id: "cover-headline", maxCharacters: 60 }
+      ],
+      advertiserZones: [
+        { id: "sponsor-strip", formats: ["full_width"] }
+      ],
+      footerFurniture: { pageNumber: false, issueDate: true },
+      printRules: { colourSpace: "cmyk", minDpi: 300, bleedRequired: true },
+      digitalEnhancements: { links: true, altTextRequired: true },
+      approvedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2026-08-11",
+      publishedAt: "2026-08-11"
     }
   ]
 } as const;

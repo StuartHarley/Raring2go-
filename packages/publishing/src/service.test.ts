@@ -2,8 +2,12 @@ import { auditActions } from "@raring2go/audit";
 import { describe, expect, it } from "vitest";
 import {
   createSeasonWithMasterEdition,
+  approveTemplateVersion,
+  createMagazineTemplate,
+  createTemplateRevision,
   generateTerritoryEditions,
-  listEditionSummaries
+  listEditionSummaries,
+  publishTemplateVersion
 } from "./service";
 import type { PublishingData } from "./types";
 import type { PermissionData } from "@raring2go/permissions";
@@ -28,7 +32,10 @@ const ids = {
   },
   season: "season_autumn",
   master: "master_autumn",
-  edition: "edition_own"
+  edition: "edition_own",
+  template: "template_cover",
+  templateVersion: "template_cover_v1",
+  templateVersion2: "template_cover_v2"
 } as const;
 
 const permissions: PermissionData = {
@@ -50,6 +57,10 @@ const permissions: PermissionData = {
   rolePermissions: [
     grant(ids.roles.hq, "edition", "view", "network"),
     grant(ids.roles.hq, "edition", "create", "network"),
+    grant(ids.roles.hq, "edition.template", "create", "network"),
+    grant(ids.roles.hq, "edition.template", "edit", "network"),
+    grant(ids.roles.hq, "edition.template", "approve", "network"),
+    grant(ids.roles.hq, "edition.template", "publish", "network"),
     grant(ids.roles.local, "edition", "view", "own_territory")
   ],
   territories: [
@@ -148,6 +159,64 @@ describe("publishing edition model", () => {
       )
     ).rejects.toThrow("No permission grant");
   });
+
+  it("creates approves and publishes magazine template versions immutably", async () => {
+    const publishingData = emptyData();
+    const recorder = audit();
+
+    await createMagazineTemplate(hqContext(), permissions, recorder, publishingData, {
+      template: template(),
+      version: templateVersion()
+    });
+    await approveTemplateVersion(hqContext(), permissions, recorder, publishingData, ids.templateVersion);
+    await publishTemplateVersion(hqContext(), permissions, recorder, publishingData, ids.templateVersion);
+    await createTemplateRevision(hqContext(), permissions, recorder, publishingData, ids.template, {
+      ...templateVersion(),
+      id: ids.templateVersion2,
+      version: 2,
+      status: "draft",
+      editableZones: [{ id: "local-cover-line", type: "headline", locked: false }]
+    });
+
+    expect(publishingData.magazineTemplateVersions.map((version) => ({
+      id: version.id,
+      status: version.status,
+      version: version.version
+    }))).toEqual([
+      { id: ids.templateVersion, status: "published", version: 1 },
+      { id: ids.templateVersion2, status: "draft", version: 2 }
+    ]);
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.publishingTemplateChange,
+      auditActions.publishingTemplateChange,
+      auditActions.publishingTemplateChange,
+      auditActions.publishingTemplateChange
+    ]);
+  });
+
+  it("rejects malformed template versions and skipped revision numbers", async () => {
+    const publishingData = emptyData();
+    await createMagazineTemplate(hqContext(), permissions, audit(), publishingData, {
+      template: template(),
+      version: templateVersion()
+    });
+
+    await expect(
+      createTemplateRevision(hqContext(), permissions, audit(), publishingData, ids.template, {
+        ...templateVersion(),
+        id: ids.templateVersion2,
+        version: 3
+      })
+    ).rejects.toThrow("next sequential");
+    await expect(
+      createTemplateRevision(hqContext(), permissions, audit(), publishingData, ids.template, {
+        ...templateVersion(),
+        id: ids.templateVersion2,
+        version: 2,
+        editableZones: []
+      })
+    ).rejects.toThrow("editable zones");
+  });
 });
 
 function hqContext() {
@@ -162,6 +231,8 @@ function emptyData(): PublishingData {
     seasons: [],
     masterEditions: [],
     territoryEditions: [],
+    magazineTemplates: [],
+    magazineTemplateVersions: [],
     territories: [
       {
         id: ids.territories.own,
@@ -220,6 +291,40 @@ function masterEdition() {
     publicationArchive: {},
     locked: false,
     createdByUserId: ids.users.hq
+  };
+}
+
+function template() {
+  return {
+    id: ids.template,
+    key: "autumn-cover",
+    name: "Autumn cover",
+    category: "front_cover",
+    status: "draft",
+    createdByUserId: ids.users.hq
+  };
+}
+
+function templateVersion() {
+  return {
+    id: ids.templateVersion,
+    templateId: ids.template,
+    version: 1,
+    status: "draft",
+    pageDimensions: { width: 210, height: 297, unit: "mm" },
+    bleed: { top: 3, right: 3, bottom: 3, left: 3, unit: "mm" },
+    trim: { width: 210, height: 297, unit: "mm" },
+    margins: { top: 12, right: 12, bottom: 14, left: 12, unit: "mm" },
+    grid: { columns: 6, gutter: 4 },
+    lockedElements: [{ id: "brand-masthead", type: "logo", locked: true }],
+    editableZones: [{ id: "local-cover-line", type: "headline", locked: false }],
+    imageZones: [{ id: "hero", minDpi: 300 }],
+    copyZones: [{ id: "strapline", maxWords: 14 }],
+    headlineZones: [{ id: "cover-headline", maxCharacters: 60 }],
+    advertiserZones: [{ id: "sponsor-strip", formats: ["full_width"] }],
+    footerFurniture: { pageNumber: false },
+    printRules: { colourSpace: "cmyk", minDpi: 300 },
+    digitalEnhancements: { links: true }
   };
 }
 

@@ -21,6 +21,8 @@ import {
   franchiseOnboardingProgrammes,
   franchiseOnboardingTasks,
   franchises,
+  magazineTemplates,
+  magazineTemplateVersions,
   masterEditions,
   onboardingTemplatePhases,
   onboardingTemplates,
@@ -132,5 +134,17 @@ describe("foundation schema", () => {
     expect(territoryEditions.digitalStatus.name).toBe("digital_status");
     expect(territoryEditions.generatedFromMasterVersion.name).toBe("generated_from_master_version");
     expect((territoryEditions as unknown as Record<string, unknown>).digitalEditionId).toBeUndefined();
+  });
+
+  it("models versioned magazine templates with editable and locked production zones", () => {
+    expect(magazineTemplates.key.name).toBe("key");
+    expect(magazineTemplates.category.name).toBe("category");
+    expect(magazineTemplateVersions.templateId.name).toBe("template_id");
+    expect(magazineTemplateVersions.pageDimensions.name).toBe("page_dimensions");
+    expect(magazineTemplateVersions.lockedElements.name).toBe("locked_elements");
+    expect(magazineTemplateVersions.editableZones.name).toBe("editable_zones");
+    expect(magazineTemplateVersions.printRules.name).toBe("print_rules");
+    expect(magazineTemplateVersions.digitalEnhancements.name).toBe("digital_enhancements");
+    expect((magazineTemplateVersions as unknown as Record<string, unknown>).indesignFilePath).toBeUndefined();
   });
 });

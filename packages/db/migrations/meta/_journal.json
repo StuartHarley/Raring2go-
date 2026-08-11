@@ -71,6 +71,13 @@
       "when": 1786431190142,
       "tag": "0009_tricky_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786431738959,
+      "tag": "0010_old_miss_america",
+      "breakpoints": true
     }
   ]
 }

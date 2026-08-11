@@ -63,6 +63,53 @@ export type TerritoryEdition = {
   deletedAt?: Date | null;
 };
 
+export type MagazineTemplate = {
+  id: string;
+  key: string;
+  name: string;
+  category:
+    | "front_cover"
+    | "contents"
+    | "article"
+    | "events"
+    | "advertorial"
+    | "competition"
+    | "directory"
+    | "house_page"
+    | "campaign"
+    | "full_page_ad"
+    | "half_page_ad"
+    | (string & {});
+  status: "draft" | "approved" | "retired" | (string & {});
+  createdByUserId?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type MagazineTemplateVersion = {
+  id: string;
+  templateId: string;
+  version: number;
+  status: "draft" | "approved" | "published" | "retired" | (string & {});
+  pageDimensions: Record<string, unknown>;
+  bleed: Record<string, unknown>;
+  trim: Record<string, unknown>;
+  margins: Record<string, unknown>;
+  grid: Record<string, unknown>;
+  lockedElements: Array<Record<string, unknown>>;
+  editableZones: Array<Record<string, unknown>>;
+  imageZones: Array<Record<string, unknown>>;
+  copyZones: Array<Record<string, unknown>>;
+  headlineZones: Array<Record<string, unknown>>;
+  advertiserZones: Array<Record<string, unknown>>;
+  footerFurniture: Record<string, unknown>;
+  printRules: Record<string, unknown>;
+  digitalEnhancements: Record<string, unknown>;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  publishedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
 export type PublishingTerritory = {
   id: string;
   franchiseOrganisationId?: string | null;
@@ -75,6 +122,8 @@ export type PublishingData = {
   seasons: Season[];
   masterEditions: MasterEdition[];
   territoryEditions: TerritoryEdition[];
+  magazineTemplates: MagazineTemplate[];
+  magazineTemplateVersions: MagazineTemplateVersion[];
   territories: PublishingTerritory[];
 };
 
