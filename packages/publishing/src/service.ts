@@ -5,6 +5,7 @@ import type {
   EditionSummary,
   EditionContentItem,
   EditionPage,
+  EditionPageRevision,
   MagazineTemplate,
   MagazineTemplateVersion,
   MasterEdition,
@@ -491,6 +492,61 @@ export async function reorderEditionPages(
   return pages.sort((left, right) => left.pageNumber - right.pageNumber);
 }
 
+export async function autosaveLocalPageContent(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  pageId: string,
+  snapshot: Record<string, unknown>
+) {
+  requirePublishingPermission(context, permissions, "localContentEdit");
+  const page = requireEditionPage(data, pageId);
+  const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  if (context.territoryId && context.territoryId !== edition.territoryId) {
+    throw new Error("Page is outside the active territory.");
+  }
+  if (page.locked) {
+    throw new Error("Locked pages cannot be edited locally.");
+  }
+  const warnings = pageWarnings(snapshot);
+  page.status = "in_progress";
+  page.readiness = warnings.length > 0 ? "blocked" : "in_progress";
+  const revision = addPageRevision(data, page, context.userId, "autosave", snapshot, warnings);
+  await audit.record(auditEvent(context, auditActions.publishingPageAssign, "edition_page", page.id, {
+    action: "autosave",
+    revisionNumber: revision.revisionNumber,
+    warningCount: warnings.length
+  }, edition.territoryId));
+  return { page, revision };
+}
+
+export async function submitPageForReview(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  pageId: string
+) {
+  requirePublishingPermission(context, permissions, "localContentEdit");
+  const page = requireEditionPage(data, pageId);
+  const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  if (page.readiness === "blocked" || page.issues.length > 0) {
+    throw new Error("Page cannot be submitted while warnings or issues remain.");
+  }
+  page.status = "awaiting_hq";
+  page.readiness = "ready";
+  const revision = addPageRevision(data, page, context.userId, "submit_review", {
+    pageId: page.id,
+    status: page.status
+  }, []);
+  await audit.record(auditEvent(context, auditActions.publishingPageAssign, "edition_page", page.id, {
+    action: "submit_review",
+    revisionNumber: revision.revisionNumber
+  }, edition.territoryId));
+  return { page, revision };
+}
+
 function requirePublishingPermission(
   context: PublishingActorContext,
   permissions: PermissionData,
@@ -581,6 +637,45 @@ function requireEditionPage(data: PublishingData, pageId: string) {
     throw new Error("Edition page was not found.");
   }
   return page;
+}
+
+function addPageRevision(
+  data: PublishingData,
+  page: EditionPage,
+  actorUserId: string,
+  changeType: EditionPageRevision["changeType"],
+  snapshot: Record<string, unknown>,
+  warnings: Array<Record<string, unknown>>
+) {
+  const revisionNumber = Math.max(
+    0,
+    ...data.editionPageRevisions
+      .filter((revision) => revision.pageId === page.id && !revision.deletedAt)
+      .map((revision) => revision.revisionNumber)
+  ) + 1;
+  const revision: EditionPageRevision = {
+    id: crypto.randomUUID(),
+    pageId: page.id,
+    revisionNumber,
+    actorUserId,
+    changeType,
+    snapshot,
+    warnings
+  };
+  data.editionPageRevisions.push(revision);
+  return revision;
+}
+
+function pageWarnings(snapshot: Record<string, unknown>) {
+  const warnings: Array<Record<string, unknown>> = [];
+  const text = typeof snapshot.body === "string" ? snapshot.body : "";
+  if (text.split(/\s+/).filter(Boolean).length > 220) {
+    warnings.push({ type: "copy_overflow", message: "Copy exceeds the current page guidance." });
+  }
+  if (snapshot.imageRequired === true && !snapshot.imageAssetId) {
+    warnings.push({ type: "missing_image", message: "Required image is missing." });
+  }
+  return warnings;
 }
 
 function contentTargetsTerritory(item: EditionContentItem, territoryId: string) {

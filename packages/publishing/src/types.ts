@@ -177,6 +177,17 @@ export type EditionPage = {
   deletedAt?: Date | null;
 };
 
+export type EditionPageRevision = {
+  id: string;
+  pageId: string;
+  revisionNumber: number;
+  actorUserId?: string | null;
+  changeType: "autosave" | "submit_review" | "comment" | "status" | (string & {});
+  snapshot: Record<string, unknown>;
+  warnings: Array<Record<string, unknown>>;
+  deletedAt?: Date | null;
+};
+
 export type PublishingTerritory = {
   id: string;
   franchiseOrganisationId?: string | null;
@@ -194,6 +205,7 @@ export type PublishingData = {
   editionContentItems: EditionContentItem[];
   territoryEditionContent: TerritoryEditionContent[];
   editionPages: EditionPage[];
+  editionPageRevisions: EditionPageRevision[];
   territories: PublishingTerritory[];
 };
 

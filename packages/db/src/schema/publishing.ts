@@ -233,3 +233,24 @@ export const editionPages = pgTable(
     index("edition_pages_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const editionPageRevisions = pgTable(
+  "edition_page_revisions",
+  {
+    id,
+    pageId: uuid("page_id").notNull().references(() => editionPages.id),
+    revisionNumber: integer("revision_number").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id),
+    changeType: text("change_type").notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    warnings: jsonb("warnings").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("edition_page_revisions_page_revision_uidx").on(table.pageId, table.revisionNumber),
+    index("edition_page_revisions_page_id_idx").on(table.pageId),
+    index("edition_page_revisions_change_type_idx").on(table.changeType),
+    index("edition_page_revisions_deleted_at_idx").on(table.deletedAt)
+  ]
+);

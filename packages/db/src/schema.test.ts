@@ -23,6 +23,7 @@ import {
   franchises,
   editionContentItems,
   editionPages,
+  editionPageRevisions,
   magazineTemplates,
   magazineTemplateVersions,
   masterEditions,
@@ -169,5 +170,13 @@ describe("foundation schema", () => {
     expect(editionPages.assignedContentId.name).toBe("assigned_content_id");
     expect(editionPages.sourceMarker.name).toBe("source_marker");
     expect(editionPages.readiness.name).toBe("readiness");
+  });
+
+  it("models local editor autosave revisions for page workflow", () => {
+    expect(editionPageRevisions.pageId.name).toBe("page_id");
+    expect(editionPageRevisions.revisionNumber.name).toBe("revision_number");
+    expect(editionPageRevisions.changeType.name).toBe("change_type");
+    expect(editionPageRevisions.snapshot.name).toBe("snapshot");
+    expect(editionPageRevisions.warnings.name).toBe("warnings");
   });
 });

@@ -5,6 +5,7 @@ import {
   approveTemplateVersion,
   applyLocalContentOverride,
   assignPageTemplateAndContent,
+  autosaveLocalPageContent,
   createMagazineTemplate,
   createCentralContentItem,
   createEditionFlatplan,
@@ -14,7 +15,8 @@ import {
   listEditionSummaries,
   publishTemplateVersion,
   propagateMasterContentCorrection,
-  reorderEditionPages
+  reorderEditionPages,
+  submitPageForReview
 } from "./service";
 import type { PublishingData } from "./types";
 import type { PermissionData } from "@raring2go/permissions";
@@ -322,6 +324,82 @@ describe("publishing edition model", () => {
       ])
     ).rejects.toThrow("Locked pages");
   });
+
+  it("autosaves local page edits with revision history and warning states", async () => {
+    const publishingData = await editableFlatplanData();
+    const page = publishingData.editionPages.find((candidate) => !candidate.locked && candidate.sourceMarker === "local")!;
+
+    const result = await autosaveLocalPageContent(
+      {
+        userId: ids.users.local,
+        organisationId: ids.organisations.franchise,
+        territoryId: ids.territories.own
+      },
+      permissions,
+      audit(),
+      publishingData,
+      page.id,
+      { body: "Short local copy", imageRequired: true }
+    );
+
+    expect(result.page.readiness).toBe("blocked");
+    expect(result.revision).toMatchObject({
+      revisionNumber: 1,
+      changeType: "autosave",
+      warnings: [{ type: "missing_image", message: "Required image is missing." }]
+    });
+    await expect(
+      submitPageForReview(
+        {
+          userId: ids.users.local,
+          organisationId: ids.organisations.franchise,
+          territoryId: ids.territories.own
+        },
+        permissions,
+        audit(),
+        publishingData,
+        page.id
+      )
+    ).rejects.toThrow("warnings");
+  });
+
+  it("submits complete local pages for HQ review", async () => {
+    const publishingData = await editableFlatplanData();
+    const page = publishingData.editionPages.find((candidate) => !candidate.locked && candidate.sourceMarker === "local")!;
+    await autosaveLocalPageContent(
+      {
+        userId: ids.users.local,
+        organisationId: ids.organisations.franchise,
+        territoryId: ids.territories.own
+      },
+      permissions,
+      audit(),
+      publishingData,
+      page.id,
+      { body: "Short local copy", imageAssetId: "asset_1" }
+    );
+
+    const result = await submitPageForReview(
+      {
+        userId: ids.users.local,
+        organisationId: ids.organisations.franchise,
+        territoryId: ids.territories.own
+      },
+      permissions,
+      audit(),
+      publishingData,
+      page.id
+    );
+
+    expect(result.page).toMatchObject({
+      status: "awaiting_hq",
+      readiness: "ready"
+    });
+    expect(publishingData.editionPageRevisions.map((revision) => revision.changeType)).toEqual([
+      "autosave",
+      "submit_review"
+    ]);
+  });
 });
 
 function hqContext() {
@@ -341,6 +419,7 @@ function emptyData(): PublishingData {
     editionContentItems: [],
     territoryEditionContent: [],
     editionPages: [],
+    editionPageRevisions: [],
     territories: [
       {
         id: ids.territories.own,
@@ -454,6 +533,13 @@ function contentItem() {
     targeting: {},
     createdByUserId: ids.users.hq
   };
+}
+
+async function editableFlatplanData() {
+  const publishingData = seededData();
+  await generateTerritoryEditions(hqContext(), permissions, audit(), publishingData, ids.master, [ids.territories.own]);
+  await createEditionFlatplan(hqContext(), permissions, audit(), publishingData, publishingData.territoryEditions[0]!.id);
+  return publishingData;
 }
 
 function grant(roleId: string, module: string, action: string, scope: string) {
