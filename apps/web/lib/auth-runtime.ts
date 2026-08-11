@@ -119,7 +119,7 @@ export function safeReturnTo(value?: string | null) {
       return "/app";
     }
 
-    if (!parsed.pathname.startsWith("/app")) {
+    if (!parsed.pathname.startsWith("/app") && !parsed.pathname.startsWith("/areas/")) {
       return "/app";
     }
 

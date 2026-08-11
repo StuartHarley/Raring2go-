@@ -768,7 +768,10 @@ export async function getPublicParentHub(
     };
   }
 
-  const marketing = await loadMarketingData(db);
+  const [marketing, publishing] = await Promise.all([
+    loadMarketingData(db),
+    loadPublishingData(db)
+  ]);
   const contact = marketing.contacts.find((candidate) => candidate.id === contactId && !candidate.deletedAt);
   if (!contact) {
     return {
@@ -787,7 +790,6 @@ export async function getPublicParentHub(
       .filter((subscription) => subscription.contactId === contact.id && subscription.status === "subscribed" && !subscription.deletedAt)
       .map((subscription) => subscription.territoryId)
   ]);
-  const publishing = await loadPublishingData(db);
   const followedTerritories = publishing.territories
     .filter((candidate) => followedIds.has(candidate.id))
     .filter(isPublicTerritoryRecord)
@@ -796,15 +798,22 @@ export async function getPublicParentHub(
       slug: territorySlug(candidate.name),
       name: candidate.name
     }));
+  const publishableSavedContent = new Map(
+    publicContentProjections(publishing, territory)
+      .map((item) => [item.id, item])
+  );
   const savedContent = marketing.savedContent
     .filter((saved) => saved.contactId === contact.id && !saved.deletedAt)
     .filter((saved) => !saved.territoryId || saved.territoryId === territory.id || followedIds.has(saved.territoryId))
+    .filter((saved) => !saved.contentReferenceId || publishableSavedContent.has(saved.contentReferenceId))
     .map((saved) => ({
       id: saved.id,
-      title: saved.title,
-      contentType: saved.contentType,
+      title: saved.contentReferenceId ? publishableSavedContent.get(saved.contentReferenceId)?.title ?? saved.title : saved.title,
+      contentType: saved.contentReferenceId ? publishableSavedContent.get(saved.contentReferenceId)?.type ?? saved.contentType : saved.contentType,
       savedAt: saved.savedAt,
-      href: `/areas/${territory.slug}/${saved.contentType === "event" ? "whats-on" : "activities"}/${territorySlug(saved.title)}`
+      href: saved.contentReferenceId
+        ? publishableSavedContent.get(saved.contentReferenceId)?.href ?? `/areas/${territory.slug}`
+        : `/areas/${territory.slug}/${saved.contentType === "event" ? "whats-on" : "activities"}/${territorySlug(saved.title)}`
     }));
 
   return {

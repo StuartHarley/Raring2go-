@@ -294,7 +294,14 @@ describe("@raring2go/public parent hub", () => {
   });
 
   it("uses native audience preferences and saved content for parent accounts", async () => {
-    const hub = await getPublicParentHub(db, defaultPublicTerritorySlug, fixtureIds.audienceContacts.parentOne);
+    const hub = await getPublicParentHub(dbWithPublicContent([
+      publicContent({
+        id: fixtureIds.contentItems.halfTermGuide,
+        title: "Half term ideas near you",
+        contentType: "article",
+        status: "published"
+      })
+    ]), defaultPublicTerritorySlug, fixtureIds.audienceContacts.parentOne);
 
     expect(hub?.authenticated).toBe(true);
     expect(hub?.followedTerritories.map((territory) => territory.slug)).toEqual(["sutton-coldfield", "solihull"]);
@@ -303,6 +310,23 @@ describe("@raring2go/public parent hub", () => {
       interests: ["days-out", "school-holidays"],
       personalisationEnabled: true
     });
+  });
+
+  it("hides saved content that no longer passes public publishability", async () => {
+    const hub = await getPublicParentHub(dbWithTables({
+      contentItems: [
+        publicContent({
+          id: fixtureIds.contentItems.halfTermGuide,
+          title: "Hidden saved content",
+          status: "draft"
+        })
+      ],
+      contentChannelVariants: [],
+      contentChannelVariantVersions: []
+    }), defaultPublicTerritorySlug, fixtureIds.audienceContacts.parentOne);
+
+    expect(hub?.authenticated).toBe(true);
+    expect(hub?.savedContent).toEqual([]);
   });
 });
 

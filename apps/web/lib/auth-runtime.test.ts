@@ -9,8 +9,9 @@ import {
 } from "./auth-runtime";
 
 describe("auth runtime", () => {
-  it("allows only safe internal application return paths", () => {
+  it("allows only safe internal application and public area return paths", () => {
     expect(safeReturnTo("/app/territory?x=1")).toBe("/app/territory?x=1");
+    expect(safeReturnTo("/areas/sutton-coldfield/saved")).toBe("/areas/sutton-coldfield/saved");
     expect(safeReturnTo("https://evil.example/app")).toBe("/app");
     expect(safeReturnTo("//evil.example/app")).toBe("/app");
     expect(safeReturnTo("/admin")).toBe("/app");

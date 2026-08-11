@@ -1,13 +1,14 @@
-import { fixtureIds } from "@raring2go/db";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
-import { readPublicRecommendations, territoryFromSlug } from "../../../../lib/public-runtime";
+import { sessionCookieName } from "../../../../lib/auth-runtime";
+import { readSessionBackedRecommendations } from "../../../../lib/parent-runtime";
+import { territoryFromSlug } from "../../../../lib/public-runtime";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
-  searchParams: Promise<{ previewParent?: string }>;
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -19,12 +20,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function ForYouPage({ params, searchParams }: PageProps) {
-  const resolvedSearch = await searchParams;
-  const previewContactId = process.env.NODE_ENV === "production" || resolvedSearch.previewParent !== "seed"
-    ? null
-    : fixtureIds.audienceContacts.parentOne;
-  const recommendations = await readPublicRecommendations((await params).territorySlug, previewContactId);
+export default async function ForYouPage({ params }: PageProps) {
+  const cookieStore = await cookies();
+  const territorySlug = (await params).territorySlug;
+  const recommendations = await readSessionBackedRecommendations(
+    territorySlug,
+    cookieStore.get(sessionCookieName)?.value
+  );
 
   if (!recommendations) {
     notFound();
@@ -46,6 +48,14 @@ export default async function ForYouPage({ params, searchParams }: PageProps) {
           <p className="public-kicker">For you</p>
           <h1>{recommendations.personalised ? "Picked from your local preferences" : "Start with local family favourites"}</h1>
           <p>Every recommendation is drawn from approved public Raring2go records and explains why it appears.</p>
+          {!recommendations.personalised ? (
+            <Link
+              href={`/sign-in?returnTo=${encodeURIComponent(`/areas/${recommendations.territory.slug}/for-you`)}` as Route}
+              className="public-button"
+            >
+              Sign in for My Raring2go
+            </Link>
+          ) : null}
         </div>
       </section>
       <section className="public-section">

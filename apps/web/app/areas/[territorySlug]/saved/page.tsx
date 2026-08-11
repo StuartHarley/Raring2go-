@@ -1,13 +1,14 @@
-import { fixtureIds } from "@raring2go/db";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
-import { readPublicParentHub, territoryFromSlug } from "../../../../lib/public-runtime";
+import { sessionCookieName } from "../../../../lib/auth-runtime";
+import { readSessionBackedParentHub } from "../../../../lib/parent-runtime";
+import { territoryFromSlug } from "../../../../lib/public-runtime";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
-  searchParams: Promise<{ previewParent?: string }>;
 };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -19,13 +20,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function SavedPage({ params, searchParams }: PageProps) {
+export default async function SavedPage({ params }: PageProps) {
   const resolvedParams = await params;
-  const resolvedSearch = await searchParams;
-  const previewContactId = process.env.NODE_ENV === "production" || resolvedSearch.previewParent !== "seed"
-    ? null
-    : fixtureIds.audienceContacts.parentOne;
-  const hub = await readPublicParentHub(resolvedParams.territorySlug, previewContactId);
+  const cookieStore = await cookies();
+  const hub = await readSessionBackedParentHub(
+    resolvedParams.territorySlug,
+    cookieStore.get(sessionCookieName)?.value
+  );
 
   if (!hub) {
     notFound();
@@ -47,6 +48,14 @@ export default async function SavedPage({ params, searchParams }: PageProps) {
           <p className="public-kicker">Parent account</p>
           <h1>{hub.authenticated ? `Welcome back, ${hub.contact?.name}` : "Save your local family favourites"}</h1>
           <p>{hub.authenticated ? "Your followed areas, preferences and saved Raring2go content." : hub.emptyState}</p>
+          {!hub.authenticated ? (
+            <Link
+              href={`/sign-in?returnTo=${encodeURIComponent(`/areas/${hub.territory.slug}/saved`)}` as Route}
+              className="public-button"
+            >
+              Sign in to My Raring2go
+            </Link>
+          ) : null}
         </div>
       </section>
       <section className="public-section">

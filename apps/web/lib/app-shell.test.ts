@@ -53,6 +53,44 @@ describe("app shell context and capabilities", () => {
     });
   });
 
+  it("does not grant app access to a parent-only session without membership", async () => {
+    const repository = createMemoryAuthRepository({
+      users: [
+        {
+          id: "parent_user",
+          email: "parent@example.test",
+          displayName: "Parent User",
+          status: "active"
+        }
+      ],
+      memberships: [],
+      territories: foundationSeed.territories.map((territory) => ({
+        ...territory,
+        status: "active"
+      })),
+      sessions: [
+        {
+          id: "parent_session",
+          userId: "parent_user",
+          sessionTokenHash: hashToken("parent-session-token"),
+          assuranceLevel: "standard",
+          expiresAt: new Date("2099-01-01T00:00:00.000Z")
+        }
+      ]
+    });
+
+    await expect(
+      resolveShell(
+        {
+          sessionToken: "parent-session-token"
+        },
+        repository
+      )
+    ).resolves.toMatchObject({
+      kind: "invalid_context"
+    });
+  });
+
   it("rejects revoked and expired real sessions", async () => {
     await expect(
       resolveShell(
