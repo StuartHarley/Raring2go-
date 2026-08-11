@@ -9,6 +9,11 @@ import type {
   AdvertisingActorContext,
   AdvertisingData,
   CatalogueView,
+  CommercialBooking,
+  CommercialBookingItem,
+  CommercialProductionRequest,
+  CommercialProposal,
+  CommercialProposalItem,
   InventoryReservation,
   Opportunity,
   OpportunityView,
@@ -309,6 +314,188 @@ export async function reserveInventorySlot(
   return reservation;
 }
 
+export async function createProposal(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  proposal: CommercialProposal,
+  items: CommercialProposalItem[]
+) {
+  requireAdvertisingPermission(context, permissions, "proposalCreate");
+  const advertiser = requireAdvertiser(data, proposal.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (proposal.territoryId !== advertiser.owningTerritoryId) {
+    throw new Error("Proposal territory must match the advertiser owning territory.");
+  }
+  if (proposal.opportunityId) {
+    const opportunity = requireOpportunity(data, proposal.opportunityId);
+    if (opportunity.advertiserId !== advertiser.id || opportunity.territoryId !== proposal.territoryId) {
+      throw new Error("Proposal opportunity must belong to the advertiser territory.");
+    }
+  }
+  if (items.length === 0) {
+    throw new Error("Proposal requires at least one item.");
+  }
+  const totalValueMinor = items.reduce((sum, item) => sum + item.totalPriceMinor, 0);
+  const created = {
+    ...proposal,
+    totalValueMinor
+  };
+
+  for (const item of items) {
+    requireProduct(data, item.productId);
+    if (item.proposalId !== proposal.id) {
+      throw new Error("Proposal item must reference the proposal.");
+    }
+    if (item.inventorySlotId) {
+      const slot = requireInventorySlot(data, item.inventorySlotId);
+      if (slot.territoryId !== proposal.territoryId) {
+        throw new Error("Proposal inventory must belong to the proposal territory.");
+      }
+    }
+  }
+
+  data.proposals.push(created);
+  data.proposalItems.push(...items);
+  await audit.record(auditEvent(context, auditActions.advertiserProposalCreate, advertiser, {
+    proposalId: proposal.id,
+    itemCount: items.length,
+    totalValueMinor
+  }));
+  return created;
+}
+
+export async function acceptProposalAsBooking(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: {
+    proposalId: string;
+    bookingId: string;
+    bookingItemIdPrefix: string;
+    reservationIdPrefix: string;
+    productionRequestIdPrefix: string;
+    acceptedOn: string;
+  }
+) {
+  requireAdvertisingPermission(context, permissions, "bookingAccept");
+  const proposal = requireProposal(data, input.proposalId);
+  const advertiser = requireAdvertiser(data, proposal.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (!["draft", "sent"].includes(proposal.status)) {
+    const existing = data.bookings.find((booking) => booking.proposalId === proposal.id && !booking.deletedAt);
+    if (proposal.status === "accepted" && existing) {
+      return existing;
+    }
+    throw new Error("Only draft or sent proposals can be accepted into bookings.");
+  }
+
+  const proposalItems = data.proposalItems.filter((item) => item.proposalId === proposal.id && !item.deletedAt);
+  if (proposalItems.length === 0) {
+    throw new Error("Cannot accept a proposal without items.");
+  }
+
+  const booking: CommercialBooking = {
+    id: input.bookingId,
+    proposalId: proposal.id,
+    advertiserId: proposal.advertiserId,
+    opportunityId: proposal.opportunityId ?? null,
+    territoryId: proposal.territoryId,
+    status: "booked",
+    bookedOn: input.acceptedOn,
+    totalValueMinor: proposal.totalValueMinor,
+    currency: proposal.currency,
+    metadata: {
+      source: "proposal_acceptance"
+    }
+  };
+  const bookingItems: CommercialBookingItem[] = [];
+  const productionRequests: CommercialProductionRequest[] = [];
+  const reservations: InventoryReservation[] = [];
+
+  proposalItems.forEach((item, index) => {
+    let inventoryReservationId: string | null = null;
+    if (item.inventorySlotId) {
+      const slot = requireInventorySlot(data, item.inventorySlotId);
+      if (slot.territoryId !== proposal.territoryId) {
+        throw new Error("Proposal inventory is outside the proposal territory.");
+      }
+      const activeReservation = data.inventoryReservations.find(
+        (candidate) => candidate.inventorySlotId === slot.id && candidate.status === "reserved" && !candidate.deletedAt
+      );
+      if (slot.exclusive && activeReservation) {
+        throw new Error("Exclusive inventory slot is already reserved.");
+      }
+      inventoryReservationId = `${input.reservationIdPrefix}_${index + 1}`;
+      slot.status = "reserved";
+      reservations.push({
+        id: inventoryReservationId,
+        inventorySlotId: slot.id,
+        advertiserId: proposal.advertiserId,
+        opportunityId: proposal.opportunityId ?? null,
+        status: "reserved",
+        reservedByUserId: context.userId,
+        expiresOn: null,
+        metadata: {
+          proposalId: proposal.id,
+          bookingId: booking.id
+        }
+      });
+    }
+
+    const bookingItemId = `${input.bookingItemIdPrefix}_${index + 1}`;
+    bookingItems.push({
+      id: bookingItemId,
+      bookingId: booking.id,
+      proposalItemId: item.id,
+      productId: item.productId,
+      inventoryReservationId,
+      description: item.description,
+      quantity: item.quantity,
+      totalPriceMinor: item.totalPriceMinor,
+      currency: item.currency,
+      metadata: {
+        proposalItemId: item.id
+      }
+    });
+    const product = requireProduct(data, item.productId);
+    if (product.requiresArtwork) {
+      productionRequests.push({
+        id: `${input.productionRequestIdPrefix}_${index + 1}`,
+        bookingId: booking.id,
+        bookingItemId,
+        advertiserId: proposal.advertiserId,
+        territoryId: proposal.territoryId,
+        requestType: "artwork",
+        status: "requested",
+        dueOn: null,
+        metadata: {
+          productId: product.id
+        }
+      });
+    }
+  });
+
+  proposal.status = "accepted";
+  proposal.acceptedOn = input.acceptedOn;
+  data.inventoryReservations.push(...reservations);
+  data.bookings.push(booking);
+  data.bookingItems.push(...bookingItems);
+  data.productionRequests.push(...productionRequests);
+  await audit.record(auditEvent(context, auditActions.advertiserProposalAccept, advertiser, {
+    proposalId: proposal.id,
+    bookingId: booking.id
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserBookingCreate, advertiser, {
+    bookingId: booking.id,
+    itemCount: bookingItems.length,
+    productionRequestCount: productionRequests.length
+  }));
+  return booking;
+}
+
 function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserRecord): Advertiser360 {
   return {
     advertiser,
@@ -318,6 +505,9 @@ function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserReco
     opportunities: data.opportunities
       .filter((opportunity) => opportunity.advertiserId === advertiser.id && !opportunity.deletedAt)
       .map((opportunity) => assembleOpportunityView(data, opportunity)),
+    proposals: data.proposals.filter((proposal) => proposal.advertiserId === advertiser.id && !proposal.deletedAt),
+    bookings: data.bookings.filter((booking) => booking.advertiserId === advertiser.id && !booking.deletedAt),
+    productionRequests: data.productionRequests.filter((request) => request.advertiserId === advertiser.id && !request.deletedAt),
     activity: data.activityEvents
       .filter((event) => event.advertiserId === advertiser.id && !event.deletedAt)
       .slice()
@@ -399,6 +589,30 @@ function requirePipelineStage(data: AdvertisingData, stageId: string) {
     throw new Error("Pipeline stage was not found.");
   }
   return stage;
+}
+
+function requireProduct(data: AdvertisingData, productId: string) {
+  const product = data.products.find((candidate) => candidate.id === productId && !candidate.deletedAt);
+  if (!product) {
+    throw new Error("Commercial product was not found.");
+  }
+  return product;
+}
+
+function requireInventorySlot(data: AdvertisingData, inventorySlotId: string) {
+  const slot = data.inventorySlots.find((candidate) => candidate.id === inventorySlotId && !candidate.deletedAt);
+  if (!slot) {
+    throw new Error("Inventory slot was not found.");
+  }
+  return slot;
+}
+
+function requireProposal(data: AdvertisingData, proposalId: string) {
+  const proposal = data.proposals.find((candidate) => candidate.id === proposalId && !candidate.deletedAt);
+  if (!proposal) {
+    throw new Error("Proposal was not found.");
+  }
+  return proposal;
 }
 
 function requireOrganisation(data: AdvertisingData, organisationId: string) {

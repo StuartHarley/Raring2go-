@@ -13,6 +13,11 @@ import {
   advertisers,
   commercialPackages,
   commercialProducts,
+  commercialBookingItems,
+  commercialBookings,
+  commercialProductionRequests,
+  commercialProposalItems,
+  commercialProposals,
   auditEvents,
   franchiseArtifactReferences,
   franchiseAgreements,
@@ -129,6 +134,17 @@ describe("foundation schema", () => {
     expect(inventorySlots.territoryEditionId.name).toBe("territory_edition_id");
     expect(inventorySlots.editionPageId.name).toBe("edition_page_id");
     expect(inventoryReservations.inventorySlotId.name).toBe("inventory_slot_id");
+  });
+
+  it("models commercial proposals, bookings and production handoff", () => {
+    expect(commercialProposals.advertiserId.name).toBe("advertiser_id");
+    expect(commercialProposals.opportunityId.name).toBe("opportunity_id");
+    expect(commercialProposalItems.inventorySlotId.name).toBe("inventory_slot_id");
+    expect(commercialBookings.proposalId.name).toBe("proposal_id");
+    expect(commercialBookingItems.inventoryReservationId.name).toBe("inventory_reservation_id");
+    expect(commercialProductionRequests.bookingItemId.name).toBe("booking_item_id");
+    expect((commercialBookings as unknown as Record<string, unknown>).invoiceId).toBeUndefined();
+    expect((commercialProposals as unknown as Record<string, unknown>).signatureEnvelopeId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

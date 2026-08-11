@@ -47,6 +47,14 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
             <span>Pipeline</span>
             <strong>{formatMoney(result.opportunities.reduce((sum, view) => sum + view.opportunity.estimatedValueMinor, 0))}</strong>
           </article>
+          <article>
+            <span>Proposals</span>
+            <strong>{result.proposals.length}</strong>
+          </article>
+          <article>
+            <span>Bookings</span>
+            <strong>{result.bookings.length}</strong>
+          </article>
         </div>
       </section>
 
@@ -84,6 +92,37 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
       </section>
 
       <section className="app-panel franchise-panel">
+        <p className="eyebrow">Proposals and bookings</p>
+        <h2>Commercial workflow</h2>
+        <div className="franchise-list">
+          {result.proposals.length === 0 ? (
+            <div>
+              <strong>No proposals yet</strong>
+              <span>Proposal generation and booking acceptance are introduced in ADV-004.</span>
+            </div>
+          ) : (
+            result.proposals.map((proposal) => (
+              <div key={proposal.id}>
+                <strong>{proposal.title}</strong>
+                <span>{proposal.status} - valid until {proposal.validUntil ?? "not set"}</span>
+                <span>{formatMoney(proposal.totalValueMinor)}</span>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="franchise-facts">
+          <div>
+            <dt>Accepted bookings</dt>
+            <dd>{result.bookings.length}</dd>
+          </div>
+          <div>
+            <dt>Production requests</dt>
+            <dd>{result.productionRequests.length}</dd>
+          </div>
+        </div>
+      </section>
+
+      <section className="app-panel franchise-panel">
         <p className="eyebrow">Commercial foundations</p>
         <h2>Metrics and deferred workflows</h2>
         <div className="franchise-facts">
@@ -105,10 +144,9 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           </div>
         </div>
         <div className="franchise-tabs">
-          <span>Pipeline deferred to ADV-002</span>
-          <span>Products/inventory deferred to ADV-003</span>
-          <span>Bookings deferred to ADV-004</span>
+          <span>Advertiser acceptance deferred to ADV-005</span>
           <span>Invoices deferred to ADV-006</span>
+          <span>Artwork intake deferred to ADV-007</span>
         </div>
       </section>
 

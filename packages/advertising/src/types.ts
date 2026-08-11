@@ -190,6 +190,79 @@ export type InventoryReservation = {
   deletedAt?: Date | null;
 };
 
+export type CommercialProposal = {
+  id: string;
+  advertiserId: string;
+  opportunityId?: string | null;
+  territoryId: string;
+  status: "draft" | "sent" | "accepted" | "declined" | "expired" | (string & {});
+  version: number;
+  title: string;
+  totalValueMinor: number;
+  currency: string;
+  validUntil?: string | null;
+  sentOn?: string | null;
+  acceptedOn?: string | null;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type CommercialProposalItem = {
+  id: string;
+  proposalId: string;
+  productId: string;
+  packageId?: string | null;
+  inventorySlotId?: string | null;
+  description: string;
+  quantity: number;
+  unitPriceMinor: number;
+  totalPriceMinor: number;
+  currency: string;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type CommercialBooking = {
+  id: string;
+  proposalId: string;
+  advertiserId: string;
+  opportunityId?: string | null;
+  territoryId: string;
+  status: "booked" | "cancelled" | (string & {});
+  bookedOn: string;
+  totalValueMinor: number;
+  currency: string;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type CommercialBookingItem = {
+  id: string;
+  bookingId: string;
+  proposalItemId: string;
+  productId: string;
+  inventoryReservationId?: string | null;
+  description: string;
+  quantity: number;
+  totalPriceMinor: number;
+  currency: string;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type CommercialProductionRequest = {
+  id: string;
+  bookingId: string;
+  bookingItemId: string;
+  advertiserId: string;
+  territoryId: string;
+  requestType: string;
+  status: string;
+  dueOn?: string | null;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
 export type AdvertisingOrganisation = {
   id: string;
   kind: string;
@@ -217,6 +290,11 @@ export type AdvertisingData = {
   priceBookItems: PriceBookItem[];
   inventorySlots: InventorySlot[];
   inventoryReservations: InventoryReservation[];
+  proposals: CommercialProposal[];
+  proposalItems: CommercialProposalItem[];
+  bookings: CommercialBooking[];
+  bookingItems: CommercialBookingItem[];
+  productionRequests: CommercialProductionRequest[];
   organisations: AdvertisingOrganisation[];
   territories: AdvertisingTerritory[];
 };
@@ -227,6 +305,9 @@ export type Advertiser360 = {
   territory?: AdvertisingTerritory;
   contacts: AdvertiserContact[];
   opportunities: OpportunityView[];
+  proposals: CommercialProposal[];
+  bookings: CommercialBooking[];
+  productionRequests: CommercialProductionRequest[];
   activity: AdvertiserActivityEvent[];
   latestMetrics?: AdvertiserMetricSnapshot;
 };

@@ -9,6 +9,8 @@ import {
   advertisers,
   commercialPackages,
   commercialProducts,
+  commercialProposalItems,
+  commercialProposals,
   agreementTemplates,
   agreementVersions,
   authInvitations,
@@ -262,7 +264,10 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.opportunityEdit,
         fixtureIds.permissions.catalogueView,
         fixtureIds.permissions.pricingManage,
-        fixtureIds.permissions.inventoryReserve
+        fixtureIds.permissions.inventoryReserve,
+        fixtureIds.permissions.proposalView,
+        fixtureIds.permissions.proposalCreate,
+        fixtureIds.permissions.bookingAccept
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -380,6 +385,24 @@ export async function seedDatabase(databaseUrl?: string) {
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.inventoryReserve,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.proposalView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.proposalCreate,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.bookingAccept,
         scope: "own_territory",
         constraints: {}
       }
@@ -652,6 +675,53 @@ export async function seedDatabase(databaseUrl?: string) {
         inventoryClass: sql`excluded.inventory_class`,
         exclusive: sql`excluded.exclusive`,
         status: sql`excluded.status`,
+        metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(commercialProposals).values(foundationSeed.commercialProposals.map((proposal) => ({
+      ...proposal,
+      validUntil: proposal.validUntil ? new Date(proposal.validUntil) : null,
+      sentOn: proposal.sentOn ? new Date(proposal.sentOn) : null,
+      acceptedOn: proposal.acceptedOn ? new Date(proposal.acceptedOn) : null,
+      metadata: { ...proposal.metadata }
+    }))).onConflictDoUpdate({
+      target: commercialProposals.id,
+      set: {
+        advertiserId: sql`excluded.advertiser_id`,
+        opportunityId: sql`excluded.opportunity_id`,
+        territoryId: sql`excluded.territory_id`,
+        status: sql`excluded.status`,
+        version: sql`excluded.version`,
+        title: sql`excluded.title`,
+        totalValueMinor: sql`excluded.total_value_minor`,
+        currency: sql`excluded.currency`,
+        validUntil: sql`excluded.valid_until`,
+        sentOn: sql`excluded.sent_on`,
+        acceptedOn: sql`excluded.accepted_on`,
+        metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(commercialProposalItems).values(foundationSeed.commercialProposalItems.map((item) => ({
+      ...item,
+      metadata: { ...item.metadata }
+    }))).onConflictDoUpdate({
+      target: commercialProposalItems.id,
+      set: {
+        proposalId: sql`excluded.proposal_id`,
+        productId: sql`excluded.product_id`,
+        packageId: sql`excluded.package_id`,
+        inventorySlotId: sql`excluded.inventory_slot_id`,
+        description: sql`excluded.description`,
+        quantity: sql`excluded.quantity`,
+        unitPriceMinor: sql`excluded.unit_price_minor`,
+        totalPriceMinor: sql`excluded.total_price_minor`,
+        currency: sql`excluded.currency`,
         metadata: sql`excluded.metadata`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`

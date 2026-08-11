@@ -2,9 +2,11 @@ import { auditActions } from "@raring2go/audit";
 import { describe, expect, it } from "vitest";
 import {
   addAdvertiserContact,
+  acceptProposalAsBooking,
   changeOpportunityStage,
   createAdvertiser,
   createOpportunity,
+  createProposal,
   getAdvertiser360,
   listCatalogue,
   listAdvertisers,
@@ -80,6 +82,9 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.opportunity", "edit", "network"),
     grant(ids.roles.hq, "advertiser.catalogue", "view", "network"),
     grant(ids.roles.hq, "advertiser.inventory", "reserve", "network"),
+    grant(ids.roles.hq, "advertiser.proposal", "view", "network"),
+    grant(ids.roles.hq, "advertiser.proposal", "create", "network"),
+    grant(ids.roles.hq, "advertiser.booking", "accept", "network"),
     grant(ids.roles.local, "advertiser", "view", "own_territory"),
     grant(ids.roles.local, "advertiser", "create", "own_territory"),
     grant(ids.roles.local, "advertiser", "edit", "own_territory"),
@@ -89,7 +94,10 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "advertiser.opportunity", "create", "own_territory"),
     grant(ids.roles.local, "advertiser.opportunity", "edit", "own_territory"),
     grant(ids.roles.local, "advertiser.catalogue", "view", "own_territory"),
-    grant(ids.roles.local, "advertiser.inventory", "reserve", "own_territory")
+    grant(ids.roles.local, "advertiser.inventory", "reserve", "own_territory"),
+    grant(ids.roles.local, "advertiser.proposal", "view", "own_territory"),
+    grant(ids.roles.local, "advertiser.proposal", "create", "own_territory"),
+    grant(ids.roles.local, "advertiser.booking", "accept", "own_territory")
   ],
   territories: [
     {
@@ -264,6 +272,68 @@ describe("advertiser CRM foundation", () => {
       auditActions.advertiserInventoryReserve
     ]);
   });
+
+  it("creates proposals and accepts them into inventory-backed bookings exactly once", async () => {
+    const data = seededData();
+    const recorder = audit();
+    const proposal = await createProposal(localContext(), permissions, recorder, data, {
+      id: "proposal_autumn",
+      advertiserId: ids.advertiser,
+      opportunityId: ids.opportunity,
+      territoryId: ids.territories.own,
+      status: "sent",
+      version: 1,
+      title: "Autumn proposal",
+      totalValueMinor: 0,
+      currency: "GBP",
+      validUntil: "2026-08-31",
+      sentOn: "2026-08-11",
+      acceptedOn: null,
+      metadata: {}
+    }, [
+      {
+        id: "proposal_item_autumn",
+        proposalId: "proposal_autumn",
+        productId: ids.product,
+        inventorySlotId: ids.slot,
+        description: "Full page advert",
+        quantity: 1,
+        unitPriceMinor: 52500,
+        totalPriceMinor: 52500,
+        currency: "GBP",
+        metadata: {}
+      }
+    ]);
+
+    const booking = await acceptProposalAsBooking(localContext(), permissions, recorder, data, {
+      proposalId: proposal.id,
+      bookingId: "booking_autumn",
+      bookingItemIdPrefix: "booking_item_autumn",
+      reservationIdPrefix: "reservation_autumn",
+      productionRequestIdPrefix: "production_autumn",
+      acceptedOn: "2026-08-11"
+    });
+    const duplicate = await acceptProposalAsBooking(localContext(), permissions, recorder, data, {
+      proposalId: proposal.id,
+      bookingId: "booking_duplicate",
+      bookingItemIdPrefix: "booking_item_duplicate",
+      reservationIdPrefix: "reservation_duplicate",
+      productionRequestIdPrefix: "production_duplicate",
+      acceptedOn: "2026-08-11"
+    });
+
+    expect(duplicate).toBe(booking);
+    expect(data.bookings).toHaveLength(1);
+    expect(data.inventoryReservations).toHaveLength(1);
+    expect(data.productionRequests).toHaveLength(1);
+    expect(data.inventorySlots[0]?.status).toBe("reserved");
+    expect(getAdvertiser360(localContext(), permissions, data, ids.advertiser).bookings).toHaveLength(1);
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.advertiserProposalCreate,
+      auditActions.advertiserProposalAccept,
+      auditActions.advertiserBookingCreate
+    ]);
+  });
 });
 
 function hqContext() {
@@ -295,6 +365,11 @@ function emptyData(): AdvertisingData {
     priceBookItems: [],
     inventorySlots: [],
     inventoryReservations: [],
+    proposals: [],
+    proposalItems: [],
+    bookings: [],
+    bookingItems: [],
+    productionRequests: [],
     organisations: [
       { id: ids.organisations.hq, kind: "hq", name: "HQ" },
       { id: ids.organisations.franchise, kind: "franchise", name: "Own Franchise" },

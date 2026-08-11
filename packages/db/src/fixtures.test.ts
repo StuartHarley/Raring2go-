@@ -70,7 +70,10 @@ describe("foundation fixtures", () => {
       "advertiser.opportunity",
       "advertiser.catalogue",
       "advertiser.pricing",
-      "advertiser.inventory"
+      "advertiser.inventory",
+      "advertiser.proposal",
+      "advertiser.proposal",
+      "advertiser.booking"
     ]);
   });
 
@@ -197,6 +200,21 @@ describe("foundation fixtures", () => {
       productId: fixtureIds.commercialProducts.fullPageAdvert,
       exclusive: true
     });
+  });
+
+  it("includes deterministic commercial proposal fixtures without accepted booking side effects", () => {
+    expect(foundationSeed.commercialProposals[0]).toMatchObject({
+      advertiserId: fixtureIds.advertisers.example,
+      opportunityId: fixtureIds.opportunities.exampleRenewal,
+      status: "sent",
+      totalValueMinor: 52500
+    });
+    expect(foundationSeed.commercialProposalItems[0]).toMatchObject({
+      proposalId: fixtureIds.commercialProposals.exampleAutumn,
+      inventorySlotId: fixtureIds.inventorySlots.suttonAutumnPage3
+    });
+    expect(foundationSeed.commercialBookings).toEqual([]);
+    expect(foundationSeed.commercialProductionRequests).toEqual([]);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

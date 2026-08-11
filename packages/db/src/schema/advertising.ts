@@ -288,3 +288,129 @@ export const inventoryReservations = pgTable(
     index("inventory_reservations_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const commercialProposals = pgTable(
+  "commercial_proposals",
+  {
+    id,
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    opportunityId: uuid("opportunity_id").references(() => opportunities.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    status: text("status").notNull().default("draft"),
+    version: integer("version").notNull().default(1),
+    title: text("title").notNull(),
+    totalValueMinor: integer("total_value_minor").notNull().default(0),
+    currency: text("currency").notNull().default("GBP"),
+    validUntil: date("valid_until", { mode: "date" }),
+    sentOn: date("sent_on", { mode: "date" }),
+    acceptedOn: date("accepted_on", { mode: "date" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("commercial_proposals_advertiser_id_idx").on(table.advertiserId),
+    index("commercial_proposals_opportunity_id_idx").on(table.opportunityId),
+    index("commercial_proposals_territory_id_idx").on(table.territoryId),
+    index("commercial_proposals_status_idx").on(table.status),
+    index("commercial_proposals_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const commercialProposalItems = pgTable(
+  "commercial_proposal_items",
+  {
+    id,
+    proposalId: uuid("proposal_id").notNull().references(() => commercialProposals.id),
+    productId: uuid("product_id").notNull().references(() => commercialProducts.id),
+    packageId: uuid("package_id").references(() => commercialPackages.id),
+    inventorySlotId: uuid("inventory_slot_id").references(() => inventorySlots.id),
+    description: text("description").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    unitPriceMinor: integer("unit_price_minor").notNull(),
+    totalPriceMinor: integer("total_price_minor").notNull(),
+    currency: text("currency").notNull().default("GBP"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("commercial_proposal_items_proposal_id_idx").on(table.proposalId),
+    index("commercial_proposal_items_product_id_idx").on(table.productId),
+    index("commercial_proposal_items_inventory_slot_id_idx").on(table.inventorySlotId),
+    index("commercial_proposal_items_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const commercialBookings = pgTable(
+  "commercial_bookings",
+  {
+    id,
+    proposalId: uuid("proposal_id").notNull().references(() => commercialProposals.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    opportunityId: uuid("opportunity_id").references(() => opportunities.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    status: text("status").notNull().default("booked"),
+    bookedOn: date("booked_on", { mode: "date" }).notNull(),
+    totalValueMinor: integer("total_value_minor").notNull().default(0),
+    currency: text("currency").notNull().default("GBP"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("commercial_bookings_proposal_uidx").on(table.proposalId),
+    index("commercial_bookings_advertiser_id_idx").on(table.advertiserId),
+    index("commercial_bookings_territory_id_idx").on(table.territoryId),
+    index("commercial_bookings_status_idx").on(table.status),
+    index("commercial_bookings_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const commercialBookingItems = pgTable(
+  "commercial_booking_items",
+  {
+    id,
+    bookingId: uuid("booking_id").notNull().references(() => commercialBookings.id),
+    proposalItemId: uuid("proposal_item_id").notNull().references(() => commercialProposalItems.id),
+    productId: uuid("product_id").notNull().references(() => commercialProducts.id),
+    inventoryReservationId: uuid("inventory_reservation_id").references(() => inventoryReservations.id),
+    description: text("description").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    totalPriceMinor: integer("total_price_minor").notNull(),
+    currency: text("currency").notNull().default("GBP"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("commercial_booking_items_booking_id_idx").on(table.bookingId),
+    index("commercial_booking_items_proposal_item_id_idx").on(table.proposalItemId),
+    index("commercial_booking_items_inventory_reservation_id_idx").on(table.inventoryReservationId),
+    index("commercial_booking_items_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const commercialProductionRequests = pgTable(
+  "commercial_production_requests",
+  {
+    id,
+    bookingId: uuid("booking_id").notNull().references(() => commercialBookings.id),
+    bookingItemId: uuid("booking_item_id").notNull().references(() => commercialBookingItems.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    requestType: text("request_type").notNull(),
+    status: text("status").notNull().default("requested"),
+    dueOn: date("due_on", { mode: "date" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("commercial_production_requests_booking_item_uidx").on(table.bookingItemId),
+    index("commercial_production_requests_booking_id_idx").on(table.bookingId),
+    index("commercial_production_requests_advertiser_id_idx").on(table.advertiserId),
+    index("commercial_production_requests_status_idx").on(table.status),
+    index("commercial_production_requests_deleted_at_idx").on(table.deletedAt)
+  ]
+);

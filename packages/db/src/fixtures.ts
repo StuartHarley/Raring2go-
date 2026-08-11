@@ -77,7 +77,10 @@ export const fixtureIds = {
     opportunityEdit: "00000000-0000-4000-8000-000000000457",
     catalogueView: "00000000-0000-4000-8000-000000000458",
     pricingManage: "00000000-0000-4000-8000-000000000459",
-    inventoryReserve: "00000000-0000-4000-8000-000000000460"
+    inventoryReserve: "00000000-0000-4000-8000-000000000460",
+    proposalView: "00000000-0000-4000-8000-000000000461",
+    proposalCreate: "00000000-0000-4000-8000-000000000462",
+    bookingAccept: "00000000-0000-4000-8000-000000000463"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -115,6 +118,21 @@ export const fixtureIds = {
   },
   inventorySlots: {
     suttonAutumnPage3: "00000000-0000-4000-8000-000000000715"
+  },
+  commercialProposals: {
+    exampleAutumn: "00000000-0000-4000-8000-000000000716"
+  },
+  commercialProposalItems: {
+    exampleAutumnFullPage: "00000000-0000-4000-8000-000000000717"
+  },
+  commercialBookings: {
+    exampleAutumn: "00000000-0000-4000-8000-000000000718"
+  },
+  commercialBookingItems: {
+    exampleAutumnFullPage: "00000000-0000-4000-8000-000000000719"
+  },
+  commercialProductionRequests: {
+    exampleAutumnArtwork: "00000000-0000-4000-8000-000000000720"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -617,6 +635,24 @@ export const foundationSeed = {
       module: "advertiser.inventory",
       action: "reserve",
       description: "Reserve Edition Factory inventory for commercial bookings."
+    },
+    {
+      id: fixtureIds.permissions.proposalView,
+      module: "advertiser.proposal",
+      action: "view",
+      description: "View commercial proposals."
+    },
+    {
+      id: fixtureIds.permissions.proposalCreate,
+      module: "advertiser.proposal",
+      action: "create",
+      description: "Create commercial proposals."
+    },
+    {
+      id: fixtureIds.permissions.bookingAccept,
+      module: "advertiser.booking",
+      action: "accept",
+      description: "Accept proposals into commercial bookings."
     }
   ],
   advertisers: [
@@ -838,6 +874,45 @@ export const foundationSeed = {
     }
   ],
   inventoryReservations: [],
+  commercialProposals: [
+    {
+      id: fixtureIds.commercialProposals.exampleAutumn,
+      advertiserId: fixtureIds.advertisers.example,
+      opportunityId: fixtureIds.opportunities.exampleRenewal,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      status: "sent",
+      version: 1,
+      title: "Autumn 2026 print and digital starter",
+      totalValueMinor: 52500,
+      currency: "GBP",
+      validUntil: "2026-08-31",
+      sentOn: "2026-08-11",
+      acceptedOn: null,
+      metadata: {
+        source: "seed"
+      }
+    }
+  ],
+  commercialProposalItems: [
+    {
+      id: fixtureIds.commercialProposalItems.exampleAutumnFullPage,
+      proposalId: fixtureIds.commercialProposals.exampleAutumn,
+      productId: fixtureIds.commercialProducts.fullPageAdvert,
+      packageId: fixtureIds.commercialPackages.printDigitalStarter,
+      inventorySlotId: fixtureIds.inventorySlots.suttonAutumnPage3,
+      description: "Autumn 2026 full page advert",
+      quantity: 1,
+      unitPriceMinor: 52500,
+      totalPriceMinor: 52500,
+      currency: "GBP",
+      metadata: {
+        edition: "Autumn 2026"
+      }
+    }
+  ],
+  commercialBookings: [],
+  commercialBookingItems: [],
+  commercialProductionRequests: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,
