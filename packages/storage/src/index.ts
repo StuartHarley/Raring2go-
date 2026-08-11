@@ -1,4 +1,11 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 export type FileAccessScope = "system" | "network" | "organisation" | "territory" | "public";
 export type FileVirusScanStatus = "pending" | "clean" | "infected" | "failed" | "not_required";
@@ -277,52 +284,57 @@ export function createR2StorageProvider(input: {
 
   const expiresInSeconds = input.expiresInSeconds ?? 900;
   const endpoint = `https://${input.accountId}.r2.cloudflarestorage.com`;
+  const client = new S3Client({
+    region: "auto",
+    endpoint,
+    credentials: {
+      accessKeyId: input.accessKeyId,
+      secretAccessKey: input.secretAccessKey
+    }
+  });
 
   return {
     key: "r2",
     async createUploadIntent(reference) {
       const now = input.now?.() ?? new Date();
-      const signed = r2SignedUrl({
-        method: "PUT",
-        endpoint,
-        bucket: input.bucket,
-        storageKey: reference.storageKey,
-        accessKeyId: input.accessKeyId,
-        secretAccessKey: input.secretAccessKey,
-        expiresInSeconds,
-        now
-      });
+      const uploadUrl = await getSignedUrl(
+        client,
+        new PutObjectCommand({
+          Bucket: input.bucket,
+          Key: reference.storageKey,
+          ContentType: reference.contentType
+        }),
+        { expiresIn: expiresInSeconds }
+      );
 
       return {
         reference: { ...reference, providerKey: "r2" },
-        uploadUrl: signed.url,
+        uploadUrl,
         headers: {
           "content-type": reference.contentType
         },
-        expiresAt: signed.expiresAt
+        expiresAt: secondsFrom(input.now?.() ?? now, expiresInSeconds)
       };
     },
     async createDownloadIntent(reference, downloadInput) {
       assertFileIsDownloadable(reference);
       const now = input.now?.() ?? new Date();
-      const signed = r2SignedUrl({
-        method: "GET",
-        endpoint,
-        bucket: input.bucket,
-        storageKey: reference.storageKey,
-        accessKeyId: input.accessKeyId,
-        secretAccessKey: input.secretAccessKey,
-        expiresInSeconds,
-        now,
-        responseContentDisposition: downloadInput?.disposition === "inline"
-          ? `inline; filename="${reference.fileName}"`
-          : `attachment; filename="${reference.fileName}"`
-      });
+      const downloadUrl = await getSignedUrl(
+        client,
+        new GetObjectCommand({
+          Bucket: input.bucket,
+          Key: reference.storageKey,
+          ResponseContentDisposition: downloadInput?.disposition === "inline"
+            ? `inline; filename="${reference.fileName}"`
+            : `attachment; filename="${reference.fileName}"`
+        }),
+        { expiresIn: expiresInSeconds }
+      );
 
       return {
         reference: { ...reference, providerKey: "r2" },
-        downloadUrl: signed.url,
-        expiresAt: signed.expiresAt,
+        downloadUrl,
+        expiresAt: secondsFrom(now, expiresInSeconds),
         disposition: downloadInput?.disposition ?? "attachment"
       };
     },
@@ -335,17 +347,15 @@ export function createR2StorageProvider(input: {
     },
     async deleteObject(reference) {
       const now = input.now?.() ?? new Date();
-      const signed = r2SignedUrl({
-        method: "DELETE",
-        endpoint,
-        bucket: input.bucket,
-        storageKey: reference.storageKey,
-        accessKeyId: input.accessKeyId,
-        secretAccessKey: input.secretAccessKey,
-        expiresInSeconds,
-        now
-      });
-      const response = await (input.fetch ?? fetch)(signed.url, { method: "DELETE" });
+      const deleteUrl = await getSignedUrl(
+        client,
+        new DeleteObjectCommand({
+          Bucket: input.bucket,
+          Key: reference.storageKey
+        }),
+        { expiresIn: expiresInSeconds }
+      );
+      const response = await (input.fetch ?? fetch)(deleteUrl, { method: "DELETE" });
 
       if (!response.ok && response.status !== 404) {
         throw new Error(`R2 delete failed with HTTP ${response.status}.`);
@@ -561,6 +571,10 @@ function secondsFromNow(seconds: number) {
   return new Date(Date.now() + seconds * 1_000).toISOString();
 }
 
+function secondsFrom(value: Date, seconds: number) {
+  return new Date(value.getTime() + seconds * 1_000).toISOString();
+}
+
 function signedUrl(baseUrl: string, action: "upload" | "download", storageKey: string, expiresAt: string, secret: string) {
   const url = new URL(`${baseUrl.replace(/\/$/, "")}/${action}/${encodeURIComponent(storageKey)}`);
   url.searchParams.set("expiresAt", expiresAt);
@@ -570,88 +584,6 @@ function signedUrl(baseUrl: string, action: "upload" | "download", storageKey: s
 
 function storageSignature(action: "upload" | "download", storageKey: string, expiresAt: string, secret: string) {
   return createHmac("sha256", secret).update(`${action}:${storageKey}:${expiresAt}`).digest("hex");
-}
-
-function r2SignedUrl(input: {
-  method: "DELETE" | "GET" | "PUT";
-  endpoint: string;
-  bucket: string;
-  storageKey: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  expiresInSeconds: number;
-  now: Date;
-  responseContentDisposition?: string;
-}) {
-  assertSafeStorageKey(input.storageKey);
-  const amzDate = formatAmzDate(input.now);
-  const dateStamp = amzDate.slice(0, 8);
-  const credentialScope = `${dateStamp}/auto/s3/aws4_request`;
-  const credential = `${input.accessKeyId}/${credentialScope}`;
-  const host = new URL(input.endpoint).host;
-  const path = `/${input.bucket}/${input.storageKey.split("/").map(encodeURIComponent).join("/")}`;
-  const expiresAt = new Date(input.now.getTime() + input.expiresInSeconds * 1_000).toISOString();
-  const query = new URLSearchParams({
-    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
-    "X-Amz-Credential": credential,
-    "X-Amz-Date": amzDate,
-    "X-Amz-Expires": String(input.expiresInSeconds),
-    "X-Amz-SignedHeaders": "host"
-  });
-
-  if (input.responseContentDisposition) {
-    query.set("response-content-disposition", input.responseContentDisposition);
-  }
-
-  const canonicalQuery = canonicalQueryString(query);
-  const canonicalRequest = [
-    input.method,
-    path,
-    canonicalQuery,
-    `host:${host}`,
-    "",
-    "host",
-    "UNSIGNED-PAYLOAD"
-  ].join("\n");
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    amzDate,
-    credentialScope,
-    sha256Hex(canonicalRequest)
-  ].join("\n");
-  const signature = hmacHex(signingKey(input.secretAccessKey, dateStamp), stringToSign);
-  query.set("X-Amz-Signature", signature);
-
-  return {
-    url: `${input.endpoint}${path}?${canonicalQueryString(query)}`,
-    expiresAt
-  };
-}
-
-function canonicalQueryString(params: URLSearchParams) {
-  return [...params.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .join("&");
-}
-
-function formatAmzDate(value: Date) {
-  return value.toISOString().replaceAll("-", "").replaceAll(":", "").replace(/\.\d{3}Z$/, "Z");
-}
-
-function sha256Hex(value: string) {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function signingKey(secretAccessKey: string, dateStamp: string) {
-  const dateKey = createHmac("sha256", `AWS4${secretAccessKey}`).update(dateStamp).digest();
-  const regionKey = createHmac("sha256", dateKey).update("auto").digest();
-  const serviceKey = createHmac("sha256", regionKey).update("s3").digest();
-  return createHmac("sha256", serviceKey).update("aws4_request").digest();
-}
-
-function hmacHex(key: Buffer, value: string) {
-  return createHmac("sha256", key).update(value).digest("hex");
 }
 
 function headerValue(value: string | string[] | undefined) {

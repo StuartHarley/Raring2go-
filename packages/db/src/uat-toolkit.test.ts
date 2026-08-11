@@ -72,6 +72,29 @@ describe("UAT storage verification", () => {
     expect(serialized).not.toContain("https://r2.test/private");
   });
 
+  it("surfaces safe R2 XML error diagnostics for 403 responses", async () => {
+    const checks = await verifyR2Storage({
+      source: safeSource,
+      provider: successfulProvider(),
+      fetcher: async (_url, init) => {
+        if (init?.method === "PUT") {
+          return new Response(null, { status: 200 });
+        }
+
+        return new Response(
+          "<Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match.</Message></Error>",
+          { status: 403 }
+        );
+      }
+    });
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      status: "RED",
+      label: "R2 verification",
+      detail: expect.stringContaining("SignatureDoesNotMatch")
+    }));
+  });
+
   it("fails when downloaded content does not match the uploaded checksum", async () => {
     const checks = await verifyR2Storage({
       source: safeSource,

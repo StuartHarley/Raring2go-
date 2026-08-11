@@ -197,7 +197,7 @@ export async function verifyR2Storage(input: {
     });
 
     if (!uploadResponse.ok) {
-      throw new Error(`R2 upload failed with HTTP ${uploadResponse.status}.`);
+      throw new Error(await describeStorageHttpFailure("upload", uploadResponse));
     }
 
     checks.push({
@@ -219,7 +219,7 @@ export async function verifyR2Storage(input: {
     const downloadResponse = await fetcher(download.downloadUrl, { method: "GET" });
 
     if (!downloadResponse.ok) {
-      throw new Error(`R2 download failed with HTTP ${downloadResponse.status}.`);
+      throw new Error(await describeStorageHttpFailure("download", downloadResponse));
     }
 
     const downloaded = await downloadResponse.text();
@@ -674,6 +674,30 @@ function safeDiagnostic(value: string, source: NodeJS.ProcessEnv = process.env) 
   }
 
   return output;
+}
+
+async function describeStorageHttpFailure(action: "download" | "upload", response: Response) {
+  const body = await response.text().catch(() => "");
+  const parsed = parseR2XmlError(body);
+  const prefix = `R2 ${action} failed with HTTP ${response.status}`;
+
+  if (!parsed.code && !parsed.message) {
+    return `${prefix}.`;
+  }
+
+  return `${prefix}. R2 error code: ${parsed.code ?? "unknown"}; message: ${parsed.message ?? "unknown"}.`;
+}
+
+function parseR2XmlError(value: string) {
+  return {
+    code: xmlTag(value, "Code"),
+    message: xmlTag(value, "Message")
+  };
+}
+
+function xmlTag(value: string, tag: string) {
+  const match = value.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, "i"));
+  return match?.[1]?.trim();
 }
 
 function redactUrl(url: URL) {

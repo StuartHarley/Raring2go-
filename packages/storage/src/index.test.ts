@@ -229,10 +229,13 @@ describe("@raring2go/storage", () => {
     const download = await provider.createDownloadIntent(reference, { disposition: "inline" });
 
     expect(upload.reference.providerKey).toBe("r2");
-    expect(upload.uploadUrl).toContain("https://account123.r2.cloudflarestorage.com/raring2go-pilot/territories/sutton/artwork/file.pdf");
+    expect(upload.uploadUrl).toContain("https://raring2go-pilot.account123.r2.cloudflarestorage.com/territories/sutton/artwork/file.pdf");
     expect(upload.uploadUrl).toContain("X-Amz-Expires=120");
+    expect(upload.uploadUrl).toContain("X-Amz-Content-Sha256=UNSIGNED-PAYLOAD");
+    expect(upload.uploadUrl).toContain("x-id=PutObject");
     expect(upload.headers).toEqual({ "content-type": "application/pdf" });
     expect(download.downloadUrl).toContain("response-content-disposition=");
+    expect(download.downloadUrl).toContain("x-id=GetObject");
     expect(download.expiresAt).toBe("2026-08-11T12:02:00.000Z");
     expect(upload.uploadUrl).not.toContain("super-secret-key");
     expect(download.downloadUrl).not.toContain("super-secret-key");
