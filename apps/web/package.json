@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@raring2go/advertising": "workspace:*",
     "@raring2go/audit": "workspace:*",
     "@raring2go/auth": "workspace:*",
     "@raring2go/config": "workspace:*",

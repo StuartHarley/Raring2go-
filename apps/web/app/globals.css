@@ -332,7 +332,8 @@ p {
   gap: 8px;
 }
 
-.franchise-tabs a {
+.franchise-tabs a,
+.franchise-tabs span {
   border: 1px solid var(--r2-border-default);
   border-radius: var(--r2-radius-sm);
   color: var(--r2-text-primary);

@@ -59,7 +59,12 @@ describe("foundation fixtures", () => {
       "edition.content",
       "edition.preflight",
       "edition.output",
-      "edition.output"
+      "edition.output",
+      "advertiser",
+      "advertiser",
+      "advertiser",
+      "advertiser.contact",
+      "advertiser.activity"
     ]);
   });
 
@@ -137,6 +142,19 @@ describe("foundation fixtures", () => {
     expect(foundationSeed.magazineTemplateVersions[0]).toMatchObject({
       templateId: fixtureIds.magazineTemplates.autumnCover,
       status: "published"
+    });
+  });
+
+  it("includes deterministic advertiser CRM fixtures", () => {
+    expect(fixtureIds.advertisers.example).toBe(
+      "00000000-0000-4000-8000-000000000701"
+    );
+    expect(foundationSeed.advertisers[0]).toMatchObject({
+      advertiserOrganisationId: fixtureIds.organisations.advertiser,
+      owningTerritoryId: fixtureIds.territories.suttonColdfield,
+      relationshipState: "retained",
+      averageSaleValueMinor: 42500,
+      annualAdvertiserValueMinor: 170000
     });
   });
 

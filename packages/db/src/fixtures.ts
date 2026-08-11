@@ -66,7 +66,24 @@ export const fixtureIds = {
     editionLockedContentManage: "00000000-0000-4000-8000-000000000446",
     editionPreflightOverride: "00000000-0000-4000-8000-000000000447",
     editionGeneratePrint: "00000000-0000-4000-8000-000000000448",
-    editionGenerateDigital: "00000000-0000-4000-8000-000000000449"
+    editionGenerateDigital: "00000000-0000-4000-8000-000000000449",
+    advertiserView: "00000000-0000-4000-8000-000000000450",
+    advertiserCreate: "00000000-0000-4000-8000-000000000451",
+    advertiserEdit: "00000000-0000-4000-8000-000000000452",
+    advertiserContactManage: "00000000-0000-4000-8000-000000000453",
+    advertiserActivityRecord: "00000000-0000-4000-8000-000000000454"
+  },
+  advertisers: {
+    example: "00000000-0000-4000-8000-000000000701"
+  },
+  advertiserContacts: {
+    examplePrimary: "00000000-0000-4000-8000-000000000702"
+  },
+  advertiserActivityEvents: {
+    exampleIntro: "00000000-0000-4000-8000-000000000703"
+  },
+  advertiserMetricSnapshots: {
+    exampleCurrent: "00000000-0000-4000-8000-000000000704"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -503,6 +520,112 @@ export const foundationSeed = {
       module: "edition.output",
       action: "generate_digital",
       description: "Generate digital edition output."
+    },
+    {
+      id: fixtureIds.permissions.advertiserView,
+      module: "advertiser",
+      action: "view",
+      description: "View advertiser CRM records."
+    },
+    {
+      id: fixtureIds.permissions.advertiserCreate,
+      module: "advertiser",
+      action: "create",
+      description: "Create advertiser CRM records."
+    },
+    {
+      id: fixtureIds.permissions.advertiserEdit,
+      module: "advertiser",
+      action: "edit",
+      description: "Edit advertiser CRM records."
+    },
+    {
+      id: fixtureIds.permissions.advertiserContactManage,
+      module: "advertiser.contact",
+      action: "manage",
+      description: "Manage advertiser contacts."
+    },
+    {
+      id: fixtureIds.permissions.advertiserActivityRecord,
+      module: "advertiser.activity",
+      action: "record",
+      description: "Record advertiser activity timeline entries."
+    }
+  ],
+  advertisers: [
+    {
+      id: fixtureIds.advertisers.example,
+      advertiserOrganisationId: fixtureIds.organisations.advertiser,
+      owningTerritoryId: fixtureIds.territories.suttonColdfield,
+      accountOwnerUserId: fixtureIds.users.franchisee,
+      status: "active",
+      relationshipState: "retained",
+      source: "seed",
+      firstBookedOn: "2025-09-01",
+      lastBookedOn: "2026-06-01",
+      lapsedOn: null,
+      averageSaleValueMinor: 42500,
+      annualAdvertiserValueMinor: 170000,
+      currency: "GBP",
+      tags: ["family-days-out"],
+      commercialMetadata: {
+        packageMix: "print_digital",
+        digitalMix: "standard"
+      }
+    }
+  ],
+  advertiserContacts: [
+    {
+      id: fixtureIds.advertiserContacts.examplePrimary,
+      advertiserId: fixtureIds.advertisers.example,
+      userId: null,
+      label: "Primary contact",
+      name: "Alex Advertiser",
+      email: "alex@example-advertiser.test",
+      phone: "0121 000 0000",
+      role: "owner",
+      isPrimary: true
+    }
+  ],
+  advertiserActivityEvents: [
+    {
+      id: fixtureIds.advertiserActivityEvents.exampleIntro,
+      advertiserId: fixtureIds.advertisers.example,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      actorUserId: fixtureIds.users.franchisee,
+      activityType: "note",
+      title: "Advertiser relationship seeded",
+      body: "Initial ADV-001 fixture activity.",
+      relatedEntityType: null,
+      relatedEntityId: null,
+      metadata: {
+        source: "seed"
+      }
+    }
+  ],
+  advertiserMetricSnapshots: [
+    {
+      id: fixtureIds.advertiserMetricSnapshots.exampleCurrent,
+      advertiserId: fixtureIds.advertisers.example,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      periodKey: "2026",
+      averageSaleValueMinor: 42500,
+      annualAdvertiserValueMinor: 170000,
+      bookingCount: 4,
+      packageMix: {
+        printDigital: 3,
+        printOnly: 1
+      },
+      digitalMix: {
+        included: 3,
+        none: 1
+      },
+      conversionState: "retained",
+      churnRisk: "low",
+      overdueDebtMinor: 0,
+      benchmarkMetadata: {
+        territoryBenchmarkReady: true
+      }
     }
   ],
   franchises: [

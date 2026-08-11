@@ -7,6 +7,10 @@ import {
   agreementSignatureEvents,
   agreementSignatureRequests,
   agreementSigners,
+  advertiserActivityEvents,
+  advertiserContacts,
+  advertiserMetricSnapshots,
+  advertisers,
   auditEvents,
   franchiseArtifactReferences,
   franchiseAgreements,
@@ -72,6 +76,28 @@ describe("foundation schema", () => {
     expect((franchises as unknown as Record<string, unknown>).legalName).toBeUndefined();
     expect((franchises as unknown as Record<string, unknown>).companyNumber).toBeUndefined();
     expect((franchises as unknown as Record<string, unknown>).vatNumber).toBeUndefined();
+  });
+
+  it("models advertiser CRM records through organisation and territory references", () => {
+    expect(advertisers.advertiserOrganisationId.name).toBe("advertiser_organisation_id");
+    expect(advertisers.owningTerritoryId.name).toBe("owning_territory_id");
+    expect(advertisers.relationshipState.name).toBe("relationship_state");
+    expect(advertisers.averageSaleValueMinor.name).toBe("average_sale_value_minor");
+    expect(advertisers.annualAdvertiserValueMinor.name).toBe("annual_advertiser_value_minor");
+    expect((advertisers as unknown as Record<string, unknown>).legalName).toBeUndefined();
+    expect((advertisers as unknown as Record<string, unknown>).companyNumber).toBeUndefined();
+    expect((advertisers as unknown as Record<string, unknown>).vatNumber).toBeUndefined();
+  });
+
+  it("models advertiser contacts, activity and metric snapshots", () => {
+    expect(advertiserContacts.advertiserId.name).toBe("advertiser_id");
+    expect(advertiserContacts.userId.name).toBe("user_id");
+    expect(advertiserContacts.isPrimary.name).toBe("is_primary");
+    expect(advertiserActivityEvents.relatedEntityType.name).toBe("related_entity_type");
+    expect(advertiserActivityEvents.metadata.name).toBe("metadata");
+    expect(advertiserMetricSnapshots.packageMix.name).toBe("package_mix");
+    expect(advertiserMetricSnapshots.digitalMix.name).toBe("digital_mix");
+    expect(advertiserMetricSnapshots.overdueDebtMinor.name).toBe("overdue_debt_minor");
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

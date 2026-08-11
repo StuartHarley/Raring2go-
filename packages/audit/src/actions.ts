@@ -77,7 +77,11 @@ export const auditActions = {
   publishingContentOverride: "publishing.content.override",
   publishingPreflightOverride: "publishing.preflight.override",
   publishingPrintGenerate: "publishing.print.generate",
-  publishingDigitalGenerate: "publishing.digital.generate"
+  publishingDigitalGenerate: "publishing.digital.generate",
+  advertiserCreate: "advertiser.create",
+  advertiserUpdate: "advertiser.update",
+  advertiserContactUpdate: "advertiser.contact.update",
+  advertiserActivityRecord: "advertiser.activity.record"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

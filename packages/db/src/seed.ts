@@ -3,6 +3,10 @@ import { createDb } from "./client";
 import { fixtureIds, foundationSeed } from "./fixtures";
 import {
   auditEvents,
+  advertiserActivityEvents,
+  advertiserContacts,
+  advertiserMetricSnapshots,
+  advertisers,
   agreementTemplates,
   agreementVersions,
   authInvitations,
@@ -240,7 +244,12 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.editionLockedContentManage,
         fixtureIds.permissions.editionPreflightOverride,
         fixtureIds.permissions.editionGeneratePrint,
-        fixtureIds.permissions.editionGenerateDigital
+        fixtureIds.permissions.editionGenerateDigital,
+        fixtureIds.permissions.advertiserView,
+        fixtureIds.permissions.advertiserCreate,
+        fixtureIds.permissions.advertiserEdit,
+        fixtureIds.permissions.advertiserContactManage,
+        fixtureIds.permissions.advertiserActivityRecord
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -300,6 +309,36 @@ export async function seedDatabase(databaseUrl?: string) {
         permissionId: fixtureIds.permissions.editionLocalContentEdit,
         scope: "own_territory",
         constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.advertiserView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.advertiserCreate,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.advertiserEdit,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.advertiserContactManage,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.advertiserActivityRecord,
+        scope: "own_territory",
+        constraints: {}
       }
     ]).onConflictDoNothing();
 
@@ -349,6 +388,96 @@ export async function seedDatabase(databaseUrl?: string) {
       invitedByUserId: fixtureIds.users.superAdmin,
       expiresAt: new Date("2099-01-01T00:00:00.000Z")
     }).onConflictDoNothing();
+
+    await db.insert(advertisers).values(foundationSeed.advertisers.map((advertiser) => ({
+      ...advertiser,
+      firstBookedOn: advertiser.firstBookedOn ? new Date(advertiser.firstBookedOn) : null,
+      lastBookedOn: advertiser.lastBookedOn ? new Date(advertiser.lastBookedOn) : null,
+      lapsedOn: advertiser.lapsedOn ? new Date(advertiser.lapsedOn) : null,
+      tags: [...advertiser.tags],
+      commercialMetadata: { ...advertiser.commercialMetadata }
+    }))).onConflictDoUpdate({
+      target: advertisers.id,
+      set: {
+        advertiserOrganisationId: sql`excluded.advertiser_organisation_id`,
+        owningTerritoryId: sql`excluded.owning_territory_id`,
+        accountOwnerUserId: sql`excluded.account_owner_user_id`,
+        status: sql`excluded.status`,
+        relationshipState: sql`excluded.relationship_state`,
+        source: sql`excluded.source`,
+        firstBookedOn: sql`excluded.first_booked_on`,
+        lastBookedOn: sql`excluded.last_booked_on`,
+        lapsedOn: sql`excluded.lapsed_on`,
+        averageSaleValueMinor: sql`excluded.average_sale_value_minor`,
+        annualAdvertiserValueMinor: sql`excluded.annual_advertiser_value_minor`,
+        currency: sql`excluded.currency`,
+        tags: sql`excluded.tags`,
+        commercialMetadata: sql`excluded.commercial_metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(advertiserContacts).values([...foundationSeed.advertiserContacts]).onConflictDoUpdate({
+      target: advertiserContacts.id,
+      set: {
+        advertiserId: sql`excluded.advertiser_id`,
+        userId: sql`excluded.user_id`,
+        label: sql`excluded.label`,
+        name: sql`excluded.name`,
+        email: sql`excluded.email`,
+        phone: sql`excluded.phone`,
+        role: sql`excluded.role`,
+        isPrimary: sql`excluded.is_primary`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(advertiserActivityEvents).values(foundationSeed.advertiserActivityEvents.map((event) => ({
+      ...event,
+      metadata: { ...event.metadata }
+    }))).onConflictDoUpdate({
+      target: advertiserActivityEvents.id,
+      set: {
+        advertiserId: sql`excluded.advertiser_id`,
+        territoryId: sql`excluded.territory_id`,
+        actorUserId: sql`excluded.actor_user_id`,
+        activityType: sql`excluded.activity_type`,
+        title: sql`excluded.title`,
+        body: sql`excluded.body`,
+        relatedEntityType: sql`excluded.related_entity_type`,
+        relatedEntityId: sql`excluded.related_entity_id`,
+        metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(advertiserMetricSnapshots).values(foundationSeed.advertiserMetricSnapshots.map((snapshot) => ({
+      ...snapshot,
+      packageMix: { ...snapshot.packageMix },
+      digitalMix: { ...snapshot.digitalMix },
+      benchmarkMetadata: { ...snapshot.benchmarkMetadata }
+    }))).onConflictDoUpdate({
+      target: advertiserMetricSnapshots.id,
+      set: {
+        advertiserId: sql`excluded.advertiser_id`,
+        territoryId: sql`excluded.territory_id`,
+        periodKey: sql`excluded.period_key`,
+        averageSaleValueMinor: sql`excluded.average_sale_value_minor`,
+        annualAdvertiserValueMinor: sql`excluded.annual_advertiser_value_minor`,
+        bookingCount: sql`excluded.booking_count`,
+        packageMix: sql`excluded.package_mix`,
+        digitalMix: sql`excluded.digital_mix`,
+        conversionState: sql`excluded.conversion_state`,
+        churnRisk: sql`excluded.churn_risk`,
+        overdueDebtMinor: sql`excluded.overdue_debt_minor`,
+        benchmarkMetadata: sql`excluded.benchmark_metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
 
     const franchiseSeed = foundationSeed.franchises.map((franchise) => {
       const endDate = (franchise as { endDate?: string }).endDate;

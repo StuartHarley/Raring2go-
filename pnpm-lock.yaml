@@ -32,6 +32,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@raring2go/advertising':
+        specifier: workspace:*
+        version: link:../../packages/advertising
       '@raring2go/audit':
         specifier: workspace:*
         version: link:../../packages/audit
@@ -75,6 +78,22 @@ importers:
       jsdom:
         specifier: 30.0.1
         version: 30.0.1
+
+  packages/advertising:
+    dependencies:
+      '@raring2go/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
 
   packages/ai: {}
 
