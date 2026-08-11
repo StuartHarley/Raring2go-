@@ -253,6 +253,14 @@ export type PublishingData = {
   editionPageRevisions: EditionPageRevision[];
   preflightResults: PreflightResult[];
   publicationOutputs: PublicationOutput[];
+  contentItems: ContentItem[];
+  contentItemVersions: ContentItemVersion[];
+  contentChannelVariants: ContentChannelVariant[];
+  contentChannelVariantVersions: ContentChannelVariantVersion[];
+  contentLocalisations: ContentLocalisation[];
+  contentAiTasks: ContentAiTask[];
+  contentWebsitePublishingJobs: ContentWebsitePublishingJob[];
+  contentDomainEvents: ContentDomainEvent[];
   territories: PublishingTerritory[];
 };
 
@@ -279,4 +287,135 @@ export type EditionControlRoomRow = {
   nextDeadline?: string | null;
   printStatus: string;
   digitalStatus: string;
+};
+
+export type ContentItem = {
+  id: string;
+  title: string;
+  standfirst?: string | null;
+  contentType: "article" | "event" | "offer" | "competition" | "guide" | "advertiser_sponsored" | "announcement" | "evergreen" | (string & {});
+  ownerLevel: "network" | "territory" | (string & {});
+  organisationId?: string | null;
+  territoryId?: string | null;
+  status: "draft" | "approved" | "published" | "archived" | (string & {});
+  authorUserId?: string | null;
+  sourceType: "human" | "ai" | "external_gpt" | (string & {});
+  sourceReference?: string | null;
+  heroArtifactReference: Record<string, unknown>;
+  categories: string[];
+  tags: string[];
+  relevantDates: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+  advertiserId?: string | null;
+  commercialBookingId?: string | null;
+  editionContentItemId?: string | null;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  publishedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type ContentItemVersion = {
+  id: string;
+  contentItemId: string;
+  versionNumber: number;
+  status: string;
+  snapshot: Record<string, unknown>;
+  changeSummary?: string | null;
+  provenance: Record<string, unknown>;
+  createdByUserId?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type ContentChannelVariant = {
+  id: string;
+  contentItemId: string;
+  channel: string;
+  status: "not_created" | "ai_draft" | "human_edited" | "needs_review" | "approved" | "scheduled" | "published" | (string & {});
+  currentVersionId?: string | null;
+  territoryId?: string | null;
+  scheduledAt?: string | null;
+  publishedAt?: string | null;
+  provenance: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type ContentChannelVariantVersion = {
+  id: string;
+  variantId: string;
+  versionNumber: number;
+  status: string;
+  snapshot: Record<string, unknown>;
+  generatedByTaskId?: string | null;
+  provenance: Record<string, unknown>;
+  createdByUserId?: string | null;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type ContentLocalisation = {
+  id: string;
+  masterContentItemId: string;
+  territoryId: string;
+  localContentItemId?: string | null;
+  state: "inherited" | "localised" | "locally_overridden" | "master_updated" | "review_required" | "opted_out" | (string & {});
+  lockedFields: string[];
+  editableFields: string[];
+  localOverrides: Record<string, unknown>;
+  masterVersionNumber: number;
+  reviewedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type ContentAiTask = {
+  id: string;
+  task: string;
+  contentItemId: string;
+  sourceVersionId?: string | null;
+  targetChannel?: string | null;
+  status: string;
+  providerKey?: string | null;
+  modelReference?: string | null;
+  promptTemplateVersion: string;
+  generatedOutput: Record<string, unknown>;
+  generatedAt: string;
+  humanDecision?: string | null;
+  decidedByUserId?: string | null;
+  decidedAt?: string | null;
+  provenance: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type ContentWebsitePublishingJob = {
+  id: string;
+  contentItemId: string;
+  variantId?: string | null;
+  providerKey: string;
+  status: string;
+  preparedSnapshot: Record<string, unknown>;
+  providerMetadata: Record<string, unknown>;
+  idempotencyKey: string;
+  preparedAt: string;
+  deletedAt?: Date | null;
+};
+
+export type ContentDomainEvent = {
+  id: string;
+  eventType: string;
+  contentItemId?: string | null;
+  territoryId?: string | null;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+  idempotencyKey: string;
+  processedAt?: string | null;
+};
+
+export type ContentLibraryItem = {
+  item: ContentItem;
+  currentVersion?: ContentItemVersion;
+  variants: ContentChannelVariant[];
+  localisations: ContentLocalisation[];
+  health: string[];
+  editionStatus: "unused" | "assigned" | "placed" | "preflight_ready" | "published";
 };

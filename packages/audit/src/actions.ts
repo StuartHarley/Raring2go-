@@ -129,7 +129,15 @@ export const auditActions = {
   marketingNewsletterMasterCreate: "marketing.newsletter_factory.master.create",
   marketingNewsletterMasterApprove: "marketing.newsletter_factory.master.approve",
   marketingNewsletterFactoryGenerate: "marketing.newsletter_factory.generate",
-  marketingNewsletterLocalOverride: "marketing.newsletter_factory.local_override"
+  marketingNewsletterLocalOverride: "marketing.newsletter_factory.local_override",
+  contentCreated: "content.created",
+  contentUpdated: "content.updated",
+  contentLocalised: "content.localised",
+  contentVariantGenerated: "content.variant.generated",
+  contentVariantApproved: "content.variant.approved",
+  contentNetworkDistributed: "content.network.distributed",
+  contentWebsiteReady: "content.website.ready",
+  contentPublished: "content.published"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

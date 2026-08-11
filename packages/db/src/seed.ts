@@ -17,6 +17,12 @@ import {
   commercialProducts,
   commercialProposalItems,
   commercialProposals,
+  contentAiTasks,
+  contentChannelVariantVersions,
+  contentChannelVariants,
+  contentItemVersions,
+  contentItems,
+  contentLocalisations,
   emailTemplates,
   networkNewsletterMasters,
   agreementTemplates,
@@ -313,7 +319,16 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.newsletterFactoryView,
         fixtureIds.permissions.newsletterFactoryManage,
         fixtureIds.permissions.newsletterFactoryApprove,
-        fixtureIds.permissions.newsletterFactoryContribute
+        fixtureIds.permissions.newsletterFactoryContribute,
+        fixtureIds.permissions.contentView,
+        fixtureIds.permissions.contentCreate,
+        fixtureIds.permissions.contentEdit,
+        fixtureIds.permissions.contentApprove,
+        fixtureIds.permissions.contentLocalise,
+        fixtureIds.permissions.contentDistributeNetwork,
+        fixtureIds.permissions.contentAiGenerate,
+        fixtureIds.permissions.contentAiApprove,
+        fixtureIds.permissions.contentWebsitePublish
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -496,7 +511,10 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.emailSend,
         fixtureIds.permissions.emailRecordDelivery,
         fixtureIds.permissions.newsletterFactoryView,
-        fixtureIds.permissions.newsletterFactoryContribute
+        fixtureIds.permissions.newsletterFactoryContribute,
+        fixtureIds.permissions.contentView,
+        fixtureIds.permissions.contentLocalise,
+        fixtureIds.permissions.contentAiGenerate
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,
@@ -961,6 +979,96 @@ export async function seedDatabase(databaseUrl?: string) {
         deletedAt: sql`null`
       }
     });
+
+    await db.insert(contentItems).values(foundationSeed.contentItems.map((item) => ({
+      ...item,
+      heroArtifactReference: { ...item.heroArtifactReference },
+      categories: [...item.categories],
+      tags: [...item.tags],
+      relevantDates: { ...item.relevantDates },
+      provenance: { ...item.provenance },
+      approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+      publishedAt: item.publishedAt ? new Date(item.publishedAt) : null
+    }))).onConflictDoUpdate({
+      target: contentItems.id,
+      set: {
+        title: sql`excluded.title`,
+        standfirst: sql`excluded.standfirst`,
+        contentType: sql`excluded.content_type`,
+        ownerLevel: sql`excluded.owner_level`,
+        organisationId: sql`excluded.organisation_id`,
+        territoryId: sql`excluded.territory_id`,
+        status: sql`excluded.status`,
+        heroArtifactReference: sql`excluded.hero_artifact_reference`,
+        categories: sql`excluded.categories`,
+        tags: sql`excluded.tags`,
+        relevantDates: sql`excluded.relevant_dates`,
+        provenance: sql`excluded.provenance`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(contentItemVersions).values(foundationSeed.contentItemVersions.map((version) => ({
+      ...version,
+      snapshot: { ...version.snapshot },
+      provenance: { ...version.provenance }
+    }))).onConflictDoNothing();
+
+    await db.insert(contentLocalisations).values(foundationSeed.contentLocalisations.map((localisation) => ({
+      ...localisation,
+      lockedFields: [...localisation.lockedFields],
+      editableFields: [...localisation.editableFields],
+      localOverrides: { ...localisation.localOverrides },
+      reviewedAt: localisation.reviewedAt ? new Date(localisation.reviewedAt) : null
+    }))).onConflictDoUpdate({
+      target: contentLocalisations.id,
+      set: {
+        state: sql`excluded.state`,
+        lockedFields: sql`excluded.locked_fields`,
+        editableFields: sql`excluded.editable_fields`,
+        localOverrides: sql`excluded.local_overrides`,
+        masterVersionNumber: sql`excluded.master_version_number`,
+        reviewedAt: sql`excluded.reviewed_at`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(contentChannelVariants).values(foundationSeed.contentChannelVariants.map((variant) => ({
+      ...variant,
+      scheduledAt: variant.scheduledAt ? new Date(variant.scheduledAt) : null,
+      publishedAt: variant.publishedAt ? new Date(variant.publishedAt) : null
+    }))).onConflictDoUpdate({
+      target: contentChannelVariants.id,
+      set: {
+        status: sql`excluded.status`,
+        currentVersionId: sql`excluded.current_version_id`,
+        provenance: sql`excluded.provenance`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(contentAiTasks).values(foundationSeed.contentAiTasks.map((task) => ({
+      ...task,
+      generatedAt: new Date(task.generatedAt),
+      decidedAt: task.decidedAt ? new Date(task.decidedAt) : null
+    }))).onConflictDoUpdate({
+      target: contentAiTasks.id,
+      set: {
+        status: sql`excluded.status`,
+        generatedOutput: sql`excluded.generated_output`,
+        humanDecision: sql`excluded.human_decision`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(contentChannelVariantVersions).values(foundationSeed.contentChannelVariantVersions.map((version) => ({
+      ...version,
+      approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
+    }))).onConflictDoNothing();
 
     const franchiseSeed = foundationSeed.franchises.map((franchise) => {
       const endDate = (franchise as { endDate?: string }).endDate;

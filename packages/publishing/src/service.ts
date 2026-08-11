@@ -3,6 +3,14 @@ import { requirePermission, type PermissionData } from "@raring2go/permissions";
 import { publishingCapabilities, type PublishingCapability } from "./permissions";
 import type {
   EditionControlRoomRow,
+  ContentAiTask,
+  ContentChannelVariant,
+  ContentChannelVariantVersion,
+  ContentItem,
+  ContentItemVersion,
+  ContentLibraryItem,
+  ContentLocalisation,
+  ContentWebsitePublishingJob,
   EditionSummary,
   EditionContentItem,
   EditionPage,
@@ -109,6 +117,44 @@ export function listEditionControlRoom(
       };
     })
     .sort((left, right) => left.territoryEdition.title.localeCompare(right.territoryEdition.title));
+}
+
+export function listContentLibrary(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  data: PublishingData
+): ContentLibraryItem[] {
+  requirePublishingPermission(context, permissions, "contentView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  return data.contentItems
+    .filter((item) => !item.deletedAt)
+    .filter((item) => contentVisible(item, visibleTerritoryIds, data))
+    .map((item) => assembleContentLibraryItem(item, data))
+    .sort((left, right) => left.item.title.localeCompare(right.item.title));
+}
+
+export function readContentWorkspace(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  data: PublishingData,
+  contentItemId: string
+) {
+  requirePublishingPermission(context, permissions, "contentView");
+  const item = requireCanonicalContent(data, contentItemId);
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  if (!contentVisible(item, visibleTerritoryIds, data)) {
+    throw new Error("Content item is outside the active territory.");
+  }
+  return {
+    libraryItem: assembleContentLibraryItem(item, data),
+    versions: data.contentItemVersions.filter((version) => version.contentItemId === item.id && !version.deletedAt),
+    variantVersions: data.contentChannelVariantVersions.filter((version) =>
+      data.contentChannelVariants.some((variant) => variant.id === version.variantId && variant.contentItemId === item.id && !variant.deletedAt)
+    ),
+    aiTasks: data.contentAiTasks.filter((task) => task.contentItemId === item.id && !task.deletedAt),
+    websiteJobs: data.contentWebsitePublishingJobs.filter((job) => job.contentItemId === item.id && !job.deletedAt),
+    events: data.contentDomainEvents.filter((event) => event.contentItemId === item.id)
+  };
 }
 
 export async function createSeasonWithMasterEdition(
@@ -331,6 +377,309 @@ export async function createCentralContentItem(
     sourceLevel: content.sourceLevel
   }));
   return content;
+}
+
+export async function createCanonicalContentItem(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  item: ContentItem,
+  version: ContentItemVersion
+) {
+  requirePublishingPermission(context, permissions, "contentCreate");
+  if (item.territoryId) {
+    ensureContextCanAccessTerritory(context, item.territoryId);
+  }
+  if (version.contentItemId !== item.id || version.versionNumber !== 1) {
+    throw new Error("Initial content version must belong to the content item and start at version 1.");
+  }
+  data.contentItems.push(item);
+  data.contentItemVersions.push(version);
+  await recordContentAuditAndEvent(context, audit, data, auditActions.contentCreated, "content_item", item.id, {
+    contentType: item.contentType,
+    ownerLevel: item.ownerLevel
+  }, item.territoryId);
+  return item;
+}
+
+export async function distributeContentToNetwork(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  contentItemId: string,
+  territoryIds: string[],
+  input: {
+    lockedFields: string[];
+    editableFields: string[];
+    masterVersionNumber: number;
+  }
+) {
+  requirePublishingPermission(context, permissions, "contentDistributeNetwork");
+  const item = requireCanonicalContent(data, contentItemId);
+  if (item.ownerLevel !== "network") {
+    throw new Error("Only network-owned content can be distributed to the network.");
+  }
+  const created: ContentLocalisation[] = [];
+  for (const territoryId of [...new Set(territoryIds)]) {
+    if (!data.territories.some((territory) => territory.id === territoryId)) {
+      throw new Error("Distribution references an unknown territory.");
+    }
+    const existing = data.contentLocalisations.find((candidate) => candidate.masterContentItemId === item.id && candidate.territoryId === territoryId && !candidate.deletedAt);
+    if (existing) {
+      if (existing.masterVersionNumber < input.masterVersionNumber && existing.state !== "locally_overridden") {
+        existing.masterVersionNumber = input.masterVersionNumber;
+        existing.state = "master_updated";
+      }
+      continue;
+    }
+    const localisation: ContentLocalisation = {
+      id: crypto.randomUUID(),
+      masterContentItemId: item.id,
+      territoryId,
+      localContentItemId: null,
+      state: "inherited",
+      lockedFields: input.lockedFields,
+      editableFields: input.editableFields,
+      localOverrides: {},
+      masterVersionNumber: input.masterVersionNumber,
+      reviewedAt: null
+    };
+    data.contentLocalisations.push(localisation);
+    created.push(localisation);
+  }
+  await recordContentAuditAndEvent(context, audit, data, auditActions.contentNetworkDistributed, "content_item", item.id, {
+    territoryIds,
+    createdCount: created.length
+  }, null);
+  return created;
+}
+
+export async function localiseContentForTerritory(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  localisationId: string,
+  overrides: Record<string, unknown>
+) {
+  requirePublishingPermission(context, permissions, "contentLocalise");
+  const localisation = requireContentLocalisation(data, localisationId);
+  ensureContextCanAccessTerritory(context, localisation.territoryId);
+  for (const field of Object.keys(overrides)) {
+    if (localisation.lockedFields.includes(field)) {
+      throw new Error("Locked HQ content fields cannot be locally overridden.");
+    }
+  }
+  localisation.localOverrides = { ...localisation.localOverrides, ...overrides };
+  localisation.state = "locally_overridden";
+  localisation.reviewedAt = today();
+  await recordContentAuditAndEvent(context, audit, data, auditActions.contentLocalised, "content_localisation", localisation.id, {
+    masterContentItemId: localisation.masterContentItemId,
+    overrideKeys: Object.keys(overrides)
+  }, localisation.territoryId);
+  return localisation;
+}
+
+export async function repurposeContentVariant(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  contentItemId: string,
+  channel: string,
+  input: {
+    taskId: string;
+    promptTemplateVersion: string;
+    providerKey?: string | null;
+    modelReference?: string | null;
+  }
+) {
+  requirePublishingPermission(context, permissions, "contentAiGenerate");
+  const item = requireCanonicalContent(data, contentItemId);
+  if (item.territoryId) {
+    ensureContextCanAccessTerritory(context, item.territoryId);
+  }
+  const sourceVersion = latestContentVersion(data, item.id);
+  const output = deterministicChannelOutput(item, sourceVersion, channel);
+  const task: ContentAiTask = {
+    id: input.taskId,
+    task: `content.repurpose.${channel}`,
+    contentItemId: item.id,
+    sourceVersionId: sourceVersion?.id ?? null,
+    targetChannel: channel,
+    status: "generated",
+    providerKey: input.providerKey ?? "development",
+    modelReference: input.modelReference ?? "deterministic-content-adapter",
+    promptTemplateVersion: input.promptTemplateVersion,
+    generatedOutput: output,
+    generatedAt: today(),
+    humanDecision: null,
+    decidedByUserId: null,
+    decidedAt: null,
+    provenance: { generatedBy: "ai", source: "provider_neutral_task" }
+  };
+  data.contentAiTasks.push(task);
+  const variant = upsertVariant(data, item.id, channel, item.territoryId ?? null);
+  const nextVersionNumber = nextVariantVersionNumber(data, variant.id);
+  const variantVersion: ContentChannelVariantVersion = {
+    id: crypto.randomUUID(),
+    variantId: variant.id,
+    versionNumber: nextVersionNumber,
+    status: "ai_draft",
+    snapshot: output,
+    generatedByTaskId: task.id,
+    provenance: { generatedBy: "ai", taskId: task.id },
+    createdByUserId: context.userId,
+    approvedByUserId: null,
+    approvedAt: null
+  };
+  data.contentChannelVariantVersions.push(variantVersion);
+  variant.currentVersionId = variantVersion.id;
+  variant.status = variant.status === "approved" || variant.status === "published" ? "needs_review" : "ai_draft";
+  await recordContentAuditAndEvent(context, audit, data, auditActions.contentVariantGenerated, "content_channel_variant", variant.id, {
+    contentItemId: item.id,
+    channel,
+    task: task.task
+  }, item.territoryId);
+  return { task, variant, version: variantVersion };
+}
+
+export async function repurposeEverywhere(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  contentItemId: string,
+  channels = ["magazine", "website", "newsletter", "facebook", "instagram", "linkedin"]
+) {
+  const generated = [];
+  for (const channel of channels) {
+    generated.push(await repurposeContentVariant(context, permissions, audit, data, contentItemId, channel, {
+      taskId: crypto.randomUUID(),
+      promptTemplateVersion: "mkt-004.v1"
+    }));
+  }
+  return generated;
+}
+
+export async function approveContentVariant(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  variantId: string
+) {
+  requirePublishingPermission(context, permissions, "contentAiApprove");
+  const variant = requireContentVariant(data, variantId);
+  const item = requireCanonicalContent(data, variant.contentItemId);
+  if (item.territoryId) {
+    ensureContextCanAccessTerritory(context, item.territoryId);
+  }
+  const version = variant.currentVersionId
+    ? data.contentChannelVariantVersions.find((candidate) => candidate.id === variant.currentVersionId && !candidate.deletedAt)
+    : undefined;
+  if (!version) {
+    throw new Error("Variant has no current version to approve.");
+  }
+  version.status = "approved";
+  version.approvedByUserId = context.userId;
+  version.approvedAt = today();
+  variant.status = "approved";
+  const task = version.generatedByTaskId ? data.contentAiTasks.find((candidate) => candidate.id === version.generatedByTaskId) : undefined;
+  if (task) {
+    task.humanDecision = "accepted";
+    task.decidedByUserId = context.userId;
+    task.decidedAt = today();
+  }
+  await recordContentAuditAndEvent(context, audit, data, auditActions.contentVariantApproved, "content_channel_variant", variant.id, {
+    contentItemId: item.id,
+    channel: variant.channel,
+    versionNumber: version.versionNumber
+  }, item.territoryId);
+  return variant;
+}
+
+export async function restoreContentVersion(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  contentItemId: string,
+  versionNumber: number
+) {
+  requirePublishingPermission(context, permissions, "contentEdit");
+  const item = requireCanonicalContent(data, contentItemId);
+  if (item.territoryId) {
+    ensureContextCanAccessTerritory(context, item.territoryId);
+  }
+  const version = data.contentItemVersions.find((candidate) => candidate.contentItemId === item.id && candidate.versionNumber === versionNumber && !candidate.deletedAt);
+  if (!version) {
+    throw new Error("Content version was not found.");
+  }
+  const snapshot = version.snapshot;
+  item.title = String(snapshot.title ?? item.title);
+  item.standfirst = typeof snapshot.standfirst === "string" ? snapshot.standfirst : item.standfirst;
+  item.provenance = { ...item.provenance, restoredFromVersion: versionNumber };
+  data.contentItemVersions.push({
+    id: crypto.randomUUID(),
+    contentItemId: item.id,
+    versionNumber: nextContentVersionNumber(data, item.id),
+    status: "draft",
+    snapshot,
+    changeSummary: `Restored from version ${versionNumber}`,
+    provenance: { restoredFromVersion: versionNumber },
+    createdByUserId: context.userId
+  });
+  await recordContentAuditAndEvent(context, audit, data, auditActions.contentUpdated, "content_item", item.id, {
+    action: "restore",
+    restoredFromVersion: versionNumber
+  }, item.territoryId);
+  return item;
+}
+
+export async function prepareWebsitePublishing(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  variantId: string,
+  idempotencyKey: string
+) {
+  requirePublishingPermission(context, permissions, "contentWebsitePublish");
+  const existing = data.contentWebsitePublishingJobs.find((job) => job.idempotencyKey === idempotencyKey && !job.deletedAt);
+  if (existing) {
+    return existing;
+  }
+  const variant = requireContentVariant(data, variantId);
+  if (variant.channel !== "website" || variant.status !== "approved") {
+    throw new Error("Only approved website variants can be prepared for publishing.");
+  }
+  const item = requireCanonicalContent(data, variant.contentItemId);
+  const version = variant.currentVersionId
+    ? data.contentChannelVariantVersions.find((candidate) => candidate.id === variant.currentVersionId && !candidate.deletedAt)
+    : undefined;
+  if (!version) {
+    throw new Error("Website variant has no approved version.");
+  }
+  const job: ContentWebsitePublishingJob = {
+    id: crypto.randomUUID(),
+    contentItemId: item.id,
+    variantId: variant.id,
+    providerKey: "development",
+    status: "ready",
+    preparedSnapshot: version.snapshot,
+    providerMetadata: {},
+    idempotencyKey,
+    preparedAt: today()
+  };
+  data.contentWebsitePublishingJobs.push(job);
+  await recordContentAuditAndEvent(context, audit, data, auditActions.contentWebsiteReady, "content_website_publishing_job", job.id, {
+    contentItemId: item.id,
+    variantId: variant.id
+  }, item.territoryId);
+  return job;
 }
 
 export async function distributeContentToTerritoryEditions(
@@ -847,6 +1196,208 @@ function requireContentItem(data: PublishingData, contentItemId: string) {
     throw new Error("Edition content item was not found.");
   }
   return item;
+}
+
+function requireCanonicalContent(data: PublishingData, contentItemId: string) {
+  const item = data.contentItems.find((candidate) => candidate.id === contentItemId && !candidate.deletedAt);
+  if (!item) {
+    throw new Error("Content item was not found.");
+  }
+  return item;
+}
+
+function requireContentVariant(data: PublishingData, variantId: string) {
+  const variant = data.contentChannelVariants.find((candidate) => candidate.id === variantId && !candidate.deletedAt);
+  if (!variant) {
+    throw new Error("Content channel variant was not found.");
+  }
+  return variant;
+}
+
+function requireContentLocalisation(data: PublishingData, localisationId: string) {
+  const localisation = data.contentLocalisations.find((candidate) => candidate.id === localisationId && !candidate.deletedAt);
+  if (!localisation) {
+    throw new Error("Content localisation was not found.");
+  }
+  return localisation;
+}
+
+function contentVisible(item: ContentItem, visibleTerritoryIds: Set<string> | null, data: PublishingData) {
+  if (visibleTerritoryIds == null) {
+    return true;
+  }
+  if (item.territoryId) {
+    return visibleTerritoryIds.has(item.territoryId);
+  }
+  return data.contentLocalisations.some((localisation) =>
+    localisation.masterContentItemId === item.id &&
+    visibleTerritoryIds.has(localisation.territoryId) &&
+    !localisation.deletedAt &&
+    localisation.state !== "opted_out"
+  );
+}
+
+function assembleContentLibraryItem(item: ContentItem, data: PublishingData): ContentLibraryItem {
+  const variants = data.contentChannelVariants.filter((variant) => variant.contentItemId === item.id && !variant.deletedAt);
+  const localisations = data.contentLocalisations.filter((localisation) => localisation.masterContentItemId === item.id && !localisation.deletedAt);
+  const currentVersion = latestContentVersion(data, item.id);
+  return {
+    item,
+    currentVersion,
+    variants,
+    localisations,
+    health: contentHealth(item, variants, localisations),
+    editionStatus: editionStatus(item, data)
+  };
+}
+
+function contentHealth(item: ContentItem, variants: ContentChannelVariant[], localisations: ContentLocalisation[]) {
+  const signals = [];
+  if (Object.keys(item.heroArtifactReference).length === 0) signals.push("missing_image");
+  if (!variants.some((variant) => variant.channel === "website")) signals.push("no_web_version");
+  if (!variants.some((variant) => variant.channel === "newsletter")) signals.push("newsletter_variant_missing");
+  if (!variants.some((variant) => variant.channel === "facebook" || variant.channel === "instagram")) signals.push("social_variants_missing");
+  if (item.contentType === "event" && !item.relevantDates.endsAt) signals.push("approaching_event_expiry");
+  if (item.advertiserId || item.commercialBookingId) signals.push("advertiser_obligation");
+  if (localisations.some((localisation) => localisation.state === "master_updated" || localisation.state === "review_required")) signals.push("localisation_requires_review");
+  return signals;
+}
+
+function editionStatus(item: ContentItem, data: PublishingData): ContentLibraryItem["editionStatus"] {
+  if (!item.editionContentItemId) {
+    return "unused";
+  }
+  const territoryContent = data.territoryEditionContent.filter((content) => content.sourceContentItemId === item.editionContentItemId && !content.deletedAt);
+  if (territoryContent.length === 0) {
+    return "assigned";
+  }
+  const assignedIds = new Set(territoryContent.map((content) => content.id));
+  const pages = data.editionPages.filter((page) => page.assignedContentId && assignedIds.has(page.assignedContentId) && !page.deletedAt);
+  if (pages.some((page) => page.status === "published")) return "published";
+  if (pages.some((page) => page.readiness === "ready")) return "preflight_ready";
+  if (pages.length > 0) return "placed";
+  return "assigned";
+}
+
+function latestContentVersion(data: PublishingData, contentItemId: string) {
+  return data.contentItemVersions
+    .filter((version) => version.contentItemId === contentItemId && !version.deletedAt)
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+}
+
+function nextContentVersionNumber(data: PublishingData, contentItemId: string) {
+  return Math.max(0, ...data.contentItemVersions.filter((version) => version.contentItemId === contentItemId).map((version) => version.versionNumber)) + 1;
+}
+
+function nextVariantVersionNumber(data: PublishingData, variantId: string) {
+  return Math.max(0, ...data.contentChannelVariantVersions.filter((version) => version.variantId === variantId).map((version) => version.versionNumber)) + 1;
+}
+
+function upsertVariant(data: PublishingData, contentItemId: string, channel: string, territoryId?: string | null): ContentChannelVariant {
+  const existing = data.contentChannelVariants.find((variant) =>
+    variant.contentItemId === contentItemId &&
+    variant.channel === channel &&
+    (variant.territoryId ?? null) === (territoryId ?? null) &&
+    !variant.deletedAt
+  );
+  if (existing) {
+    return existing;
+  }
+  const variant: ContentChannelVariant = {
+    id: crypto.randomUUID(),
+    contentItemId,
+    channel,
+    status: "not_created",
+    currentVersionId: null,
+    territoryId: territoryId ?? null,
+    scheduledAt: null,
+    publishedAt: null,
+    provenance: {}
+  };
+  data.contentChannelVariants.push(variant);
+  return variant;
+}
+
+function deterministicChannelOutput(item: ContentItem, version: ContentItemVersion | undefined, channel: string) {
+  const snapshot = version?.snapshot ?? {};
+  const body = String(snapshot.body ?? item.standfirst ?? item.title);
+  if (channel === "magazine") {
+    return {
+      editorialHeadline: item.title,
+      standfirst: item.standfirst,
+      printBody: body,
+      pullQuote: item.standfirst ?? item.title,
+      wordCountTarget: 450
+    };
+  }
+  if (channel === "website") {
+    return {
+      webHeadline: item.title,
+      body,
+      excerpt: item.standfirst,
+      seoTitle: `${item.title} | Raring2go`,
+      metaDescription: item.standfirst ?? item.title,
+      slug: item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+      cta: "Find more local family ideas"
+    };
+  }
+  if (channel === "newsletter") {
+    return {
+      newsletterHeadline: item.title,
+      summary: item.standfirst ?? body.slice(0, 140),
+      cta: "Read more",
+      block: { type: "article", contentItemId: item.id }
+    };
+  }
+  if (channel === "instagram") {
+    return {
+      caption: `${item.title}. ${item.standfirst ?? ""}`.trim(),
+      shortVariant: item.title,
+      topics: item.tags.slice(0, 5),
+      imageBrief: "Warm family editorial image suitable for Raring2go social."
+    };
+  }
+  if (channel === "linkedin") {
+    return {
+      postCopy: `${item.title}: ${item.standfirst ?? "A Raring2go network update."}`,
+      cta: "View the full update"
+    };
+  }
+  return {
+    postCopy: `${item.title}\n\n${item.standfirst ?? ""}`.trim(),
+    cta: "Read more",
+    alternateVersions: [item.title]
+  };
+}
+
+function ensureContextCanAccessTerritory(context: PublishingActorContext, territoryId: string) {
+  if (context.territoryId && context.territoryId !== territoryId) {
+    throw new Error("Content item is outside the active territory.");
+  }
+}
+
+async function recordContentAuditAndEvent(
+  context: PublishingActorContext,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  action: string,
+  entityType: string,
+  entityId: string,
+  payload: Record<string, unknown>,
+  territoryId?: string | null
+) {
+  await audit.record(auditEvent(context, action, entityType, entityId, payload, territoryId));
+  const idempotencyKey = `${action}:${entityId}:${data.contentDomainEvents.length + 1}`;
+  data.contentDomainEvents.push({
+    id: crypto.randomUUID(),
+    eventType: action,
+    contentItemId: entityType === "content_item" ? entityId : typeof payload.contentItemId === "string" ? payload.contentItemId : null,
+    territoryId: territoryId ?? null,
+    payload,
+    occurredAt: today(),
+    idempotencyKey,
+    processedAt: null
+  });
 }
 
 function requireTerritoryContent(data: PublishingData, territoryContentId: string) {

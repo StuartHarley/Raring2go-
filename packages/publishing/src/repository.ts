@@ -1,5 +1,13 @@
 import {
   editionContentItems,
+  contentAiTasks,
+  contentChannelVariantVersions,
+  contentChannelVariants,
+  contentDomainEvents,
+  contentItemVersions,
+  contentItems,
+  contentLocalisations,
+  contentWebsitePublishingJobs,
   editionPageRevisions,
   editionPages,
   magazineTemplateVersions,
@@ -33,6 +41,14 @@ export async function loadPublishingData(db: DrizzleDb): Promise<PublishingData>
     revisionRows,
     preflightRows,
     outputRows,
+    contentItemRows,
+    contentItemVersionRows,
+    contentVariantRows,
+    contentVariantVersionRows,
+    contentLocalisationRows,
+    contentAiTaskRows,
+    contentWebsiteJobRows,
+    contentDomainEventRows,
     territoryRows
   ] = await Promise.all([
     db.select().from(seasons),
@@ -46,6 +62,14 @@ export async function loadPublishingData(db: DrizzleDb): Promise<PublishingData>
     db.select().from(editionPageRevisions),
     db.select().from(preflightResults),
     db.select().from(publicationOutputs),
+    db.select().from(contentItems),
+    db.select().from(contentItemVersions),
+    db.select().from(contentChannelVariants),
+    db.select().from(contentChannelVariantVersions),
+    db.select().from(contentLocalisations),
+    db.select().from(contentAiTasks),
+    db.select().from(contentWebsitePublishingJobs),
+    db.select().from(contentDomainEvents),
     db.select().from(territories)
   ]);
 
@@ -96,6 +120,39 @@ export async function loadPublishingData(db: DrizzleDb): Promise<PublishingData>
       ...row,
       generatedAt: dateString(row.generatedAt)
     })) as PublishingData["publicationOutputs"],
+    contentItems: contentItemRows.map((row) => ({
+      ...row,
+      approvedAt: dateString(row.approvedAt),
+      publishedAt: dateString(row.publishedAt)
+    })) as PublishingData["contentItems"],
+    contentItemVersions: contentItemVersionRows as PublishingData["contentItemVersions"],
+    contentChannelVariants: contentVariantRows.map((row) => ({
+      ...row,
+      scheduledAt: dateString(row.scheduledAt),
+      publishedAt: dateString(row.publishedAt)
+    })) as PublishingData["contentChannelVariants"],
+    contentChannelVariantVersions: contentVariantVersionRows.map((row) => ({
+      ...row,
+      approvedAt: dateString(row.approvedAt)
+    })) as PublishingData["contentChannelVariantVersions"],
+    contentLocalisations: contentLocalisationRows.map((row) => ({
+      ...row,
+      reviewedAt: dateString(row.reviewedAt)
+    })) as PublishingData["contentLocalisations"],
+    contentAiTasks: contentAiTaskRows.map((row) => ({
+      ...row,
+      generatedAt: dateString(row.generatedAt),
+      decidedAt: dateString(row.decidedAt)
+    })) as PublishingData["contentAiTasks"],
+    contentWebsitePublishingJobs: contentWebsiteJobRows.map((row) => ({
+      ...row,
+      preparedAt: dateString(row.preparedAt)
+    })) as PublishingData["contentWebsitePublishingJobs"],
+    contentDomainEvents: contentDomainEventRows.map((row) => ({
+      ...row,
+      occurredAt: dateString(row.occurredAt),
+      processedAt: dateString(row.processedAt)
+    })) as PublishingData["contentDomainEvents"],
     territories: territoryRows as PublishingData["territories"]
   };
 }

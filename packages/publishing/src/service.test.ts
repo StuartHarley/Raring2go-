@@ -2,23 +2,33 @@ import { auditActions } from "@raring2go/audit";
 import { describe, expect, it } from "vitest";
 import {
   createSeasonWithMasterEdition,
+  approveContentVariant,
   approveTemplateVersion,
   applyLocalContentOverride,
   assignPageTemplateAndContent,
   autosaveLocalPageContent,
   createMagazineTemplate,
   createCentralContentItem,
+  createCanonicalContentItem,
   createEditionFlatplan,
   createTemplateRevision,
   distributeContentToTerritoryEditions,
+  distributeContentToNetwork,
   generateTerritoryEditions,
   generateDigitalOutput,
   generatePrintOutput,
   listEditionControlRoom,
+  listContentLibrary,
   listEditionSummaries,
+  localiseContentForTerritory,
+  prepareWebsitePublishing,
   publishTemplateVersion,
   applySafePreflightFixes,
   propagateMasterContentCorrection,
+  readContentWorkspace,
+  repurposeContentVariant,
+  repurposeEverywhere,
+  restoreContentVersion,
   reorderEditionPages,
   runPagePreflight,
   submitPageForReview
@@ -83,10 +93,22 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "edition.preflight", "override", "network"),
     grant(ids.roles.hq, "edition.output", "generate_print", "network"),
     grant(ids.roles.hq, "edition.output", "generate_digital", "network"),
+    grant(ids.roles.hq, "content", "view", "network"),
+    grant(ids.roles.hq, "content", "create", "network"),
+    grant(ids.roles.hq, "content", "edit", "network"),
+    grant(ids.roles.hq, "content", "approve", "network"),
+    grant(ids.roles.hq, "content", "localise", "network"),
+    grant(ids.roles.hq, "content", "distribute_network", "network"),
+    grant(ids.roles.hq, "content.ai", "generate", "network"),
+    grant(ids.roles.hq, "content.ai", "approve", "network"),
+    grant(ids.roles.hq, "content.website", "publish", "network"),
     grant(ids.roles.local, "edition.page", "edit", "own_territory"),
     grant(ids.roles.local, "edition.content", "edit_local", "own_territory"),
     grant(ids.roles.local, "edition.preflight", "override", "own_territory"),
-    grant(ids.roles.local, "edition", "view", "own_territory")
+    grant(ids.roles.local, "edition", "view", "own_territory"),
+    grant(ids.roles.local, "content", "view", "own_territory"),
+    grant(ids.roles.local, "content", "localise", "own_territory"),
+    grant(ids.roles.local, "content.ai", "generate", "own_territory")
   ],
   territories: [
     {
@@ -595,12 +617,112 @@ describe("publishing edition model", () => {
       missingLocalContent: 34
     });
   });
+
+  it("creates canonical content, distributes it, localises it and preserves override provenance", async () => {
+    const publishingData = emptyData();
+    const recorder = audit();
+    const item = canonicalContent();
+
+    await createCanonicalContentItem(hqContext(), permissions, recorder, publishingData, item, canonicalVersion(item, 1));
+    const localisations = await distributeContentToNetwork(hqContext(), permissions, recorder, publishingData, item.id, [ids.territories.own, ids.territories.other], {
+      lockedFields: ["title"],
+      editableFields: ["standfirst", "body"],
+      masterVersionNumber: 1
+    });
+    await localiseContentForTerritory(localContext(), permissions, recorder, publishingData, localisations[0]!.id, {
+      standfirst: "Sutton Coldfield picks for the school holidays"
+    });
+    await distributeContentToNetwork(hqContext(), permissions, recorder, publishingData, item.id, [ids.territories.own, ids.territories.other], {
+      lockedFields: ["title"],
+      editableFields: ["standfirst", "body"],
+      masterVersionNumber: 2
+    });
+
+    expect(listContentLibrary(localContext(), permissions, publishingData)).toHaveLength(1);
+    expect(publishingData.contentLocalisations.find((localisation) => localisation.territoryId === ids.territories.own)).toMatchObject({
+      state: "locally_overridden",
+      masterVersionNumber: 1
+    });
+    expect(publishingData.contentLocalisations.find((localisation) => localisation.territoryId === ids.territories.other)).toMatchObject({
+      state: "master_updated",
+      masterVersionNumber: 2
+    });
+    expect(recorder.events.map((event) => event.action)).toContain(auditActions.contentNetworkDistributed);
+    expect(publishingData.contentDomainEvents.map((event) => event.eventType)).toContain(auditActions.contentLocalised);
+  });
+
+  it("repurposes canonical content into channel variants without overwriting approved versions", async () => {
+    const publishingData = emptyData();
+    const recorder = audit();
+    const item = canonicalContent();
+    await createCanonicalContentItem(hqContext(), permissions, recorder, publishingData, item, canonicalVersion(item, 1));
+
+    await repurposeEverywhere(hqContext(), permissions, recorder, publishingData, item.id, ["website", "newsletter", "facebook"]);
+    const website = publishingData.contentChannelVariants.find((variant) => variant.channel === "website")!;
+    await approveContentVariant(hqContext(), permissions, recorder, publishingData, website.id);
+    await repurposeContentVariant(hqContext(), permissions, recorder, publishingData, item.id, "website", {
+      taskId: "task_regenerate",
+      promptTemplateVersion: "mkt-004.v1"
+    });
+
+    expect(publishingData.contentChannelVariants).toHaveLength(3);
+    expect(publishingData.contentChannelVariantVersions.filter((version) => version.variantId === website.id)).toHaveLength(2);
+    expect(website.status).toBe("needs_review");
+    expect(publishingData.contentAiTasks.every((task) => task.providerKey === "development")).toBe(true);
+    expect(readContentWorkspace(hqContext(), permissions, publishingData, item.id).libraryItem.health).not.toContain("no_web_version");
+  });
+
+  it("prepares approved website variants idempotently and supports version restoration", async () => {
+    const publishingData = emptyData();
+    const recorder = audit();
+    const item = canonicalContent();
+    await createCanonicalContentItem(hqContext(), permissions, recorder, publishingData, item, canonicalVersion(item, 1));
+    publishingData.contentItemVersions.push(canonicalVersion({ ...item, title: "Updated title" }, 2));
+    await restoreContentVersion(hqContext(), permissions, recorder, publishingData, item.id, 1);
+    const generated = await repurposeContentVariant(hqContext(), permissions, recorder, publishingData, item.id, "website", {
+      taskId: "task_website",
+      promptTemplateVersion: "mkt-004.v1"
+    });
+    await approveContentVariant(hqContext(), permissions, recorder, publishingData, generated.variant.id);
+    const job = await prepareWebsitePublishing(hqContext(), permissions, recorder, publishingData, generated.variant.id, "website:item:1");
+    const duplicate = await prepareWebsitePublishing(hqContext(), permissions, recorder, publishingData, generated.variant.id, "website:item:1");
+
+    expect(publishingData.contentItemVersions.at(-1)).toMatchObject({ changeSummary: "Restored from version 1" });
+    expect(duplicate.id).toBe(job.id);
+    expect(job.providerKey).toBe("development");
+  });
+
+  it("fails closed for cross-territory content localisation and sponsored provenance is visible", async () => {
+    const publishingData = emptyData();
+    const item = canonicalContent();
+    item.advertiserId = "advertiser_1";
+    item.commercialBookingId = "booking_1";
+    await createCanonicalContentItem(hqContext(), permissions, audit(), publishingData, item, canonicalVersion(item, 1));
+    const localisations = await distributeContentToNetwork(hqContext(), permissions, audit(), publishingData, item.id, [ids.territories.other], {
+      lockedFields: [],
+      editableFields: ["standfirst"],
+      masterVersionNumber: 1
+    });
+
+    await expect(localiseContentForTerritory(localContext(), permissions, audit(), publishingData, localisations[0]!.id, {
+      standfirst: "Local copy"
+    })).rejects.toThrow("outside the active territory");
+    expect(listContentLibrary(hqContext(), permissions, publishingData)[0]!.health).toContain("advertiser_obligation");
+  });
 });
 
 function hqContext() {
   return {
     userId: ids.users.hq,
     organisationId: ids.organisations.hq
+  };
+}
+
+function localContext() {
+  return {
+    userId: ids.users.local,
+    organisationId: ids.organisations.franchise,
+    territoryId: ids.territories.own
   };
 }
 
@@ -617,6 +739,14 @@ function emptyData(): PublishingData {
     editionPageRevisions: [],
     preflightResults: [],
     publicationOutputs: [],
+    contentItems: [],
+    contentItemVersions: [],
+    contentChannelVariants: [],
+    contentChannelVariantVersions: [],
+    contentLocalisations: [],
+    contentAiTasks: [],
+    contentWebsitePublishingJobs: [],
+    contentDomainEvents: [],
     territories: [
       {
         id: ids.territories.own,
@@ -728,6 +858,50 @@ function contentItem() {
       body: "National copy."
     },
     targeting: {},
+    createdByUserId: ids.users.hq
+  };
+}
+
+function canonicalContent() {
+  return {
+    id: "canonical_content_1",
+    title: "Half term adventures",
+    standfirst: "Warm ideas for families looking for local days out.",
+    contentType: "article" as const,
+    ownerLevel: "network" as const,
+    organisationId: ids.organisations.hq,
+    territoryId: null,
+    status: "draft" as const,
+    authorUserId: ids.users.hq,
+    sourceType: "human" as const,
+    sourceReference: "editorial-brief",
+    heroArtifactReference: {},
+    categories: ["days-out"],
+    tags: ["families", "half-term"],
+    relevantDates: {},
+    provenance: { source: "human_editor" },
+    advertiserId: null as string | null,
+    commercialBookingId: null as string | null,
+    editionContentItemId: null,
+    approvedByUserId: null,
+    approvedAt: null,
+    publishedAt: null
+  };
+}
+
+function canonicalVersion(item: ReturnType<typeof canonicalContent>, versionNumber: number) {
+  return {
+    id: `canonical_content_1_v${versionNumber}`,
+    contentItemId: item.id,
+    versionNumber,
+    status: "draft",
+    snapshot: {
+      title: item.title,
+      standfirst: item.standfirst,
+      body: "A useful family editorial article with enough detail for repurposing."
+    },
+    changeSummary: versionNumber === 1 ? "Initial content" : "Updated content",
+    provenance: { source: "human_editor" },
     createdByUserId: ids.users.hq
   };
 }

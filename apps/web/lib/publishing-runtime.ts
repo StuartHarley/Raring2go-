@@ -1,6 +1,8 @@
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import {
   listEditionControlRoom,
+  listContentLibrary,
+  readContentWorkspace,
   loadPublishingData
 } from "@raring2go/publishing";
 import type {
@@ -38,8 +40,12 @@ export const publishingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionPreflightOverride, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionGeneratePrint, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionGenerateDigital, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentAiGenerate, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.editionView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.editionPageEdit, "own_territory")
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.editionPageEdit, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentAiGenerate, "own_territory")
   ],
   territories: foundationSeed.territories.map((territory) => ({
     id: territory.id,
@@ -78,6 +84,19 @@ export async function readTerritoryEdition(
       (output) => output.territoryEditionId === territoryEditionId && !output.deletedAt
     )
   };
+}
+
+export async function listContentLibraryItems(context: PublishingActorContext) {
+  const data = await readPublishingData();
+  return listContentLibrary(context, publishingPermissionData, data);
+}
+
+export async function readContentWorkspaceView(
+  context: PublishingActorContext,
+  contentItemId: string
+) {
+  const data = await readPublishingData();
+  return readContentWorkspace(context, publishingPermissionData, data, contentItemId);
 }
 
 async function readPublishingData(): Promise<PublishingData> {

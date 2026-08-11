@@ -306,3 +306,207 @@ export const publicationOutputs = pgTable(
     index("publication_outputs_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const contentItems = pgTable(
+  "content_items",
+  {
+    id,
+    title: text("title").notNull(),
+    standfirst: text("standfirst"),
+    contentType: text("content_type").notNull(),
+    ownerLevel: text("owner_level").notNull().default("network"),
+    organisationId: uuid("organisation_id").references(() => organisations.id),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    status: text("status").notNull().default("draft"),
+    authorUserId: uuid("author_user_id").references(() => users.id),
+    sourceType: text("source_type").notNull().default("human"),
+    sourceReference: text("source_reference"),
+    heroArtifactReference: jsonb("hero_artifact_reference").$type<Record<string, unknown>>().notNull().default({}),
+    categories: jsonb("categories").$type<string[]>().notNull().default([]),
+    tags: jsonb("tags").$type<string[]>().notNull().default([]),
+    relevantDates: jsonb("relevant_dates").$type<Record<string, unknown>>().notNull().default({}),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull().default({}),
+    advertiserId: uuid("advertiser_id"),
+    commercialBookingId: uuid("commercial_booking_id"),
+    editionContentItemId: uuid("edition_content_item_id").references(() => editionContentItems.id),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: date("approved_at", { mode: "date" }),
+    publishedAt: date("published_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("content_items_type_idx").on(table.contentType),
+    index("content_items_owner_level_idx").on(table.ownerLevel),
+    index("content_items_territory_id_idx").on(table.territoryId),
+    index("content_items_status_idx").on(table.status),
+    index("content_items_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const contentItemVersions = pgTable(
+  "content_item_versions",
+  {
+    id,
+    contentItemId: uuid("content_item_id").notNull().references(() => contentItems.id),
+    versionNumber: integer("version_number").notNull(),
+    status: text("status").notNull().default("draft"),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    changeSummary: text("change_summary"),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("content_item_versions_item_version_uidx").on(table.contentItemId, table.versionNumber),
+    index("content_item_versions_item_id_idx").on(table.contentItemId),
+    index("content_item_versions_status_idx").on(table.status),
+    index("content_item_versions_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const contentChannelVariants = pgTable(
+  "content_channel_variants",
+  {
+    id,
+    contentItemId: uuid("content_item_id").notNull().references(() => contentItems.id),
+    channel: text("channel").notNull(),
+    status: text("status").notNull().default("not_created"),
+    currentVersionId: uuid("current_version_id"),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    scheduledAt: date("scheduled_at", { mode: "date" }),
+    publishedAt: date("published_at", { mode: "date" }),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("content_channel_variants_item_channel_territory_uidx").on(table.contentItemId, table.channel, table.territoryId),
+    index("content_channel_variants_item_id_idx").on(table.contentItemId),
+    index("content_channel_variants_channel_idx").on(table.channel),
+    index("content_channel_variants_status_idx").on(table.status),
+    index("content_channel_variants_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const contentChannelVariantVersions = pgTable(
+  "content_channel_variant_versions",
+  {
+    id,
+    variantId: uuid("variant_id").notNull().references(() => contentChannelVariants.id),
+    versionNumber: integer("version_number").notNull(),
+    status: text("status").notNull().default("ai_draft"),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    generatedByTaskId: uuid("generated_by_task_id"),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: date("approved_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("content_channel_variant_versions_variant_version_uidx").on(table.variantId, table.versionNumber),
+    index("content_channel_variant_versions_variant_id_idx").on(table.variantId),
+    index("content_channel_variant_versions_status_idx").on(table.status),
+    index("content_channel_variant_versions_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const contentLocalisations = pgTable(
+  "content_localisations",
+  {
+    id,
+    masterContentItemId: uuid("master_content_item_id").notNull().references(() => contentItems.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    localContentItemId: uuid("local_content_item_id").references(() => contentItems.id),
+    state: text("state").notNull().default("inherited"),
+    lockedFields: jsonb("locked_fields").$type<string[]>().notNull().default([]),
+    editableFields: jsonb("editable_fields").$type<string[]>().notNull().default([]),
+    localOverrides: jsonb("local_overrides").$type<Record<string, unknown>>().notNull().default({}),
+    masterVersionNumber: integer("master_version_number").notNull().default(1),
+    reviewedAt: date("reviewed_at", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("content_localisations_master_territory_uidx").on(table.masterContentItemId, table.territoryId),
+    index("content_localisations_master_id_idx").on(table.masterContentItemId),
+    index("content_localisations_territory_id_idx").on(table.territoryId),
+    index("content_localisations_state_idx").on(table.state),
+    index("content_localisations_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const contentAiTasks = pgTable(
+  "content_ai_tasks",
+  {
+    id,
+    task: text("task").notNull(),
+    contentItemId: uuid("content_item_id").notNull().references(() => contentItems.id),
+    sourceVersionId: uuid("source_version_id").references(() => contentItemVersions.id),
+    targetChannel: text("target_channel"),
+    status: text("status").notNull().default("generated"),
+    providerKey: text("provider_key"),
+    modelReference: text("model_reference"),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    generatedOutput: jsonb("generated_output").$type<Record<string, unknown>>().notNull(),
+    generatedAt: date("generated_at", { mode: "date" }).notNull(),
+    humanDecision: text("human_decision"),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id),
+    decidedAt: date("decided_at", { mode: "date" }),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("content_ai_tasks_task_idx").on(table.task),
+    index("content_ai_tasks_content_item_id_idx").on(table.contentItemId),
+    index("content_ai_tasks_target_channel_idx").on(table.targetChannel),
+    index("content_ai_tasks_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const contentWebsitePublishingJobs = pgTable(
+  "content_website_publishing_jobs",
+  {
+    id,
+    contentItemId: uuid("content_item_id").notNull().references(() => contentItems.id),
+    variantId: uuid("variant_id").references(() => contentChannelVariants.id),
+    providerKey: text("provider_key").notNull().default("development"),
+    status: text("status").notNull().default("ready"),
+    preparedSnapshot: jsonb("prepared_snapshot").$type<Record<string, unknown>>().notNull(),
+    providerMetadata: jsonb("provider_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    idempotencyKey: text("idempotency_key").notNull(),
+    preparedAt: date("prepared_at", { mode: "date" }).notNull(),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("content_website_jobs_idempotency_uidx").on(table.idempotencyKey),
+    index("content_website_jobs_content_item_id_idx").on(table.contentItemId),
+    index("content_website_jobs_status_idx").on(table.status),
+    index("content_website_jobs_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const contentDomainEvents = pgTable(
+  "content_domain_events",
+  {
+    id,
+    eventType: text("event_type").notNull(),
+    contentItemId: uuid("content_item_id").references(() => contentItems.id),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    occurredAt: date("occurred_at", { mode: "date" }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    processedAt: date("processed_at", { mode: "date" }),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("content_domain_events_idempotency_uidx").on(table.idempotencyKey),
+    index("content_domain_events_type_idx").on(table.eventType),
+    index("content_domain_events_content_item_id_idx").on(table.contentItemId)
+  ]
+);

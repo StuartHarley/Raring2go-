@@ -45,6 +45,14 @@ import {
   commercialProductionRequests,
   commercialProposalItems,
   commercialProposals,
+  contentAiTasks,
+  contentChannelVariantVersions,
+  contentChannelVariants,
+  contentDomainEvents,
+  contentItemVersions,
+  contentItems,
+  contentLocalisations,
+  contentWebsitePublishingJobs,
   auditEvents,
   franchiseArtifactReferences,
   franchiseAgreements,
@@ -259,6 +267,21 @@ describe("foundation schema", () => {
     expect(territoryNewsletterEditions.localOverrides.name).toBe("local_overrides");
     expect(newsletterFactoryRuns.idempotencyKey.name).toBe("idempotency_key");
     expect((networkNewsletterMasters as unknown as Record<string, unknown>).mailchimpTemplateId).toBeUndefined();
+  });
+
+  it("models canonical content separately from channel variants and provider publishing jobs", () => {
+    expect(contentItems.contentType.name).toBe("content_type");
+    expect(contentItems.ownerLevel.name).toBe("owner_level");
+    expect(contentItems.provenance.name).toBe("provenance");
+    expect(contentItemVersions.snapshot.name).toBe("snapshot");
+    expect(contentChannelVariants.channel.name).toBe("channel");
+    expect(contentChannelVariantVersions.generatedByTaskId.name).toBe("generated_by_task_id");
+    expect(contentLocalisations.lockedFields.name).toBe("locked_fields");
+    expect(contentAiTasks.promptTemplateVersion.name).toBe("prompt_template_version");
+    expect(contentWebsitePublishingJobs.providerKey.name).toBe("provider_key");
+    expect(contentDomainEvents.idempotencyKey.name).toBe("idempotency_key");
+    expect((contentItems as unknown as Record<string, unknown>).wordpressPostId).toBeUndefined();
+    expect((contentChannelVariants as unknown as Record<string, unknown>).mailchimpBlockId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

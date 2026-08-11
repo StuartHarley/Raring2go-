@@ -118,7 +118,16 @@ export const fixtureIds = {
     newsletterFactoryView: "00000000-0000-4000-8000-000000000498",
     newsletterFactoryManage: "00000000-0000-4000-8000-000000000499",
     newsletterFactoryApprove: "00000000-0000-4000-8000-000000000500",
-    newsletterFactoryContribute: "00000000-0000-4000-8000-000000000501"
+    newsletterFactoryContribute: "00000000-0000-4000-8000-000000000501",
+    contentView: "00000000-0000-4000-8000-000000000502",
+    contentCreate: "00000000-0000-4000-8000-000000000503",
+    contentEdit: "00000000-0000-4000-8000-000000000504",
+    contentApprove: "00000000-0000-4000-8000-000000000505",
+    contentLocalise: "00000000-0000-4000-8000-000000000506",
+    contentDistributeNetwork: "00000000-0000-4000-8000-000000000507",
+    contentAiGenerate: "00000000-0000-4000-8000-000000000508",
+    contentAiApprove: "00000000-0000-4000-8000-000000000509",
+    contentWebsitePublish: "00000000-0000-4000-8000-000000000510"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -196,6 +205,30 @@ export const fixtureIds = {
   },
   networkNewsletterMasters: {
     autumnFamilyGuide: "00000000-0000-4000-8000-000000000747"
+  },
+  contentItems: {
+    halfTermGuide: "00000000-0000-4000-8000-000000000748"
+  },
+  contentItemVersions: {
+    halfTermGuideV1: "00000000-0000-4000-8000-000000000749"
+  },
+  contentLocalisations: {
+    halfTermSutton: "00000000-0000-4000-8000-000000000750"
+  },
+  contentChannelVariants: {
+    halfTermWebsite: "00000000-0000-4000-8000-000000000751",
+    halfTermNewsletter: "00000000-0000-4000-8000-000000000752",
+    halfTermFacebook: "00000000-0000-4000-8000-000000000753"
+  },
+  contentChannelVariantVersions: {
+    halfTermWebsiteV1: "00000000-0000-4000-8000-000000000754",
+    halfTermNewsletterV1: "00000000-0000-4000-8000-000000000755",
+    halfTermFacebookV1: "00000000-0000-4000-8000-000000000756"
+  },
+  contentAiTasks: {
+    halfTermWebsite: "00000000-0000-4000-8000-000000000757",
+    halfTermNewsletter: "00000000-0000-4000-8000-000000000758",
+    halfTermFacebook: "00000000-0000-4000-8000-000000000759"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -944,6 +977,60 @@ export const foundationSeed = {
       module: "marketing.newsletter_factory",
       action: "contribute",
       description: "Contribute permitted local overrides to territory newsletter editions."
+    },
+    {
+      id: fixtureIds.permissions.contentView,
+      module: "content",
+      action: "view",
+      description: "View canonical content library and workspaces."
+    },
+    {
+      id: fixtureIds.permissions.contentCreate,
+      module: "content",
+      action: "create",
+      description: "Create canonical content items and initial versions."
+    },
+    {
+      id: fixtureIds.permissions.contentEdit,
+      module: "content",
+      action: "edit",
+      description: "Edit canonical content and restore previous versions."
+    },
+    {
+      id: fixtureIds.permissions.contentApprove,
+      module: "content",
+      action: "approve",
+      description: "Approve canonical content for distribution or publishing preparation."
+    },
+    {
+      id: fixtureIds.permissions.contentLocalise,
+      module: "content",
+      action: "localise",
+      description: "Localise inherited content in permitted territories."
+    },
+    {
+      id: fixtureIds.permissions.contentDistributeNetwork,
+      module: "content",
+      action: "distribute_network",
+      description: "Distribute network content to selected territories."
+    },
+    {
+      id: fixtureIds.permissions.contentAiGenerate,
+      module: "content.ai",
+      action: "generate",
+      description: "Generate provider-neutral AI content suggestions."
+    },
+    {
+      id: fixtureIds.permissions.contentAiApprove,
+      module: "content.ai",
+      action: "approve",
+      description: "Accept or approve AI-generated content variants."
+    },
+    {
+      id: fixtureIds.permissions.contentWebsitePublish,
+      module: "content.website",
+      action: "publish",
+      description: "Prepare provider-neutral website publishing jobs."
     }
   ],
   advertisers: [
@@ -1339,6 +1426,190 @@ export const foundationSeed = {
   ],
   territoryNewsletterEditions: [],
   newsletterFactoryRuns: [],
+  contentItems: [
+    {
+      id: fixtureIds.contentItems.halfTermGuide,
+      title: "Half term adventures across the Raring2go network",
+      standfirst: "A warm, practical guide to family days out for the school holidays.",
+      contentType: "article",
+      ownerLevel: "network",
+      organisationId: fixtureIds.organisations.hq,
+      territoryId: null,
+      status: "draft",
+      authorUserId: fixtureIds.users.superAdmin,
+      sourceType: "human",
+      sourceReference: "seed-editorial-brief",
+      heroArtifactReference: {},
+      categories: ["days-out"],
+      tags: ["families", "half-term"],
+      relevantDates: { season: "autumn" },
+      provenance: { source: "hq_editorial_seed" },
+      advertiserId: null,
+      commercialBookingId: null,
+      editionContentItemId: null,
+      approvedByUserId: null,
+      approvedAt: null,
+      publishedAt: null
+    }
+  ],
+  contentItemVersions: [
+    {
+      id: fixtureIds.contentItemVersions.halfTermGuideV1,
+      contentItemId: fixtureIds.contentItems.halfTermGuide,
+      versionNumber: 1,
+      status: "draft",
+      snapshot: {
+        title: "Half term adventures across the Raring2go network",
+        standfirst: "A warm, practical guide to family days out for the school holidays.",
+        body: "A curated family guide designed to be localised by Raring2go editors."
+      },
+      changeSummary: "Initial HQ source content",
+      provenance: { source: "human_editor" },
+      createdByUserId: fixtureIds.users.superAdmin
+    }
+  ],
+  contentLocalisations: [
+    {
+      id: fixtureIds.contentLocalisations.halfTermSutton,
+      masterContentItemId: fixtureIds.contentItems.halfTermGuide,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      localContentItemId: null,
+      state: "locally_overridden",
+      lockedFields: ["title"],
+      editableFields: ["standfirst", "body", "localCta"],
+      localOverrides: { standfirst: "Sutton Coldfield ideas for a brilliant family half term." },
+      masterVersionNumber: 1,
+      reviewedAt: "2026-08-11"
+    }
+  ],
+  contentChannelVariants: [
+    {
+      id: fixtureIds.contentChannelVariants.halfTermWebsite,
+      contentItemId: fixtureIds.contentItems.halfTermGuide,
+      channel: "website",
+      status: "ai_draft",
+      currentVersionId: fixtureIds.contentChannelVariantVersions.halfTermWebsiteV1,
+      territoryId: null,
+      scheduledAt: null,
+      publishedAt: null,
+      provenance: { generatedBy: "ai" }
+    },
+    {
+      id: fixtureIds.contentChannelVariants.halfTermNewsletter,
+      contentItemId: fixtureIds.contentItems.halfTermGuide,
+      channel: "newsletter",
+      status: "ai_draft",
+      currentVersionId: fixtureIds.contentChannelVariantVersions.halfTermNewsletterV1,
+      territoryId: null,
+      scheduledAt: null,
+      publishedAt: null,
+      provenance: { generatedBy: "ai" }
+    },
+    {
+      id: fixtureIds.contentChannelVariants.halfTermFacebook,
+      contentItemId: fixtureIds.contentItems.halfTermGuide,
+      channel: "facebook",
+      status: "ai_draft",
+      currentVersionId: fixtureIds.contentChannelVariantVersions.halfTermFacebookV1,
+      territoryId: null,
+      scheduledAt: null,
+      publishedAt: null,
+      provenance: { generatedBy: "ai" }
+    }
+  ],
+  contentChannelVariantVersions: [
+    {
+      id: fixtureIds.contentChannelVariantVersions.halfTermWebsiteV1,
+      variantId: fixtureIds.contentChannelVariants.halfTermWebsite,
+      versionNumber: 1,
+      status: "ai_draft",
+      snapshot: { webHeadline: "Half term adventures", seoTitle: "Half term family days out | Raring2go", slug: "half-term-adventures" },
+      generatedByTaskId: fixtureIds.contentAiTasks.halfTermWebsite,
+      provenance: { generatedBy: "ai" },
+      createdByUserId: fixtureIds.users.superAdmin,
+      approvedByUserId: null,
+      approvedAt: null
+    },
+    {
+      id: fixtureIds.contentChannelVariantVersions.halfTermNewsletterV1,
+      variantId: fixtureIds.contentChannelVariants.halfTermNewsletter,
+      versionNumber: 1,
+      status: "ai_draft",
+      snapshot: { newsletterHeadline: "Half term ideas near you", cta: "Read more" },
+      generatedByTaskId: fixtureIds.contentAiTasks.halfTermNewsletter,
+      provenance: { generatedBy: "ai" },
+      createdByUserId: fixtureIds.users.superAdmin,
+      approvedByUserId: null,
+      approvedAt: null
+    },
+    {
+      id: fixtureIds.contentChannelVariantVersions.halfTermFacebookV1,
+      variantId: fixtureIds.contentChannelVariants.halfTermFacebook,
+      versionNumber: 1,
+      status: "ai_draft",
+      snapshot: { postCopy: "Half term adventures are coming. Here are ideas for families.", cta: "Read more" },
+      generatedByTaskId: fixtureIds.contentAiTasks.halfTermFacebook,
+      provenance: { generatedBy: "ai" },
+      createdByUserId: fixtureIds.users.superAdmin,
+      approvedByUserId: null,
+      approvedAt: null
+    }
+  ],
+  contentAiTasks: [
+    {
+      id: fixtureIds.contentAiTasks.halfTermWebsite,
+      task: "content.repurpose.website",
+      contentItemId: fixtureIds.contentItems.halfTermGuide,
+      sourceVersionId: fixtureIds.contentItemVersions.halfTermGuideV1,
+      targetChannel: "website",
+      status: "generated",
+      providerKey: "development",
+      modelReference: "deterministic-content-adapter",
+      promptTemplateVersion: "mkt-004.v1",
+      generatedOutput: { webHeadline: "Half term adventures" },
+      generatedAt: "2026-08-11",
+      humanDecision: null,
+      decidedByUserId: null,
+      decidedAt: null,
+      provenance: { providerNeutral: true }
+    },
+    {
+      id: fixtureIds.contentAiTasks.halfTermNewsletter,
+      task: "content.repurpose.newsletter",
+      contentItemId: fixtureIds.contentItems.halfTermGuide,
+      sourceVersionId: fixtureIds.contentItemVersions.halfTermGuideV1,
+      targetChannel: "newsletter",
+      status: "generated",
+      providerKey: "development",
+      modelReference: "deterministic-content-adapter",
+      promptTemplateVersion: "mkt-004.v1",
+      generatedOutput: { newsletterHeadline: "Half term ideas near you" },
+      generatedAt: "2026-08-11",
+      humanDecision: null,
+      decidedByUserId: null,
+      decidedAt: null,
+      provenance: { providerNeutral: true }
+    },
+    {
+      id: fixtureIds.contentAiTasks.halfTermFacebook,
+      task: "content.repurpose.facebook",
+      contentItemId: fixtureIds.contentItems.halfTermGuide,
+      sourceVersionId: fixtureIds.contentItemVersions.halfTermGuideV1,
+      targetChannel: "facebook",
+      status: "generated",
+      providerKey: "development",
+      modelReference: "deterministic-content-adapter",
+      promptTemplateVersion: "mkt-004.v1",
+      generatedOutput: { postCopy: "Half term adventures are coming." },
+      generatedAt: "2026-08-11",
+      humanDecision: null,
+      decidedByUserId: null,
+      decidedAt: null,
+      provenance: { providerNeutral: true }
+    }
+  ],
+  contentWebsitePublishingJobs: [],
+  contentDomainEvents: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

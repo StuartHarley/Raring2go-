@@ -168,6 +168,7 @@ describe("app shell context and capabilities", () => {
         "advertisers",
         "audience",
         "newsletters",
+        "content",
         "commercial-command",
         "editions",
         "roles",

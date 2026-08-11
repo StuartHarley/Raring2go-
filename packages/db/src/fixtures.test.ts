@@ -111,7 +111,16 @@ describe("foundation fixtures", () => {
       "marketing.newsletter_factory",
       "marketing.newsletter_factory",
       "marketing.newsletter_factory",
-      "marketing.newsletter_factory"
+      "marketing.newsletter_factory",
+      "content",
+      "content",
+      "content",
+      "content",
+      "content",
+      "content",
+      "content.ai",
+      "content.ai",
+      "content.website"
     ]);
   });
 
@@ -301,6 +310,19 @@ describe("foundation fixtures", () => {
     });
     expect(foundationSeed.territoryNewsletterEditions).toEqual([]);
     expect(foundationSeed.newsletterFactoryRuns).toEqual([]);
+    expect(foundationSeed.contentItems[0]).toMatchObject({
+      id: fixtureIds.contentItems.halfTermGuide,
+      ownerLevel: "network"
+    });
+    expect(foundationSeed.contentLocalisations[0]).toMatchObject({
+      territoryId: fixtureIds.territories.suttonColdfield,
+      state: "locally_overridden"
+    });
+    expect(foundationSeed.contentChannelVariants.map((variant) => variant.channel)).toEqual([
+      "website",
+      "newsletter",
+      "facebook"
+    ]);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {
