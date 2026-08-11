@@ -277,12 +277,14 @@ Decision required:
 2. Create Vercel project and configure non-provider core environment variables.
 3. Configure `app.raring2go.co.uk` and `mis.raring2go.co.uk` in Vercel/Cloudflare.
 4. Deploy preview, run migrations, run smoke tests.
-5. Configure Postmark and `mail.raring2go.co.uk` DNS.
-6. Configure R2 bucket and private scanner runtime.
-7. Configure Meta app and OAuth callback.
-8. Run live verification matrix in order: Vercel/public, email, storage/scanning, Meta, backup/restore.
-9. Record evidence and defects.
-10. Only then consider UAT-002 internal user testing.
+5. Run the minimal UAT seed only: `pnpm db:seed:uat`.
+6. Confirm the `UAT_ADMIN_EMAIL` passwordless sign-in reaches `/app`.
+7. Configure Postmark and `mail.raring2go.co.uk` DNS.
+8. Configure R2 bucket and private scanner runtime.
+9. Configure Meta app and OAuth callback.
+10. Run live verification matrix in order: Vercel/public, email, storage/scanning, Meta, backup/restore.
+11. Record evidence and defects.
+12. Only then consider UAT-002 internal user testing.
 
 ## 10. Decisions Required
 

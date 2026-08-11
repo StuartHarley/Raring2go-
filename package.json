@@ -12,6 +12,7 @@
     "db:generate": "pnpm --filter @raring2go/db db:generate",
     "db:migrate": "pnpm --filter @raring2go/db db:migrate",
     "db:seed": "pnpm --filter @raring2go/db db:seed",
+    "db:seed:uat": "pnpm --filter @raring2go/db db:seed:uat",
     "dev": "turbo run dev --filter=@raring2go/web",
     "lint": "turbo run lint",
     "test": "turbo run test",

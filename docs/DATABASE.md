@@ -103,6 +103,39 @@ Seed policy:
 - Production seeds are blocked by default. `pnpm db:seed` will fail when `APP_ENV=production` unless `ALLOW_PRODUCTION_SEED=true` is set for a documented recovery operation.
 - Do not load demo fixture data into the controlled-pilot production database.
 
+### Minimal UAT Seed
+
+Use the dedicated UAT seed for Neon UAT. Do not run the full development seed against Neon UAT.
+
+```bash
+APP_ENV=preview \
+DATABASE_URL="postgresql://..." \
+DATABASE_MIGRATION_URL="postgresql://..." \
+UAT_ADMIN_EMAIL="admin@example.com" \
+UAT_ADMIN_NAME="UAT Admin" \
+pnpm db:seed:uat
+```
+
+The command creates only:
+
+- one HQ organisation;
+- one minimal UAT network context territory;
+- one active internal user using `UAT_ADMIN_EMAIL` and `UAT_ADMIN_NAME`;
+- one membership;
+- one system UAT role;
+- the minimum permissions needed to authenticate into the internal app shell and view administration/provider setup surfaces.
+
+It does not create demo advertisers, editions, newsletters, analytics, invoices, franchise agreements, marketing consent, parent accounts or product fixtures. Passwordless authentication remains the only sign-in path.
+
+Verification:
+
+1. Confirm migrations have already been applied to the Neon UAT database.
+2. Run `pnpm db:seed:uat` with `UAT_ADMIN_EMAIL` and `UAT_ADMIN_NAME` set.
+3. Visit `https://app.raring2go.co.uk/sign-in`.
+4. Request a passwordless sign-in link for `UAT_ADMIN_EMAIL`.
+5. Confirm the account reaches `/app` and can see the administration/system shell.
+6. Confirm public/parent consent records were not created automatically.
+
 Backup and restore:
 
 - Enable Neon backups/PITR or the available branch/restore capability for the production database before UAT.
