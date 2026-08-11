@@ -7,7 +7,10 @@ import type {
   AdvertiserContact,
   AdvertiserRecord,
   AdvertisingActorContext,
-  AdvertisingData
+  AdvertisingData,
+  Opportunity,
+  OpportunityView,
+  PipelineView
 } from "./types";
 
 type AdvertisingAuditRecorder = {
@@ -134,12 +137,131 @@ export async function recordAdvertiserActivity(
   return event;
 }
 
+export function listPipeline(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  data: AdvertisingData
+): PipelineView {
+  requireAdvertisingPermission(context, permissions, "opportunityView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  const opportunities = data.opportunities
+    .filter((opportunity) => !opportunity.deletedAt)
+    .filter((opportunity) => visibleTerritoryIds == null || visibleTerritoryIds.has(opportunity.territoryId))
+    .map((opportunity) => assembleOpportunityView(data, opportunity))
+    .filter((view) => view.state === "open");
+
+  const stages = data.pipelineStages
+    .filter((stage) => !stage.deletedAt)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((stage) => {
+      const stageOpportunities = opportunities.filter((view) => view.stage.id === stage.id);
+      return {
+        stage,
+        opportunities: stageOpportunities,
+        totalValueMinor: stageOpportunities.reduce((sum, view) => sum + view.opportunity.estimatedValueMinor, 0),
+        weightedValueMinor: stageOpportunities.reduce((sum, view) => sum + view.weightedValueMinor, 0)
+      };
+    });
+
+  return {
+    stages,
+    overdueFollowUps: opportunities.filter((view) => view.attention === "overdue_follow_up"),
+    closingSoon: opportunities.filter((view) => view.attention === "closing_soon"),
+    stale: opportunities.filter((view) => view.attention === "stale"),
+    myPipeline: opportunities.filter((view) => view.opportunity.ownerUserId === context.userId),
+    territoryPipeline: context.territoryId
+      ? opportunities.filter((view) => view.opportunity.territoryId === context.territoryId)
+      : opportunities
+  };
+}
+
+export async function createOpportunity(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  opportunity: Opportunity
+) {
+  requireAdvertisingPermission(context, permissions, "opportunityCreate");
+  const advertiser = requireAdvertiser(data, opportunity.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (opportunity.territoryId !== advertiser.owningTerritoryId) {
+    throw new Error("Opportunity territory must match the advertiser owning territory.");
+  }
+  const stage = requirePipelineStage(data, opportunity.stageId);
+  const created = {
+    ...opportunity,
+    probability: opportunity.probability || stage.probabilityDefault,
+    createdByUserId: opportunity.createdByUserId ?? context.userId
+  };
+  data.opportunities.push(created);
+  await audit.record(auditEvent(context, auditActions.advertiserOpportunityCreate, advertiser, {
+    opportunityId: created.id,
+    stageId: created.stageId,
+    estimatedValueMinor: created.estimatedValueMinor
+  }));
+  return created;
+}
+
+export async function updateOpportunity(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  opportunityId: string,
+  patch: Partial<Pick<Opportunity, "title" | "estimatedValueMinor" | "probability" | "expectedCloseDate" | "nextAction" | "nextActionDate" | "notes">>
+) {
+  requireAdvertisingPermission(context, permissions, "opportunityEdit");
+  const opportunity = requireOpportunity(data, opportunityId);
+  const advertiser = requireAdvertiser(data, opportunity.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  Object.assign(opportunity, patch);
+  await audit.record(auditEvent(context, auditActions.advertiserOpportunityUpdate, advertiser, {
+    opportunityId,
+    patch: Object.keys(patch)
+  }));
+  return opportunity;
+}
+
+export async function changeOpportunityStage(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  opportunityId: string,
+  input: {
+    stageId: string;
+    lostReason?: string | null;
+    competitor?: string | null;
+  }
+) {
+  requireAdvertisingPermission(context, permissions, "opportunityEdit");
+  const opportunity = requireOpportunity(data, opportunityId);
+  const advertiser = requireAdvertiser(data, opportunity.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  const stage = requirePipelineStage(data, input.stageId);
+  opportunity.stageId = stage.id;
+  opportunity.probability = stage.probabilityDefault;
+  opportunity.lostReason = input.lostReason ?? opportunity.lostReason ?? null;
+  opportunity.competitor = input.competitor ?? opportunity.competitor ?? null;
+  opportunity.closedAt = stage.isClosed ? today() : null;
+  await audit.record(auditEvent(context, auditActions.advertiserOpportunityStageChange, advertiser, {
+    opportunityId,
+    stageId: stage.id,
+    outcome: stage.outcome ?? "open"
+  }));
+  return opportunity;
+}
+
 function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserRecord): Advertiser360 {
   return {
     advertiser,
     organisation: requireOrganisation(data, advertiser.advertiserOrganisationId),
     territory: data.territories.find((territory) => territory.id === advertiser.owningTerritoryId),
     contacts: data.contacts.filter((contact) => contact.advertiserId === advertiser.id && !contact.deletedAt),
+    opportunities: data.opportunities
+      .filter((opportunity) => opportunity.advertiserId === advertiser.id && !opportunity.deletedAt)
+      .map((opportunity) => assembleOpportunityView(data, opportunity)),
     activity: data.activityEvents
       .filter((event) => event.advertiserId === advertiser.id && !event.deletedAt)
       .slice()
@@ -147,6 +269,21 @@ function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserReco
     latestMetrics: data.metricSnapshots
       .filter((snapshot) => snapshot.advertiserId === advertiser.id && !snapshot.deletedAt)
       .sort((left, right) => right.periodKey.localeCompare(left.periodKey))[0]
+  };
+}
+
+function assembleOpportunityView(data: AdvertisingData, opportunity: Opportunity): OpportunityView {
+  const advertiser = requireAdvertiser(data, opportunity.advertiserId);
+  const stage = requirePipelineStage(data, opportunity.stageId);
+  return {
+    opportunity,
+    advertiser,
+    organisation: requireOrganisation(data, advertiser.advertiserOrganisationId),
+    territory: data.territories.find((territory) => territory.id === opportunity.territoryId),
+    stage,
+    weightedValueMinor: Math.round((opportunity.estimatedValueMinor * opportunity.probability) / 100),
+    state: stage.outcome === "won" ? "won" : stage.outcome === "lost" ? "lost" : "open",
+    attention: opportunityAttention(opportunity)
   };
 }
 
@@ -192,12 +329,45 @@ function requireAdvertiser(data: AdvertisingData, advertiserId: string) {
   return advertiser;
 }
 
+function requireOpportunity(data: AdvertisingData, opportunityId: string) {
+  const opportunity = data.opportunities.find((candidate) => candidate.id === opportunityId && !candidate.deletedAt);
+  if (!opportunity) {
+    throw new Error("Opportunity was not found.");
+  }
+  return opportunity;
+}
+
+function requirePipelineStage(data: AdvertisingData, stageId: string) {
+  const stage = data.pipelineStages.find((candidate) => candidate.id === stageId && !candidate.deletedAt);
+  if (!stage) {
+    throw new Error("Pipeline stage was not found.");
+  }
+  return stage;
+}
+
 function requireOrganisation(data: AdvertisingData, organisationId: string) {
   const organisation = data.organisations.find((candidate) => candidate.id === organisationId);
   if (!organisation) {
     throw new Error("Advertiser organisation was not found.");
   }
   return organisation;
+}
+
+function opportunityAttention(opportunity: Opportunity): OpportunityView["attention"] {
+  if (opportunity.nextActionDate && opportunity.nextActionDate < today()) {
+    return "overdue_follow_up";
+  }
+  if (opportunity.expectedCloseDate && opportunity.expectedCloseDate <= "2026-08-18") {
+    return "closing_soon";
+  }
+  if (!opportunity.nextActionDate) {
+    return "stale";
+  }
+  return "normal";
+}
+
+function today() {
+  return "2026-08-11";
 }
 
 function auditEvent(

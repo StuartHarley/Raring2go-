@@ -70,6 +70,54 @@ export type AdvertiserMetricSnapshot = {
   deletedAt?: Date | null;
 };
 
+export type PipelineStage = {
+  id: string;
+  key: string;
+  name: string;
+  sortOrder: number;
+  probabilityDefault: number;
+  isClosed: boolean;
+  outcome?: "won" | "lost" | null | (string & {});
+  deletedAt?: Date | null;
+};
+
+export type Opportunity = {
+  id: string;
+  advertiserId: string;
+  territoryId: string;
+  ownerUserId?: string | null;
+  stageId: string;
+  source: string;
+  title: string;
+  estimatedValueMinor: number;
+  currency: string;
+  probability: number;
+  expectedCloseDate?: string | null;
+  nextAction?: string | null;
+  nextActionDate?: string | null;
+  notes?: string | null;
+  lostReason?: string | null;
+  competitor?: string | null;
+  closedAt?: string | null;
+  createdByUserId?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type OpportunityView = {
+  opportunity: Opportunity;
+  advertiser: AdvertiserRecord;
+  organisation: AdvertisingOrganisation;
+  territory?: AdvertisingTerritory;
+  stage: PipelineStage;
+  weightedValueMinor: number;
+  state: "open" | "won" | "lost";
+  attention:
+    | "overdue_follow_up"
+    | "closing_soon"
+    | "stale"
+    | "normal";
+};
+
 export type AdvertisingOrganisation = {
   id: string;
   kind: string;
@@ -89,6 +137,8 @@ export type AdvertisingData = {
   contacts: AdvertiserContact[];
   activityEvents: AdvertiserActivityEvent[];
   metricSnapshots: AdvertiserMetricSnapshot[];
+  pipelineStages: PipelineStage[];
+  opportunities: Opportunity[];
   organisations: AdvertisingOrganisation[];
   territories: AdvertisingTerritory[];
 };
@@ -98,6 +148,21 @@ export type Advertiser360 = {
   organisation: AdvertisingOrganisation;
   territory?: AdvertisingTerritory;
   contacts: AdvertiserContact[];
+  opportunities: OpportunityView[];
   activity: AdvertiserActivityEvent[];
   latestMetrics?: AdvertiserMetricSnapshot;
+};
+
+export type PipelineView = {
+  stages: Array<{
+    stage: PipelineStage;
+    opportunities: OpportunityView[];
+    totalValueMinor: number;
+    weightedValueMinor: number;
+  }>;
+  overdueFollowUps: OpportunityView[];
+  closingSoon: OpportunityView[];
+  stale: OpportunityView[];
+  myPipeline: OpportunityView[];
+  territoryPipeline: OpportunityView[];
 };

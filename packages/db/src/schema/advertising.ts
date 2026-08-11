@@ -104,3 +104,58 @@ export const advertiserMetricSnapshots = pgTable(
     index("advertiser_metric_snapshots_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const pipelineStages = pgTable(
+  "pipeline_stages",
+  {
+    id,
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    probabilityDefault: integer("probability_default").notNull().default(0),
+    isClosed: boolean("is_closed").notNull().default(false),
+    outcome: text("outcome"),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("pipeline_stages_key_uidx").on(table.key),
+    index("pipeline_stages_sort_order_idx").on(table.sortOrder),
+    index("pipeline_stages_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const opportunities = pgTable(
+  "opportunities",
+  {
+    id,
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
+    stageId: uuid("stage_id").notNull().references(() => pipelineStages.id),
+    source: text("source").notNull().default("manual"),
+    title: text("title").notNull(),
+    estimatedValueMinor: integer("estimated_value_minor").notNull().default(0),
+    currency: text("currency").notNull().default("GBP"),
+    probability: integer("probability").notNull().default(0),
+    expectedCloseDate: date("expected_close_date", { mode: "date" }),
+    nextAction: text("next_action"),
+    nextActionDate: date("next_action_date", { mode: "date" }),
+    notes: text("notes"),
+    lostReason: text("lost_reason"),
+    competitor: text("competitor"),
+    closedAt: date("closed_at", { mode: "date" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("opportunities_advertiser_id_idx").on(table.advertiserId),
+    index("opportunities_territory_id_idx").on(table.territoryId),
+    index("opportunities_owner_user_id_idx").on(table.ownerUserId),
+    index("opportunities_stage_id_idx").on(table.stageId),
+    index("opportunities_next_action_date_idx").on(table.nextActionDate),
+    index("opportunities_expected_close_date_idx").on(table.expectedCloseDate),
+    index("opportunities_deleted_at_idx").on(table.deletedAt)
+  ]
+);

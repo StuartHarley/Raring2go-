@@ -4,6 +4,8 @@ import {
   advertiserMetricSnapshots,
   advertisers,
   organisations,
+  opportunities,
+  pipelineStages,
   territories
 } from "@raring2go/db";
 import type { AdvertisingData } from "./types";
@@ -20,6 +22,8 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     contactRows,
     activityRows,
     metricRows,
+    stageRows,
+    opportunityRows,
     organisationRows,
     territoryRows
   ] = await Promise.all([
@@ -27,6 +31,8 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     db.select().from(advertiserContacts),
     db.select().from(advertiserActivityEvents),
     db.select().from(advertiserMetricSnapshots),
+    db.select().from(pipelineStages),
+    db.select().from(opportunities),
     db.select().from(organisations),
     db.select().from(territories)
   ]);
@@ -41,6 +47,13 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     contacts: contactRows as AdvertisingData["contacts"],
     activityEvents: activityRows as AdvertisingData["activityEvents"],
     metricSnapshots: metricRows as AdvertisingData["metricSnapshots"],
+    pipelineStages: stageRows as AdvertisingData["pipelineStages"],
+    opportunities: opportunityRows.map((row) => ({
+      ...row,
+      expectedCloseDate: dateString(row.expectedCloseDate),
+      nextActionDate: dateString(row.nextActionDate),
+      closedAt: dateString(row.closedAt)
+    })) as AdvertisingData["opportunities"],
     organisations: organisationRows as AdvertisingData["organisations"],
     territories: territoryRows as AdvertisingData["territories"]
   };

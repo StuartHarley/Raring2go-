@@ -1,6 +1,7 @@
 import {
   getAdvertiser360,
   listAdvertisers,
+  listPipeline,
   loadAdvertisingData
 } from "@raring2go/advertising";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
@@ -25,7 +26,9 @@ export const advertisingPermissionData: PermissionData = {
   ],
   rolePermissions: [
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.advertiserView, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.advertiserView, "own_territory")
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.opportunityView, "network"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.advertiserView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.opportunityView, "own_territory")
   ],
   territories: foundationSeed.territories.map((territory) => ({
     id: territory.id,
@@ -38,6 +41,16 @@ export async function listAdvertiser360Rows(context: AdvertisingActorContext) {
 
   try {
     return listAdvertisers(context, advertisingPermissionData, await loadAdvertisingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPipeline(context: AdvertisingActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    return listPipeline(context, advertisingPermissionData, await loadAdvertisingData(db));
   } finally {
     await sql.end();
   }

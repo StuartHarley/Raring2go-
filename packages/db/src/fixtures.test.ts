@@ -64,7 +64,10 @@ describe("foundation fixtures", () => {
       "advertiser",
       "advertiser",
       "advertiser.contact",
-      "advertiser.activity"
+      "advertiser.activity",
+      "advertiser.opportunity",
+      "advertiser.opportunity",
+      "advertiser.opportunity"
     ]);
   });
 
@@ -155,6 +158,22 @@ describe("foundation fixtures", () => {
       relationshipState: "retained",
       averageSaleValueMinor: 42500,
       annualAdvertiserValueMinor: 170000
+    });
+  });
+
+  it("includes deterministic advertiser pipeline fixtures", () => {
+    expect(foundationSeed.pipelineStages.map((stage) => stage.key)).toEqual([
+      "lead",
+      "qualified",
+      "proposal",
+      "won",
+      "lost"
+    ]);
+    expect(foundationSeed.opportunities[0]).toMatchObject({
+      advertiserId: fixtureIds.advertisers.example,
+      stageId: fixtureIds.pipelineStages.qualified,
+      expectedCloseDate: "2026-08-18",
+      nextActionDate: "2026-08-10"
     });
   });
 

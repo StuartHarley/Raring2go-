@@ -32,6 +32,9 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
           Territory-scoped advertiser relationships, contacts and commercial
           health foundations before pipeline, booking and invoicing workflows.
         </p>
+        <Link href={"/app/advertisers/pipeline" as Route} className="app-link-button">
+          Open pipeline
+        </Link>
         <div className="franchise-metrics">
           <article>
             <span>Advertisers</span>

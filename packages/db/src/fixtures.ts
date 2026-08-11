@@ -71,7 +71,10 @@ export const fixtureIds = {
     advertiserCreate: "00000000-0000-4000-8000-000000000451",
     advertiserEdit: "00000000-0000-4000-8000-000000000452",
     advertiserContactManage: "00000000-0000-4000-8000-000000000453",
-    advertiserActivityRecord: "00000000-0000-4000-8000-000000000454"
+    advertiserActivityRecord: "00000000-0000-4000-8000-000000000454",
+    opportunityView: "00000000-0000-4000-8000-000000000455",
+    opportunityCreate: "00000000-0000-4000-8000-000000000456",
+    opportunityEdit: "00000000-0000-4000-8000-000000000457"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -84,6 +87,16 @@ export const fixtureIds = {
   },
   advertiserMetricSnapshots: {
     exampleCurrent: "00000000-0000-4000-8000-000000000704"
+  },
+  pipelineStages: {
+    lead: "00000000-0000-4000-8000-000000000705",
+    qualified: "00000000-0000-4000-8000-000000000706",
+    proposal: "00000000-0000-4000-8000-000000000707",
+    won: "00000000-0000-4000-8000-000000000708",
+    lost: "00000000-0000-4000-8000-000000000709"
+  },
+  opportunities: {
+    exampleRenewal: "00000000-0000-4000-8000-000000000710"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -550,6 +563,24 @@ export const foundationSeed = {
       module: "advertiser.activity",
       action: "record",
       description: "Record advertiser activity timeline entries."
+    },
+    {
+      id: fixtureIds.permissions.opportunityView,
+      module: "advertiser.opportunity",
+      action: "view",
+      description: "View advertiser opportunities and pipeline."
+    },
+    {
+      id: fixtureIds.permissions.opportunityCreate,
+      module: "advertiser.opportunity",
+      action: "create",
+      description: "Create advertiser opportunities."
+    },
+    {
+      id: fixtureIds.permissions.opportunityEdit,
+      module: "advertiser.opportunity",
+      action: "edit",
+      description: "Edit advertiser opportunities and stage changes."
     }
   ],
   advertisers: [
@@ -626,6 +657,75 @@ export const foundationSeed = {
       benchmarkMetadata: {
         territoryBenchmarkReady: true
       }
+    }
+  ],
+  pipelineStages: [
+    {
+      id: fixtureIds.pipelineStages.lead,
+      key: "lead",
+      name: "Lead",
+      sortOrder: 1,
+      probabilityDefault: 10,
+      isClosed: false,
+      outcome: null
+    },
+    {
+      id: fixtureIds.pipelineStages.qualified,
+      key: "qualified",
+      name: "Qualified",
+      sortOrder: 2,
+      probabilityDefault: 35,
+      isClosed: false,
+      outcome: null
+    },
+    {
+      id: fixtureIds.pipelineStages.proposal,
+      key: "proposal",
+      name: "Proposal",
+      sortOrder: 3,
+      probabilityDefault: 65,
+      isClosed: false,
+      outcome: null
+    },
+    {
+      id: fixtureIds.pipelineStages.won,
+      key: "won",
+      name: "Won",
+      sortOrder: 4,
+      probabilityDefault: 100,
+      isClosed: true,
+      outcome: "won"
+    },
+    {
+      id: fixtureIds.pipelineStages.lost,
+      key: "lost",
+      name: "Lost",
+      sortOrder: 5,
+      probabilityDefault: 0,
+      isClosed: true,
+      outcome: "lost"
+    }
+  ],
+  opportunities: [
+    {
+      id: fixtureIds.opportunities.exampleRenewal,
+      advertiserId: fixtureIds.advertisers.example,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      ownerUserId: fixtureIds.users.franchisee,
+      stageId: fixtureIds.pipelineStages.qualified,
+      source: "renewal",
+      title: "Autumn 2026 renewal",
+      estimatedValueMinor: 52500,
+      currency: "GBP",
+      probability: 35,
+      expectedCloseDate: "2026-08-18",
+      nextAction: "Confirm autumn package",
+      nextActionDate: "2026-08-10",
+      notes: "Seed renewal opportunity for ADV-002.",
+      lostReason: null,
+      competitor: null,
+      closedAt: null,
+      createdByUserId: fixtureIds.users.franchisee
     }
   ],
   franchises: [

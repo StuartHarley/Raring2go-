@@ -310,6 +310,18 @@ p {
   color: var(--r2-text-muted);
 }
 
+.app-link-button {
+  display: inline-block;
+  width: fit-content;
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-brand-purple);
+  color: white;
+  font-weight: 800;
+  margin: 8px 0 16px;
+  padding: 10px 14px;
+  text-decoration: none;
+}
+
 .franchise-360 {
   display: grid;
   gap: 18px;

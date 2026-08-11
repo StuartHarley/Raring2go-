@@ -34,6 +34,8 @@ import {
   onboardingTemplatePhases,
   onboardingTemplates,
   onboardingTemplateTasks,
+  opportunities,
+  pipelineStages,
   preflightResults,
   publicationOutputs,
   organisations,
@@ -98,6 +100,17 @@ describe("foundation schema", () => {
     expect(advertiserMetricSnapshots.packageMix.name).toBe("package_mix");
     expect(advertiserMetricSnapshots.digitalMix.name).toBe("digital_mix");
     expect(advertiserMetricSnapshots.overdueDebtMinor.name).toBe("overdue_debt_minor");
+  });
+
+  it("models configurable pipeline stages and territory-scoped opportunities", () => {
+    expect(pipelineStages.key.name).toBe("key");
+    expect(pipelineStages.probabilityDefault.name).toBe("probability_default");
+    expect(pipelineStages.isClosed.name).toBe("is_closed");
+    expect(opportunities.advertiserId.name).toBe("advertiser_id");
+    expect(opportunities.stageId.name).toBe("stage_id");
+    expect(opportunities.expectedCloseDate.name).toBe("expected_close_date");
+    expect(opportunities.nextActionDate.name).toBe("next_action_date");
+    expect(opportunities.lostReason.name).toBe("lost_reason");
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

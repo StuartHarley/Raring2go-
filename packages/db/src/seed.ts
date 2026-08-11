@@ -23,6 +23,8 @@ import {
   onboardingTemplateTasks,
   onboardingTemplates,
   organisations,
+  opportunities,
+  pipelineStages,
   permissions,
   rolePermissions,
   roles,
@@ -249,7 +251,10 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.advertiserCreate,
         fixtureIds.permissions.advertiserEdit,
         fixtureIds.permissions.advertiserContactManage,
-        fixtureIds.permissions.advertiserActivityRecord
+        fixtureIds.permissions.advertiserActivityRecord,
+        fixtureIds.permissions.opportunityView,
+        fixtureIds.permissions.opportunityCreate,
+        fixtureIds.permissions.opportunityEdit
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -337,6 +342,24 @@ export async function seedDatabase(databaseUrl?: string) {
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.advertiserActivityRecord,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.opportunityView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.opportunityCreate,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.opportunityEdit,
         scope: "own_territory",
         constraints: {}
       }
@@ -474,6 +497,50 @@ export async function seedDatabase(databaseUrl?: string) {
         churnRisk: sql`excluded.churn_risk`,
         overdueDebtMinor: sql`excluded.overdue_debt_minor`,
         benchmarkMetadata: sql`excluded.benchmark_metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(pipelineStages).values([...foundationSeed.pipelineStages]).onConflictDoUpdate({
+      target: pipelineStages.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        sortOrder: sql`excluded.sort_order`,
+        probabilityDefault: sql`excluded.probability_default`,
+        isClosed: sql`excluded.is_closed`,
+        outcome: sql`excluded.outcome`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(opportunities).values(foundationSeed.opportunities.map((opportunity) => ({
+      ...opportunity,
+      expectedCloseDate: opportunity.expectedCloseDate ? new Date(opportunity.expectedCloseDate) : null,
+      nextActionDate: opportunity.nextActionDate ? new Date(opportunity.nextActionDate) : null,
+      closedAt: opportunity.closedAt ? new Date(opportunity.closedAt) : null
+    }))).onConflictDoUpdate({
+      target: opportunities.id,
+      set: {
+        advertiserId: sql`excluded.advertiser_id`,
+        territoryId: sql`excluded.territory_id`,
+        ownerUserId: sql`excluded.owner_user_id`,
+        stageId: sql`excluded.stage_id`,
+        source: sql`excluded.source`,
+        title: sql`excluded.title`,
+        estimatedValueMinor: sql`excluded.estimated_value_minor`,
+        currency: sql`excluded.currency`,
+        probability: sql`excluded.probability`,
+        expectedCloseDate: sql`excluded.expected_close_date`,
+        nextAction: sql`excluded.next_action`,
+        nextActionDate: sql`excluded.next_action_date`,
+        notes: sql`excluded.notes`,
+        lostReason: sql`excluded.lost_reason`,
+        competitor: sql`excluded.competitor`,
+        closedAt: sql`excluded.closed_at`,
+        createdByUserId: sql`excluded.created_by_user_id`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

@@ -2,9 +2,12 @@ import { auditActions } from "@raring2go/audit";
 import { describe, expect, it } from "vitest";
 import {
   addAdvertiserContact,
+  changeOpportunityStage,
   createAdvertiser,
+  createOpportunity,
   getAdvertiser360,
   listAdvertisers,
+  listPipeline,
   recordAdvertiserActivity,
   updateAdvertiser
 } from "./service";
@@ -36,6 +39,14 @@ const ids = {
   contact: "contact_primary",
   activity: "activity_note",
   metric: "metric_2026"
+  ,
+  stages: {
+    lead: "stage_lead",
+    qualified: "stage_qualified",
+    won: "stage_won",
+    lost: "stage_lost"
+  },
+  opportunity: "opportunity_renewal"
 } as const;
 
 const permissions: PermissionData = {
@@ -60,11 +71,17 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser", "edit", "network"),
     grant(ids.roles.hq, "advertiser.contact", "manage", "network"),
     grant(ids.roles.hq, "advertiser.activity", "record", "network"),
+    grant(ids.roles.hq, "advertiser.opportunity", "view", "network"),
+    grant(ids.roles.hq, "advertiser.opportunity", "create", "network"),
+    grant(ids.roles.hq, "advertiser.opportunity", "edit", "network"),
     grant(ids.roles.local, "advertiser", "view", "own_territory"),
     grant(ids.roles.local, "advertiser", "create", "own_territory"),
     grant(ids.roles.local, "advertiser", "edit", "own_territory"),
     grant(ids.roles.local, "advertiser.contact", "manage", "own_territory"),
-    grant(ids.roles.local, "advertiser.activity", "record", "own_territory")
+    grant(ids.roles.local, "advertiser.activity", "record", "own_territory"),
+    grant(ids.roles.local, "advertiser.opportunity", "view", "own_territory"),
+    grant(ids.roles.local, "advertiser.opportunity", "create", "own_territory"),
+    grant(ids.roles.local, "advertiser.opportunity", "edit", "own_territory")
   ],
   territories: [
     {
@@ -99,6 +116,11 @@ describe("advertiser CRM foundation", () => {
         churnRisk: "low",
         overdueDebtMinor: 0
       }
+    });
+    expect(view.opportunities).toHaveLength(1);
+    expect(view.opportunities[0]).toMatchObject({
+      weightedValueMinor: 18375,
+      attention: "overdue_follow_up"
     });
   });
 
@@ -170,6 +192,40 @@ describe("advertiser CRM foundation", () => {
       })
     ).rejects.toThrow("should not duplicate");
   });
+
+  it("builds territory pipeline views and attention queues", () => {
+    const pipeline = listPipeline(localContext(), permissions, seededData());
+
+    expect(pipeline.stages.map((stage) => stage.stage.key)).toEqual(["lead", "qualified", "won", "lost"]);
+    expect(pipeline.stages.find((stage) => stage.stage.key === "qualified")?.opportunities).toHaveLength(1);
+    expect(pipeline.overdueFollowUps.map((view) => view.opportunity.id)).toEqual([ids.opportunity]);
+    expect(pipeline.myPipeline.map((view) => view.opportunity.id)).toEqual([ids.opportunity]);
+  });
+
+  it("creates opportunities and audits stage changes", async () => {
+    const data = seededData();
+    const recorder = audit();
+    const opportunity = await createOpportunity(localContext(), permissions, recorder, data, {
+      ...baseOpportunity(),
+      id: "opportunity_new",
+      stageId: ids.stages.lead,
+      probability: 0,
+      estimatedValueMinor: 30000
+    });
+    await changeOpportunityStage(localContext(), permissions, recorder, data, opportunity.id, {
+      stageId: ids.stages.won
+    });
+
+    expect(opportunity).toMatchObject({
+      stageId: ids.stages.won,
+      probability: 100,
+      closedAt: "2026-08-11"
+    });
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.advertiserOpportunityCreate,
+      auditActions.advertiserOpportunityStageChange
+    ]);
+  });
 });
 
 function hqContext() {
@@ -193,6 +249,8 @@ function emptyData(): AdvertisingData {
     contacts: [],
     activityEvents: [],
     metricSnapshots: [],
+    pipelineStages: pipelineStages(),
+    opportunities: [],
     organisations: [
       { id: ids.organisations.hq, kind: "hq", name: "HQ" },
       { id: ids.organisations.franchise, kind: "franchise", name: "Own Franchise" },
@@ -248,7 +306,40 @@ function seededData() {
     overdueDebtMinor: 0,
     benchmarkMetadata: {}
   });
+  data.opportunities.push(baseOpportunity());
   return data;
+}
+
+function pipelineStages() {
+  return [
+    { id: ids.stages.lead, key: "lead", name: "Lead", sortOrder: 1, probabilityDefault: 10, isClosed: false, outcome: null },
+    { id: ids.stages.qualified, key: "qualified", name: "Qualified", sortOrder: 2, probabilityDefault: 35, isClosed: false, outcome: null },
+    { id: ids.stages.won, key: "won", name: "Won", sortOrder: 3, probabilityDefault: 100, isClosed: true, outcome: "won" },
+    { id: ids.stages.lost, key: "lost", name: "Lost", sortOrder: 4, probabilityDefault: 0, isClosed: true, outcome: "lost" }
+  ];
+}
+
+function baseOpportunity() {
+  return {
+    id: ids.opportunity,
+    advertiserId: ids.advertiser,
+    territoryId: ids.territories.own,
+    ownerUserId: ids.users.local,
+    stageId: ids.stages.qualified,
+    source: "renewal",
+    title: "Autumn renewal",
+    estimatedValueMinor: 52500,
+    currency: "GBP",
+    probability: 35,
+    expectedCloseDate: "2026-08-18",
+    nextAction: "Confirm package",
+    nextActionDate: "2026-08-10",
+    notes: "Seed opportunity",
+    lostReason: null,
+    competitor: null,
+    closedAt: null,
+    createdByUserId: ids.users.local
+  };
 }
 
 function advertiser() {

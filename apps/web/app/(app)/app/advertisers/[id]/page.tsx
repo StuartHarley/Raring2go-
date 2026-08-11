@@ -43,6 +43,10 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
             <span>Debt</span>
             <strong>{formatMoney(result.latestMetrics?.overdueDebtMinor ?? 0)}</strong>
           </article>
+          <article>
+            <span>Pipeline</span>
+            <strong>{formatMoney(result.opportunities.reduce((sum, view) => sum + view.opportunity.estimatedValueMinor, 0))}</strong>
+          </article>
         </div>
       </section>
 
@@ -56,6 +60,26 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
               <span>{contact.role} - {contact.email ?? "linked platform user"}</span>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Opportunities</p>
+        <h2>Commercial pipeline</h2>
+        <div className="franchise-list">
+          {result.opportunities.length === 0 ? (
+            <div>
+              <strong>No open opportunities yet</strong>
+              <span>Pipeline management starts in ADV-002.</span>
+            </div>
+          ) : (
+            result.opportunities.map((view) => (
+              <div key={view.opportunity.id}>
+                <strong>{view.opportunity.title}</strong>
+                <span>{view.stage.name} - {formatMoney(view.opportunity.estimatedValueMinor)} - {view.attention.replaceAll("_", " ")}</span>
+              </div>
+            ))
+          )}
         </div>
       </section>
 
