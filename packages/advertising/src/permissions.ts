@@ -27,7 +27,13 @@ export const advertisingCapabilities = {
   artworkView: { module: "advertiser.artwork", action: "view" },
   artworkManage: { module: "advertiser.artwork", action: "manage" },
   artworkSubmit: { module: "advertiser.artwork", action: "submit" },
-  artworkApprove: { module: "advertiser.artwork", action: "approve" }
+  artworkApprove: { module: "advertiser.artwork", action: "approve" },
+  fulfilmentView: { module: "advertiser.fulfilment", action: "view" },
+  fulfilmentManage: { module: "advertiser.fulfilment", action: "manage" },
+  proofView: { module: "advertiser.proof", action: "view" },
+  proofCreate: { module: "advertiser.proof", action: "create" },
+  renewalView: { module: "advertiser.renewal", action: "view" },
+  renewalManage: { module: "advertiser.renewal", action: "manage" }
 } as const;
 
 export type AdvertisingCapability = keyof typeof advertisingCapabilities;

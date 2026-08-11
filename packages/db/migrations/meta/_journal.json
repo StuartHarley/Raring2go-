@@ -162,6 +162,13 @@
       "when": 1786438518236,
       "tag": "0022_young_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786438971042,
+      "tag": "0023_quiet_prowler",
+      "breakpoints": true
     }
   ]
 }

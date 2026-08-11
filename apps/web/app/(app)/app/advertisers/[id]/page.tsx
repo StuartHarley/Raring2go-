@@ -68,6 +68,14 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
             <span>Artwork</span>
             <strong>{result.artworkRequirements.filter((item) => item.status !== "production_ready").length}</strong>
           </article>
+          <article>
+            <span>Fulfilment</span>
+            <strong>{result.campaignFulfilments.filter((item) => item.status !== "fulfilled").length}</strong>
+          </article>
+          <article>
+            <span>Renewals</span>
+            <strong>{result.renewalPrompts.filter((item) => item.status === "open").length}</strong>
+          </article>
         </div>
       </section>
 
@@ -164,6 +172,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           <span>Advertiser acceptance deferred to ADV-005</span>
           <span>Invoices deferred to ADV-006</span>
           <span>Artwork intake deferred to ADV-007</span>
+          <span>Campaign proof and renewal records introduced in ADV-008</span>
         </div>
       </section>
 
@@ -182,6 +191,64 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
                 <strong>{requirement.sourceType.replaceAll("_", " ")}</strong>
                 <span>{requirement.status.replaceAll("_", " ")} - deadline {requirement.deadline ?? "not set"}</span>
                 <span>{requirement.editionPageId ? "Edition placement linked" : "Awaiting page placement"}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Fulfilment</p>
+        <h2>Campaign delivery</h2>
+        <div className="franchise-list">
+          {result.campaignFulfilments.length === 0 ? (
+            <div>
+              <strong>No fulfilment records yet</strong>
+              <span>Fulfilment records are created after production-ready artwork is placed or delivered.</span>
+            </div>
+          ) : (
+            result.campaignFulfilments.map((fulfilment) => (
+              <div key={fulfilment.id}>
+                <strong>{fulfilment.channel}</strong>
+                <span>{fulfilment.status.replaceAll("_", " ")} - scheduled {fulfilment.scheduledOn ?? "not set"}</span>
+                <span>{fulfilment.editionPageId ? "Edition placement linked" : "Awaiting placement reference"}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Proof packs and renewals</p>
+        <h2>Proof of value</h2>
+        <div className="franchise-list">
+          {result.proofPacks.length === 0 ? (
+            <div>
+              <strong>No proof packs yet</strong>
+              <span>Proof packs snapshot fulfilled campaign evidence for advertiser follow-up.</span>
+            </div>
+          ) : (
+            result.proofPacks.map((proofPack) => (
+              <div key={proofPack.id}>
+                <strong>{proofPack.status.replaceAll("_", " ")}</strong>
+                <span>Issued {proofPack.issuedAt ?? "not issued"} - delivered {proofPack.deliveredAt ?? "not delivered"}</span>
+                <span>{proofPack.renewalPromptId ? "Renewal prompt linked" : "No renewal prompt yet"}</span>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="franchise-list">
+          {result.renewalPrompts.length === 0 ? (
+            <div>
+              <strong>No renewal prompts yet</strong>
+              <span>Renewal prompts are created from completed proof packs.</span>
+            </div>
+          ) : (
+            result.renewalPrompts.map((renewal) => (
+              <div key={renewal.id}>
+                <strong>{renewal.status.replaceAll("_", " ")}</strong>
+                <span>Due {renewal.dueOn ?? "not set"}</span>
+                <span>{renewal.opportunityId ? "Opportunity linked" : "Awaiting sales follow-up"}</span>
               </div>
             ))
           )}

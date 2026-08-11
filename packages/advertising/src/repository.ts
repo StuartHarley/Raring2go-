@@ -16,6 +16,7 @@ import {
   advertisers,
   artworkRequirements,
   artworkVersions,
+  campaignFulfilments,
   commercialBookingItems,
   commercialBookings,
   commercialPackages,
@@ -28,8 +29,10 @@ import {
   organisations,
   opportunities,
   pipelineStages,
+  proofPacks,
   priceBookItems,
   priceBooks,
+  renewalPrompts,
   territories
 } from "@raring2go/db";
 import type { AdvertisingData } from "./types";
@@ -72,6 +75,9 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     providerSyncRows,
     artworkRequirementRows,
     artworkVersionRows,
+    campaignFulfilmentRows,
+    proofPackRows,
+    renewalPromptRows,
     organisationRows,
     territoryRows
   ] = await Promise.all([
@@ -105,6 +111,9 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     db.select().from(advertiserProviderSyncReferences),
     db.select().from(artworkRequirements),
     db.select().from(artworkVersions),
+    db.select().from(campaignFulfilments),
+    db.select().from(proofPacks),
+    db.select().from(renewalPrompts),
     db.select().from(organisations),
     db.select().from(territories)
   ]);
@@ -203,6 +212,20 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
       ...row,
       submittedAt: dateString(row.submittedAt)
     })) as AdvertisingData["artworkVersions"],
+    campaignFulfilments: campaignFulfilmentRows.map((row) => ({
+      ...row,
+      scheduledOn: dateString(row.scheduledOn),
+      fulfilledOn: dateString(row.fulfilledOn)
+    })) as AdvertisingData["campaignFulfilments"],
+    proofPacks: proofPackRows.map((row) => ({
+      ...row,
+      issuedAt: dateString(row.issuedAt),
+      deliveredAt: dateString(row.deliveredAt)
+    })) as AdvertisingData["proofPacks"],
+    renewalPrompts: renewalPromptRows.map((row) => ({
+      ...row,
+      dueOn: dateString(row.dueOn)
+    })) as AdvertisingData["renewalPrompts"],
     organisations: organisationRows as AdvertisingData["organisations"],
     territories: territoryRows as AdvertisingData["territories"]
   };

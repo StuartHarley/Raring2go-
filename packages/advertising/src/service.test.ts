@@ -10,7 +10,9 @@ import {
   createInvoiceFromBooking,
   createArtworkRequirement,
   createOpportunity,
+  createProofPack,
   createProposal,
+  createRenewalPromptFromProofPack,
   editDraftInvoice,
   getAdvertiser360,
   issueCreditNote,
@@ -20,6 +22,7 @@ import {
   listAdvertisers,
   listPipeline,
   recordAdvertiserActivity,
+  recordCampaignFulfilment,
   recordPayment,
   reserveInventorySlot,
   respondToProposal,
@@ -109,6 +112,12 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.artwork", "manage", "network"),
     grant(ids.roles.hq, "advertiser.artwork", "submit", "network"),
     grant(ids.roles.hq, "advertiser.artwork", "approve", "network"),
+    grant(ids.roles.hq, "advertiser.fulfilment", "view", "network"),
+    grant(ids.roles.hq, "advertiser.fulfilment", "manage", "network"),
+    grant(ids.roles.hq, "advertiser.proof", "view", "network"),
+    grant(ids.roles.hq, "advertiser.proof", "create", "network"),
+    grant(ids.roles.hq, "advertiser.renewal", "view", "network"),
+    grant(ids.roles.hq, "advertiser.renewal", "manage", "network"),
     grant(ids.roles.local, "advertiser", "view", "own_territory"),
     grant(ids.roles.local, "advertiser", "create", "own_territory"),
     grant(ids.roles.local, "advertiser", "edit", "own_territory"),
@@ -134,7 +143,13 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "advertiser.artwork", "view", "own_territory"),
     grant(ids.roles.local, "advertiser.artwork", "manage", "own_territory"),
     grant(ids.roles.local, "advertiser.artwork", "submit", "own_territory"),
-    grant(ids.roles.local, "advertiser.artwork", "approve", "own_territory")
+    grant(ids.roles.local, "advertiser.artwork", "approve", "own_territory"),
+    grant(ids.roles.local, "advertiser.fulfilment", "view", "own_territory"),
+    grant(ids.roles.local, "advertiser.fulfilment", "manage", "own_territory"),
+    grant(ids.roles.local, "advertiser.proof", "view", "own_territory"),
+    grant(ids.roles.local, "advertiser.proof", "create", "own_territory"),
+    grant(ids.roles.local, "advertiser.renewal", "view", "own_territory"),
+    grant(ids.roles.local, "advertiser.renewal", "manage", "own_territory")
   ],
   territories: [
     {
@@ -788,6 +803,168 @@ describe("advertiser CRM foundation", () => {
       auditActions.advertiserArtworkProductionReady
     ]);
   });
+
+  it("records campaign fulfilment, immutable proof packs and renewal prompts", async () => {
+    const data = seededData();
+    seedAcceptedBooking(data);
+    data.productionRequests.push({
+      id: "production_1",
+      bookingId: "booking_autumn",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      requestType: "artwork",
+      status: "ready",
+      dueOn: "2026-08-20",
+      metadata: {}
+    });
+    data.artworkRequirements.push({
+      id: "artwork_1",
+      productionRequestId: "production_1",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      territoryEditionId: "edition_autumn",
+      editionPageId: "page_3",
+      inventorySlotId: ids.slot,
+      sourceType: "advertiser_supplied",
+      status: "production_ready",
+      specification: {},
+      dimensions: {},
+      contentFields: {},
+      deadline: "2026-08-20",
+      approvedVersionId: "artwork_version_1",
+      proofReference: { proofKey: "proof/example-v1.pdf" },
+      advertiserApprovedAt: "2026-08-14",
+      productionApprovedAt: "2026-08-15"
+    });
+    data.artworkVersions.push({
+      id: "artwork_version_1",
+      artworkRequirementId: "artwork_1",
+      versionNumber: 1,
+      submittedByUserId: ids.users.local,
+      assetReference: { storageKey: "artwork/example.pdf" },
+      status: "approved",
+      preflightResultId: "preflight_1",
+      notes: null,
+      submittedAt: "2026-08-12"
+    });
+    const recorder = audit();
+
+    const fulfilment = await recordCampaignFulfilment(localContext(), permissions, recorder, data, {
+      id: "fulfilment_1",
+      bookingId: "booking_autumn",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      artworkRequirementId: "artwork_1",
+      territoryEditionId: "edition_autumn",
+      editionPageId: "page_3",
+      status: "fulfilled",
+      channel: "print",
+      scheduledOn: "2026-09-01",
+      fulfilledOn: "2026-09-10",
+      placementReference: { page: 3, slot: "full-page" },
+      performanceReference: { outputId: "publication_output_1" },
+      metadata: {}
+    }, "event_fulfilment");
+    const proofPack = await createProofPack(localContext(), permissions, recorder, data, {
+      id: "proof_pack_1",
+      fulfilmentId: fulfilment.id,
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      status: "delivered",
+      issuedAt: "2026-09-12",
+      deliveredAt: "2026-09-12",
+      artefactReference: { storageKey: "proof-packs/example.pdf" },
+      metricsSnapshot: { impressions: null },
+      renewalPromptId: null
+    }, "event_proof");
+    fulfilment.placementReference = { page: 99 };
+    await createRenewalPromptFromProofPack(localContext(), permissions, recorder, data, {
+      id: "renewal_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      sourceBookingId: "booking_autumn",
+      sourceProofPackId: proofPack.id,
+      status: "open",
+      dueOn: "2026-10-01",
+      assignedToUserId: ids.users.local,
+      opportunityId: null,
+      renewalSnapshot: { previousBookingValueMinor: 52500, recommendedAction: "renew" },
+      metadata: {}
+    }, "event_renewal");
+
+    expect(proofPack.proofSnapshot).toMatchObject({
+      fulfilment: {
+        placementReference: { page: 3, slot: "full-page" }
+      },
+      artwork: {
+        approvedVersionId: "artwork_version_1",
+        assetReference: { storageKey: "artwork/example.pdf" }
+      }
+    });
+    expect(data.proofPacks[0]?.proofSnapshot).not.toMatchObject({
+      fulfilment: {
+        placementReference: { page: 99 }
+      }
+    });
+    expect(getAdvertiser360(localContext(), permissions, data, ids.advertiser)).toMatchObject({
+      campaignFulfilments: [{ id: "fulfilment_1" }],
+      proofPacks: [{ id: "proof_pack_1", renewalPromptId: "renewal_1" }],
+      renewalPrompts: [{ id: "renewal_1" }]
+    });
+    expect(data.domainEvents.map((event) => event.eventType)).toEqual([
+      "advertiser.campaign.fulfilment_recorded",
+      "advertiser.proof_pack.created",
+      "advertiser.renewal.prompt_created"
+    ]);
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.advertiserFulfilmentRecord,
+      auditActions.advertiserProofPackCreate,
+      auditActions.advertiserProofPackDeliver,
+      auditActions.advertiserRenewalPromptCreate
+    ]);
+  });
+
+  it("denies campaign fulfilment across territories and without capability", async () => {
+    const data = seededData();
+    seedAcceptedBooking(data);
+    const noFulfilmentPermission: PermissionData = {
+      ...permissions,
+      rolePermissions: permissions.rolePermissions.filter((grant) => grant.permission.module !== "advertiser.fulfilment")
+    };
+
+    await expect(recordCampaignFulfilment(localContext(), noFulfilmentPermission, audit(), data, {
+      id: "fulfilment_1",
+      bookingId: "booking_autumn",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.own,
+      status: "scheduled",
+      channel: "print",
+      scheduledOn: "2026-09-01",
+      fulfilledOn: null,
+      placementReference: {},
+      performanceReference: {},
+      metadata: {}
+    }, "event_fulfilment")).rejects.toThrow("No permission grant");
+
+    await expect(recordCampaignFulfilment(localContext(), permissions, audit(), data, {
+      id: "fulfilment_cross",
+      bookingId: "booking_autumn",
+      bookingItemId: "booking_item_autumn_1",
+      advertiserId: ids.advertiser,
+      territoryId: ids.territories.other,
+      status: "scheduled",
+      channel: "print",
+      scheduledOn: "2026-09-01",
+      fulfilledOn: null,
+      placementReference: {},
+      performanceReference: {},
+      metadata: {}
+    }, "event_cross")).rejects.toThrow("territory");
+  });
 });
 
 function hqContext() {
@@ -837,6 +1014,9 @@ function emptyData(): AdvertisingData {
     providerSyncReferences: [],
     artworkRequirements: [],
     artworkVersions: [],
+    campaignFulfilments: [],
+    proofPacks: [],
+    renewalPrompts: [],
     organisations: [
       { id: ids.organisations.hq, kind: "hq", name: "HQ" },
       { id: ids.organisations.franchise, kind: "franchise", name: "Own Franchise" },

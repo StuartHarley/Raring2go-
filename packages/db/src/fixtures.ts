@@ -95,7 +95,13 @@ export const fixtureIds = {
     artworkView: "00000000-0000-4000-8000-000000000475",
     artworkManage: "00000000-0000-4000-8000-000000000476",
     artworkSubmit: "00000000-0000-4000-8000-000000000477",
-    artworkApprove: "00000000-0000-4000-8000-000000000478"
+    artworkApprove: "00000000-0000-4000-8000-000000000478",
+    fulfilmentView: "00000000-0000-4000-8000-000000000479",
+    fulfilmentManage: "00000000-0000-4000-8000-000000000480",
+    proofView: "00000000-0000-4000-8000-000000000481",
+    proofCreate: "00000000-0000-4000-8000-000000000482",
+    renewalView: "00000000-0000-4000-8000-000000000483",
+    renewalManage: "00000000-0000-4000-8000-000000000484"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -764,6 +770,42 @@ export const foundationSeed = {
       module: "advertiser.artwork",
       action: "approve",
       description: "Approve advertiser artwork for production readiness."
+    },
+    {
+      id: fixtureIds.permissions.fulfilmentView,
+      module: "advertiser.fulfilment",
+      action: "view",
+      description: "View campaign fulfilment and placement status."
+    },
+    {
+      id: fixtureIds.permissions.fulfilmentManage,
+      module: "advertiser.fulfilment",
+      action: "manage",
+      description: "Record campaign fulfilment, publication and performance references."
+    },
+    {
+      id: fixtureIds.permissions.proofView,
+      module: "advertiser.proof",
+      action: "view",
+      description: "View advertiser proof packs."
+    },
+    {
+      id: fixtureIds.permissions.proofCreate,
+      module: "advertiser.proof",
+      action: "create",
+      description: "Create advertiser proof packs from fulfilment evidence."
+    },
+    {
+      id: fixtureIds.permissions.renewalView,
+      module: "advertiser.renewal",
+      action: "view",
+      description: "View advertiser renewal prompts."
+    },
+    {
+      id: fixtureIds.permissions.renewalManage,
+      module: "advertiser.renewal",
+      action: "manage",
+      description: "Create and manage advertiser renewal prompts."
     }
   ],
   advertisers: [
@@ -1060,6 +1102,9 @@ export const foundationSeed = {
   advertiserProviderSyncReferences: [],
   artworkRequirements: [],
   artworkVersions: [],
+  campaignFulfilments: [],
+  proofPacks: [],
+  renewalPrompts: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

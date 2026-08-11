@@ -734,3 +734,85 @@ export const artworkVersions = pgTable(
     index("artwork_versions_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const campaignFulfilments = pgTable(
+  "campaign_fulfilments",
+  {
+    id,
+    bookingId: uuid("booking_id").notNull().references(() => commercialBookings.id),
+    bookingItemId: uuid("booking_item_id").notNull().references(() => commercialBookingItems.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    artworkRequirementId: uuid("artwork_requirement_id").references(() => artworkRequirements.id),
+    territoryEditionId: uuid("territory_edition_id").references(() => territoryEditions.id),
+    editionPageId: uuid("edition_page_id").references(() => editionPages.id),
+    status: text("status").notNull().default("scheduled"),
+    channel: text("channel").notNull().default("print"),
+    scheduledOn: date("scheduled_on", { mode: "date" }),
+    fulfilledOn: date("fulfilled_on", { mode: "date" }),
+    placementReference: jsonb("placement_reference").$type<Record<string, unknown>>().notNull().default({}),
+    performanceReference: jsonb("performance_reference").$type<Record<string, unknown>>().notNull().default({}),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("campaign_fulfilments_booking_item_uidx").on(table.bookingItemId),
+    index("campaign_fulfilments_advertiser_id_idx").on(table.advertiserId),
+    index("campaign_fulfilments_territory_id_idx").on(table.territoryId),
+    index("campaign_fulfilments_status_idx").on(table.status),
+    index("campaign_fulfilments_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const proofPacks = pgTable(
+  "proof_packs",
+  {
+    id,
+    fulfilmentId: uuid("fulfilment_id").notNull().references(() => campaignFulfilments.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    status: text("status").notNull().default("draft"),
+    issuedAt: date("issued_at", { mode: "date" }),
+    deliveredAt: date("delivered_at", { mode: "date" }),
+    proofSnapshot: jsonb("proof_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    artefactReference: jsonb("artefact_reference").$type<Record<string, unknown>>().notNull().default({}),
+    metricsSnapshot: jsonb("metrics_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    renewalPromptId: uuid("renewal_prompt_id"),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("proof_packs_fulfilment_uidx").on(table.fulfilmentId),
+    index("proof_packs_advertiser_id_idx").on(table.advertiserId),
+    index("proof_packs_territory_id_idx").on(table.territoryId),
+    index("proof_packs_status_idx").on(table.status),
+    index("proof_packs_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const renewalPrompts = pgTable(
+  "renewal_prompts",
+  {
+    id,
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    sourceBookingId: uuid("source_booking_id").references(() => commercialBookings.id),
+    sourceProofPackId: uuid("source_proof_pack_id").references(() => proofPacks.id),
+    status: text("status").notNull().default("open"),
+    dueOn: date("due_on", { mode: "date" }),
+    assignedToUserId: uuid("assigned_to_user_id").references(() => users.id),
+    opportunityId: uuid("opportunity_id").references(() => opportunities.id),
+    renewalSnapshot: jsonb("renewal_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("renewal_prompts_advertiser_id_idx").on(table.advertiserId),
+    index("renewal_prompts_territory_id_idx").on(table.territoryId),
+    index("renewal_prompts_status_idx").on(table.status),
+    index("renewal_prompts_due_on_idx").on(table.dueOn),
+    index("renewal_prompts_deleted_at_idx").on(table.deletedAt)
+  ]
+);

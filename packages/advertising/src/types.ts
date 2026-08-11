@@ -469,6 +469,55 @@ export type ArtworkVersion = {
   deletedAt?: Date | null;
 };
 
+export type CampaignFulfilment = {
+  id: string;
+  bookingId: string;
+  bookingItemId: string;
+  advertiserId: string;
+  territoryId: string;
+  artworkRequirementId?: string | null;
+  territoryEditionId?: string | null;
+  editionPageId?: string | null;
+  status: "scheduled" | "in_progress" | "fulfilled" | "cancelled" | (string & {});
+  channel: string;
+  scheduledOn?: string | null;
+  fulfilledOn?: string | null;
+  placementReference: Record<string, unknown>;
+  performanceReference: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type ProofPack = {
+  id: string;
+  fulfilmentId: string;
+  advertiserId: string;
+  territoryId: string;
+  status: "draft" | "issued" | "delivered" | (string & {});
+  issuedAt?: string | null;
+  deliveredAt?: string | null;
+  proofSnapshot: Record<string, unknown>;
+  artefactReference: Record<string, unknown>;
+  metricsSnapshot: Record<string, unknown>;
+  renewalPromptId?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type RenewalPrompt = {
+  id: string;
+  advertiserId: string;
+  territoryId: string;
+  sourceBookingId?: string | null;
+  sourceProofPackId?: string | null;
+  status: "open" | "converted" | "dismissed" | (string & {});
+  dueOn?: string | null;
+  assignedToUserId?: string | null;
+  opportunityId?: string | null;
+  renewalSnapshot: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
 export type AdvertisingOrganisation = {
   id: string;
   kind: string;
@@ -514,6 +563,9 @@ export type AdvertisingData = {
   providerSyncReferences: AdvertiserProviderSyncReference[];
   artworkRequirements: ArtworkRequirement[];
   artworkVersions: ArtworkVersion[];
+  campaignFulfilments: CampaignFulfilment[];
+  proofPacks: ProofPack[];
+  renewalPrompts: RenewalPrompt[];
   organisations: AdvertisingOrganisation[];
   territories: AdvertisingTerritory[];
 };
@@ -533,6 +585,9 @@ export type Advertiser360 = {
   payments: AdvertiserPayment[];
   artworkRequirements: ArtworkRequirement[];
   artworkVersions: ArtworkVersion[];
+  campaignFulfilments: CampaignFulfilment[];
+  proofPacks: ProofPack[];
+  renewalPrompts: RenewalPrompt[];
   financeSummary: {
     lifetimeInvoicedMinor: number;
     lifetimePaidMinor: number;

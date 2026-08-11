@@ -24,6 +24,7 @@ import {
   advertisers,
   artworkRequirements,
   artworkVersions,
+  campaignFulfilments,
   commercialPackages,
   commercialProducts,
   commercialBookingItems,
@@ -58,8 +59,10 @@ import {
   inventorySlots,
   opportunities,
   pipelineStages,
+  proofPacks,
   priceBookItems,
   priceBooks,
+  renewalPrompts,
   preflightResults,
   publicationOutputs,
   organisations,
@@ -193,6 +196,20 @@ describe("foundation schema", () => {
     expect(artworkRequirements.approvedVersionId.name).toBe("approved_version_id");
     expect(artworkVersions.preflightResultId.name).toBe("preflight_result_id");
     expect((artworkVersions as unknown as Record<string, unknown>).validationEngine).toBeUndefined();
+  });
+
+  it("models campaign fulfilment, proof packs and renewal prompts without provider lock-in", () => {
+    expect(campaignFulfilments.bookingItemId.name).toBe("booking_item_id");
+    expect(campaignFulfilments.artworkRequirementId.name).toBe("artwork_requirement_id");
+    expect(campaignFulfilments.editionPageId.name).toBe("edition_page_id");
+    expect(campaignFulfilments.placementReference.name).toBe("placement_reference");
+    expect(proofPacks.fulfilmentId.name).toBe("fulfilment_id");
+    expect(proofPacks.proofSnapshot.name).toBe("proof_snapshot");
+    expect(proofPacks.artefactReference.name).toBe("artefact_reference");
+    expect(renewalPrompts.sourceProofPackId.name).toBe("source_proof_pack_id");
+    expect(renewalPrompts.renewalSnapshot.name).toBe("renewal_snapshot");
+    expect((proofPacks as unknown as Record<string, unknown>).mailchimpCampaignId).toBeUndefined();
+    expect((campaignFulfilments as unknown as Record<string, unknown>).royaltyInvoiceId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

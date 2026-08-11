@@ -19,6 +19,7 @@ import type {
   AdvertisingData,
   ArtworkRequirement,
   ArtworkVersion,
+  CampaignFulfilment,
   CatalogueView,
   CommercialBooking,
   CommercialBookingItem,
@@ -28,7 +29,9 @@ import type {
   InventoryReservation,
   Opportunity,
   OpportunityView,
-  PipelineView
+  PipelineView,
+  ProofPack,
+  RenewalPrompt
 } from "./types";
 
 type AdvertisingAuditRecorder = {
@@ -1047,6 +1050,145 @@ export async function updateArtworkStatus(
   return requirement;
 }
 
+export async function recordCampaignFulfilment(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  fulfilment: CampaignFulfilment,
+  domainEventId: string
+) {
+  requireAdvertisingPermission(context, permissions, "fulfilmentManage");
+  const booking = requireBooking(data, fulfilment.bookingId);
+  const advertiser = requireAdvertiser(data, fulfilment.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (booking.advertiserId !== advertiser.id || booking.territoryId !== advertiser.owningTerritoryId) {
+    throw new Error("Campaign fulfilment must match the advertiser booking.");
+  }
+  const bookingItem = requireBookingItem(data, fulfilment.bookingItemId);
+  if (bookingItem.bookingId !== booking.id) {
+    throw new Error("Campaign fulfilment must reference a booking item from the booking.");
+  }
+  if (fulfilment.territoryId !== advertiser.owningTerritoryId) {
+    throw new Error("Campaign fulfilment territory must match the advertiser territory.");
+  }
+  if (fulfilment.artworkRequirementId) {
+    const requirement = requireArtworkRequirement(data, fulfilment.artworkRequirementId);
+    if (requirement.bookingItemId !== fulfilment.bookingItemId || requirement.status !== "production_ready") {
+      throw new Error("Campaign fulfilment requires production-ready artwork for the booking item.");
+    }
+  }
+  const existing = data.campaignFulfilments.find((candidate) => candidate.bookingItemId === fulfilment.bookingItemId && !candidate.deletedAt);
+  if (existing) {
+    Object.assign(existing, {
+      status: fulfilment.status,
+      scheduledOn: fulfilment.scheduledOn,
+      fulfilledOn: fulfilment.fulfilledOn,
+      placementReference: fulfilment.placementReference,
+      performanceReference: fulfilment.performanceReference,
+      metadata: fulfilment.metadata
+    });
+    await audit.record(auditEvent(context, auditActions.advertiserFulfilmentRecord, advertiser, {
+      fulfilmentId: existing.id,
+      status: existing.status,
+      updated: true
+    }));
+    return existing;
+  }
+  data.campaignFulfilments.push(fulfilment);
+  emitAdvertiserEvent(data, event(domainEventId, "advertiser.campaign.fulfilment_recorded", "campaign_fulfilment", fulfilment.id, advertiser, {
+    bookingItemId: fulfilment.bookingItemId,
+    status: fulfilment.status
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserFulfilmentRecord, advertiser, {
+    fulfilmentId: fulfilment.id,
+    status: fulfilment.status
+  }));
+  return fulfilment;
+}
+
+export async function createProofPack(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  proofPack: Omit<ProofPack, "proofSnapshot"> & { proofSnapshot?: Record<string, unknown> },
+  domainEventId: string
+) {
+  requireAdvertisingPermission(context, permissions, "proofCreate");
+  const fulfilment = requireCampaignFulfilment(data, proofPack.fulfilmentId);
+  const advertiser = requireAdvertiser(data, proofPack.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (fulfilment.advertiserId !== advertiser.id || fulfilment.territoryId !== advertiser.owningTerritoryId) {
+    throw new Error("Proof pack must match the advertiser fulfilment.");
+  }
+  if (data.proofPacks.some((candidate) => candidate.fulfilmentId === fulfilment.id && !candidate.deletedAt)) {
+    throw new Error("Fulfilment already has a proof pack.");
+  }
+  const created: ProofPack = {
+    ...proofPack,
+    proofSnapshot: proofPack.proofSnapshot ?? proofSnapshot(data, fulfilment)
+  };
+  data.proofPacks.push(created);
+  emitAdvertiserEvent(data, event(domainEventId, "advertiser.proof_pack.created", "proof_pack", created.id, advertiser, {
+    fulfilmentId: fulfilment.id,
+    status: created.status
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserProofPackCreate, advertiser, {
+    proofPackId: created.id,
+    fulfilmentId: fulfilment.id
+  }));
+  if (created.status === "delivered") {
+    await audit.record(auditEvent(context, auditActions.advertiserProofPackDeliver, advertiser, {
+      proofPackId: created.id
+    }));
+  }
+  return created;
+}
+
+export async function createRenewalPromptFromProofPack(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  renewal: RenewalPrompt,
+  domainEventId: string
+) {
+  requireAdvertisingPermission(context, permissions, "renewalManage");
+  const advertiser = requireAdvertiser(data, renewal.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (renewal.territoryId !== advertiser.owningTerritoryId) {
+    throw new Error("Renewal prompt territory must match advertiser territory.");
+  }
+  if (renewal.sourceProofPackId) {
+    const proofPack = requireProofPack(data, renewal.sourceProofPackId);
+    if (proofPack.advertiserId !== advertiser.id) {
+      throw new Error("Renewal prompt proof pack must match advertiser.");
+    }
+  }
+  if (renewal.sourceBookingId) {
+    const booking = requireBooking(data, renewal.sourceBookingId);
+    if (booking.advertiserId !== advertiser.id) {
+      throw new Error("Renewal prompt booking must match advertiser.");
+    }
+  }
+  data.renewalPrompts.push(renewal);
+  const proofPack = renewal.sourceProofPackId ? requireProofPack(data, renewal.sourceProofPackId) : null;
+  if (proofPack) {
+    proofPack.renewalPromptId = renewal.id;
+  }
+  emitAdvertiserEvent(data, event(domainEventId, "advertiser.renewal.prompt_created", "renewal_prompt", renewal.id, advertiser, {
+    dueOn: renewal.dueOn ?? null,
+    sourceBookingId: renewal.sourceBookingId ?? null,
+    sourceProofPackId: renewal.sourceProofPackId ?? null
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserRenewalPromptCreate, advertiser, {
+    renewalPromptId: renewal.id,
+    dueOn: renewal.dueOn ?? null
+  }));
+  return renewal;
+}
+
 function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserRecord): Advertiser360 {
   return {
     advertiser,
@@ -1071,6 +1213,9 @@ function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserReco
       const requirement = data.artworkRequirements.find((candidate) => candidate.id === version.artworkRequirementId);
       return requirement?.advertiserId === advertiser.id && !version.deletedAt;
     }),
+    campaignFulfilments: data.campaignFulfilments.filter((fulfilment) => fulfilment.advertiserId === advertiser.id && !fulfilment.deletedAt),
+    proofPacks: data.proofPacks.filter((proofPack) => proofPack.advertiserId === advertiser.id && !proofPack.deletedAt),
+    renewalPrompts: data.renewalPrompts.filter((renewal) => renewal.advertiserId === advertiser.id && !renewal.deletedAt),
     financeSummary: financeSummary(data, advertiser.id),
     activity: data.activityEvents
       .filter((event) => event.advertiserId === advertiser.id && !event.deletedAt)
@@ -1187,6 +1332,14 @@ function requireBooking(data: AdvertisingData, bookingId: string) {
   return booking;
 }
 
+function requireBookingItem(data: AdvertisingData, bookingItemId: string) {
+  const bookingItem = data.bookingItems.find((candidate) => candidate.id === bookingItemId && !candidate.deletedAt);
+  if (!bookingItem) {
+    throw new Error("Booking item was not found.");
+  }
+  return bookingItem;
+}
+
 function requireInvoice(data: AdvertisingData, invoiceId: string) {
   const invoice = data.invoices.find((candidate) => candidate.id === invoiceId && !candidate.deletedAt);
   if (!invoice) {
@@ -1209,6 +1362,22 @@ function requireArtworkRequirement(data: AdvertisingData, requirementId: string)
     throw new Error("Artwork requirement was not found.");
   }
   return requirement;
+}
+
+function requireCampaignFulfilment(data: AdvertisingData, fulfilmentId: string) {
+  const fulfilment = data.campaignFulfilments.find((candidate) => candidate.id === fulfilmentId && !candidate.deletedAt);
+  if (!fulfilment) {
+    throw new Error("Campaign fulfilment was not found.");
+  }
+  return fulfilment;
+}
+
+function requireProofPack(data: AdvertisingData, proofPackId: string) {
+  const proofPack = data.proofPacks.find((candidate) => candidate.id === proofPackId && !candidate.deletedAt);
+  if (!proofPack) {
+    throw new Error("Proof pack was not found.");
+  }
+  return proofPack;
 }
 
 function requireInvoiceSequence(data: AdvertisingData, issuerOrganisationId: string, key: string) {
@@ -1337,6 +1506,46 @@ function invoiceSnapshot(data: AdvertisingData, invoice: AdvertiserInvoice) {
       paymentTermsSnapshot: invoice.paymentTermsSnapshot
     },
     lines: data.invoiceLines.filter((line) => line.invoiceId === invoice.id && !line.deletedAt)
+  };
+}
+
+function proofSnapshot(data: AdvertisingData, fulfilment: CampaignFulfilment) {
+  const booking = requireBooking(data, fulfilment.bookingId);
+  const bookingItem = requireBookingItem(data, fulfilment.bookingItemId);
+  const artworkRequirement = fulfilment.artworkRequirementId
+    ? requireArtworkRequirement(data, fulfilment.artworkRequirementId)
+    : null;
+  const approvedArtworkVersion = artworkRequirement?.approvedVersionId
+    ? data.artworkVersions.find((version) => version.id === artworkRequirement.approvedVersionId && !version.deletedAt)
+    : null;
+  return {
+    booking: {
+      id: booking.id,
+      bookedOn: booking.bookedOn,
+      totalValueMinor: booking.totalValueMinor,
+      currency: booking.currency
+    },
+    bookingItem: {
+      id: bookingItem.id,
+      productId: bookingItem.productId,
+      description: bookingItem.description,
+      totalPriceMinor: bookingItem.totalPriceMinor
+    },
+    fulfilment: {
+      id: fulfilment.id,
+      status: fulfilment.status,
+      channel: fulfilment.channel,
+      scheduledOn: fulfilment.scheduledOn,
+      fulfilledOn: fulfilment.fulfilledOn,
+      placementReference: fulfilment.placementReference
+    },
+    artwork: artworkRequirement
+      ? {
+          requirementId: artworkRequirement.id,
+          approvedVersionId: artworkRequirement.approvedVersionId ?? null,
+          assetReference: approvedArtworkVersion?.assetReference ?? null
+        }
+      : null
   };
 }
 

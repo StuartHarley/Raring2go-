@@ -284,7 +284,13 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.artworkView,
         fixtureIds.permissions.artworkManage,
         fixtureIds.permissions.artworkSubmit,
-        fixtureIds.permissions.artworkApprove
+        fixtureIds.permissions.artworkApprove,
+        fixtureIds.permissions.fulfilmentView,
+        fixtureIds.permissions.fulfilmentManage,
+        fixtureIds.permissions.proofView,
+        fixtureIds.permissions.proofCreate,
+        fixtureIds.permissions.renewalView,
+        fixtureIds.permissions.renewalManage
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -446,7 +452,13 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.artworkView,
         fixtureIds.permissions.artworkManage,
         fixtureIds.permissions.artworkSubmit,
-        fixtureIds.permissions.artworkApprove
+        fixtureIds.permissions.artworkApprove,
+        fixtureIds.permissions.fulfilmentView,
+        fixtureIds.permissions.fulfilmentManage,
+        fixtureIds.permissions.proofView,
+        fixtureIds.permissions.proofCreate,
+        fixtureIds.permissions.renewalView,
+        fixtureIds.permissions.renewalManage
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,
