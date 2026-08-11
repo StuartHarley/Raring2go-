@@ -6,6 +6,7 @@ import {
   getPublicHomepage,
   getPublicMagazine,
   getPublicParentHub,
+  getPublicRecommendations,
   getPublicCommercialDiscovery,
   publicHomepageTemplate,
   territoryFromSlug
@@ -55,6 +56,45 @@ describe("@raring2go/public homepage", () => {
         })
       ])
     );
+  });
+});
+
+describe("@raring2go/public recommendations", () => {
+  it("falls back to approved public content without preferences", async () => {
+    const recommendations = await getPublicRecommendations(dbWithContent([
+      publicContent({
+        id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        title: "Approved family pick",
+        contentType: "guide",
+        status: "approved"
+      }),
+      publicContent({
+        id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        title: "Draft family pick",
+        contentType: "guide",
+        status: "draft"
+      })
+    ]), defaultPublicTerritorySlug);
+
+    expect(recommendations?.personalised).toBe(false);
+    expect(recommendations?.recommendations.map((item) => item.title)).toEqual(["Approved family pick"]);
+    expect(recommendations?.recommendations[0]?.reasons.length).toBeGreaterThan(0);
+  });
+
+  it("explains preference-based recommendations", async () => {
+    const recommendations = await getPublicRecommendations(dbWithContent([
+      publicContent({
+        id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        title: "School holiday theatre",
+        contentType: "event",
+        categories: ["school-holidays"],
+        tags: ["days-out"],
+        status: "published"
+      })
+    ]), defaultPublicTerritorySlug, fixtureIds.audienceContacts.parentOne);
+
+    expect(recommendations?.personalised).toBe(true);
+    expect(recommendations?.recommendations[0]?.reasons.join(" ")).toContain("Matches");
   });
 });
 

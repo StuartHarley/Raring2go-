@@ -169,6 +169,17 @@ export type PublicParentHub = {
   emptyState?: string;
 };
 
+export type PublicRecommendation = PublicContentCard & {
+  reasons: string[];
+};
+
+export type PublicRecommendations = {
+  territory: PublicTerritory;
+  personalised: boolean;
+  recommendations: PublicRecommendation[];
+  emptyState?: string;
+};
+
 export const publicHomepageTemplate: PublicHomepage["template"] = {
   key: "r2go-territory-homepage",
   version: 1,
@@ -539,6 +550,55 @@ export async function getPublicParentHub(
   };
 }
 
+export async function getPublicRecommendations(
+  db: PublicDb,
+  slug: string,
+  contactId?: string | null
+): Promise<PublicRecommendations | undefined> {
+  const territory = territoryFromSlug(slug);
+  if (!territory) {
+    return undefined;
+  }
+
+  const [publishing, marketing] = await Promise.all([
+    loadPublishingData(db),
+    contactId ? loadMarketingData(db) : Promise.resolve(undefined)
+  ]);
+  const profile = contactId
+    ? marketing?.preferenceProfiles.find((candidate) => candidate.contactId === contactId && !candidate.deletedAt)
+    : undefined;
+  const preferenceTerms = new Set([
+    ...(profile?.interests ?? []),
+    ...(profile?.eventCategories ?? []),
+    ...(profile?.offerPreferences ?? []),
+    ...(profile?.competitionPreferences ?? [])
+  ].map((value) => value.toLowerCase()));
+  const items = publishing.contentItems
+    .filter((item) => !item.deletedAt)
+    .filter((item) => item.status === "approved" || item.status === "published")
+    .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
+    .map((item) => {
+      const card = contentCard(item, territory);
+      return {
+        ...card,
+        reasons: recommendationReasons(card, preferenceTerms, territory)
+      };
+    })
+    .filter((item) => item.reasons.length > 0 || !profile)
+    .sort((left, right) => right.reasons.length - left.reasons.length)
+    .slice(0, 8);
+
+  return {
+    territory,
+    personalised: Boolean(profile?.personalisationEnabled),
+    recommendations: items.map((item) => ({
+      ...item,
+      reasons: item.reasons.length > 0 ? item.reasons : ["Popular local Raring2go content"]
+    })),
+    emptyState: items.length === 0 ? "Recommendations will appear here when public local content matches your preferences." : undefined
+  };
+}
+
 function slot(
   kind: PublicHomepageSlot["kind"],
   heading: string,
@@ -628,6 +688,21 @@ function commercialHeading(kind: PublicCommercialKind) {
   if (kind === "offers") return "Offers families will love";
   if (kind === "competitions") return "Competitions";
   return "Local family-friendly businesses";
+}
+
+function recommendationReasons(card: PublicContentCard, preferenceTerms: Set<string>, territory: PublicTerritory) {
+  const reasons: string[] = [];
+  const matches = [...card.categories, ...card.tags].filter((value) => preferenceTerms.has(value.toLowerCase()));
+  if (matches.length > 0) {
+    reasons.push(`Matches ${matches.slice(0, 2).join(", ")}`);
+  }
+  if (card.source === "local") {
+    reasons.push(`Local to ${territory.name}`);
+  }
+  if (card.type === "event") {
+    reasons.push("Upcoming family event");
+  }
+  return reasons;
 }
 
 export const defaultPublicTerritorySlug = territorySlug(

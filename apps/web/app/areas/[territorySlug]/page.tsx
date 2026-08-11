@@ -36,6 +36,7 @@ export default async function TerritoryHomepage({ params }: PageProps) {
           <Link href={areaRoute(homepage.territory.slug, "offers")}>Offers</Link>
           <Link href={areaRoute(homepage.territory.slug, "competitions")}>Competitions</Link>
           <Link href={areaRoute(homepage.territory.slug, "businesses")}>Businesses</Link>
+          <Link href={areaRoute(homepage.territory.slug, "for-you")}>For You</Link>
           <Link href={areaRoute(homepage.territory.slug, "magazine")}>Magazine</Link>
           <Link href={areaRoute(homepage.territory.slug, "saved")}>Saved</Link>
         </nav>
