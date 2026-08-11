@@ -12,6 +12,74 @@ Keep provider-specific code behind adapters. The product should be able to swap 
 
 Every webhook must authenticate the sender, deduplicate events and retain the provider event ID in the audit/job history.
 
+## UAT-001C Postmark Email Pilot
+
+The pilot email provider is Postmark behind the existing provider-neutral `EmailDeliveryProvider` boundary. Product code sends passwordless, transactional, journey and newsletter messages through `@raring2go/email`; it must not depend on Postmark-specific objects outside the adapter.
+
+### Postmark Requirements
+
+- A Postmark account and Server for Raring2go pilot traffic.
+- A verified sender signature or domain for `mail.raring2go.co.uk`.
+- A transactional message stream for passwordless sign-in, system and commercial messages.
+- A broadcast message stream for newsletters and parent marketing sends.
+- Bounce, spam complaint, delivery, open/click and unsubscribe webhooks directed to the application webhook route where enabled.
+
+### Cloudflare DNS For `mail.raring2go.co.uk`
+
+Configure the DNS records supplied by Postmark in Cloudflare for the sending domain. The exact values must come from Postmark, but the expected record families are:
+
+- SPF/return-path record for Postmark's bounce domain.
+- DKIM CNAME/TXT records for domain authentication.
+- DMARC record for reporting and policy alignment.
+- Optional custom tracking domain CNAME if click/open tracking is enabled for pilot.
+
+Do not alter the current `www.raring2go.co.uk` public site while configuring email DNS. Email should use `mail.raring2go.co.uk`.
+
+### Environment Variables
+
+Configure secrets through local `.env` or Vercel deployment secrets. Never commit real values.
+
+- `EMAIL_PROVIDER=postmark`
+- `EMAIL_FROM=no-reply@mail.raring2go.co.uk`
+- `POSTMARK_SERVER_TOKEN`
+- `POSTMARK_TRANSACTIONAL_STREAM=outbound`
+- `POSTMARK_BROADCAST_STREAM=broadcast`
+- `POSTMARK_API_BASE_URL=https://api.postmarkapp.com`
+- `POSTMARK_WEBHOOK_SECRET`
+
+The webhook URL is:
+
+- `https://app.raring2go.co.uk/api/integrations/email/webhook`
+
+Use the corresponding preview URL for preview verification. Webhook requests must include the configured secret through the supported application gateway/header path; unauthenticated webhook payloads fail closed.
+
+### Delivery And Suppression Behaviour
+
+Postmark adapter results expose only provider-neutral message IDs, accepted/rejected recipients and sanitized provider metadata. Server tokens, webhook secrets and raw credential payloads must never be persisted in audit events, React components, public DTOs or general domain records.
+
+Webhook events are mapped into provider-neutral delivery events:
+
+- Delivery -> `delivered`
+- Bounce -> `bounced`
+- SpamComplaint -> `complained`
+- SubscriptionChange/suppression -> `unsubscribed`
+- Open -> `opened`
+- Click -> `clicked`
+
+The marketing domain owns durable suppression effects for bounced, complained and unsubscribed recipients. Duplicate provider events must be idempotent.
+
+### Controlled Email Verification
+
+1. Configure Postmark Server, streams and `mail.raring2go.co.uk` sender/domain authentication.
+2. Add the environment variables in Vercel and local `.env`.
+3. Send one passwordless sign-in email and confirm delivery.
+4. Send one transactional/commercial test email and confirm it uses the transactional stream.
+5. Send one newsletter test email and confirm it uses the broadcast stream.
+6. Trigger or replay delivery, bounce and complaint webhooks and confirm dedupe/suppression handling.
+7. Temporarily remove or rotate the token in a controlled test and confirm failure is visible and secret-free.
+
+Live Postmark sending is not GREEN until real DNS, sender authentication and controlled sends have been verified.
+
 ## PIL-006 Meta Facebook Page Pilot
 
 The first live social pilot channel is a Facebook Page published through Meta Graph API. The product domain remains provider-neutral: Meta page IDs, access tokens, Graph payloads and webhook signatures belong only inside the social provider adapter or sanitized provider metadata.

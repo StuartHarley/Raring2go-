@@ -102,6 +102,14 @@ Real email HTTP transport:
 - Message: `EMAIL_PROVIDER=http requires EMAIL_HTTP_ENDPOINT.`
 - Status: expected safe failure.
 
+Postmark email transport:
+
+- Implementation: `EmailDeliveryProvider` adapter added for Postmark transactional and broadcast streams.
+- Automated tests: pending current UAT-001C quality gate.
+- Configuration still required: Postmark Server, sending domain authentication for `mail.raring2go.co.uk`, Vercel/local secrets and webhook secret.
+- Live verification still required: passwordless send, transactional send, newsletter send, bounce/complaint webhook and suppression proof.
+- Status: AMBER until real Postmark DNS and controlled sends are verified.
+
 Signed URL storage:
 
 - Probe: `STORAGE_PROVIDER=signed-url` with no storage base URL/signing secret.

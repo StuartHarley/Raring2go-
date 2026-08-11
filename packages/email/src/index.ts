@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 export type EmailRecipient = {
   email: string;
   name?: string | null;
@@ -237,6 +239,111 @@ export function createHttpEmailProvider(input: {
   } satisfies EmailDeliveryProvider;
 }
 
+export function createPostmarkEmailProvider(input: {
+  serverToken: string;
+  transactionalMessageStream?: string;
+  broadcastMessageStream?: string;
+  endpoint?: string;
+  fetch?: typeof fetch;
+}) {
+  if (!input.serverToken) {
+    throw new Error("Postmark email provider requires a server token.");
+  }
+
+  const endpoint = (input.endpoint ?? "https://api.postmarkapp.com").replace(/\/$/, "");
+
+  return {
+    providerKey: "postmark",
+    async send(message) {
+      validateEmailMessage(message);
+      const recipients = message.to.map((recipient) => normalizeEmailAddress(recipient.email));
+      const fetcher = input.fetch ?? fetch;
+
+      try {
+        const response = await fetcher(`${endpoint}/email`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-postmark-server-token": input.serverToken
+          },
+          body: JSON.stringify({
+            From: formatRecipient(message.from),
+            To: recipients.join(","),
+            ...(message.replyTo ? { ReplyTo: formatRecipient(message.replyTo) } : {}),
+            Subject: message.subject,
+            TextBody: message.text,
+            ...(message.html ? { HtmlBody: message.html } : {}),
+            MessageStream: message.purpose === "newsletter"
+              ? input.broadcastMessageStream ?? "broadcast"
+              : input.transactionalMessageStream ?? "outbound",
+            Metadata: stringifyMetadata({
+              ...message.metadata,
+              purpose: message.purpose,
+              idempotencyKey: message.idempotencyKey
+            })
+          })
+        });
+
+        const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+
+        if (!response.ok) {
+          return {
+            providerKey: "postmark",
+            providerMessageId: `postmark_failed_${message.idempotencyKey}`,
+            accepted: [],
+            rejected: recipients,
+            status: "failed",
+            raw: sanitizeProviderPayload({
+              status: response.status,
+              errorCode: payload.ErrorCode,
+              message: payload.Message
+            })
+          } satisfies EmailDeliveryResult;
+        }
+
+        return {
+          providerKey: "postmark",
+          providerMessageId: String(payload.MessageID ?? `postmark_${message.idempotencyKey}`),
+          accepted: recipients,
+          rejected: [],
+          status: "queued",
+          raw: sanitizeProviderPayload({
+            submittedAt: payload.SubmittedAt,
+            message: payload.Message
+          })
+        } satisfies EmailDeliveryResult;
+      } catch (error) {
+        return {
+          providerKey: "postmark",
+          providerMessageId: `postmark_failed_${message.idempotencyKey}`,
+          accepted: [],
+          rejected: recipients,
+          status: "failed",
+          raw: {
+            reason: "provider_outage",
+            message: error instanceof Error ? error.message : "Unknown provider error"
+          }
+        };
+      }
+    },
+    async verifyWebhook({ headers, body, secret }) {
+      if (secret) {
+        const supplied = headerValue(headers.authorization)?.replace(/^Bearer\s+/i, "") ??
+          headerValue(headers["x-postmark-webhook-secret"]);
+
+        if (!supplied || supplied !== secret) {
+          throw new Error("Postmark webhook secret is invalid.");
+        }
+      }
+
+      const payload = JSON.parse(body) as PostmarkWebhookPayload | PostmarkWebhookPayload[];
+      const events = Array.isArray(payload) ? payload : [payload];
+
+      return events.map((event) => mapPostmarkWebhookEvent(event));
+    }
+  } satisfies EmailDeliveryProvider;
+}
+
 export function createEmailProviderFromEnv(
   source: NodeJS.ProcessEnv = process.env
 ) {
@@ -271,6 +378,19 @@ export function createEmailProviderFromEnv(
       endpoint: source.EMAIL_HTTP_ENDPOINT,
       apiKey: source.EMAIL_HTTP_API_KEY,
       providerKey: source.EMAIL_HTTP_PROVIDER_KEY
+    });
+  }
+
+  if (provider === "postmark") {
+    if (!source.POSTMARK_SERVER_TOKEN) {
+      throw new Error("EMAIL_PROVIDER=postmark requires POSTMARK_SERVER_TOKEN.");
+    }
+
+    return createPostmarkEmailProvider({
+      serverToken: source.POSTMARK_SERVER_TOKEN,
+      transactionalMessageStream: source.POSTMARK_TRANSACTIONAL_STREAM,
+      broadcastMessageStream: source.POSTMARK_BROADCAST_STREAM,
+      endpoint: source.POSTMARK_API_BASE_URL
     });
   }
 
@@ -338,6 +458,95 @@ function escapeHtml(value: string) {
     .replaceAll('"', "&quot;");
 }
 
+type PostmarkWebhookPayload = {
+  RecordType?: string;
+  MessageID?: string;
+  ID?: string | number;
+  Email?: string;
+  ReceivedAt?: string;
+  DeliveredAt?: string;
+  Metadata?: Record<string, unknown>;
+  Details?: string;
+  Description?: string;
+  Type?: string;
+  SuppressSending?: boolean;
+};
+
+function mapPostmarkWebhookEvent(event: PostmarkWebhookPayload): EmailDeliveryEvent {
+  const providerMessageId = event.MessageID;
+
+  if (!providerMessageId) {
+    throw new Error("Postmark webhook event is missing MessageID.");
+  }
+
+  const eventType = postmarkEventType(event);
+  const occurredAt = event.ReceivedAt ?? event.DeliveredAt ?? new Date().toISOString();
+  const eventId = String(event.ID ?? `${providerMessageId}:${event.RecordType ?? eventType}:${occurredAt}`);
+
+  return {
+    providerKey: "postmark",
+    providerMessageId,
+    eventId,
+    eventType,
+    occurredAt: new Date(occurredAt),
+    recipientEmail: event.Email ? normalizeEmailAddress(event.Email) : null,
+    metadata: sanitizeProviderPayload({
+      recordType: event.RecordType,
+      type: event.Type,
+      details: event.Details,
+      description: event.Description,
+      metadata: event.Metadata
+    })
+  };
+}
+
+function postmarkEventType(event: PostmarkWebhookPayload): EmailDeliveryEvent["eventType"] {
+  if (event.RecordType === "Delivery") {
+    return "delivered";
+  }
+
+  if (event.RecordType === "Open") {
+    return "opened";
+  }
+
+  if (event.RecordType === "Click") {
+    return "clicked";
+  }
+
+  if (event.RecordType === "SpamComplaint") {
+    return "complained";
+  }
+
+  if (event.RecordType === "SubscriptionChange" || event.SuppressSending) {
+    return "unsubscribed";
+  }
+
+  if (event.RecordType === "Bounce") {
+    return "bounced";
+  }
+
+  return "failed";
+}
+
+function formatRecipient(recipient: EmailRecipient) {
+  const email = normalizeEmailAddress(recipient.email);
+  return recipient.name ? `${recipient.name} <${email}>` : email;
+}
+
+function stringifyMetadata(metadata: EmailMessage["metadata"]) {
+  return Object.fromEntries(
+    Object.entries(metadata ?? {}).map(([key, value]) => [key, value == null ? "" : String(value)])
+  );
+}
+
+function sanitizeProviderPayload(payload: Record<string, unknown>) {
+  const blocked = /(token|secret|password|authorization|api[_-]?key|server[_-]?token)/i;
+
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key, value]) => !blocked.test(key) && value !== undefined)
+  );
+}
+
 export function createEmailDeliveryEventDedupe() {
   const seen = new Set<string>();
 
@@ -379,4 +588,3 @@ function verifyHmacSignature(body: string, secret: string, signature?: string) {
     throw new Error("Email webhook signature is invalid.");
   }
 }
-import { createHmac, timingSafeEqual } from "node:crypto";
