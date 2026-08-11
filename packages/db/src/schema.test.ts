@@ -12,6 +12,11 @@ import {
   audienceSegments,
   audienceSuppressions,
   audienceTerritorySubscriptions,
+  emailCampaignVersions,
+  emailCampaigns,
+  emailDeliveryRecords,
+  emailRecipientSnapshots,
+  emailTemplates,
   advertiserActivityEvents,
   advertiserContacts,
   advertiserDomainEvents,
@@ -228,6 +233,18 @@ describe("foundation schema", () => {
     expect(audienceSuppressions.active.name).toBe("active");
     expect(audienceSegments.segmentType.name).toBe("segment_type");
     expect((audienceContacts as unknown as Record<string, unknown>).mailchimpId).toBeUndefined();
+  });
+
+  it("models native email campaigns with provider-neutral delivery records", () => {
+    expect(emailTemplates.requiredBlocks.name).toBe("required_blocks");
+    expect(emailCampaigns.segmentId.name).toBe("segment_id");
+    expect(emailCampaigns.status.name).toBe("status");
+    expect(emailCampaignVersions.contentSnapshot.name).toBe("content_snapshot");
+    expect(emailRecipientSnapshots.recipients.name).toBe("recipients");
+    expect(emailRecipientSnapshots.idempotencyKey.name).toBe("idempotency_key");
+    expect(emailDeliveryRecords.providerKey.name).toBe("provider_key");
+    expect(emailDeliveryRecords.providerMessageId.name).toBe("provider_message_id");
+    expect((emailCampaigns as unknown as Record<string, unknown>).mailchimpCampaignId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

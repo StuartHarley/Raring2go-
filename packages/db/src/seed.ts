@@ -17,6 +17,7 @@ import {
   commercialProducts,
   commercialProposalItems,
   commercialProposals,
+  emailTemplates,
   agreementTemplates,
   agreementVersions,
   authInvitations,
@@ -301,7 +302,13 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.consentManage,
         fixtureIds.permissions.segmentView,
         fixtureIds.permissions.segmentManage,
-        fixtureIds.permissions.audienceImportManage
+        fixtureIds.permissions.audienceImportManage,
+        fixtureIds.permissions.emailView,
+        fixtureIds.permissions.emailCreate,
+        fixtureIds.permissions.emailApprove,
+        fixtureIds.permissions.emailSchedule,
+        fixtureIds.permissions.emailSend,
+        fixtureIds.permissions.emailRecordDelivery
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -476,7 +483,13 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.consentManage,
         fixtureIds.permissions.segmentView,
         fixtureIds.permissions.segmentManage,
-        fixtureIds.permissions.audienceImportManage
+        fixtureIds.permissions.audienceImportManage,
+        fixtureIds.permissions.emailView,
+        fixtureIds.permissions.emailCreate,
+        fixtureIds.permissions.emailApprove,
+        fixtureIds.permissions.emailSchedule,
+        fixtureIds.permissions.emailSend,
+        fixtureIds.permissions.emailRecordDelivery
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,
@@ -891,6 +904,26 @@ export async function seedDatabase(databaseUrl?: string) {
         segmentType: sql`excluded.segment_type`,
         definition: sql`excluded.definition`,
         status: sql`excluded.status`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(emailTemplates).values(foundationSeed.emailTemplates.map((template) => ({
+      ...template,
+      blocks: [...template.blocks],
+      requiredBlocks: [...template.requiredBlocks],
+      metadata: { ...template.metadata }
+    }))).onConflictDoUpdate({
+      target: emailTemplates.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        templateType: sql`excluded.template_type`,
+        status: sql`excluded.status`,
+        blocks: sql`excluded.blocks`,
+        requiredBlocks: sql`excluded.required_blocks`,
+        metadata: sql`excluded.metadata`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

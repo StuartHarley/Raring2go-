@@ -101,7 +101,13 @@ describe("foundation fixtures", () => {
       "marketing.consent",
       "marketing.segment",
       "marketing.segment",
-      "marketing.import"
+      "marketing.import",
+      "marketing.email",
+      "marketing.email",
+      "marketing.email",
+      "marketing.email",
+      "marketing.email",
+      "marketing.email"
     ]);
   });
 
@@ -281,6 +287,9 @@ describe("foundation fixtures", () => {
     );
     expect(foundationSeed.audienceConsentEvents).toHaveLength(1);
     expect(foundationSeed.audienceSuppressions).toEqual([]);
+    expect(foundationSeed.emailTemplates[0]?.requiredBlocks).toContain("unsubscribe");
+    expect(foundationSeed.emailCampaigns).toEqual([]);
+    expect(foundationSeed.emailDeliveryRecords).toEqual([]);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

@@ -4,7 +4,13 @@ export const marketingCapabilities = {
   consentManage: { module: "marketing.consent", action: "manage" },
   segmentView: { module: "marketing.segment", action: "view" },
   segmentManage: { module: "marketing.segment", action: "manage" },
-  importManage: { module: "marketing.import", action: "manage" }
+  importManage: { module: "marketing.import", action: "manage" },
+  emailView: { module: "marketing.email", action: "view" },
+  emailCreate: { module: "marketing.email", action: "create" },
+  emailApprove: { module: "marketing.email", action: "approve" },
+  emailSchedule: { module: "marketing.email", action: "schedule" },
+  emailSend: { module: "marketing.email", action: "send" },
+  emailRecordDelivery: { module: "marketing.email", action: "record_delivery" }
 } as const;
 
 export type MarketingCapability = keyof typeof marketingCapabilities;

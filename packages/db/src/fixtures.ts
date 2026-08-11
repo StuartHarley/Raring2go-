@@ -108,7 +108,13 @@ export const fixtureIds = {
     consentManage: "00000000-0000-4000-8000-000000000488",
     segmentView: "00000000-0000-4000-8000-000000000489",
     segmentManage: "00000000-0000-4000-8000-000000000490",
-    audienceImportManage: "00000000-0000-4000-8000-000000000491"
+    audienceImportManage: "00000000-0000-4000-8000-000000000491",
+    emailView: "00000000-0000-4000-8000-000000000492",
+    emailCreate: "00000000-0000-4000-8000-000000000493",
+    emailApprove: "00000000-0000-4000-8000-000000000494",
+    emailSchedule: "00000000-0000-4000-8000-000000000495",
+    emailSend: "00000000-0000-4000-8000-000000000496",
+    emailRecordDelivery: "00000000-0000-4000-8000-000000000497"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -180,6 +186,9 @@ export const fixtureIds = {
   },
   audienceSegments: {
     suttonNewsletter: "00000000-0000-4000-8000-000000000745"
+  },
+  emailTemplates: {
+    standardNewsletter: "00000000-0000-4000-8000-000000000746"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -868,6 +877,42 @@ export const foundationSeed = {
       module: "marketing.import",
       action: "manage",
       description: "Import and deduplicate native audience contacts."
+    },
+    {
+      id: fixtureIds.permissions.emailView,
+      module: "marketing.email",
+      action: "view",
+      description: "View native email campaigns and newsletters."
+    },
+    {
+      id: fixtureIds.permissions.emailCreate,
+      module: "marketing.email",
+      action: "create",
+      description: "Create native email campaigns, templates and campaign versions."
+    },
+    {
+      id: fixtureIds.permissions.emailApprove,
+      module: "marketing.email",
+      action: "approve",
+      description: "Approve native email campaign versions."
+    },
+    {
+      id: fixtureIds.permissions.emailSchedule,
+      module: "marketing.email",
+      action: "schedule",
+      description: "Create recipient snapshots and schedule native email campaigns."
+    },
+    {
+      id: fixtureIds.permissions.emailSend,
+      module: "marketing.email",
+      action: "send",
+      description: "Mark native email campaigns as sent through provider-neutral transport."
+    },
+    {
+      id: fixtureIds.permissions.emailRecordDelivery,
+      module: "marketing.email",
+      action: "record_delivery",
+      description: "Record provider-neutral email delivery events idempotently."
     }
   ],
   advertisers: [
@@ -1229,6 +1274,22 @@ export const foundationSeed = {
   audienceSegmentMembers: [],
   audienceImports: [],
   audienceActivityEvents: [],
+  emailTemplates: [
+    {
+      id: fixtureIds.emailTemplates.standardNewsletter,
+      key: "standard-newsletter",
+      name: "Standard Raring2go newsletter",
+      templateType: "newsletter",
+      status: "approved",
+      blocks: [{ key: "header", locked: true }, { key: "content" }, { key: "footer", locked: true }],
+      requiredBlocks: ["header", "footer", "unsubscribe"],
+      metadata: { source: "seed" }
+    }
+  ],
+  emailCampaigns: [],
+  emailCampaignVersions: [],
+  emailRecipientSnapshots: [],
+  emailDeliveryRecords: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

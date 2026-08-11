@@ -167,3 +167,124 @@ export const audienceActivityEvents = pgTable(
     index("audience_activity_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const emailTemplates = pgTable(
+  "email_templates",
+  {
+    id,
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    templateType: text("template_type").notNull().default("newsletter"),
+    status: text("status").notNull().default("draft"),
+    blocks: jsonb("blocks").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    requiredBlocks: jsonb("required_blocks").$type<string[]>().notNull().default([]),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("email_templates_key_uidx").on(table.key),
+    index("email_templates_status_idx").on(table.status),
+    index("email_templates_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const emailCampaigns = pgTable(
+  "email_campaigns",
+  {
+    id,
+    territoryId: uuid("territory_id").references(() => territories.id),
+    templateId: uuid("template_id").references(() => emailTemplates.id),
+    segmentId: uuid("segment_id").references(() => audienceSegments.id),
+    campaignType: text("campaign_type").notNull().default("newsletter"),
+    status: text("status").notNull().default("draft"),
+    title: text("title").notNull(),
+    subject: text("subject").notNull(),
+    preheader: text("preheader"),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("email_campaigns_territory_id_idx").on(table.territoryId),
+    index("email_campaigns_segment_id_idx").on(table.segmentId),
+    index("email_campaigns_status_idx").on(table.status),
+    index("email_campaigns_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const emailCampaignVersions = pgTable(
+  "email_campaign_versions",
+  {
+    id,
+    campaignId: uuid("campaign_id").notNull().references(() => emailCampaigns.id),
+    versionNumber: integer("version_number").notNull(),
+    status: text("status").notNull().default("draft"),
+    subject: text("subject").notNull(),
+    preheader: text("preheader"),
+    contentSnapshot: jsonb("content_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("email_campaign_versions_campaign_version_uidx").on(table.campaignId, table.versionNumber),
+    index("email_campaign_versions_campaign_id_idx").on(table.campaignId),
+    index("email_campaign_versions_status_idx").on(table.status),
+    index("email_campaign_versions_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const emailRecipientSnapshots = pgTable(
+  "email_recipient_snapshots",
+  {
+    id,
+    campaignId: uuid("campaign_id").notNull().references(() => emailCampaigns.id),
+    campaignVersionId: uuid("campaign_version_id").notNull().references(() => emailCampaignVersions.id),
+    segmentId: uuid("segment_id").references(() => audienceSegments.id),
+    status: text("status").notNull().default("created"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    excludedCount: integer("excluded_count").notNull().default(0),
+    recipients: jsonb("recipients").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    exclusions: jsonb("exclusions").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    idempotencyKey: text("idempotency_key").notNull(),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("email_recipient_snapshots_idempotency_uidx").on(table.idempotencyKey),
+    index("email_recipient_snapshots_campaign_id_idx").on(table.campaignId)
+  ]
+);
+
+export const emailDeliveryRecords = pgTable(
+  "email_delivery_records",
+  {
+    id,
+    campaignId: uuid("campaign_id").notNull().references(() => emailCampaigns.id),
+    campaignVersionId: uuid("campaign_version_id").notNull().references(() => emailCampaignVersions.id),
+    recipientSnapshotId: uuid("recipient_snapshot_id").references(() => emailRecipientSnapshots.id),
+    contactId: uuid("contact_id").references(() => audienceContacts.id),
+    emailNormalised: text("email_normalised").notNull(),
+    providerKey: text("provider_key"),
+    providerMessageId: text("provider_message_id"),
+    status: text("status").notNull().default("queued"),
+    eventType: text("event_type"),
+    eventAt: timestamp("event_at", { withTimezone: true }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("email_delivery_provider_message_uidx").on(table.providerKey, table.providerMessageId, table.eventType),
+    index("email_delivery_campaign_id_idx").on(table.campaignId),
+    index("email_delivery_contact_id_idx").on(table.contactId),
+    index("email_delivery_status_idx").on(table.status),
+    index("email_delivery_deleted_at_idx").on(table.deletedAt)
+  ]
+);

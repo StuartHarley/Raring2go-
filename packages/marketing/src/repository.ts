@@ -7,6 +7,11 @@ import {
   audienceSegments,
   audienceSuppressions,
   audienceTerritorySubscriptions,
+  emailCampaignVersions,
+  emailCampaigns,
+  emailDeliveryRecords,
+  emailRecipientSnapshots,
+  emailTemplates,
   territories
 } from "@raring2go/db";
 import type { MarketingData } from "./types";
@@ -27,6 +32,11 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     segmentMemberRows,
     importRows,
     activityRows,
+    templateRows,
+    campaignRows,
+    campaignVersionRows,
+    recipientSnapshotRows,
+    deliveryRows,
     territoryRows
   ] = await Promise.all([
     db.select().from(audienceContacts),
@@ -37,6 +47,11 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     db.select().from(audienceSegmentMembers),
     db.select().from(audienceImports),
     db.select().from(audienceActivityEvents),
+    db.select().from(emailTemplates),
+    db.select().from(emailCampaigns),
+    db.select().from(emailCampaignVersions),
+    db.select().from(emailRecipientSnapshots),
+    db.select().from(emailDeliveryRecords),
     db.select().from(territories)
   ]);
 
@@ -49,6 +64,11 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     segmentMembers: segmentMemberRows.map(dateRows(["addedAt"])) as MarketingData["segmentMembers"],
     imports: importRows as MarketingData["imports"],
     activityEvents: activityRows.map(dateRows(["occurredAt"])) as MarketingData["activityEvents"],
+    emailTemplates: templateRows as MarketingData["emailTemplates"],
+    emailCampaigns: campaignRows.map(dateRows(["scheduledAt", "approvedAt", "sentAt"])) as MarketingData["emailCampaigns"],
+    emailCampaignVersions: campaignVersionRows.map(dateRows(["approvedAt"])) as MarketingData["emailCampaignVersions"],
+    emailRecipientSnapshots: recipientSnapshotRows.map(dateRows(["generatedAt"])) as MarketingData["emailRecipientSnapshots"],
+    emailDeliveryRecords: deliveryRows.map(dateRows(["eventAt"])) as MarketingData["emailDeliveryRecords"],
     territories: territoryRows as MarketingData["territories"]
   };
 }

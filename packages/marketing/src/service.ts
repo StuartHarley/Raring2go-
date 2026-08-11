@@ -9,6 +9,12 @@ import type {
   AudienceSegment,
   AudienceSuppression,
   AudienceTerritorySubscription,
+  EmailCampaign,
+  EmailCampaignVersion,
+  EmailCampaignOverview,
+  EmailDeliveryRecord,
+  EmailRecipientSnapshot,
+  EmailTemplate,
   MarketingActorContext,
   MarketingData
 } from "./types";
@@ -49,6 +55,38 @@ export function listAudienceContacts(
       subscribed: contacts.filter((view) => view.subscriptions.some((subscription) => subscription.status === "subscribed")).length,
       suppressed: contacts.filter((view) => view.suppressions.some((suppression) => suppression.active)).length,
       territories: new Set(contacts.flatMap((view) => view.subscriptions.map((subscription) => subscription.territoryId))).size
+    }
+  };
+}
+
+export function listEmailCampaigns(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData
+): EmailCampaignOverview {
+  requireMarketingPermission(context, permissions, "emailView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  const campaigns = data.emailCampaigns
+    .filter((campaign) => !campaign.deletedAt)
+    .filter((campaign) => visibleTerritoryIds == null || !campaign.territoryId || visibleTerritoryIds.has(campaign.territoryId))
+    .map((campaign) => ({
+      campaign,
+      latestVersion: data.emailCampaignVersions
+        .filter((version) => version.campaignId === campaign.id && !version.deletedAt)
+        .sort((left, right) => right.versionNumber - left.versionNumber)[0],
+      latestSnapshot: data.emailRecipientSnapshots
+        .filter((snapshot) => snapshot.campaignId === campaign.id)
+        .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0],
+      deliveryCount: data.emailDeliveryRecords.filter((delivery) => delivery.campaignId === campaign.id && !delivery.deletedAt).length
+    }));
+
+  return {
+    campaigns,
+    totals: {
+      campaigns: campaigns.length,
+      draft: campaigns.filter((view) => view.campaign.status === "draft").length,
+      scheduled: campaigns.filter((view) => view.campaign.status === "scheduled").length,
+      sent: campaigns.filter((view) => view.campaign.status === "sent").length
     }
   };
 }
@@ -171,6 +209,211 @@ export function previewSegment(
   return audience.filter((view) => contactMatchesSegment(view, segment, visibleTerritoryIds));
 }
 
+export async function createEmailTemplate(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  template: EmailTemplate
+) {
+  requireMarketingPermission(context, permissions, "emailCreate");
+  data.emailTemplates.push(template);
+  await audit.record(marketingAuditEvent(context, auditActions.marketingEmailTemplateCreate, "email_template", template.id, {
+    key: template.key,
+    templateType: template.templateType
+  }, null));
+  return template;
+}
+
+export async function createEmailCampaign(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  campaign: EmailCampaign,
+  version: EmailCampaignVersion
+) {
+  requireMarketingPermission(context, permissions, "emailCreate");
+  if (campaign.territoryId) {
+    ensureContextCanAccessTerritory(context, campaign.territoryId);
+  }
+  if (campaign.templateId && !data.emailTemplates.some((template) => template.id === campaign.templateId && !template.deletedAt)) {
+    throw new Error("Email template was not found.");
+  }
+  if (version.campaignId !== campaign.id || version.versionNumber !== 1) {
+    throw new Error("Initial campaign version must belong to the campaign and start at version 1.");
+  }
+  data.emailCampaigns.push(campaign);
+  data.emailCampaignVersions.push(version);
+  await audit.record(marketingAuditEvent(context, auditActions.marketingEmailCampaignCreate, "email_campaign", campaign.id, {
+    campaignType: campaign.campaignType,
+    territoryId: campaign.territoryId ?? null
+  }, campaign.territoryId));
+  return campaign;
+}
+
+export async function approveEmailCampaignVersion(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  campaignId: string,
+  versionId: string,
+  approvedAt: string
+) {
+  requireMarketingPermission(context, permissions, "emailApprove");
+  const campaign = requireCampaign(data, campaignId);
+  if (campaign.territoryId) {
+    ensureContextCanAccessTerritory(context, campaign.territoryId);
+  }
+  const version = requireCampaignVersion(data, versionId);
+  if (version.campaignId !== campaign.id) {
+    throw new Error("Campaign version does not belong to campaign.");
+  }
+  version.status = "approved";
+  version.approvedByUserId = context.userId;
+  version.approvedAt = approvedAt;
+  campaign.status = "approved";
+  campaign.approvedAt = approvedAt;
+  await audit.record(marketingAuditEvent(context, auditActions.marketingEmailCampaignApprove, "email_campaign", campaign.id, {
+    versionId
+  }, campaign.territoryId));
+  return version;
+}
+
+export async function createRecipientSnapshot(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  snapshot: Omit<EmailRecipientSnapshot, "recipientCount" | "excludedCount" | "recipients" | "exclusions">
+) {
+  requireMarketingPermission(context, permissions, "emailSchedule");
+  const existing = data.emailRecipientSnapshots.find((candidate) => candidate.idempotencyKey === snapshot.idempotencyKey);
+  if (existing) {
+    return existing;
+  }
+  const campaign = requireCampaign(data, snapshot.campaignId);
+  if (campaign.territoryId) {
+    ensureContextCanAccessTerritory(context, campaign.territoryId);
+  }
+  const version = requireCampaignVersion(data, snapshot.campaignVersionId);
+  if (version.status !== "approved") {
+    throw new Error("Only approved campaign versions can create recipient snapshots.");
+  }
+  const segmentId = snapshot.segmentId ?? campaign.segmentId;
+  if (!segmentId) {
+    throw new Error("Campaign requires an audience segment before scheduling.");
+  }
+  const segmentContacts = previewSegment(context, permissions, data, segmentId);
+  const recipients = segmentContacts.map((view) => ({
+    contactId: view.contact.id,
+    emailNormalised: view.contact.emailNormalised,
+    territoryIds: view.subscriptions.map((subscription) => subscription.territoryId)
+  }));
+  const allContactIds = new Set(data.contacts.map((contact) => contact.id));
+  const recipientIds = new Set(recipients.map((recipient) => recipient.contactId));
+  const exclusions = [...allContactIds]
+    .filter((contactId) => !recipientIds.has(contactId))
+    .map((contactId) => ({ contactId, reason: "not_eligible_or_suppressed" }));
+  const created: EmailRecipientSnapshot = {
+    ...snapshot,
+    segmentId,
+    recipientCount: recipients.length,
+    excludedCount: exclusions.length,
+    recipients,
+    exclusions
+  };
+  data.emailRecipientSnapshots.push(created);
+  await audit.record(marketingAuditEvent(context, auditActions.marketingEmailRecipientSnapshotCreate, "email_recipient_snapshot", created.id, {
+    campaignId: campaign.id,
+    recipientCount: created.recipientCount,
+    excludedCount: created.excludedCount
+  }, campaign.territoryId));
+  return created;
+}
+
+export async function scheduleEmailCampaign(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  campaignId: string,
+  scheduledAt: string
+) {
+  requireMarketingPermission(context, permissions, "emailSchedule");
+  const campaign = requireCampaign(data, campaignId);
+  if (campaign.status !== "approved") {
+    throw new Error("Only approved email campaigns can be scheduled.");
+  }
+  campaign.status = "scheduled";
+  campaign.scheduledAt = scheduledAt;
+  await audit.record(marketingAuditEvent(context, auditActions.marketingEmailCampaignSchedule, "email_campaign", campaign.id, {
+    scheduledAt
+  }, campaign.territoryId));
+  return campaign;
+}
+
+export async function markEmailCampaignSent(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  campaignId: string,
+  sentAt: string
+) {
+  requireMarketingPermission(context, permissions, "emailSend");
+  const campaign = requireCampaign(data, campaignId);
+  if (campaign.status !== "scheduled" && campaign.status !== "sending") {
+    throw new Error("Only scheduled or sending campaigns can be marked sent.");
+  }
+  campaign.status = "sent";
+  campaign.sentAt = sentAt;
+  await audit.record(marketingAuditEvent(context, auditActions.marketingEmailCampaignSend, "email_campaign", campaign.id, {
+    sentAt
+  }, campaign.territoryId));
+  return campaign;
+}
+
+export async function recordEmailDeliveryEvent(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  delivery: EmailDeliveryRecord
+) {
+  requireMarketingPermission(context, permissions, "emailRecordDelivery");
+  const existing = data.emailDeliveryRecords.find((candidate) =>
+    candidate.providerKey === delivery.providerKey &&
+    candidate.providerMessageId === delivery.providerMessageId &&
+    candidate.eventType === delivery.eventType
+  );
+  if (existing) {
+    return existing;
+  }
+  data.emailDeliveryRecords.push(delivery);
+  if (delivery.eventType === "unsubscribe" && delivery.contactId) {
+    const contact = requireContact(data, delivery.contactId);
+    data.suppressions.push({
+      id: `${delivery.id}_suppression`,
+      contactId: contact.id,
+      emailNormalised: contact.emailNormalised,
+      territoryId: null,
+      reason: "provider_unsubscribe",
+      source: delivery.providerKey ?? "provider",
+      active: true,
+      suppressedAt: delivery.eventAt ?? new Date().toISOString(),
+      metadata: { deliveryId: delivery.id }
+    });
+    contact.emailStatus = "suppressed";
+  }
+  await audit.record(marketingAuditEvent(context, auditActions.marketingEmailDeliveryRecord, "email_delivery_record", delivery.id, {
+    eventType: delivery.eventType ?? delivery.status,
+    providerKey: delivery.providerKey ?? null
+  }, null));
+  return delivery;
+}
+
 function contactMatchesSegment(
   view: AudienceContactView,
   segment: AudienceSegment,
@@ -253,6 +496,22 @@ function requireSegment(data: MarketingData, segmentId: string) {
   return segment;
 }
 
+function requireCampaign(data: MarketingData, campaignId: string) {
+  const campaign = data.emailCampaigns.find((candidate) => candidate.id === campaignId && !candidate.deletedAt);
+  if (!campaign) {
+    throw new Error("Email campaign was not found.");
+  }
+  return campaign;
+}
+
+function requireCampaignVersion(data: MarketingData, versionId: string) {
+  const version = data.emailCampaignVersions.find((candidate) => candidate.id === versionId && !candidate.deletedAt);
+  if (!version) {
+    throw new Error("Email campaign version was not found.");
+  }
+  return version;
+}
+
 function auditEvent(
   context: MarketingActorContext,
   action: string,
@@ -265,6 +524,25 @@ function auditEvent(
     actorUserId: context.userId,
     entityType: "audience_contact",
     entityId: contact.id,
+    organisationId: context.organisationId,
+    territoryId: territoryId ?? context.territoryId,
+    payload
+  };
+}
+
+function marketingAuditEvent(
+  context: MarketingActorContext,
+  action: string,
+  entityType: string,
+  entityId: string,
+  payload: Record<string, unknown>,
+  territoryId?: string | null
+) {
+  return {
+    action,
+    actorUserId: context.userId,
+    entityType,
+    entityId,
     organisationId: context.organisationId,
     territoryId: territoryId ?? context.territoryId,
     payload

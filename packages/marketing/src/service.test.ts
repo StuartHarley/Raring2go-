@@ -3,8 +3,13 @@ import type { PermissionData } from "@raring2go/permissions";
 import { describe, expect, it } from "vitest";
 import {
   listAudienceContacts,
+  approveEmailCampaignVersion,
+  createEmailCampaign,
+  createRecipientSnapshot,
   previewSegment,
   recordConsentEvent,
+  recordEmailDeliveryEvent,
+  scheduleEmailCampaign,
   subscribeContactToTerritory,
   suppressContact,
   upsertAudienceContact
@@ -31,11 +36,23 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "marketing.consent", "manage", "network"),
     grant(ids.roles.hq, "marketing.segment", "view", "network"),
     grant(ids.roles.hq, "marketing.segment", "manage", "network"),
+    grant(ids.roles.hq, "marketing.email", "view", "network"),
+    grant(ids.roles.hq, "marketing.email", "create", "network"),
+    grant(ids.roles.hq, "marketing.email", "approve", "network"),
+    grant(ids.roles.hq, "marketing.email", "schedule", "network"),
+    grant(ids.roles.hq, "marketing.email", "send", "network"),
+    grant(ids.roles.hq, "marketing.email", "record_delivery", "network"),
     grant(ids.roles.local, "marketing.audience", "view", "own_territory"),
     grant(ids.roles.local, "marketing.audience", "manage", "own_territory"),
     grant(ids.roles.local, "marketing.consent", "manage", "own_territory"),
     grant(ids.roles.local, "marketing.segment", "view", "own_territory"),
-    grant(ids.roles.local, "marketing.segment", "manage", "own_territory")
+    grant(ids.roles.local, "marketing.segment", "manage", "own_territory"),
+    grant(ids.roles.local, "marketing.email", "view", "own_territory"),
+    grant(ids.roles.local, "marketing.email", "create", "own_territory"),
+    grant(ids.roles.local, "marketing.email", "approve", "own_territory"),
+    grant(ids.roles.local, "marketing.email", "schedule", "own_territory"),
+    grant(ids.roles.local, "marketing.email", "send", "own_territory"),
+    grant(ids.roles.local, "marketing.email", "record_delivery", "own_territory")
   ],
   territories: [
     { id: ids.territories.own, franchiseOrganisationId: ids.organisations.franchise },
@@ -106,6 +123,81 @@ describe("marketing audience foundation", () => {
   it("fails closed for cross-territory audience changes", async () => {
     await expect(subscribeContactToTerritory(localContext(), permissions, audit(), seededData(), subscription("sub_cross", ids.contact, ids.territories.other))).rejects.toThrow("outside the active territory");
   });
+
+  it("creates native email campaigns, snapshots eligible recipients and records delivery idempotently", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "campaign_1",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Weekend ideas",
+      subject: "Weekend ideas",
+      preheader: "Things to do near you",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "campaign_version_1",
+      campaignId: "campaign_1",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Weekend ideas",
+      preheader: "Things to do near you",
+      contentSnapshot: { blocks: [{ type: "article" }] },
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder, data, "campaign_1", "campaign_version_1", "2026-08-11T10:00:00.000Z");
+    const snapshot = await createRecipientSnapshot(localContext(), permissions, recorder, data, {
+      id: "snapshot_1",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      segmentId: ids.segment,
+      status: "created",
+      generatedAt: "2026-08-11T10:05:00.000Z",
+      idempotencyKey: "snapshot:campaign_1:v1"
+    });
+    await scheduleEmailCampaign(localContext(), permissions, recorder, data, "campaign_1", "2026-08-12T09:00:00.000Z");
+    const delivery = await recordEmailDeliveryEvent(localContext(), permissions, recorder, data, {
+      id: "delivery_1",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      recipientSnapshotId: snapshot.id,
+      contactId: ids.contact,
+      emailNormalised: "parent@example.test",
+      providerKey: "test-provider",
+      providerMessageId: "message_1",
+      status: "delivered",
+      eventType: "delivered",
+      eventAt: "2026-08-12T09:01:00.000Z",
+      metadata: {}
+    });
+    const duplicate = await recordEmailDeliveryEvent(localContext(), permissions, recorder, data, {
+      ...delivery,
+      id: "delivery_duplicate"
+    });
+
+    expect(snapshot).toMatchObject({
+      recipientCount: 1,
+      excludedCount: 0
+    });
+    expect(duplicate.id).toBe("delivery_1");
+    expect(data.emailCampaigns[0]?.status).toBe("scheduled");
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.marketingEmailCampaignCreate,
+      auditActions.marketingEmailCampaignApprove,
+      auditActions.marketingEmailRecipientSnapshotCreate,
+      auditActions.marketingEmailCampaignSchedule,
+      auditActions.marketingEmailDeliveryRecord
+    ]);
+  });
 });
 
 function seededData(): MarketingData {
@@ -132,6 +224,16 @@ function seededData(): MarketingData {
     definition: { territoryId: ids.territories.own },
     status: "active"
   });
+  data.emailTemplates.push({
+    id: "template_1",
+    key: "standard-newsletter",
+    name: "Standard newsletter",
+    templateType: "newsletter",
+    status: "approved",
+    blocks: [],
+    requiredBlocks: ["unsubscribe"],
+    metadata: {}
+  });
   return data;
 }
 
@@ -145,6 +247,11 @@ function emptyData(): MarketingData {
     segmentMembers: [],
     imports: [],
     activityEvents: [],
+    emailTemplates: [],
+    emailCampaigns: [],
+    emailCampaignVersions: [],
+    emailRecipientSnapshots: [],
+    emailDeliveryRecords: [],
     territories: [
       { id: ids.territories.own, franchiseOrganisationId: ids.organisations.franchise, name: "Own" },
       { id: ids.territories.other, franchiseOrganisationId: "org_other", name: "Other" }

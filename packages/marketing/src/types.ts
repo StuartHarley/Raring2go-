@@ -112,6 +112,11 @@ export type MarketingData = {
   segmentMembers: AudienceSegmentMember[];
   imports: AudienceImport[];
   activityEvents: AudienceActivityEvent[];
+  emailTemplates: EmailTemplate[];
+  emailCampaigns: EmailCampaign[];
+  emailCampaignVersions: EmailCampaignVersion[];
+  emailRecipientSnapshots: EmailRecipientSnapshot[];
+  emailDeliveryRecords: EmailDeliveryRecord[];
   territories: MarketingTerritory[];
 };
 
@@ -130,5 +135,102 @@ export type AudienceOverview = {
     subscribed: number;
     suppressed: number;
     territories: number;
+  };
+};
+
+export type EmailTemplate = {
+  id: string;
+  key: string;
+  name: string;
+  templateType: string;
+  status: string;
+  blocks: Array<Record<string, unknown>>;
+  requiredBlocks: string[];
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type EmailCampaign = {
+  id: string;
+  territoryId?: string | null;
+  templateId?: string | null;
+  segmentId?: string | null;
+  campaignType: string;
+  status: "draft" | "approved" | "scheduled" | "sending" | "sent" | "cancelled" | (string & {});
+  title: string;
+  subject: string;
+  preheader?: string | null;
+  scheduledAt?: string | null;
+  approvedAt?: string | null;
+  sentAt?: string | null;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type EmailCampaignVersion = {
+  id: string;
+  campaignId: string;
+  versionNumber: number;
+  status: string;
+  subject: string;
+  preheader?: string | null;
+  contentSnapshot: Record<string, unknown>;
+  createdByUserId?: string | null;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type EmailRecipientSnapshot = {
+  id: string;
+  campaignId: string;
+  campaignVersionId: string;
+  segmentId?: string | null;
+  status: string;
+  generatedAt: string;
+  recipientCount: number;
+  excludedCount: number;
+  recipients: Array<Record<string, unknown>>;
+  exclusions: Array<Record<string, unknown>>;
+  idempotencyKey: string;
+};
+
+export type EmailDeliveryRecord = {
+  id: string;
+  campaignId: string;
+  campaignVersionId: string;
+  recipientSnapshotId?: string | null;
+  contactId?: string | null;
+  emailNormalised: string;
+  providerKey?: string | null;
+  providerMessageId?: string | null;
+  status: string;
+  eventType?: string | null;
+  eventAt?: string | null;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type EmailDeliveryProvider = {
+  key: string;
+  send(input: {
+    campaign: EmailCampaign;
+    version: EmailCampaignVersion;
+    snapshot: EmailRecipientSnapshot;
+  }): Promise<{ providerBatchId?: string | null }>;
+};
+
+export type EmailCampaignOverview = {
+  campaigns: Array<{
+    campaign: EmailCampaign;
+    latestVersion?: EmailCampaignVersion;
+    latestSnapshot?: EmailRecipientSnapshot;
+    deliveryCount: number;
+  }>;
+  totals: {
+    campaigns: number;
+    draft: number;
+    scheduled: number;
+    sent: number;
   };
 };

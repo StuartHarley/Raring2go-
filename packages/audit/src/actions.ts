@@ -118,7 +118,14 @@ export const auditActions = {
   marketingAudienceContactUpdate: "marketing.audience.contact.update",
   marketingAudienceSubscribe: "marketing.audience.subscribe",
   marketingConsentRecord: "marketing.consent.record",
-  marketingAudienceSuppress: "marketing.audience.suppress"
+  marketingAudienceSuppress: "marketing.audience.suppress",
+  marketingEmailTemplateCreate: "marketing.email.template.create",
+  marketingEmailCampaignCreate: "marketing.email.campaign.create",
+  marketingEmailCampaignApprove: "marketing.email.campaign.approve",
+  marketingEmailCampaignSchedule: "marketing.email.campaign.schedule",
+  marketingEmailCampaignSend: "marketing.email.campaign.send",
+  marketingEmailRecipientSnapshotCreate: "marketing.email.recipient_snapshot.create",
+  marketingEmailDeliveryRecord: "marketing.email.delivery.record"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});
