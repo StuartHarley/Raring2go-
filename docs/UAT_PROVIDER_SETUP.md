@@ -64,7 +64,8 @@ Normal workflow:
 3. Run `pnpm uat:db:setup`.
 4. Run `pnpm uat:smoke`.
 5. Run `pnpm uat:storage` after R2 credentials are configured.
-6. Complete only the remaining live verification steps and record evidence.
+6. Run `pnpm uat:scan` after the Railway ClamAV scanner is configured.
+7. Complete only the remaining live verification steps and record evidence.
 
 ### `pnpm uat:check`
 
@@ -118,6 +119,21 @@ Verifies live Cloudflare R2 storage without adding product data:
 - deletes the temporary object afterwards.
 
 The command never prints R2 access keys, R2 secrets, signed upload URLs or signed download URLs. It does not call ClamAV and does not prove scanner readiness; scanner evidence remains separate under `SCAN-001` and `SCAN-002`.
+
+### `pnpm uat:scan`
+
+Verifies live Railway ClamAV scanning without adding product data:
+
+- refuses to run without `APP_ENV=preview` or `UAT_CONFIRMATION=RARING2GO_UAT`;
+- refuses obvious production/main database targets;
+- requires Cloudflare R2 and `SCANNER_PROVIDER=clamav-http` configuration;
+- uploads one harmless clean object and one UAT-only EICAR object under `uat/verification/scan/`;
+- scans both objects through the existing `clamav-http` `FileScannerProvider`;
+- expects `clean` for the harmless object and infected/rejected status for EICAR;
+- confirms the infected EICAR object cannot produce a signed download intent through the normal storage/scanning lifecycle;
+- deletes both temporary objects afterwards.
+
+The command never prints R2 credentials, scanner API keys, signed URLs or file bodies. It does not send anything to external/public malware-analysis services.
 
 ## 3. Environment Variable Matrix
 
@@ -355,10 +371,11 @@ Decision required:
 9. Run `pnpm uat:db:setup`.
 10. Run `pnpm uat:smoke`.
 11. Run `pnpm uat:storage`.
-12. Confirm the `UAT_ADMIN_EMAIL` passwordless sign-in reaches `/app`.
-13. Run live verification matrix in order: Vercel/public, email, storage/scanning, Meta, backup/restore.
-14. Record evidence and defects.
-15. Only then consider UAT-002 internal user testing.
+12. Run `pnpm uat:scan`.
+13. Confirm the `UAT_ADMIN_EMAIL` passwordless sign-in reaches `/app`.
+14. Run live verification matrix in order: Vercel/public, email, storage/scanning, Meta, backup/restore.
+15. Record evidence and defects.
+16. Only then consider UAT-002 internal user testing.
 
 ## 11. Decisions Required
 

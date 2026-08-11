@@ -19,6 +19,7 @@
     "typecheck": "turbo run typecheck",
     "uat:check": "pnpm --filter @raring2go/db uat:check",
     "uat:db:setup": "pnpm --filter @raring2go/db uat:db:setup",
+    "uat:scan": "pnpm --filter @raring2go/db uat:scan",
     "uat:smoke": "pnpm --filter @raring2go/db uat:smoke",
     "uat:storage": "pnpm --filter @raring2go/db uat:storage"
   },

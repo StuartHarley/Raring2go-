@@ -4,8 +4,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  applyScanResult,
   createFileReference,
+  createScannerProviderFromEnv,
   createStorageProviderFromEnv,
+  type FileReference,
+  type FileScannerProvider,
   type StorageProvider
 } from "@raring2go/storage";
 import { createDb, requireDatabaseUrl, requireMigrationDatabaseUrl } from "./client";
@@ -30,6 +34,8 @@ export async function main(argv = process.argv) {
     await runCheck();
   } else if (command === "db:setup") {
     await runDbSetup();
+  } else if (command === "scan") {
+    await runScan();
   } else if (command === "smoke") {
     await runSmoke();
   } else if (command === "storage") {
@@ -112,6 +118,192 @@ async function runStorage() {
 
   printReport("UAT R2 storage verification", checks, remainingActions(checks));
   exitFor(checks);
+}
+
+async function runScan() {
+  const checks = await verifyClamAvScan();
+
+  printReport("UAT ClamAV scanner verification", checks, remainingActions(checks));
+  exitFor(checks);
+}
+
+export async function verifyClamAvScan(input: {
+  source?: NodeJS.ProcessEnv;
+  storageProvider?: StorageProvider;
+  scannerProvider?: FileScannerProvider;
+  fetcher?: typeof fetch;
+  id?: string;
+  now?: () => Date;
+} = {}): Promise<Check[]> {
+  const source = input.source ?? process.env;
+  const checks: Check[] = [
+    ...safetyChecks(source),
+    ...r2StorageConfigChecks(source),
+    ...scannerConfigChecks(source)
+  ];
+
+  if (hasRed(checks)) {
+    return checks;
+  }
+
+  const now = input.now ?? (() => new Date());
+  const id = input.id ?? randomUUID();
+  const fetcher = input.fetcher ?? fetch;
+  const cleanContent = `Raring2go UAT ClamAV clean verification\nid=${id}\ncreatedAt=${now().toISOString()}\n`;
+  const eicarContent = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
+  const cleanReference = uatScanReference({
+    id: `uat-scan-clean-${id}`,
+    storageKey: `uat/verification/scan/${id}/clean.txt`,
+    fileName: "clean.txt",
+    content: cleanContent,
+    now
+  });
+  const eicarReference = uatScanReference({
+    id: `uat-scan-eicar-${id}`,
+    storageKey: `uat/verification/scan/${id}/eicar.txt`,
+    fileName: "eicar.txt",
+    content: eicarContent,
+    now
+  });
+  let storageProvider: StorageProvider;
+  let scannerProvider: FileScannerProvider;
+  let cleanupAttempted = false;
+
+  try {
+    storageProvider = input.storageProvider ?? createStorageProviderFromEnv(source);
+    scannerProvider = input.scannerProvider ?? createScannerProviderFromEnv(source);
+  } catch (error) {
+    return [
+      ...checks,
+      {
+        status: "RED",
+        label: "Provider configuration",
+        detail: safeDiagnostic(errorMessage(error), source),
+        action: "Check R2 and ClamAV scanner environment variables."
+      }
+    ];
+  }
+
+  if (storageProvider.key !== "r2") {
+    return [
+      ...checks,
+      {
+        status: "RED",
+        label: "R2 provider",
+        detail: `Storage provider resolved to ${storageProvider.key}, not r2.`,
+        action: "Set STORAGE_PROVIDER=r2 for live scanner verification."
+      }
+    ];
+  }
+
+  if (scannerProvider.key !== "clamav-http") {
+    return [
+      ...checks,
+      {
+        status: "RED",
+        label: "ClamAV provider",
+        detail: `Scanner provider resolved to ${scannerProvider.key}, not clamav-http.`,
+        action: "Set SCANNER_PROVIDER=clamav-http for live scanner verification."
+      }
+    ];
+  }
+
+  try {
+    await uploadVerificationObject(storageProvider, cleanReference, cleanContent, fetcher);
+    await uploadVerificationObject(storageProvider, eicarReference, eicarContent, fetcher);
+    checks.push({
+      status: "GREEN",
+      label: "Private R2 scan objects",
+      detail: "Clean and EICAR UAT-only verification objects were uploaded to the private R2 bucket. Bodies hidden."
+    });
+
+    const cleanResult = await scannerProvider.scan(cleanReference);
+
+    if (cleanResult.status !== "clean") {
+      throw new Error(`Expected clean scan result, received ${cleanResult.status}.`);
+    }
+
+    checks.push({
+      status: "GREEN",
+      label: "SCAN-001 clean file",
+      detail: "Railway ClamAV scanner returned provider-neutral clean status for the harmless test object."
+    });
+
+    const eicarResult = await scannerProvider.scan(eicarReference);
+
+    if (eicarResult.status !== "infected") {
+      throw new Error(`Expected infected/rejected scan result for EICAR, received ${eicarResult.status}.`);
+    }
+
+    checks.push({
+      status: "GREEN",
+      label: "SCAN-002 EICAR rejection",
+      detail: `Railway ClamAV scanner returned provider-neutral infected status${eicarResult.signature ? ` (${safeDiagnostic(eicarResult.signature, source)})` : ""}.`
+    });
+
+    const infectedReference = applyScanResult(eicarReference, eicarResult);
+
+    try {
+      await storageProvider.createDownloadIntent(infectedReference);
+      throw new Error("Infected file unexpectedly produced a signed download intent.");
+    } catch (error) {
+      if (errorMessage(error).includes("unexpectedly")) {
+        throw error;
+      }
+    }
+
+    checks.push({
+      status: "GREEN",
+      label: "Infected download blocked",
+      detail: "Normal storage scanning lifecycle blocks signed downloads for the EICAR verification object."
+    });
+  } catch (error) {
+    checks.push({
+      status: "RED",
+      label: "ClamAV verification",
+      detail: safeDiagnostic(errorMessage(error), source),
+      action: "Check Railway scanner health, scanner API key, R2 access and ClamAV definitions."
+    });
+  } finally {
+    if (storageProvider.deleteObject) {
+      cleanupAttempted = true;
+      for (const reference of [cleanReference, eicarReference]) {
+        try {
+          await storageProvider.deleteObject(reference);
+        } catch (error) {
+          checks.push({
+            status: "RED",
+            label: "Cleanup",
+            detail: safeDiagnostic(errorMessage(error), source),
+            action: "Manually remove temporary objects under uat/verification/scan/ from the private R2 bucket."
+          });
+        }
+      }
+      checks.push({
+        status: hasRed(checks.filter((check) => check.label === "Cleanup")) ? "RED" : "GREEN",
+        label: "Cleanup",
+        detail: "Temporary clean and EICAR verification objects were deleted or already absent."
+      });
+    } else {
+      checks.push({
+        status: "RED",
+        label: "Cleanup",
+        detail: "The active storage provider does not support direct object cleanup.",
+        action: "Use the Cloudflare R2 provider for UAT scan verification."
+      });
+    }
+  }
+
+  if (!cleanupAttempted) {
+    checks.push({
+      status: "RED",
+      label: "Cleanup safety",
+      detail: "Cleanup was not attempted.",
+      action: "Review provider configuration before rerunning scanner verification."
+    });
+  }
+
+  return checks;
 }
 
 export async function verifyR2Storage(input: {
@@ -360,6 +552,58 @@ function r2StorageConfigChecks(source: NodeJS.ProcessEnv): Check[] {
     requiredFrom(source, "R2_SECRET_ACCESS_KEY", true, "Cloudflare R2 secret access key."),
     requiredFrom(source, "STORAGE_URL_TTL_SECONDS", false, "Signed URL lifetime.")
   ];
+}
+
+function scannerConfigChecks(source: NodeJS.ProcessEnv): Check[] {
+  return [
+    requiredFrom(source, "SCANNER_PROVIDER", false, "Private ClamAV scanner provider selector."),
+    requiredFrom(source, "CLAMAV_SCANNER_ENDPOINT", true, "Railway ClamAV scanner endpoint."),
+    requiredFrom(source, "CLAMAV_SCANNER_API_KEY", true, "Railway ClamAV scanner API key.")
+  ];
+}
+
+function uatScanReference(input: {
+  id: string;
+  storageKey: string;
+  fileName: string;
+  content: string;
+  now: () => Date;
+}): FileReference {
+  return createFileReference({
+    id: input.id,
+    providerKey: "r2",
+    storageKey: input.storageKey,
+    fileName: input.fileName,
+    contentType: "text/plain; charset=utf-8",
+    byteSize: Buffer.byteLength(input.content),
+    checksum: sha256(input.content),
+    accessScope: "system",
+    virusScanStatus: "pending",
+    createdAt: input.now().toISOString(),
+    metadata: {
+      purpose: "uat-clamav-verification",
+      eicarTestOnly: input.fileName.includes("eicar"),
+      publicBucketRequired: false
+    }
+  });
+}
+
+async function uploadVerificationObject(
+  provider: StorageProvider,
+  reference: FileReference,
+  content: string,
+  fetcher: typeof fetch
+) {
+  const upload = await provider.createUploadIntent(reference);
+  const response = await fetcher(upload.uploadUrl, {
+    method: "PUT",
+    headers: upload.headers,
+    body: content
+  });
+
+  if (!response.ok) {
+    throw new Error(await describeStorageHttpFailure("upload", response));
+  }
 }
 
 function requiredFrom(source: NodeJS.ProcessEnv, name: string, secret: boolean, purpose: string): Check {

@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "uat:check": "tsx src/uat-toolkit.ts check",
     "uat:db:setup": "tsx src/uat-toolkit.ts db:setup",
+    "uat:scan": "tsx src/uat-toolkit.ts scan",
     "uat:smoke": "tsx src/uat-toolkit.ts smoke",
     "uat:storage": "tsx src/uat-toolkit.ts storage"
   },
