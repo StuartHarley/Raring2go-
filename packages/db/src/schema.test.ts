@@ -30,6 +30,7 @@ import {
   onboardingTemplatePhases,
   onboardingTemplates,
   onboardingTemplateTasks,
+  preflightResults,
   organisations,
   seasons,
   territories,
@@ -178,5 +179,15 @@ describe("foundation schema", () => {
     expect(editionPageRevisions.changeType.name).toBe("change_type");
     expect(editionPageRevisions.snapshot.name).toBe("snapshot");
     expect(editionPageRevisions.warnings.name).toBe("warnings");
+  });
+
+  it("models preflight results with original and derived artefact metadata", () => {
+    expect(preflightResults.entityType.name).toBe("entity_type");
+    expect(preflightResults.entityId.name).toBe("entity_id");
+    expect(preflightResults.territoryEditionId.name).toBe("territory_edition_id");
+    expect(preflightResults.originalArtifact.name).toBe("original_artifact");
+    expect(preflightResults.derivedArtifact.name).toBe("derived_artifact");
+    expect(preflightResults.unfixableIssues.name).toBe("unfixable_issues");
+    expect((preflightResults as unknown as Record<string, unknown>).indesignDocumentId).toBeUndefined();
   });
 });

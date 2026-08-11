@@ -9,6 +9,9 @@ import type {
   MagazineTemplate,
   MagazineTemplateVersion,
   MasterEdition,
+  PreflightCheck,
+  PreflightFix,
+  PreflightResult,
   PublishingActorContext,
   PublishingData,
   Season,
@@ -547,6 +550,100 @@ export async function submitPageForReview(
   return { page, revision };
 }
 
+export async function runPagePreflight(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  pageId: string,
+  artifact: Record<string, unknown>
+) {
+  requirePublishingPermission(context, permissions, "preflightOverride");
+  const page = requireEditionPage(data, pageId);
+  const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  const checks = preflightChecks(artifact);
+  const unfixableIssues = checks.filter((check) => check.severity === "error" && !check.fixable);
+  const status = preflightStatus(checks);
+  const result: PreflightResult = {
+    id: crypto.randomUUID(),
+    entityType: "edition_page",
+    entityId: page.id,
+    territoryEditionId: edition.id,
+    status,
+    checks,
+    fixes: [],
+    originalArtifact: { ...artifact },
+    derivedArtifact: {},
+    unfixableIssues,
+    createdByUserId: context.userId
+  };
+  data.preflightResults.push(result);
+  page.issues = checks.map((check) => ({
+    type: check.code,
+    severity: check.severity,
+    fixable: check.fixable,
+    message: check.message
+  }));
+  page.readiness = status === "passed" ? "ready" : "blocked";
+  page.status = status === "passed" ? "print_ready" : "preflight_failed";
+  await audit.record(auditEvent(context, auditActions.publishingPreflightOverride, "preflight_result", result.id, {
+    action: "run",
+    pageId: page.id,
+    status,
+    issueCount: checks.length
+  }, edition.territoryId));
+  return result;
+}
+
+export async function applySafePreflightFixes(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  resultId: string
+) {
+  requirePublishingPermission(context, permissions, "preflightOverride");
+  const result = requirePreflightResult(data, resultId);
+  if (result.entityType !== "edition_page") {
+    throw new Error("Only edition page preflight results can be fixed in EDT-006.");
+  }
+  const page = requireEditionPage(data, result.entityId);
+  const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  const fixes: PreflightFix[] = result.checks
+    .filter((check) => check.fixable)
+    .map((check) => ({
+      code: check.code,
+      action: safeFixAction(check.code),
+      applied: true
+    }));
+  result.fixes = fixes;
+  result.derivedArtifact = {
+    ...result.originalArtifact,
+    derivedFromPreflightResultId: result.id,
+    safeFixesApplied: fixes.map((fix) => fix.code)
+  };
+  result.unfixableIssues = result.checks.filter((check) => check.severity === "error" && !check.fixable);
+  result.status = result.unfixableIssues.length > 0 ? "failed" : "fixed";
+  page.issues = result.unfixableIssues.map((check) => ({
+    type: check.code,
+    severity: check.severity,
+    fixable: false,
+    message: check.message
+  }));
+  page.readiness = result.status === "fixed" ? "ready" : "blocked";
+  page.status = result.status === "fixed" ? "print_ready" : "preflight_failed";
+  await audit.record(auditEvent(context, auditActions.publishingPreflightOverride, "preflight_result", result.id, {
+    action: "apply_safe_fixes",
+    pageId: page.id,
+    status: result.status,
+    appliedFixes: fixes.map((fix) => fix.code),
+    unfixableCount: result.unfixableIssues.length
+  }, edition.territoryId));
+  return result;
+}
+
 function requirePublishingPermission(
   context: PublishingActorContext,
   permissions: PermissionData,
@@ -639,6 +736,20 @@ function requireEditionPage(data: PublishingData, pageId: string) {
   return page;
 }
 
+function requirePreflightResult(data: PublishingData, resultId: string) {
+  const result = data.preflightResults.find((candidate) => candidate.id === resultId && !candidate.deletedAt);
+  if (!result) {
+    throw new Error("Preflight result was not found.");
+  }
+  return result;
+}
+
+function ensureContextCanAccessEdition(context: PublishingActorContext, edition: TerritoryEdition) {
+  if (context.territoryId && context.territoryId !== edition.territoryId) {
+    throw new Error("Edition is outside the active territory.");
+  }
+}
+
 function addPageRevision(
   data: PublishingData,
   page: EditionPage,
@@ -676,6 +787,66 @@ function pageWarnings(snapshot: Record<string, unknown>) {
     warnings.push({ type: "missing_image", message: "Required image is missing." });
   }
   return warnings;
+}
+
+function preflightChecks(artifact: Record<string, unknown>): PreflightCheck[] {
+  const checks: PreflightCheck[] = [];
+  if (artifact.colourSpace !== "cmyk") {
+    checks.push({
+      code: "colour_space_rgb",
+      severity: "error",
+      message: "Artwork must use CMYK colour for print.",
+      fixable: artifact.allowColourConversion === true
+    });
+  }
+  if (typeof artifact.dpi === "number" && artifact.dpi < 300) {
+    checks.push({
+      code: "low_resolution",
+      severity: "error",
+      message: "Placed images must be at least 300dpi for print.",
+      fixable: false
+    });
+  }
+  if (artifact.bleedPresent !== true) {
+    checks.push({
+      code: "missing_bleed",
+      severity: "error",
+      message: "Artwork is missing print bleed.",
+      fixable: artifact.allowBleedExtension === true
+    });
+  }
+  if (artifact.linksChecked !== true) {
+    checks.push({
+      code: "unchecked_links",
+      severity: "warning",
+      message: "Digital links have not been checked.",
+      fixable: true
+    });
+  }
+  return checks;
+}
+
+function preflightStatus(checks: PreflightCheck[]) {
+  if (checks.some((check) => check.severity === "error")) {
+    return "failed";
+  }
+  if (checks.some((check) => check.severity === "warning")) {
+    return "warning";
+  }
+  return "passed";
+}
+
+function safeFixAction(code: string) {
+  if (code === "colour_space_rgb") {
+    return "convert_to_cmyk_derived_copy";
+  }
+  if (code === "missing_bleed") {
+    return "extend_bleed_on_derived_copy";
+  }
+  if (code === "unchecked_links") {
+    return "mark_links_for_manual_review";
+  }
+  return "record_safe_fix";
 }
 
 function contentTargetsTerritory(item: EditionContentItem, territoryId: string) {

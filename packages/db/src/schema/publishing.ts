@@ -254,3 +254,28 @@ export const editionPageRevisions = pgTable(
     index("edition_page_revisions_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+export const preflightResults = pgTable(
+  "preflight_results",
+  {
+    id,
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    territoryEditionId: uuid("territory_edition_id").references(() => territoryEditions.id),
+    status: text("status").notNull(),
+    checks: jsonb("checks").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    fixes: jsonb("fixes").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    originalArtifact: jsonb("original_artifact").$type<Record<string, unknown>>().notNull().default({}),
+    derivedArtifact: jsonb("derived_artifact").$type<Record<string, unknown>>().notNull().default({}),
+    unfixableIssues: jsonb("unfixable_issues").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("preflight_results_entity_idx").on(table.entityType, table.entityId),
+    index("preflight_results_territory_edition_id_idx").on(table.territoryEditionId),
+    index("preflight_results_status_idx").on(table.status),
+    index("preflight_results_deleted_at_idx").on(table.deletedAt)
+  ]
+);

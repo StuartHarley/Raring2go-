@@ -188,6 +188,34 @@ export type EditionPageRevision = {
   deletedAt?: Date | null;
 };
 
+export type PreflightCheck = {
+  code: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  fixable: boolean;
+};
+
+export type PreflightFix = {
+  code: string;
+  action: string;
+  applied: boolean;
+};
+
+export type PreflightResult = {
+  id: string;
+  entityType: "edition_page" | "territory_edition" | "asset" | (string & {});
+  entityId: string;
+  territoryEditionId?: string | null;
+  status: "passed" | "warning" | "failed" | "fixed" | (string & {});
+  checks: PreflightCheck[];
+  fixes: PreflightFix[];
+  originalArtifact: Record<string, unknown>;
+  derivedArtifact: Record<string, unknown>;
+  unfixableIssues: PreflightCheck[];
+  createdByUserId?: string | null;
+  deletedAt?: Date | null;
+};
+
 export type PublishingTerritory = {
   id: string;
   franchiseOrganisationId?: string | null;
@@ -206,6 +234,7 @@ export type PublishingData = {
   territoryEditionContent: TerritoryEditionContent[];
   editionPages: EditionPage[];
   editionPageRevisions: EditionPageRevision[];
+  preflightResults: PreflightResult[];
   territories: PublishingTerritory[];
 };
 

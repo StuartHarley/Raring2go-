@@ -14,8 +14,10 @@ import {
   generateTerritoryEditions,
   listEditionSummaries,
   publishTemplateVersion,
+  applySafePreflightFixes,
   propagateMasterContentCorrection,
   reorderEditionPages,
+  runPagePreflight,
   submitPageForReview
 } from "./service";
 import type { PublishingData } from "./types";
@@ -75,8 +77,10 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "edition.page", "edit", "network"),
     grant(ids.roles.hq, "edition.content", "edit_local", "network"),
     grant(ids.roles.hq, "edition.content", "manage_locked", "network"),
+    grant(ids.roles.hq, "edition.preflight", "override", "network"),
     grant(ids.roles.local, "edition.page", "edit", "own_territory"),
     grant(ids.roles.local, "edition.content", "edit_local", "own_territory"),
+    grant(ids.roles.local, "edition.preflight", "override", "own_territory"),
     grant(ids.roles.local, "edition", "view", "own_territory")
   ],
   territories: [
@@ -400,6 +404,84 @@ describe("publishing edition model", () => {
       "submit_review"
     ]);
   });
+
+  it("runs page preflight and preserves original artefacts while applying safe fixes", async () => {
+    const publishingData = await editableFlatplanData();
+    const page = publishingData.editionPages.find((candidate) => !candidate.locked && candidate.sourceMarker === "local")!;
+    const recorder = audit();
+    const result = await runPagePreflight(hqContext(), permissions, recorder, publishingData, page.id, {
+      fileKey: "uploads/local-page-03.pdf",
+      colourSpace: "rgb",
+      dpi: 240,
+      bleedPresent: false,
+      linksChecked: false,
+      allowColourConversion: true,
+      allowBleedExtension: true
+    });
+
+    expect(result).toMatchObject({
+      status: "failed",
+      originalArtifact: {
+        fileKey: "uploads/local-page-03.pdf",
+        colourSpace: "rgb"
+      },
+      unfixableIssues: [
+        {
+          code: "low_resolution",
+          fixable: false
+        }
+      ]
+    });
+
+    const fixed = await applySafePreflightFixes(hqContext(), permissions, recorder, publishingData, result.id);
+
+    expect(fixed.originalArtifact).toMatchObject({ colourSpace: "rgb", dpi: 240 });
+    expect(fixed.derivedArtifact).toMatchObject({
+      derivedFromPreflightResultId: result.id,
+      safeFixesApplied: ["colour_space_rgb", "missing_bleed", "unchecked_links"]
+    });
+    expect(fixed.status).toBe("failed");
+    expect(page).toMatchObject({
+      status: "preflight_failed",
+      readiness: "blocked",
+      issues: [
+        {
+          type: "low_resolution",
+          fixable: false
+        }
+      ]
+    });
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.publishingPreflightOverride,
+      auditActions.publishingPreflightOverride
+    ]);
+  });
+
+  it("marks pages print-ready when preflight fixes remove every issue", async () => {
+    const publishingData = await editableFlatplanData();
+    const page = publishingData.editionPages.find((candidate) => !candidate.locked && candidate.sourceMarker === "local")!;
+    const result = await runPagePreflight(hqContext(), permissions, audit(), publishingData, page.id, {
+      fileKey: "uploads/local-page-04.pdf",
+      colourSpace: "rgb",
+      dpi: 300,
+      bleedPresent: false,
+      linksChecked: true,
+      allowColourConversion: true,
+      allowBleedExtension: true
+    });
+
+    const fixed = await applySafePreflightFixes(hqContext(), permissions, audit(), publishingData, result.id);
+
+    expect(fixed).toMatchObject({
+      status: "fixed",
+      unfixableIssues: []
+    });
+    expect(page).toMatchObject({
+      status: "print_ready",
+      readiness: "ready",
+      issues: []
+    });
+  });
 });
 
 function hqContext() {
@@ -420,6 +502,7 @@ function emptyData(): PublishingData {
     territoryEditionContent: [],
     editionPages: [],
     editionPageRevisions: [],
+    preflightResults: [],
     territories: [
       {
         id: ids.territories.own,
