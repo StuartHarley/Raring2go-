@@ -6,6 +6,12 @@ import type {
   AdvertiserActivityEvent,
   AdvertiserContact,
   AdvertiserDomainEvent,
+  AdvertiserCreditNote,
+  AdvertiserCreditNoteLine,
+  AdvertiserInvoice,
+  AdvertiserInvoiceLine,
+  AdvertiserPayment,
+  AdvertiserPaymentAllocation,
   AdvertiserProposalAcceptance,
   AdvertiserTerms,
   AdvertiserRecord,
@@ -681,6 +687,243 @@ export async function respondToProposal(
   return acceptance;
 }
 
+export async function createInvoiceFromBooking(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: {
+    invoiceId: string;
+    lineIdPrefix: string;
+    bookingId: string;
+    issuerOrganisationId: string;
+    dueDate: string;
+    billingSnapshot: Record<string, unknown>;
+    paymentTermsSnapshot: Record<string, unknown>;
+    taxRateBps?: number;
+    domainEventId: string;
+  }
+) {
+  requireAdvertisingPermission(context, permissions, "invoiceCreate");
+  const booking = requireBooking(data, input.bookingId);
+  const advertiser = requireAdvertiser(data, booking.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  const bookingItems = data.bookingItems.filter((item) => item.bookingId === booking.id && !item.deletedAt);
+  if (bookingItems.length === 0) {
+    throw new Error("Cannot invoice booking without items.");
+  }
+  const lines: AdvertiserInvoiceLine[] = bookingItems.map((item, index) => invoiceLineFromBookingItem(input.invoiceId, `${input.lineIdPrefix}_${index + 1}`, item, input.taxRateBps ?? 2000));
+  const subtotalMinor = lines.reduce((sum, line) => sum + line.netMinor, 0);
+  const taxMinor = lines.reduce((sum, line) => sum + line.taxMinor, 0);
+  const totalMinor = lines.reduce((sum, line) => sum + line.grossMinor, 0);
+  const invoice: AdvertiserInvoice = {
+    id: input.invoiceId,
+    issuerOrganisationId: input.issuerOrganisationId,
+    advertiserId: advertiser.id,
+    customerOrganisationId: advertiser.advertiserOrganisationId,
+    territoryId: booking.territoryId,
+    bookingId: booking.id,
+    invoiceNumber: "DRAFT",
+    status: "draft",
+    issueDate: null,
+    dueDate: input.dueDate,
+    voidedAt: null,
+    currency: booking.currency,
+    subtotalMinor,
+    taxMinor,
+    totalMinor,
+    amountPaidMinor: 0,
+    balanceMinor: totalMinor,
+    billingSnapshot: { ...input.billingSnapshot },
+    paymentTermsSnapshot: { ...input.paymentTermsSnapshot },
+    issuedSnapshot: {}
+  };
+  data.invoices.push(invoice);
+  data.invoiceLines.push(...lines);
+  emitAdvertiserEvent(data, event(input.domainEventId, "advertiser.invoice.created", "advertiser_invoice", invoice.id, advertiser, {
+    invoiceId: invoice.id,
+    bookingId: booking.id,
+    totalMinor
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserInvoiceCreate, advertiser, {
+    invoiceId: invoice.id,
+    bookingId: booking.id,
+    totalMinor
+  }));
+  return invoice;
+}
+
+export async function issueInvoice(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: {
+    invoiceId: string;
+    issuedOn: string;
+    sequenceKey?: string;
+    domainEventId: string;
+  }
+) {
+  requireAdvertisingPermission(context, permissions, "invoiceIssue");
+  const invoice = requireInvoice(data, input.invoiceId);
+  const advertiser = requireAdvertiser(data, invoice.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (invoice.status !== "draft") {
+    throw new Error("Only draft invoices can be issued.");
+  }
+  const sequence = requireInvoiceSequence(data, invoice.issuerOrganisationId, input.sequenceKey ?? "default");
+  invoice.invoiceNumber = formatInvoiceNumber(sequence);
+  sequence.nextNumber += 1;
+  invoice.status = "issued";
+  invoice.issueDate = input.issuedOn;
+  invoice.issuedSnapshot = invoiceSnapshot(data, invoice);
+  emitAdvertiserEvent(data, event(input.domainEventId, "advertiser.invoice.issued", "advertiser_invoice", invoice.id, advertiser, {
+    invoiceNumber: invoice.invoiceNumber,
+    totalMinor: invoice.totalMinor
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserInvoiceIssue, advertiser, {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    totalMinor: invoice.totalMinor
+  }));
+  return invoice;
+}
+
+export async function editDraftInvoice(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  data: AdvertisingData,
+  invoiceId: string,
+  patch: Partial<Pick<AdvertiserInvoice, "dueDate" | "billingSnapshot" | "paymentTermsSnapshot">>
+) {
+  requireAdvertisingPermission(context, permissions, "invoiceEditDraft");
+  const invoice = requireInvoice(data, invoiceId);
+  const advertiser = requireAdvertiser(data, invoice.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (invoice.status !== "draft") {
+    throw new Error("Issued invoices cannot be materially edited.");
+  }
+  Object.assign(invoice, patch);
+  return invoice;
+}
+
+export async function recordPayment(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  payment: AdvertiserPayment,
+  domainEventId: string
+) {
+  requireAdvertisingPermission(context, permissions, "paymentRecord");
+  const existing = payment.providerKey && payment.providerEventId
+    ? data.payments.find((candidate) => candidate.providerKey === payment.providerKey && candidate.providerEventId === payment.providerEventId && !candidate.deletedAt)
+    : undefined;
+  if (existing) {
+    return existing;
+  }
+  const advertiser = requireAdvertiser(data, payment.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  const storedPayment = { ...payment, allocatedMinor: 0, unallocatedMinor: payment.amountMinor };
+  data.payments.push(storedPayment);
+  emitAdvertiserEvent(data, event(domainEventId, "advertiser.payment.received", "advertiser_payment", payment.id, advertiser, {
+    amountMinor: payment.amountMinor,
+    providerKey: payment.providerKey ?? null
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserPaymentRecord, advertiser, {
+    paymentId: payment.id,
+    amountMinor: payment.amountMinor
+  }));
+  return storedPayment;
+}
+
+export async function allocatePayment(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  allocation: AdvertiserPaymentAllocation,
+  domainEventId: string
+) {
+  requireAdvertisingPermission(context, permissions, "paymentAllocate");
+  const payment = requirePayment(data, allocation.paymentId);
+  const invoice = requireInvoice(data, allocation.invoiceId);
+  const advertiser = requireAdvertiser(data, invoice.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  if (payment.advertiserId !== invoice.advertiserId || payment.issuerOrganisationId !== invoice.issuerOrganisationId) {
+    throw new Error("Payment and invoice must share advertiser and issuer.");
+  }
+  if (allocation.amountMinor > payment.unallocatedMinor || allocation.amountMinor > invoice.balanceMinor) {
+    throw new Error("Allocation cannot exceed payment or invoice balance.");
+  }
+  data.paymentAllocations.push(allocation);
+  payment.allocatedMinor += allocation.amountMinor;
+  payment.unallocatedMinor -= allocation.amountMinor;
+  invoice.amountPaidMinor += allocation.amountMinor;
+  invoice.balanceMinor -= allocation.amountMinor;
+  invoice.status = invoice.balanceMinor === 0 ? "paid" : "part_paid";
+  emitAdvertiserEvent(data, event(domainEventId, "advertiser.payment.allocated", "advertiser_payment_allocation", allocation.id, advertiser, {
+    paymentId: payment.id,
+    invoiceId: invoice.id,
+    amountMinor: allocation.amountMinor
+  }));
+  if (invoice.status === "paid") {
+    emitAdvertiserEvent(data, event(`${domainEventId}_paid`, "advertiser.invoice.paid", "advertiser_invoice", invoice.id, advertiser, {
+      invoiceId: invoice.id
+    }));
+  }
+  await audit.record(auditEvent(context, auditActions.advertiserPaymentAllocate, advertiser, {
+    allocationId: allocation.id,
+    paymentId: payment.id,
+    invoiceId: invoice.id,
+    amountMinor: allocation.amountMinor
+  }));
+  return allocation;
+}
+
+export async function issueCreditNote(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: {
+    creditNote: AdvertiserCreditNote;
+    lines: AdvertiserCreditNoteLine[];
+    domainEventId: string;
+  }
+) {
+  requireAdvertisingPermission(context, permissions, "creditCreate");
+  const invoice = requireInvoice(data, input.creditNote.invoiceId);
+  const advertiser = requireAdvertiser(data, invoice.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  const totalMinor = input.lines.reduce((sum, line) => sum + line.grossMinor, 0);
+  if (totalMinor > invoice.balanceMinor) {
+    throw new Error("Credit note cannot exceed invoice balance.");
+  }
+  const credit = {
+    ...input.creditNote,
+    subtotalMinor: input.lines.reduce((sum, line) => sum + line.netMinor, 0),
+    taxMinor: input.lines.reduce((sum, line) => sum + line.taxMinor, 0),
+    totalMinor,
+    snapshot: { invoiceNumber: invoice.invoiceNumber, lines: input.lines }
+  };
+  data.creditNotes.push(credit);
+  data.creditNoteLines.push(...input.lines);
+  invoice.balanceMinor -= totalMinor;
+  invoice.status = invoice.balanceMinor === 0 ? "credited" : invoice.status;
+  emitAdvertiserEvent(data, event(input.domainEventId, "advertiser.credit.issued", "advertiser_credit_note", credit.id, advertiser, {
+    invoiceId: invoice.id,
+    totalMinor
+  }));
+  await audit.record(auditEvent(context, auditActions.advertiserCreditIssue, advertiser, {
+    creditNoteId: credit.id,
+    invoiceId: invoice.id,
+    totalMinor
+  }));
+  return credit;
+}
+
 function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserRecord): Advertiser360 {
   return {
     advertiser,
@@ -694,6 +937,13 @@ function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserReco
     bookings: data.bookings.filter((booking) => booking.advertiserId === advertiser.id && !booking.deletedAt),
     productionRequests: data.productionRequests.filter((request) => request.advertiserId === advertiser.id && !request.deletedAt),
     acceptances: data.acceptances.filter((acceptance) => acceptance.advertiserId === advertiser.id && !acceptance.deletedAt),
+    invoices: data.invoices.filter((invoice) => invoice.advertiserId === advertiser.id && !invoice.deletedAt),
+    creditNotes: data.creditNotes.filter((credit) => {
+      const invoice = data.invoices.find((candidate) => candidate.id === credit.invoiceId);
+      return invoice?.advertiserId === advertiser.id && !credit.deletedAt;
+    }),
+    payments: data.payments.filter((payment) => payment.advertiserId === advertiser.id && !payment.deletedAt),
+    financeSummary: financeSummary(data, advertiser.id),
     activity: data.activityEvents
       .filter((event) => event.advertiserId === advertiser.id && !event.deletedAt)
       .slice()
@@ -801,6 +1051,38 @@ function requireProposal(data: AdvertisingData, proposalId: string) {
   return proposal;
 }
 
+function requireBooking(data: AdvertisingData, bookingId: string) {
+  const booking = data.bookings.find((candidate) => candidate.id === bookingId && !candidate.deletedAt);
+  if (!booking) {
+    throw new Error("Booking was not found.");
+  }
+  return booking;
+}
+
+function requireInvoice(data: AdvertisingData, invoiceId: string) {
+  const invoice = data.invoices.find((candidate) => candidate.id === invoiceId && !candidate.deletedAt);
+  if (!invoice) {
+    throw new Error("Invoice was not found.");
+  }
+  return invoice;
+}
+
+function requirePayment(data: AdvertisingData, paymentId: string) {
+  const payment = data.payments.find((candidate) => candidate.id === paymentId && !candidate.deletedAt);
+  if (!payment) {
+    throw new Error("Payment was not found.");
+  }
+  return payment;
+}
+
+function requireInvoiceSequence(data: AdvertisingData, issuerOrganisationId: string, key: string) {
+  const sequence = data.invoiceSequences.find((candidate) => candidate.issuerOrganisationId === issuerOrganisationId && candidate.key === key);
+  if (!sequence) {
+    throw new Error("Invoice sequence was not found for issuer.");
+  }
+  return sequence;
+}
+
 function requireTerms(data: AdvertisingData, termsId: string): AdvertiserTerms {
   const terms = data.terms.find((candidate) => candidate.id === termsId && !candidate.deletedAt);
   if (!terms || terms.status !== "approved") {
@@ -867,6 +1149,73 @@ function emitAdvertiserEvent(data: AdvertisingData, event: AdvertiserDomainEvent
     return;
   }
   data.domainEvents.push(event);
+}
+
+function event(id: string, eventType: string, entityType: string, entityId: string, advertiser: AdvertiserRecord, payload: Record<string, unknown>): AdvertiserDomainEvent {
+  return {
+    id,
+    eventType,
+    entityType,
+    entityId,
+    advertiserId: advertiser.id,
+    territoryId: advertiser.owningTerritoryId,
+    payload,
+    idempotencyKey: `${eventType}:${entityId}`
+  };
+}
+
+function formatInvoiceNumber(sequence: { prefix: string; nextNumber: number; padding: number }) {
+  return `${sequence.prefix}-${String(sequence.nextNumber).padStart(sequence.padding, "0")}`;
+}
+
+function invoiceLineFromBookingItem(invoiceId: string, id: string, item: CommercialBookingItem, taxRateBps: number): AdvertiserInvoiceLine {
+  const netMinor = item.totalPriceMinor;
+  const taxMinor = Math.round((netMinor * taxRateBps) / 10000);
+  return {
+    id,
+    invoiceId,
+    bookingItemId: item.id,
+    productId: item.productId,
+    description: item.description,
+    quantity: item.quantity,
+    netMinor,
+    taxRateBps,
+    taxMinor,
+    grossMinor: netMinor + taxMinor,
+    taxCode: "standard_vat"
+  };
+}
+
+function invoiceSnapshot(data: AdvertisingData, invoice: AdvertiserInvoice) {
+  return {
+    invoice: {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      issuerOrganisationId: invoice.issuerOrganisationId,
+      advertiserId: invoice.advertiserId,
+      subtotalMinor: invoice.subtotalMinor,
+      taxMinor: invoice.taxMinor,
+      totalMinor: invoice.totalMinor,
+      currency: invoice.currency,
+      billingSnapshot: invoice.billingSnapshot,
+      paymentTermsSnapshot: invoice.paymentTermsSnapshot
+    },
+    lines: data.invoiceLines.filter((line) => line.invoiceId === invoice.id && !line.deletedAt)
+  };
+}
+
+function financeSummary(data: AdvertisingData, advertiserId: string) {
+  const invoices = data.invoices.filter((invoice) => invoice.advertiserId === advertiserId && !invoice.deletedAt);
+  const payments = data.payments.filter((payment) => payment.advertiserId === advertiserId && !payment.deletedAt);
+  return {
+    lifetimeInvoicedMinor: invoices.reduce((sum, invoice) => sum + invoice.totalMinor, 0),
+    lifetimePaidMinor: payments.reduce((sum, payment) => sum + payment.allocatedMinor, 0),
+    outstandingMinor: invoices.reduce((sum, invoice) => sum + invoice.balanceMinor, 0),
+    overdueMinor: invoices
+      .filter((invoice) => invoice.dueDate && invoice.dueDate < today() && invoice.balanceMinor > 0)
+      .reduce((sum, invoice) => sum + invoice.balanceMinor, 0),
+    unallocatedPaymentsMinor: payments.reduce((sum, payment) => sum + payment.unallocatedMinor, 0)
+  };
 }
 
 function requireOrganisation(data: AdvertisingData, organisationId: string) {

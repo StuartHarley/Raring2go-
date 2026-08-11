@@ -75,7 +75,16 @@ describe("foundation fixtures", () => {
       "advertiser.proposal",
       "advertiser.booking",
       "advertiser.proposal",
-      "advertiser.proposal"
+      "advertiser.proposal",
+      "advertiser.finance",
+      "advertiser.invoice",
+      "advertiser.invoice",
+      "advertiser.invoice",
+      "advertiser.credit",
+      "advertiser.payment",
+      "advertiser.payment",
+      "advertiser.payment",
+      "advertiser.finance"
     ]);
   });
 
@@ -227,6 +236,16 @@ describe("foundation fixtures", () => {
     });
     expect(foundationSeed.advertiserProposalAcceptances).toEqual([]);
     expect(foundationSeed.advertiserDomainEvents).toEqual([]);
+  });
+
+  it("includes deterministic advertiser finance sequence without fake finance state", () => {
+    expect(foundationSeed.advertiserInvoiceSequences[0]).toMatchObject({
+      issuerOrganisationId: fixtureIds.organisations.franchise,
+      prefix: "R2G",
+      nextNumber: 1
+    });
+    expect(foundationSeed.advertiserInvoices).toEqual([]);
+    expect(foundationSeed.advertiserPayments).toEqual([]);
   });
 
   it("includes a deterministic invitation fixture for IAM-001", () => {

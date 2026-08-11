@@ -306,6 +306,125 @@ export type AdvertiserDomainEvent = {
   processedAt?: string | null;
 };
 
+export type AdvertiserInvoiceSequence = {
+  id: string;
+  issuerOrganisationId: string;
+  key: string;
+  prefix: string;
+  nextNumber: number;
+  padding: number;
+};
+
+export type AdvertiserInvoice = {
+  id: string;
+  issuerOrganisationId: string;
+  advertiserId: string;
+  customerOrganisationId: string;
+  territoryId: string;
+  bookingId?: string | null;
+  invoiceNumber: string;
+  status: "draft" | "issued" | "part_paid" | "paid" | "void" | "credited" | (string & {});
+  issueDate?: string | null;
+  dueDate?: string | null;
+  voidedAt?: string | null;
+  currency: string;
+  subtotalMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  amountPaidMinor: number;
+  balanceMinor: number;
+  billingSnapshot: Record<string, unknown>;
+  paymentTermsSnapshot: Record<string, unknown>;
+  issuedSnapshot: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type AdvertiserInvoiceLine = {
+  id: string;
+  invoiceId: string;
+  bookingItemId?: string | null;
+  productId?: string | null;
+  description: string;
+  quantity: number;
+  netMinor: number;
+  taxRateBps: number;
+  taxMinor: number;
+  grossMinor: number;
+  taxCode: string;
+  deletedAt?: Date | null;
+};
+
+export type AdvertiserCreditNote = {
+  id: string;
+  invoiceId: string;
+  issuerOrganisationId: string;
+  creditNoteNumber: string;
+  reason: string;
+  issuedByUserId?: string | null;
+  issuedDate: string;
+  currency: string;
+  subtotalMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  snapshot: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type AdvertiserCreditNoteLine = {
+  id: string;
+  creditNoteId: string;
+  invoiceLineId?: string | null;
+  description: string;
+  netMinor: number;
+  taxRateBps: number;
+  taxMinor: number;
+  grossMinor: number;
+  taxCode: string;
+  deletedAt?: Date | null;
+};
+
+export type AdvertiserPayment = {
+  id: string;
+  issuerOrganisationId: string;
+  advertiserId: string;
+  payerOrganisationId: string;
+  amountMinor: number;
+  allocatedMinor: number;
+  unallocatedMinor: number;
+  currency: string;
+  receivedDate: string;
+  method: string;
+  providerKey?: string | null;
+  externalReference?: string | null;
+  providerEventId?: string | null;
+  status: string;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type AdvertiserPaymentAllocation = {
+  id: string;
+  paymentId: string;
+  invoiceId: string;
+  amountMinor: number;
+  allocatedAt: string;
+  status: string;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type AdvertiserProviderSyncReference = {
+  id: string;
+  providerType: string;
+  providerKey: string;
+  entityType: string;
+  entityId: string;
+  providerEntityId?: string | null;
+  status: string;
+  lastSyncedAt?: string | null;
+  metadata: Record<string, unknown>;
+};
+
 export type AdvertisingOrganisation = {
   id: string;
   kind: string;
@@ -341,6 +460,14 @@ export type AdvertisingData = {
   terms: AdvertiserTerms[];
   acceptances: AdvertiserProposalAcceptance[];
   domainEvents: AdvertiserDomainEvent[];
+  invoiceSequences: AdvertiserInvoiceSequence[];
+  invoices: AdvertiserInvoice[];
+  invoiceLines: AdvertiserInvoiceLine[];
+  creditNotes: AdvertiserCreditNote[];
+  creditNoteLines: AdvertiserCreditNoteLine[];
+  payments: AdvertiserPayment[];
+  paymentAllocations: AdvertiserPaymentAllocation[];
+  providerSyncReferences: AdvertiserProviderSyncReference[];
   organisations: AdvertisingOrganisation[];
   territories: AdvertisingTerritory[];
 };
@@ -355,6 +482,16 @@ export type Advertiser360 = {
   bookings: CommercialBooking[];
   productionRequests: CommercialProductionRequest[];
   acceptances: AdvertiserProposalAcceptance[];
+  invoices: AdvertiserInvoice[];
+  creditNotes: AdvertiserCreditNote[];
+  payments: AdvertiserPayment[];
+  financeSummary: {
+    lifetimeInvoicedMinor: number;
+    lifetimePaidMinor: number;
+    outstandingMinor: number;
+    overdueMinor: number;
+    unallocatedPaymentsMinor: number;
+  };
   activity: AdvertiserActivityEvent[];
   latestMetrics?: AdvertiserMetricSnapshot;
 };

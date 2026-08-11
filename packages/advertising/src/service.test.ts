@@ -4,15 +4,21 @@ import {
   addAdvertiserContact,
   acceptProposalCommercially,
   acceptProposalAsBooking,
+  allocatePayment,
   changeOpportunityStage,
   createAdvertiser,
+  createInvoiceFromBooking,
   createOpportunity,
   createProposal,
+  editDraftInvoice,
   getAdvertiser360,
+  issueCreditNote,
+  issueInvoice,
   listCatalogue,
   listAdvertisers,
   listPipeline,
   recordAdvertiserActivity,
+  recordPayment,
   reserveInventorySlot,
   respondToProposal,
   updateAdvertiser
@@ -89,6 +95,13 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.booking", "accept", "network"),
     grant(ids.roles.hq, "advertiser.proposal", "accept", "network"),
     grant(ids.roles.hq, "advertiser.proposal", "respond", "network"),
+    grant(ids.roles.hq, "advertiser.finance", "view", "network"),
+    grant(ids.roles.hq, "advertiser.invoice", "create", "network"),
+    grant(ids.roles.hq, "advertiser.invoice", "edit_draft", "network"),
+    grant(ids.roles.hq, "advertiser.invoice", "issue", "network"),
+    grant(ids.roles.hq, "advertiser.credit", "create", "network"),
+    grant(ids.roles.hq, "advertiser.payment", "record", "network"),
+    grant(ids.roles.hq, "advertiser.payment", "allocate", "network"),
     grant(ids.roles.local, "advertiser", "view", "own_territory"),
     grant(ids.roles.local, "advertiser", "create", "own_territory"),
     grant(ids.roles.local, "advertiser", "edit", "own_territory"),
@@ -103,7 +116,14 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "advertiser.proposal", "create", "own_territory"),
     grant(ids.roles.local, "advertiser.booking", "accept", "own_territory"),
     grant(ids.roles.local, "advertiser.proposal", "accept", "own_territory"),
-    grant(ids.roles.local, "advertiser.proposal", "respond", "own_territory")
+    grant(ids.roles.local, "advertiser.proposal", "respond", "own_territory"),
+    grant(ids.roles.local, "advertiser.finance", "view", "own_territory"),
+    grant(ids.roles.local, "advertiser.invoice", "create", "own_territory"),
+    grant(ids.roles.local, "advertiser.invoice", "edit_draft", "own_territory"),
+    grant(ids.roles.local, "advertiser.invoice", "issue", "own_territory"),
+    grant(ids.roles.local, "advertiser.credit", "create", "own_territory"),
+    grant(ids.roles.local, "advertiser.payment", "record", "own_territory"),
+    grant(ids.roles.local, "advertiser.payment", "allocate", "own_territory")
   ],
   territories: [
     {
@@ -490,6 +510,192 @@ describe("advertiser CRM foundation", () => {
     expect(data.bookings).toHaveLength(0);
     expect(data.domainEvents).toHaveLength(0);
   });
+
+  it("issues invoices from confirmed bookings with immutable numbering and tax snapshots", async () => {
+    const data = seededData();
+    seedAcceptedBooking(data);
+    const recorder = audit();
+    const invoice = await createInvoiceFromBooking(localContext(), permissions, recorder, data, {
+      invoiceId: "invoice_1",
+      lineIdPrefix: "invoice_line_1",
+      bookingId: "booking_autumn",
+      issuerOrganisationId: ids.organisations.franchise,
+      dueDate: "2026-09-10",
+      billingSnapshot: { customer: "Example Advertiser" },
+      paymentTermsSnapshot: { days: 30 },
+      taxRateBps: 2000,
+      domainEventId: "event_invoice_created"
+    });
+    const issued = await issueInvoice(localContext(), permissions, recorder, data, {
+      invoiceId: invoice.id,
+      issuedOn: "2026-08-11",
+      domainEventId: "event_invoice_issued"
+    });
+
+    data.products[0]!.taxCode = "changed_later";
+    await expect(editDraftInvoice(localContext(), permissions, data, issued.id, {
+      dueDate: "2026-10-10"
+    })).rejects.toThrow("Issued invoices cannot");
+
+    expect(issued).toMatchObject({
+      invoiceNumber: "R2G-00001",
+      status: "issued",
+      subtotalMinor: 52500,
+      taxMinor: 10500,
+      totalMinor: 63000,
+      balanceMinor: 63000
+    });
+    expect(data.invoiceSequences[0]?.nextNumber).toBe(2);
+    expect(issued.issuedSnapshot).toMatchObject({
+      invoice: {
+        invoiceNumber: "R2G-00001",
+        totalMinor: 63000
+      },
+      lines: [{ taxCode: "standard_vat", taxRateBps: 2000 }]
+    });
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.advertiserInvoiceCreate,
+      auditActions.advertiserInvoiceIssue
+    ]);
+  });
+
+  it("records duplicate provider payments idempotently and allocates partial payments", async () => {
+    const data = seededData();
+    seedIssuedInvoice(data);
+    const recorder = audit();
+    const payment = await recordPayment(localContext(), permissions, recorder, data, {
+      id: "payment_1",
+      issuerOrganisationId: ids.organisations.franchise,
+      advertiserId: ids.advertiser,
+      payerOrganisationId: ids.organisations.advertiser,
+      amountMinor: 70000,
+      allocatedMinor: 0,
+      unallocatedMinor: 70000,
+      currency: "GBP",
+      receivedDate: "2026-08-12",
+      method: "bank_transfer",
+      providerKey: "bank-import",
+      externalReference: "BANK-1",
+      providerEventId: "event-1",
+      status: "received",
+      metadata: {}
+    }, "event_payment_received");
+    const duplicate = await recordPayment(localContext(), permissions, recorder, data, {
+      ...payment,
+      id: "payment_duplicate"
+    }, "event_payment_duplicate");
+    await allocatePayment(localContext(), permissions, recorder, data, {
+      id: "allocation_1",
+      paymentId: payment.id,
+      invoiceId: "invoice_1",
+      amountMinor: 30000,
+      allocatedAt: "2026-08-12",
+      status: "allocated",
+      metadata: {}
+    }, "event_payment_allocated");
+
+    expect(duplicate).toBe(payment);
+    expect(data.payments).toHaveLength(1);
+    expect(data.payments[0]).toMatchObject({ allocatedMinor: 30000, unallocatedMinor: 40000 });
+    expect(data.invoices[0]).toMatchObject({ status: "part_paid", amountPaidMinor: 30000, balanceMinor: 33000 });
+    await expect(allocatePayment(localContext(), permissions, audit(), data, {
+      id: "allocation_too_much",
+      paymentId: payment.id,
+      invoiceId: "invoice_1",
+      amountMinor: 40000,
+      allocatedAt: "2026-08-12",
+      status: "allocated",
+      metadata: {}
+    }, "event_too_much")).rejects.toThrow("cannot exceed");
+  });
+
+  it("settles invoices and applies credit notes without rewriting invoice totals", async () => {
+    const data = seededData();
+    seedIssuedInvoice(data);
+    const recorder = audit();
+    const payment = await recordPayment(localContext(), permissions, recorder, data, {
+      id: "payment_1",
+      issuerOrganisationId: ids.organisations.franchise,
+      advertiserId: ids.advertiser,
+      payerOrganisationId: ids.organisations.advertiser,
+      amountMinor: 63000,
+      allocatedMinor: 0,
+      unallocatedMinor: 63000,
+      currency: "GBP",
+      receivedDate: "2026-08-12",
+      method: "card",
+      providerKey: null,
+      externalReference: "manual",
+      providerEventId: null,
+      status: "received",
+      metadata: {}
+    }, "event_payment_received");
+    await allocatePayment(localContext(), permissions, recorder, data, {
+      id: "allocation_1",
+      paymentId: payment.id,
+      invoiceId: "invoice_1",
+      amountMinor: 63000,
+      allocatedAt: "2026-08-12",
+      status: "allocated",
+      metadata: {}
+    }, "event_payment_allocated");
+    expect(data.invoices[0]).toMatchObject({ status: "paid", balanceMinor: 0 });
+
+    const creditData = seededData();
+    seedIssuedInvoice(creditData);
+    await issueCreditNote(localContext(), permissions, audit(), creditData, {
+      creditNote: {
+        id: "credit_1",
+        invoiceId: "invoice_1",
+        issuerOrganisationId: ids.organisations.franchise,
+        creditNoteNumber: "CR-00001",
+        reason: "Goodwill adjustment",
+        issuedByUserId: ids.users.local,
+        issuedDate: "2026-08-12",
+        currency: "GBP",
+        subtotalMinor: 0,
+        taxMinor: 0,
+        totalMinor: 0,
+        snapshot: {}
+      },
+      lines: [{
+        id: "credit_line_1",
+        creditNoteId: "credit_1",
+        invoiceLineId: "invoice_line_1",
+        description: "Adjustment",
+        netMinor: 10000,
+        taxRateBps: 2000,
+        taxMinor: 2000,
+        grossMinor: 12000,
+        taxCode: "standard_vat"
+      }],
+      domainEventId: "event_credit"
+    });
+    expect(creditData.invoices[0]).toMatchObject({ totalMinor: 63000, balanceMinor: 51000 });
+  });
+
+  it("denies cross-territory finance access", async () => {
+    const data = seededData();
+    seedIssuedInvoice(data);
+    await expect(recordPayment({
+      userId: ids.users.local,
+      organisationId: ids.organisations.otherFranchise,
+      territoryId: ids.territories.other
+    }, permissions, audit(), data, {
+      id: "payment_cross",
+      issuerOrganisationId: ids.organisations.franchise,
+      advertiserId: ids.advertiser,
+      payerOrganisationId: ids.organisations.advertiser,
+      amountMinor: 100,
+      allocatedMinor: 0,
+      unallocatedMinor: 100,
+      currency: "GBP",
+      receivedDate: "2026-08-12",
+      method: "bank",
+      status: "received",
+      metadata: {}
+    }, "event_cross")).rejects.toThrow();
+  });
 });
 
 function hqContext() {
@@ -529,6 +735,14 @@ function emptyData(): AdvertisingData {
     terms: [],
     acceptances: [],
     domainEvents: [],
+    invoiceSequences: [],
+    invoices: [],
+    invoiceLines: [],
+    creditNotes: [],
+    creditNoteLines: [],
+    payments: [],
+    paymentAllocations: [],
+    providerSyncReferences: [],
     organisations: [
       { id: ids.organisations.hq, kind: "hq", name: "HQ" },
       { id: ids.organisations.franchise, kind: "franchise", name: "Own Franchise" },
@@ -649,6 +863,87 @@ function seedProposal(data: AdvertisingData, patch: Partial<AdvertisingData["pro
     totalPriceMinor: 52500,
     currency: "GBP",
     metadata: {}
+  });
+}
+
+function seedAcceptedBooking(data: AdvertisingData) {
+  data.bookings.push({
+    id: "booking_autumn",
+    proposalId: "proposal_autumn",
+    advertiserId: ids.advertiser,
+    opportunityId: ids.opportunity,
+    territoryId: ids.territories.own,
+    status: "booked",
+    bookedOn: "2026-08-11",
+    totalValueMinor: 52500,
+    currency: "GBP",
+    metadata: {}
+  });
+  data.bookingItems.push({
+    id: "booking_item_autumn_1",
+    bookingId: "booking_autumn",
+    proposalItemId: "proposal_item_autumn",
+    productId: ids.product,
+    inventoryReservationId: null,
+    description: "Full page advert",
+    quantity: 1,
+    totalPriceMinor: 52500,
+    currency: "GBP",
+    metadata: {}
+  });
+  data.invoiceSequences.push({
+    id: "sequence_franchise",
+    issuerOrganisationId: ids.organisations.franchise,
+    key: "default",
+    prefix: "R2G",
+    nextNumber: 1,
+    padding: 5
+  });
+}
+
+function seedIssuedInvoice(data: AdvertisingData) {
+  data.invoiceSequences.push({
+    id: "sequence_franchise",
+    issuerOrganisationId: ids.organisations.franchise,
+    key: "default",
+    prefix: "R2G",
+    nextNumber: 2,
+    padding: 5
+  });
+  data.invoices.push({
+    id: "invoice_1",
+    issuerOrganisationId: ids.organisations.franchise,
+    advertiserId: ids.advertiser,
+    customerOrganisationId: ids.organisations.advertiser,
+    territoryId: ids.territories.own,
+    bookingId: "booking_autumn",
+    invoiceNumber: "R2G-00001",
+    status: "issued",
+    issueDate: "2026-08-11",
+    dueDate: "2026-09-10",
+    voidedAt: null,
+    currency: "GBP",
+    subtotalMinor: 52500,
+    taxMinor: 10500,
+    totalMinor: 63000,
+    amountPaidMinor: 0,
+    balanceMinor: 63000,
+    billingSnapshot: { customer: "Example Advertiser" },
+    paymentTermsSnapshot: { days: 30 },
+    issuedSnapshot: { invoice: { invoiceNumber: "R2G-00001" } }
+  });
+  data.invoiceLines.push({
+    id: "invoice_line_1",
+    invoiceId: "invoice_1",
+    bookingItemId: "booking_item_autumn_1",
+    productId: ids.product,
+    description: "Full page advert",
+    quantity: 1,
+    netMinor: 52500,
+    taxRateBps: 2000,
+    taxMinor: 10500,
+    grossMinor: 63000,
+    taxCode: "standard_vat"
   });
 }
 

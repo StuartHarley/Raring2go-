@@ -14,7 +14,16 @@ export const advertisingCapabilities = {
   proposalCreate: { module: "advertiser.proposal", action: "create" },
   bookingAccept: { module: "advertiser.booking", action: "accept" },
   proposalAccept: { module: "advertiser.proposal", action: "accept" },
-  proposalRespond: { module: "advertiser.proposal", action: "respond" }
+  proposalRespond: { module: "advertiser.proposal", action: "respond" },
+  financeView: { module: "advertiser.finance", action: "view" },
+  invoiceCreate: { module: "advertiser.invoice", action: "create" },
+  invoiceEditDraft: { module: "advertiser.invoice", action: "edit_draft" },
+  invoiceIssue: { module: "advertiser.invoice", action: "issue" },
+  creditCreate: { module: "advertiser.credit", action: "create" },
+  paymentRecord: { module: "advertiser.payment", action: "record" },
+  paymentAllocate: { module: "advertiser.payment", action: "allocate" },
+  paymentReconcile: { module: "advertiser.payment", action: "reconcile" },
+  financeExport: { module: "advertiser.finance", action: "export" }
 } as const;
 
 export type AdvertisingCapability = keyof typeof advertisingCapabilities;

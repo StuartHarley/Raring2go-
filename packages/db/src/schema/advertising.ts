@@ -486,3 +486,194 @@ export const advertiserDomainEvents = pgTable(
     index("advertiser_domain_events_entity_idx").on(table.entityType, table.entityId)
   ]
 );
+
+export const advertiserInvoiceSequences = pgTable(
+  "advertiser_invoice_sequences",
+  {
+    id,
+    issuerOrganisationId: uuid("issuer_organisation_id").notNull().references(() => organisations.id),
+    key: text("key").notNull().default("default"),
+    prefix: text("prefix").notNull().default("INV"),
+    nextNumber: integer("next_number").notNull().default(1),
+    padding: integer("padding").notNull().default(5),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("advertiser_invoice_sequences_issuer_key_uidx").on(table.issuerOrganisationId, table.key)
+  ]
+);
+
+export const advertiserInvoices = pgTable(
+  "advertiser_invoices",
+  {
+    id,
+    issuerOrganisationId: uuid("issuer_organisation_id").notNull().references(() => organisations.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    customerOrganisationId: uuid("customer_organisation_id").notNull().references(() => organisations.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    bookingId: uuid("booking_id").references(() => commercialBookings.id),
+    invoiceNumber: text("invoice_number").notNull(),
+    status: text("status").notNull().default("draft"),
+    issueDate: date("issue_date", { mode: "date" }),
+    dueDate: date("due_date", { mode: "date" }),
+    voidedAt: date("voided_at", { mode: "date" }),
+    currency: text("currency").notNull().default("GBP"),
+    subtotalMinor: integer("subtotal_minor").notNull().default(0),
+    taxMinor: integer("tax_minor").notNull().default(0),
+    totalMinor: integer("total_minor").notNull().default(0),
+    amountPaidMinor: integer("amount_paid_minor").notNull().default(0),
+    balanceMinor: integer("balance_minor").notNull().default(0),
+    billingSnapshot: jsonb("billing_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    paymentTermsSnapshot: jsonb("payment_terms_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    issuedSnapshot: jsonb("issued_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("advertiser_invoices_issuer_number_uidx").on(table.issuerOrganisationId, table.invoiceNumber),
+    index("advertiser_invoices_advertiser_id_idx").on(table.advertiserId),
+    index("advertiser_invoices_territory_id_idx").on(table.territoryId),
+    index("advertiser_invoices_status_idx").on(table.status),
+    index("advertiser_invoices_due_date_idx").on(table.dueDate),
+    index("advertiser_invoices_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const advertiserInvoiceLines = pgTable(
+  "advertiser_invoice_lines",
+  {
+    id,
+    invoiceId: uuid("invoice_id").notNull().references(() => advertiserInvoices.id),
+    bookingItemId: uuid("booking_item_id").references(() => commercialBookingItems.id),
+    productId: uuid("product_id").references(() => commercialProducts.id),
+    description: text("description").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    netMinor: integer("net_minor").notNull(),
+    taxRateBps: integer("tax_rate_bps").notNull().default(2000),
+    taxMinor: integer("tax_minor").notNull(),
+    grossMinor: integer("gross_minor").notNull(),
+    taxCode: text("tax_code").notNull().default("standard_vat"),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("advertiser_invoice_lines_invoice_id_idx").on(table.invoiceId),
+    index("advertiser_invoice_lines_booking_item_id_idx").on(table.bookingItemId),
+    index("advertiser_invoice_lines_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const advertiserCreditNotes = pgTable(
+  "advertiser_credit_notes",
+  {
+    id,
+    invoiceId: uuid("invoice_id").notNull().references(() => advertiserInvoices.id),
+    issuerOrganisationId: uuid("issuer_organisation_id").notNull().references(() => organisations.id),
+    creditNoteNumber: text("credit_note_number").notNull(),
+    reason: text("reason").notNull(),
+    issuedByUserId: uuid("issued_by_user_id").references(() => users.id),
+    issuedDate: date("issued_date", { mode: "date" }).notNull(),
+    currency: text("currency").notNull().default("GBP"),
+    subtotalMinor: integer("subtotal_minor").notNull().default(0),
+    taxMinor: integer("tax_minor").notNull().default(0),
+    totalMinor: integer("total_minor").notNull().default(0),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("advertiser_credit_notes_issuer_number_uidx").on(table.issuerOrganisationId, table.creditNoteNumber),
+    index("advertiser_credit_notes_invoice_id_idx").on(table.invoiceId),
+    index("advertiser_credit_notes_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const advertiserCreditNoteLines = pgTable(
+  "advertiser_credit_note_lines",
+  {
+    id,
+    creditNoteId: uuid("credit_note_id").notNull().references(() => advertiserCreditNotes.id),
+    invoiceLineId: uuid("invoice_line_id").references(() => advertiserInvoiceLines.id),
+    description: text("description").notNull(),
+    netMinor: integer("net_minor").notNull(),
+    taxRateBps: integer("tax_rate_bps").notNull().default(2000),
+    taxMinor: integer("tax_minor").notNull(),
+    grossMinor: integer("gross_minor").notNull(),
+    taxCode: text("tax_code").notNull().default("standard_vat"),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("advertiser_credit_note_lines_credit_note_id_idx").on(table.creditNoteId),
+    index("advertiser_credit_note_lines_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const advertiserPayments = pgTable(
+  "advertiser_payments",
+  {
+    id,
+    issuerOrganisationId: uuid("issuer_organisation_id").notNull().references(() => organisations.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    payerOrganisationId: uuid("payer_organisation_id").notNull().references(() => organisations.id),
+    amountMinor: integer("amount_minor").notNull(),
+    allocatedMinor: integer("allocated_minor").notNull().default(0),
+    unallocatedMinor: integer("unallocated_minor").notNull(),
+    currency: text("currency").notNull().default("GBP"),
+    receivedDate: date("received_date", { mode: "date" }).notNull(),
+    method: text("method").notNull(),
+    providerKey: text("provider_key"),
+    externalReference: text("external_reference"),
+    providerEventId: text("provider_event_id"),
+    status: text("status").notNull().default("received"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("advertiser_payments_provider_event_uidx").on(table.providerKey, table.providerEventId),
+    index("advertiser_payments_advertiser_id_idx").on(table.advertiserId),
+    index("advertiser_payments_issuer_idx").on(table.issuerOrganisationId),
+    index("advertiser_payments_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const advertiserPaymentAllocations = pgTable(
+  "advertiser_payment_allocations",
+  {
+    id,
+    paymentId: uuid("payment_id").notNull().references(() => advertiserPayments.id),
+    invoiceId: uuid("invoice_id").notNull().references(() => advertiserInvoices.id),
+    amountMinor: integer("amount_minor").notNull(),
+    allocatedAt: date("allocated_at", { mode: "date" }).notNull(),
+    status: text("status").notNull().default("allocated"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("advertiser_payment_allocations_payment_id_idx").on(table.paymentId),
+    index("advertiser_payment_allocations_invoice_id_idx").on(table.invoiceId),
+    index("advertiser_payment_allocations_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const advertiserProviderSyncReferences = pgTable(
+  "advertiser_provider_sync_references",
+  {
+    id,
+    providerType: text("provider_type").notNull(),
+    providerKey: text("provider_key").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    providerEntityId: text("provider_entity_id"),
+    status: text("status").notNull().default("pending"),
+    lastSyncedAt: date("last_synced_at", { mode: "date" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("advertiser_provider_sync_entity_uidx").on(table.providerType, table.providerKey, table.entityType, table.entityId),
+    index("advertiser_provider_sync_status_idx").on(table.status)
+  ]
+);

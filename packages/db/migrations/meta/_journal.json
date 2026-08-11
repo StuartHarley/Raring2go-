@@ -148,6 +148,13 @@
       "when": 1786437434174,
       "tag": "0020_lethal_praxagora",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786438158104,
+      "tag": "0021_curly_nico_minoru",
+      "breakpoints": true
     }
   ]
 }

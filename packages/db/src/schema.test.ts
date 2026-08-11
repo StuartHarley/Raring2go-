@@ -10,8 +10,16 @@ import {
   advertiserActivityEvents,
   advertiserContacts,
   advertiserDomainEvents,
+  advertiserCreditNoteLines,
+  advertiserCreditNotes,
+  advertiserInvoiceLines,
+  advertiserInvoiceSequences,
+  advertiserInvoices,
   advertiserMetricSnapshots,
+  advertiserPaymentAllocations,
+  advertiserPayments,
   advertiserProposalAcceptances,
+  advertiserProviderSyncReferences,
   advertiserTerms,
   advertisers,
   commercialPackages,
@@ -158,6 +166,22 @@ describe("foundation schema", () => {
     expect(advertiserDomainEvents.idempotencyKey.name).toBe("idempotency_key");
     expect((advertiserProposalAcceptances as unknown as Record<string, unknown>).signingOrder).toBeUndefined();
     expect((advertiserProposalAcceptances as unknown as Record<string, unknown>).certificateArtifactId).toBeUndefined();
+  });
+
+  it("models advertiser invoicing, payments and reconciliation foundations", () => {
+    expect(advertiserInvoiceSequences.issuerOrganisationId.name).toBe("issuer_organisation_id");
+    expect(advertiserInvoices.issuerOrganisationId.name).toBe("issuer_organisation_id");
+    expect(advertiserInvoices.territoryId.name).toBe("territory_id");
+    expect(advertiserInvoices.invoiceNumber.name).toBe("invoice_number");
+    expect(advertiserInvoices.issuedSnapshot.name).toBe("issued_snapshot");
+    expect(advertiserInvoiceLines.taxRateBps.name).toBe("tax_rate_bps");
+    expect(advertiserCreditNotes.invoiceId.name).toBe("invoice_id");
+    expect(advertiserCreditNoteLines.taxCode.name).toBe("tax_code");
+    expect(advertiserPayments.unallocatedMinor.name).toBe("unallocated_minor");
+    expect(advertiserPaymentAllocations.invoiceId.name).toBe("invoice_id");
+    expect(advertiserProviderSyncReferences.providerKey.name).toBe("provider_key");
+    expect((advertiserInvoices as unknown as Record<string, unknown>).xeroInvoiceId).toBeUndefined();
+    expect((advertiserPayments as unknown as Record<string, unknown>).stripePaymentIntentId).toBeUndefined();
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

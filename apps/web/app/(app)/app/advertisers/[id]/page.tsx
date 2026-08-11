@@ -46,7 +46,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           </article>
           <article>
             <span>Debt</span>
-            <strong>{formatMoney(result.latestMetrics?.overdueDebtMinor ?? 0)}</strong>
+            <strong>{formatMoney(result.financeSummary.outstandingMinor)}</strong>
           </article>
           <article>
             <span>Pipeline</span>
@@ -160,6 +160,45 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           <span>Advertiser acceptance deferred to ADV-005</span>
           <span>Invoices deferred to ADV-006</span>
           <span>Artwork intake deferred to ADV-007</span>
+        </div>
+      </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Finance</p>
+        <h2>Invoices and payments</h2>
+        <div className="franchise-metrics">
+          <article>
+            <span>Invoiced</span>
+            <strong>{formatMoney(result.financeSummary.lifetimeInvoicedMinor)}</strong>
+          </article>
+          <article>
+            <span>Paid</span>
+            <strong>{formatMoney(result.financeSummary.lifetimePaidMinor)}</strong>
+          </article>
+          <article>
+            <span>Outstanding</span>
+            <strong>{formatMoney(result.financeSummary.outstandingMinor)}</strong>
+          </article>
+          <article>
+            <span>Overdue</span>
+            <strong>{formatMoney(result.financeSummary.overdueMinor)}</strong>
+          </article>
+        </div>
+        <div className="franchise-list">
+          {result.invoices.length === 0 ? (
+            <div>
+              <strong>No invoices yet</strong>
+              <span>Invoices are generated from confirmed bookings in ADV-006.</span>
+            </div>
+          ) : (
+            result.invoices.map((invoice) => (
+              <div key={invoice.id}>
+                <strong>{invoice.invoiceNumber}</strong>
+                <span>{invoice.status} - due {invoice.dueDate ?? "not set"}</span>
+                <span>{formatMoney(invoice.totalMinor)} total - {formatMoney(invoice.balanceMinor)} outstanding</span>
+              </div>
+            ))
+          )}
         </div>
       </section>
 

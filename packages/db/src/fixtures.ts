@@ -82,7 +82,16 @@ export const fixtureIds = {
     proposalCreate: "00000000-0000-4000-8000-000000000462",
     bookingAccept: "00000000-0000-4000-8000-000000000463",
     proposalAccept: "00000000-0000-4000-8000-000000000464",
-    proposalRespond: "00000000-0000-4000-8000-000000000465"
+    proposalRespond: "00000000-0000-4000-8000-000000000465",
+    financeView: "00000000-0000-4000-8000-000000000466",
+    invoiceCreate: "00000000-0000-4000-8000-000000000467",
+    invoiceEditDraft: "00000000-0000-4000-8000-000000000468",
+    invoiceIssue: "00000000-0000-4000-8000-000000000469",
+    creditCreate: "00000000-0000-4000-8000-000000000470",
+    paymentRecord: "00000000-0000-4000-8000-000000000471",
+    paymentAllocate: "00000000-0000-4000-8000-000000000472",
+    paymentReconcile: "00000000-0000-4000-8000-000000000473",
+    financeExport: "00000000-0000-4000-8000-000000000474"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -138,6 +147,9 @@ export const fixtureIds = {
   },
   advertiserTerms: {
     standard2026: "00000000-0000-4000-8000-000000000721"
+  },
+  advertiserInvoiceSequences: {
+    franchiseDefault: "00000000-0000-4000-8000-000000000722"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -670,6 +682,60 @@ export const foundationSeed = {
       module: "advertiser.proposal",
       action: "respond",
       description: "Reject or request changes to advertiser proposals."
+    },
+    {
+      id: fixtureIds.permissions.financeView,
+      module: "advertiser.finance",
+      action: "view",
+      description: "View advertiser finance records."
+    },
+    {
+      id: fixtureIds.permissions.invoiceCreate,
+      module: "advertiser.invoice",
+      action: "create",
+      description: "Create advertiser invoices from confirmed bookings."
+    },
+    {
+      id: fixtureIds.permissions.invoiceEditDraft,
+      module: "advertiser.invoice",
+      action: "edit_draft",
+      description: "Edit draft advertiser invoices."
+    },
+    {
+      id: fixtureIds.permissions.invoiceIssue,
+      module: "advertiser.invoice",
+      action: "issue",
+      description: "Issue advertiser invoices with immutable numbers."
+    },
+    {
+      id: fixtureIds.permissions.creditCreate,
+      module: "advertiser.credit",
+      action: "create",
+      description: "Issue advertiser credit notes."
+    },
+    {
+      id: fixtureIds.permissions.paymentRecord,
+      module: "advertiser.payment",
+      action: "record",
+      description: "Record advertiser payments."
+    },
+    {
+      id: fixtureIds.permissions.paymentAllocate,
+      module: "advertiser.payment",
+      action: "allocate",
+      description: "Allocate advertiser payments to invoices."
+    },
+    {
+      id: fixtureIds.permissions.paymentReconcile,
+      module: "advertiser.payment",
+      action: "reconcile",
+      description: "Reconcile advertiser payments."
+    },
+    {
+      id: fixtureIds.permissions.financeExport,
+      module: "advertiser.finance",
+      action: "export",
+      description: "Export advertiser finance records to provider-neutral accounting sync."
     }
   ],
   advertisers: [
@@ -947,6 +1013,23 @@ export const foundationSeed = {
   ],
   advertiserProposalAcceptances: [],
   advertiserDomainEvents: [],
+  advertiserInvoiceSequences: [
+    {
+      id: fixtureIds.advertiserInvoiceSequences.franchiseDefault,
+      issuerOrganisationId: fixtureIds.organisations.franchise,
+      key: "default",
+      prefix: "R2G",
+      nextNumber: 1,
+      padding: 5
+    }
+  ],
+  advertiserInvoices: [],
+  advertiserInvoiceLines: [],
+  advertiserCreditNotes: [],
+  advertiserCreditNoteLines: [],
+  advertiserPayments: [],
+  advertiserPaymentAllocations: [],
+  advertiserProviderSyncReferences: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

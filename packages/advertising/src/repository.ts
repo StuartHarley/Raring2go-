@@ -2,8 +2,16 @@ import {
   advertiserActivityEvents,
   advertiserContacts,
   advertiserDomainEvents,
+  advertiserCreditNoteLines,
+  advertiserCreditNotes,
+  advertiserInvoiceLines,
+  advertiserInvoiceSequences,
+  advertiserInvoices,
   advertiserMetricSnapshots,
+  advertiserPaymentAllocations,
+  advertiserPayments,
   advertiserProposalAcceptances,
+  advertiserProviderSyncReferences,
   advertiserTerms,
   advertisers,
   commercialBookingItems,
@@ -52,6 +60,14 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     termsRows,
     acceptanceRows,
     domainEventRows,
+    invoiceSequenceRows,
+    invoiceRows,
+    invoiceLineRows,
+    creditNoteRows,
+    creditNoteLineRows,
+    paymentRows,
+    paymentAllocationRows,
+    providerSyncRows,
     organisationRows,
     territoryRows
   ] = await Promise.all([
@@ -75,6 +91,14 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     db.select().from(advertiserTerms),
     db.select().from(advertiserProposalAcceptances),
     db.select().from(advertiserDomainEvents),
+    db.select().from(advertiserInvoiceSequences),
+    db.select().from(advertiserInvoices),
+    db.select().from(advertiserInvoiceLines),
+    db.select().from(advertiserCreditNotes),
+    db.select().from(advertiserCreditNoteLines),
+    db.select().from(advertiserPayments),
+    db.select().from(advertiserPaymentAllocations),
+    db.select().from(advertiserProviderSyncReferences),
     db.select().from(organisations),
     db.select().from(territories)
   ]);
@@ -138,6 +162,31 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
       ...row,
       processedAt: dateString(row.processedAt)
     })) as AdvertisingData["domainEvents"],
+    invoiceSequences: invoiceSequenceRows as AdvertisingData["invoiceSequences"],
+    invoices: invoiceRows.map((row) => ({
+      ...row,
+      issueDate: dateString(row.issueDate),
+      dueDate: dateString(row.dueDate),
+      voidedAt: dateString(row.voidedAt)
+    })) as AdvertisingData["invoices"],
+    invoiceLines: invoiceLineRows as AdvertisingData["invoiceLines"],
+    creditNotes: creditNoteRows.map((row) => ({
+      ...row,
+      issuedDate: dateString(row.issuedDate)
+    })) as AdvertisingData["creditNotes"],
+    creditNoteLines: creditNoteLineRows as AdvertisingData["creditNoteLines"],
+    payments: paymentRows.map((row) => ({
+      ...row,
+      receivedDate: dateString(row.receivedDate)
+    })) as AdvertisingData["payments"],
+    paymentAllocations: paymentAllocationRows.map((row) => ({
+      ...row,
+      allocatedAt: dateString(row.allocatedAt)
+    })) as AdvertisingData["paymentAllocations"],
+    providerSyncReferences: providerSyncRows.map((row) => ({
+      ...row,
+      lastSyncedAt: dateString(row.lastSyncedAt)
+    })) as AdvertisingData["providerSyncReferences"],
     organisations: organisationRows as AdvertisingData["organisations"],
     territories: territoryRows as AdvertisingData["territories"]
   };

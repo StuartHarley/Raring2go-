@@ -5,6 +5,7 @@ import {
   auditEvents,
   advertiserActivityEvents,
   advertiserContacts,
+  advertiserInvoiceSequences,
   advertiserTerms,
   advertiserMetricSnapshots,
   advertisers,
@@ -270,7 +271,16 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.proposalCreate,
         fixtureIds.permissions.bookingAccept,
         fixtureIds.permissions.proposalAccept,
-        fixtureIds.permissions.proposalRespond
+        fixtureIds.permissions.proposalRespond,
+        fixtureIds.permissions.financeView,
+        fixtureIds.permissions.invoiceCreate,
+        fixtureIds.permissions.invoiceEditDraft,
+        fixtureIds.permissions.invoiceIssue,
+        fixtureIds.permissions.creditCreate,
+        fixtureIds.permissions.paymentRecord,
+        fixtureIds.permissions.paymentAllocate,
+        fixtureIds.permissions.paymentReconcile,
+        fixtureIds.permissions.financeExport
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -420,7 +430,21 @@ export async function seedDatabase(databaseUrl?: string) {
         permissionId: fixtureIds.permissions.proposalRespond,
         scope: "own_territory",
         constraints: {}
-      }
+      },
+      ...[
+        fixtureIds.permissions.financeView,
+        fixtureIds.permissions.invoiceCreate,
+        fixtureIds.permissions.invoiceEditDraft,
+        fixtureIds.permissions.invoiceIssue,
+        fixtureIds.permissions.creditCreate,
+        fixtureIds.permissions.paymentRecord,
+        fixtureIds.permissions.paymentAllocate
+      ].map((permissionId) => ({
+        roleId: fixtureIds.roles.franchisee,
+        permissionId,
+        scope: "own_territory" as const,
+        constraints: {}
+      }))
     ]).onConflictDoNothing();
 
     await db.insert(userRoleAssignments).values([
@@ -759,6 +783,18 @@ export async function seedDatabase(databaseUrl?: string) {
         approvedAt: sql`excluded.approved_at`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(advertiserInvoiceSequences).values([...foundationSeed.advertiserInvoiceSequences]).onConflictDoUpdate({
+      target: advertiserInvoiceSequences.id,
+      set: {
+        issuerOrganisationId: sql`excluded.issuer_organisation_id`,
+        key: sql`excluded.key`,
+        prefix: sql`excluded.prefix`,
+        nextNumber: sql`excluded.next_number`,
+        padding: sql`excluded.padding`,
+        updatedAt: sql`now()`
       }
     });
 
