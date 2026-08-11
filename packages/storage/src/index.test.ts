@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 import {
   applyScanResult,
   assertSafeStorageKey,
   canAccessFile,
+  createClamAvHttpScannerProvider,
   createDevelopmentStorageProvider,
   createFileReference,
   createMemoryScannerProvider,
+  createR2StorageProvider,
+  createScannerProviderFromEnv,
   createSignedUrlStorageProvider,
   createStorageProviderFromEnv,
   assertFileIsDownloadable,
@@ -193,5 +197,139 @@ describe("@raring2go/storage", () => {
       STORAGE_SIGNING_SECRET: "secret",
       STORAGE_PROVIDER_KEY: "pilot-files"
     } as NodeJS.ProcessEnv).key).toBe("pilot-files");
+    expect(createStorageProviderFromEnv({
+      STORAGE_PROVIDER: "r2",
+      R2_ACCOUNT_ID: "account",
+      R2_BUCKET: "raring2go-pilot",
+      R2_ACCESS_KEY_ID: "access-key",
+      R2_SECRET_ACCESS_KEY: "secret-key"
+    } as NodeJS.ProcessEnv).key).toBe("r2");
+  });
+
+  it("creates private Cloudflare R2 signed upload and download URLs without exposing secret material", async () => {
+    const provider = createR2StorageProvider({
+      accountId: "account123",
+      bucket: "raring2go-pilot",
+      accessKeyId: "access-key-id",
+      secretAccessKey: "super-secret-key",
+      expiresInSeconds: 120,
+      now: () => new Date("2026-08-11T12:00:00.000Z")
+    });
+    const reference = createFileReference({
+      id: "file_1",
+      storageKey: "territories/sutton/artwork/file.pdf",
+      fileName: "file.pdf",
+      contentType: "application/pdf",
+      accessScope: "territory",
+      territoryId: "territory_sutton",
+      virusScanStatus: "clean"
+    });
+
+    const upload = await provider.createUploadIntent(reference);
+    const download = await provider.createDownloadIntent(reference, { disposition: "inline" });
+
+    expect(upload.reference.providerKey).toBe("r2");
+    expect(upload.uploadUrl).toContain("https://account123.r2.cloudflarestorage.com/raring2go-pilot/territories/sutton/artwork/file.pdf");
+    expect(upload.uploadUrl).toContain("X-Amz-Expires=120");
+    expect(upload.headers).toEqual({ "content-type": "application/pdf" });
+    expect(download.downloadUrl).toContain("response-content-disposition=");
+    expect(download.expiresAt).toBe("2026-08-11T12:02:00.000Z");
+    expect(upload.uploadUrl).not.toContain("super-secret-key");
+    expect(download.downloadUrl).not.toContain("super-secret-key");
+    expect(download.downloadUrl).not.toContain("raring2go.co.uk/");
+  });
+
+  it("fails closed for missing R2 configuration", () => {
+    expect(() => createStorageProviderFromEnv({
+      STORAGE_PROVIDER: "r2",
+      R2_ACCOUNT_ID: "account"
+    } as NodeJS.ProcessEnv)).toThrow("R2_ACCOUNT_ID");
+  });
+
+  it("uses the ClamAV HTTP scanner boundary and does not pass scanner secrets into file references", async () => {
+    const requests: RequestInit[] = [];
+    const scanner = createClamAvHttpScannerProvider({
+      endpoint: "https://scanner.internal/scan",
+      apiKey: "scanner-secret",
+      fetch: async (_url, init) => {
+        requests.push(init ?? {});
+        return new Response(JSON.stringify({
+          status: "clean",
+          scannedAt: "2026-08-11T12:00:00.000Z",
+          findings: []
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+    });
+    const reference = createFileReference({
+      id: "file_1",
+      storageKey: "private/file.pdf",
+      fileName: "file.pdf",
+      contentType: "application/pdf",
+      accessScope: "organisation",
+      organisationId: "organisation_1"
+    });
+    const result = await scanner.scan(reference);
+    const scanned = applyScanResult(reference, result);
+
+    expect(result).toMatchObject({
+      providerKey: "clamav-http",
+      status: "clean"
+    });
+    expect(requests[0]?.headers).toMatchObject({ authorization: "Bearer scanner-secret" });
+    expect(JSON.stringify(scanned)).not.toContain("scanner-secret");
+  });
+
+  it("treats scanner outages as failed scans and blocks download", async () => {
+    const scanner = createClamAvHttpScannerProvider({
+      endpoint: "https://scanner.internal/scan",
+      fetch: async () => new Response(JSON.stringify({ error: "unavailable" }), { status: 503 })
+    });
+    const reference = createFileReference({
+      id: "file_1",
+      storageKey: "private/file.pdf",
+      fileName: "file.pdf",
+      contentType: "application/pdf",
+      accessScope: "territory",
+      territoryId: "territory_1"
+    });
+    const scanned = applyScanResult(reference, await scanner.scan(reference));
+
+    expect(scanned.virusScanStatus).toBe("failed");
+    expect(() => assertFileIsDownloadable(scanned)).toThrow("security scanning");
+  });
+
+  it("verifies scanner webhooks and selects scanner providers from environment", async () => {
+    expect(createScannerProviderFromEnv({ SCANNER_PROVIDER: "memory" } as NodeJS.ProcessEnv).key).toBe("memory-scanner");
+    expect(createScannerProviderFromEnv({
+      SCANNER_PROVIDER: "clamav-http",
+      CLAMAV_SCANNER_ENDPOINT: "https://scanner.internal/scan"
+    } as NodeJS.ProcessEnv).key).toBe("clamav-http");
+    expect(() => createScannerProviderFromEnv({
+      SCANNER_PROVIDER: "clamav-http"
+    } as NodeJS.ProcessEnv)).toThrow("CLAMAV_SCANNER_ENDPOINT");
+
+    const scanner = createClamAvHttpScannerProvider({ endpoint: "https://scanner.internal/scan" });
+    const body = JSON.stringify({
+      fileId: "file_1",
+      status: "infected",
+      providerKey: "clamav-http",
+      scannedAt: "2026-08-11T12:00:00.000Z",
+      findings: ["Eicar-Test-Signature"]
+    });
+    const signature = createHmac("sha256", "scanner-webhook-secret").update(body).digest("hex");
+    const event = await scanner.verifyScanEvent?.({
+      headers: { "x-raring2go-scanner-signature": signature },
+      body,
+      secret: "scanner-webhook-secret"
+    });
+
+    expect(event).toMatchObject({
+      fileId: "file_1",
+      status: "infected",
+      findings: ["Eicar-Test-Signature"]
+    });
   });
 });

@@ -125,6 +125,14 @@ Signed URL storage:
 - Message: `STORAGE_PROVIDER=signed-url requires STORAGE_BASE_URL and STORAGE_SIGNING_SECRET.`
 - Status: expected safe failure.
 
+Cloudflare R2 storage and ClamAV scanning:
+
+- Implementation: R2 `StorageProvider` added with private signed upload/download URLs; ClamAV HTTP `FileScannerProvider` boundary added.
+- Automated tests: pending current UAT-001E quality gate.
+- Configuration still required: private R2 bucket, scoped R2 keys, Vercel/local secrets and private scanner service endpoint.
+- Live verification still required: real upload, non-public object proof, scan result, blocked infected/pending download, signed URL expiry and credential-leak review.
+- Status: AMBER until real R2 bucket and scanner service are verified.
+
 ### Outstanding Configuration Required
 
 Meta/Facebook:
