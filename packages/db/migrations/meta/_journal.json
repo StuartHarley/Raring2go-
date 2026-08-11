@@ -211,6 +211,13 @@
       "when": 1786444229340,
       "tag": "0029_unique_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786444597756,
+      "tag": "0030_rapid_doctor_doom",
+      "breakpoints": true
     }
   ]
 }

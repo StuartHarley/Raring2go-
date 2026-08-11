@@ -152,7 +152,8 @@ export const auditActions = {
   marketingJourneyPause: "marketing.journey.pause",
   marketingJourneyEnter: "marketing.journey.enter",
   marketingJourneyStepExecute: "marketing.journey.step.execute",
-  marketingJourneyFail: "marketing.journey.fail"
+  marketingJourneyFail: "marketing.journey.fail",
+  audiencePreferenceUpdate: "audience.preference.update"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

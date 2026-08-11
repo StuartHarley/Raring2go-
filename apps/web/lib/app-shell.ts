@@ -120,6 +120,16 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory"
   },
   {
+    id: "preferences",
+    label: "Preferences",
+    href: "/app/preferences",
+    capability: {
+      module: "marketing.audience",
+      action: "view"
+    },
+    contextLevel: "territory"
+  },
+  {
     id: "newsletters",
     label: "Newsletters",
     href: "/app/newsletters",

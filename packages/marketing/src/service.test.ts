@@ -14,6 +14,7 @@ import {
   enterJourneyFromEvent,
   executeJourneyStep,
   generateTerritoryNewsletterEditions,
+  getPreferenceCentre,
   listJourneys,
   listNewsletterFactory,
   pauseJourney,
@@ -24,6 +25,7 @@ import {
   scheduleEmailCampaign,
   subscribeContactToTerritory,
   suppressContact,
+  updatePreferenceProfile,
   upsertAudienceContact
 } from "./service";
 import type { MarketingData } from "./types";
@@ -149,6 +151,55 @@ describe("marketing audience foundation", () => {
 
   it("fails closed for cross-territory audience changes", async () => {
     await expect(subscribeContactToTerritory(localContext(), permissions, audit(), seededData(), subscription("sub_cross", ids.contact, ids.territories.other))).rejects.toThrow("outside the active territory");
+  });
+
+  it("uses parent preferences for relevance while failing gracefully without profile data", async () => {
+    const data = seededData();
+
+    expect(getPreferenceCentre(localContext(), permissions, data, ids.contact)).toMatchObject({
+      profile: undefined,
+      recommendedContent: []
+    });
+
+    const updated = await updatePreferenceProfile(localContext(), permissions, audit(), data, {
+      id: "profile_1",
+      contactId: ids.contact,
+      homeTerritoryId: ids.territories.own,
+      followedTerritoryIds: [ids.territories.own],
+      childAgeBands: ["primary"],
+      interests: ["days-out"],
+      eventCategories: ["family-activity"],
+      offerPreferences: ["family-days-out"],
+      competitionPreferences: ["local-prizes"],
+      newsletterFrequency: "weekly",
+      communicationPreferences: { newsletter: true },
+      personalisationEnabled: true,
+      privacyMetadata: { dataMinimisation: "broad_age_bands_only" }
+    });
+
+    expect(updated.profile?.childAgeBands).toEqual(["primary"]);
+    expect(updated.recommendedSegments.map((segment) => segment.id)).toContain(ids.segment);
+  });
+
+  it("rejects precise or cross-scope preference data", async () => {
+    const data = seededData();
+    const profile = {
+      id: "profile_1",
+      contactId: ids.contact,
+      homeTerritoryId: ids.territories.other,
+      followedTerritoryIds: [ids.territories.other],
+      childAgeBands: ["2018-05-12"],
+      interests: ["days-out"],
+      eventCategories: [],
+      offerPreferences: [],
+      competitionPreferences: [],
+      newsletterFrequency: "daily",
+      communicationPreferences: {},
+      personalisationEnabled: true,
+      privacyMetadata: {}
+    };
+
+    await expect(updatePreferenceProfile(localContext(), permissions, audit(), data, profile)).rejects.toThrow("outside the permitted scope");
   });
 
   it("creates native email campaigns, snapshots eligible recipients and records delivery idempotently", async () => {
@@ -416,7 +467,7 @@ function seededData(): MarketingData {
     key: "own-newsletter",
     name: "Own newsletter",
     segmentType: "dynamic",
-    definition: { territoryId: ids.territories.own },
+    definition: { territoryId: ids.territories.own, interests: ["days-out"], eventCategories: ["family-activity"] },
     status: "active"
   });
   data.emailTemplates.push({
@@ -442,6 +493,8 @@ function emptyData(): MarketingData {
     segmentMembers: [],
     imports: [],
     activityEvents: [],
+    preferenceProfiles: [],
+    savedContent: [],
     emailTemplates: [],
     emailCampaigns: [],
     emailCampaignVersions: [],

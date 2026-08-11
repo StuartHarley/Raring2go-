@@ -9,6 +9,8 @@ import {
   agreementSigners,
   audienceConsentEvents,
   audienceContacts,
+  audiencePreferenceProfiles,
+  audienceSavedContent,
   audienceSegments,
   audienceSuppressions,
   audienceTerritorySubscriptions,
@@ -304,6 +306,18 @@ describe("foundation schema", () => {
     expect(socialProviderEvents.providerEventId.name).toBe("provider_event_id");
     expect((socialAccounts as unknown as Record<string, unknown>).accessToken).toBeUndefined();
     expect((socialPublications as unknown as Record<string, unknown>).facebookPostId).toBeUndefined();
+  });
+
+  it("models privacy-light parent preferences and saved content", () => {
+    expect(audiencePreferenceProfiles.contactId.name).toBe("contact_id");
+    expect(audiencePreferenceProfiles.followedTerritoryIds.name).toBe("followed_territory_ids");
+    expect(audiencePreferenceProfiles.childAgeBands.name).toBe("child_age_bands");
+    expect(audiencePreferenceProfiles.interests.name).toBe("interests");
+    expect(audiencePreferenceProfiles.communicationPreferences.name).toBe("communication_preferences");
+    expect(audienceSavedContent.contactId.name).toBe("contact_id");
+    expect(audienceSavedContent.contentType.name).toBe("content_type");
+    expect((audiencePreferenceProfiles as unknown as Record<string, unknown>).childDateOfBirth).toBeUndefined();
+    expect((audiencePreferenceProfiles as unknown as Record<string, unknown>).childName).toBeUndefined();
   });
 
   it("models approved marketing journeys and consent-safe execution state", () => {

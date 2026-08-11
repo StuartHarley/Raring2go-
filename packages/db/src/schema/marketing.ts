@@ -168,6 +168,53 @@ export const audienceActivityEvents = pgTable(
   ]
 );
 
+export const audiencePreferenceProfiles = pgTable(
+  "audience_preference_profiles",
+  {
+    id,
+    contactId: uuid("contact_id").notNull().references(() => audienceContacts.id),
+    homeTerritoryId: uuid("home_territory_id").references(() => territories.id),
+    followedTerritoryIds: uuid("followed_territory_ids").array().notNull().default([]),
+    childAgeBands: jsonb("child_age_bands").$type<string[]>().notNull().default([]),
+    interests: jsonb("interests").$type<string[]>().notNull().default([]),
+    eventCategories: jsonb("event_categories").$type<string[]>().notNull().default([]),
+    offerPreferences: jsonb("offer_preferences").$type<string[]>().notNull().default([]),
+    competitionPreferences: jsonb("competition_preferences").$type<string[]>().notNull().default([]),
+    newsletterFrequency: text("newsletter_frequency").notNull().default("weekly"),
+    communicationPreferences: jsonb("communication_preferences").$type<Record<string, unknown>>().notNull().default({}),
+    personalisationEnabled: boolean("personalisation_enabled").notNull().default(true),
+    privacyMetadata: jsonb("privacy_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("audience_preference_profiles_contact_uidx").on(table.contactId),
+    index("audience_preference_profiles_home_territory_idx").on(table.homeTerritoryId),
+    index("audience_preference_profiles_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const audienceSavedContent = pgTable(
+  "audience_saved_content",
+  {
+    id,
+    contactId: uuid("contact_id").notNull().references(() => audienceContacts.id),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    contentType: text("content_type").notNull(),
+    contentReferenceId: uuid("content_reference_id"),
+    title: text("title").notNull(),
+    savedAt: timestamp("saved_at", { withTimezone: true }).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("audience_saved_content_contact_id_idx").on(table.contactId),
+    index("audience_saved_content_territory_id_idx").on(table.territoryId),
+    index("audience_saved_content_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
 export const emailTemplates = pgTable(
   "email_templates",
   {

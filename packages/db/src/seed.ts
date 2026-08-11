@@ -6,6 +6,8 @@ import {
   audienceConsentEvents,
   audienceContacts,
   audienceSegments,
+  audiencePreferenceProfiles,
+  audienceSavedContent,
   audienceTerritorySubscriptions,
   advertiserActivityEvents,
   advertiserContacts,
@@ -961,6 +963,53 @@ export async function seedDatabase(databaseUrl?: string) {
         segmentType: sql`excluded.segment_type`,
         definition: sql`excluded.definition`,
         status: sql`excluded.status`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(audiencePreferenceProfiles).values(foundationSeed.audiencePreferenceProfiles.map((profile) => ({
+      ...profile,
+      followedTerritoryIds: [...profile.followedTerritoryIds],
+      childAgeBands: [...profile.childAgeBands],
+      interests: [...profile.interests],
+      eventCategories: [...profile.eventCategories],
+      offerPreferences: [...profile.offerPreferences],
+      competitionPreferences: [...profile.competitionPreferences],
+      communicationPreferences: { ...profile.communicationPreferences },
+      privacyMetadata: { ...profile.privacyMetadata }
+    }))).onConflictDoUpdate({
+      target: audiencePreferenceProfiles.id,
+      set: {
+        homeTerritoryId: sql`excluded.home_territory_id`,
+        followedTerritoryIds: sql`excluded.followed_territory_ids`,
+        childAgeBands: sql`excluded.child_age_bands`,
+        interests: sql`excluded.interests`,
+        eventCategories: sql`excluded.event_categories`,
+        offerPreferences: sql`excluded.offer_preferences`,
+        competitionPreferences: sql`excluded.competition_preferences`,
+        newsletterFrequency: sql`excluded.newsletter_frequency`,
+        communicationPreferences: sql`excluded.communication_preferences`,
+        personalisationEnabled: sql`excluded.personalisation_enabled`,
+        privacyMetadata: sql`excluded.privacy_metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(audienceSavedContent).values(foundationSeed.audienceSavedContent.map((saved) => ({
+      ...saved,
+      savedAt: new Date(saved.savedAt),
+      metadata: { ...saved.metadata }
+    }))).onConflictDoUpdate({
+      target: audienceSavedContent.id,
+      set: {
+        territoryId: sql`excluded.territory_id`,
+        contentType: sql`excluded.content_type`,
+        contentReferenceId: sql`excluded.content_reference_id`,
+        title: sql`excluded.title`,
+        savedAt: sql`excluded.saved_at`,
+        metadata: sql`excluded.metadata`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

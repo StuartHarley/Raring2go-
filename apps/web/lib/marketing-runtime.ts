@@ -1,6 +1,7 @@
 import {
   listAudienceContacts,
   listEmailCampaigns,
+  getPreferenceCentre,
   listJourneys,
   listNewsletterFactory,
   loadMarketingData
@@ -78,6 +79,16 @@ export async function readJourneyOverview(context: MarketingActorContext) {
 
   try {
     return listJourneys(context, marketingPermissionData, await loadMarketingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPreferenceCentre(context: MarketingActorContext, contactId = fixtureIds.audienceContacts.parentOne) {
+  const { db, sql } = createDb();
+
+  try {
+    return getPreferenceCentre(context, marketingPermissionData, await loadMarketingData(db), contactId);
   } finally {
     await sql.end();
   }

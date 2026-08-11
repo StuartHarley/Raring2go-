@@ -216,6 +216,12 @@ export const fixtureIds = {
   audienceSegments: {
     suttonNewsletter: "00000000-0000-4000-8000-000000000745"
   },
+  audiencePreferenceProfiles: {
+    parentOne: "00000000-0000-4000-8000-000000000769"
+  },
+  audienceSavedContent: {
+    parentOneHalfTerm: "00000000-0000-4000-8000-000000000770"
+  },
   emailTemplates: {
     standardNewsletter: "00000000-0000-4000-8000-000000000746"
   },
@@ -1529,6 +1535,35 @@ export const foundationSeed = {
   audienceSegmentMembers: [],
   audienceImports: [],
   audienceActivityEvents: [],
+  audiencePreferenceProfiles: [
+    {
+      id: fixtureIds.audiencePreferenceProfiles.parentOne,
+      contactId: fixtureIds.audienceContacts.parentOne,
+      homeTerritoryId: fixtureIds.territories.suttonColdfield,
+      followedTerritoryIds: [fixtureIds.territories.suttonColdfield, fixtureIds.territories.solihull],
+      childAgeBands: ["primary"],
+      interests: ["days-out", "school-holidays"],
+      eventCategories: ["family-activity", "seasonal"],
+      offerPreferences: ["family-days-out"],
+      competitionPreferences: ["local-prizes"],
+      newsletterFrequency: "weekly",
+      communicationPreferences: { newsletter: true, offers: true, competitions: true },
+      personalisationEnabled: true,
+      privacyMetadata: { dataMinimisation: "broad_age_bands_only", source: "seed" }
+    }
+  ],
+  audienceSavedContent: [
+    {
+      id: fixtureIds.audienceSavedContent.parentOneHalfTerm,
+      contactId: fixtureIds.audienceContacts.parentOne,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      contentType: "article",
+      contentReferenceId: fixtureIds.contentItems.halfTermGuide,
+      title: "Half term ideas near you",
+      savedAt: "2026-08-11T10:00:00.000Z",
+      metadata: { source: "seed", tags: ["days-out", "school-holidays"] }
+    }
+  ],
   emailTemplates: [
     {
       id: fixtureIds.emailTemplates.standardNewsletter,

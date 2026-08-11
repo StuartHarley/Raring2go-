@@ -96,6 +96,35 @@ export type AudienceActivityEvent = {
   deletedAt?: Date | null;
 };
 
+export type AudiencePreferenceProfile = {
+  id: string;
+  contactId: string;
+  homeTerritoryId?: string | null;
+  followedTerritoryIds: string[];
+  childAgeBands: string[];
+  interests: string[];
+  eventCategories: string[];
+  offerPreferences: string[];
+  competitionPreferences: string[];
+  newsletterFrequency: string;
+  communicationPreferences: Record<string, unknown>;
+  personalisationEnabled: boolean;
+  privacyMetadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type AudienceSavedContent = {
+  id: string;
+  contactId: string;
+  territoryId?: string | null;
+  contentType: string;
+  contentReferenceId?: string | null;
+  title: string;
+  savedAt: string;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
 export type MarketingTerritory = {
   id: string;
   franchiseOrganisationId?: string | null;
@@ -112,6 +141,8 @@ export type MarketingData = {
   segmentMembers: AudienceSegmentMember[];
   imports: AudienceImport[];
   activityEvents: AudienceActivityEvent[];
+  preferenceProfiles: AudiencePreferenceProfile[];
+  savedContent: AudienceSavedContent[];
   emailTemplates: EmailTemplate[];
   emailCampaigns: EmailCampaign[];
   emailCampaignVersions: EmailCampaignVersion[];
@@ -388,4 +419,18 @@ export type MarketingJourneyOverview = {
     paused: number;
     failedExecutions: number;
   };
+};
+
+export type PreferenceCentreView = {
+  contact: AudienceContact;
+  profile?: AudiencePreferenceProfile;
+  subscriptions: AudienceTerritorySubscription[];
+  savedContent: AudienceSavedContent[];
+  recommendedSegments: AudienceSegment[];
+  recommendedContent: Array<{
+    id: string;
+    title: string;
+    contentType: string;
+    relevanceReasons: string[];
+  }>;
 };

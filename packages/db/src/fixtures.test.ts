@@ -355,4 +355,19 @@ describe("foundation fixtures", () => {
       "00000000-0000-4000-8000-000000000801"
     );
   });
+
+  it("includes deterministic privacy-light audience preference fixtures", () => {
+    expect(fixtureIds.audiencePreferenceProfiles.parentOne).toBe(
+      "00000000-0000-4000-8000-000000000769"
+    );
+    expect(foundationSeed.audiencePreferenceProfiles[0]?.childAgeBands).toEqual([
+      "primary"
+    ]);
+    expect(foundationSeed.audiencePreferenceProfiles[0]?.privacyMetadata).toMatchObject({
+      dataMinimisation: "broad_age_bands_only"
+    });
+    expect(foundationSeed.audienceSavedContent[0]?.contactId).toBe(
+      fixtureIds.audienceContacts.parentOne
+    );
+  });
 });

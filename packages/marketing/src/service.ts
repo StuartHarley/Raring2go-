@@ -6,6 +6,7 @@ import type {
   AudienceContact,
   AudienceContactView,
   AudienceOverview,
+  AudiencePreferenceProfile,
   AudienceSegment,
   AudienceSuppression,
   AudienceTerritorySubscription,
@@ -25,6 +26,7 @@ import type {
   NewsletterFactoryRun,
   MarketingActorContext,
   MarketingData,
+  PreferenceCentreView,
   TerritoryNewsletterEdition
 } from "./types";
 
@@ -66,6 +68,83 @@ export function listAudienceContacts(
       territories: new Set(contacts.flatMap((view) => view.subscriptions.map((subscription) => subscription.territoryId))).size
     }
   };
+}
+
+export function getPreferenceCentre(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData,
+  contactId: string
+): PreferenceCentreView {
+  requireMarketingPermission(context, permissions, "audienceView");
+  const contact = requireContact(data, contactId);
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  if (!contactVisibleInTerritories(contact.id, visibleTerritoryIds, data)) {
+    throw new Error("Audience contact is outside the permitted scope.");
+  }
+
+  const profile = data.preferenceProfiles.find((candidate) => candidate.contactId === contact.id && !candidate.deletedAt);
+  const subscriptions = data.subscriptions
+    .filter((subscription) => subscription.contactId === contact.id && !subscription.deletedAt)
+    .filter((subscription) => visibleTerritoryIds == null || visibleTerritoryIds.has(subscription.territoryId));
+  const savedContent = data.savedContent
+    .filter((saved) => saved.contactId === contact.id && !saved.deletedAt)
+    .filter((saved) => visibleTerritoryIds == null || !saved.territoryId || visibleTerritoryIds.has(saved.territoryId));
+  const interestSet = new Set(profile?.interests ?? []);
+
+  return {
+    contact,
+    profile,
+    subscriptions,
+    savedContent,
+    recommendedSegments: data.segments
+      .filter((segment) => !segment.deletedAt && segment.status === "active")
+      .filter((segment) => visibleTerritoryIds == null || !segment.territoryId || visibleTerritoryIds.has(segment.territoryId))
+      .filter((segment) => segmentMatchesPreferences(segment, profile)),
+    recommendedContent: data.activityEvents
+      .filter((event) => !event.deletedAt)
+      .filter((event) => visibleTerritoryIds == null || !event.territoryId || visibleTerritoryIds.has(event.territoryId))
+      .map((event) => ({
+        id: event.id,
+        title: event.title,
+        contentType: String(event.metadata.contentType ?? event.activityType),
+        relevanceReasons: preferenceReasons(event.metadata, interestSet)
+      }))
+      .filter((event) => event.relevanceReasons.length > 0)
+  };
+}
+
+export async function updatePreferenceProfile(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  profile: AudiencePreferenceProfile
+) {
+  requireMarketingPermission(context, permissions, "audienceManage");
+  const contact = requireContact(data, profile.contactId);
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  if (!contactVisibleInTerritories(contact.id, visibleTerritoryIds, data)) {
+    throw new Error("Audience contact is outside the permitted scope.");
+  }
+  validatePreferenceProfile(data, profile, visibleTerritoryIds);
+
+  const existing = data.preferenceProfiles.find((candidate) => candidate.id === profile.id || candidate.contactId === profile.contactId);
+  if (existing) {
+    Object.assign(existing, { ...profile });
+  } else {
+    data.preferenceProfiles.push(profile);
+  }
+
+  await audit.record(marketingAuditEvent(context, auditActions.audiencePreferenceUpdate, "audience_preference_profile", profile.id, {
+    contactId: profile.contactId,
+    personalisationEnabled: profile.personalisationEnabled,
+    interests: profile.interests,
+    childAgeBands: profile.childAgeBands,
+    newsletterFrequency: profile.newsletterFrequency
+  }, profile.homeTerritoryId));
+
+  return getPreferenceCentre(context, permissions, data, profile.contactId);
 }
 
 export function listEmailCampaigns(
@@ -874,6 +953,58 @@ function contactVisibleInTerritories(contactId: string, visibleTerritoryIds: Set
     return true;
   }
   return data.subscriptions.some((subscription) => subscription.contactId === contactId && visibleTerritoryIds.has(subscription.territoryId) && !subscription.deletedAt);
+}
+
+function validatePreferenceProfile(
+  data: MarketingData,
+  profile: AudiencePreferenceProfile,
+  visibleTerritoryIds: Set<string> | null
+) {
+  const knownTerritories = new Set(data.territories.map((territory) => territory.id));
+  const selectedTerritories = [
+    profile.homeTerritoryId,
+    ...profile.followedTerritoryIds
+  ].filter((territoryId): territoryId is string => Boolean(territoryId));
+
+  for (const territoryId of selectedTerritories) {
+    if (!knownTerritories.has(territoryId)) {
+      throw new Error("Preference profile references an unknown territory.");
+    }
+    if (visibleTerritoryIds != null && !visibleTerritoryIds.has(territoryId)) {
+      throw new Error("Preference profile references a territory outside the permitted scope.");
+    }
+  }
+
+  const allowedAgeBands = new Set(["pregnancy", "baby-toddler", "preschool", "primary", "secondary", "teen"]);
+  if (!profile.childAgeBands.every((band) => allowedAgeBands.has(band))) {
+    throw new Error("Preference profile uses unsupported broad age bands.");
+  }
+
+  const allowedFrequencies = new Set(["weekly", "fortnightly", "monthly", "school_holidays_only"]);
+  if (!allowedFrequencies.has(profile.newsletterFrequency)) {
+    throw new Error("Preference profile uses an unsupported newsletter frequency.");
+  }
+}
+
+function segmentMatchesPreferences(segment: AudienceSegment, profile?: AudiencePreferenceProfile) {
+  if (!profile || !profile.personalisationEnabled) {
+    return false;
+  }
+  const interests = Array.isArray(segment.definition.interests)
+    ? segment.definition.interests.filter((interest): interest is string => typeof interest === "string")
+    : [];
+  const categories = Array.isArray(segment.definition.eventCategories)
+    ? segment.definition.eventCategories.filter((category): category is string => typeof category === "string")
+    : [];
+  return interests.some((interest) => profile.interests.includes(interest))
+    || categories.some((category) => profile.eventCategories.includes(category));
+}
+
+function preferenceReasons(metadata: Record<string, unknown>, interests: Set<string>) {
+  const tags = Array.isArray(metadata.tags)
+    ? metadata.tags.filter((tag): tag is string => typeof tag === "string")
+    : [];
+  return tags.filter((tag) => interests.has(tag)).map((tag) => `Matches interest: ${tag}`);
 }
 
 function visibleTerritories(context: MarketingActorContext, data: MarketingData) {
