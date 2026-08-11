@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyScanResult,
   assertSafeStorageKey,
   canAccessFile,
   createDevelopmentStorageProvider,
   createFileReference,
+  createMemoryScannerProvider,
+  createSignedUrlStorageProvider,
+  createStorageProviderFromEnv,
+  assertFileIsDownloadable,
   lockFileReference,
-  nextFileVersion
+  nextFileVersion,
+  verifySignedStorageUrl
 } from ".";
 
 describe("@raring2go/storage", () => {
@@ -39,7 +45,8 @@ describe("@raring2go/storage", () => {
       fileName: "file.pdf",
       contentType: "application/pdf",
       accessScope: "organisation",
-      organisationId: "organisation_1"
+      organisationId: "organisation_1",
+      virusScanStatus: "clean"
     });
     const second = nextFileVersion(first, {
       id: "file_2",
@@ -82,7 +89,8 @@ describe("@raring2go/storage", () => {
       fileName: "file.pdf",
       contentType: "application/pdf",
       accessScope: "organisation",
-      organisationId: "organisation_1"
+      organisationId: "organisation_1",
+      virusScanStatus: "clean"
     });
 
     await expect(provider.createUploadIntent(reference)).resolves.toMatchObject({
@@ -94,5 +102,96 @@ describe("@raring2go/storage", () => {
       disposition: "inline"
     });
     vi.useRealTimers();
+  });
+
+  it("blocks downloads until scanning has cleared the file", () => {
+    const pending = createFileReference({
+      id: "file_1",
+      storageKey: "private/file.pdf",
+      fileName: "file.pdf",
+      contentType: "application/pdf",
+      accessScope: "territory",
+      territoryId: "territory_1"
+    });
+    const infected = { ...pending, virusScanStatus: "infected" as const };
+    const clean = { ...pending, virusScanStatus: "clean" as const };
+
+    expect(() => assertFileIsDownloadable(pending)).toThrow("security scanning");
+    expect(() => assertFileIsDownloadable(infected)).toThrow("security scanning");
+    expect(() => assertFileIsDownloadable(clean)).not.toThrow();
+  });
+
+  it("creates time-limited signed upload and download URLs", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-11T12:00:00.000Z"));
+    const provider = createSignedUrlStorageProvider({
+      baseUrl: "https://files.raring2go.test",
+      secret: "storage-secret",
+      expiresInSeconds: 60
+    });
+    const reference = createFileReference({
+      id: "file_1",
+      storageKey: "artwork/file.pdf",
+      fileName: "file.pdf",
+      contentType: "application/pdf",
+      accessScope: "organisation",
+      organisationId: "organisation_1",
+      virusScanStatus: "clean"
+    });
+
+    const upload = await provider.createUploadIntent(reference);
+    const download = await provider.createDownloadIntent(reference);
+    const downloadUrl = new URL(download.downloadUrl);
+
+    expect(upload.uploadUrl).toContain("/upload/artwork%2Ffile.pdf");
+    expect(download.expiresAt).toBe("2026-08-11T12:01:00.000Z");
+    expect(verifySignedStorageUrl({
+      action: "download",
+      storageKey: "artwork/file.pdf",
+      expiresAt: downloadUrl.searchParams.get("expiresAt") ?? "",
+      signature: downloadUrl.searchParams.get("signature") ?? ""
+    }, "storage-secret", new Date("2026-08-11T12:00:30.000Z"))).toBe(true);
+    expect(verifySignedStorageUrl({
+      action: "download",
+      storageKey: "artwork/file.pdf",
+      expiresAt: downloadUrl.searchParams.get("expiresAt") ?? "",
+      signature: downloadUrl.searchParams.get("signature") ?? ""
+    }, "storage-secret", new Date("2026-08-11T12:02:00.000Z"))).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("applies scanner results immutably and rejects mismatched scan events", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-11T12:00:00.000Z"));
+    const scanner = createMemoryScannerProvider({ status: "clean" });
+    const reference = createFileReference({
+      id: "file_1",
+      storageKey: "private/file.pdf",
+      fileName: "file.pdf",
+      contentType: "application/pdf",
+      accessScope: "territory",
+      territoryId: "territory_1"
+    });
+    const result = await scanner.scan(reference);
+    const scanned = applyScanResult(reference, result);
+
+    expect(scanned.virusScanStatus).toBe("clean");
+    expect(reference.virusScanStatus).toBe("pending");
+    expect(scanned.metadata.scan).toMatchObject({
+      providerKey: "memory-scanner",
+      scannedAt: "2026-08-11T12:00:00.000Z"
+    });
+    expect(() => applyScanResult(reference, { ...result, fileId: "other" })).toThrow("does not match");
+    vi.useRealTimers();
+  });
+
+  it("selects storage providers from environment without vendor lock-in", () => {
+    expect(createStorageProviderFromEnv({ STORAGE_PROVIDER: "development" } as NodeJS.ProcessEnv).key).toBe("development");
+    expect(createStorageProviderFromEnv({
+      STORAGE_PROVIDER: "signed-url",
+      STORAGE_BASE_URL: "https://files.raring2go.test",
+      STORAGE_SIGNING_SECRET: "secret",
+      STORAGE_PROVIDER_KEY: "pilot-files"
+    } as NodeJS.ProcessEnv).key).toBe("pilot-files");
   });
 });

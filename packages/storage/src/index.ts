@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 export type FileAccessScope = "system" | "network" | "organisation" | "territory" | "public";
 export type FileVirusScanStatus = "pending" | "clean" | "infected" | "failed" | "not_required";
 
@@ -35,6 +37,15 @@ export type FileDownloadIntent = {
   disposition: "inline" | "attachment";
 };
 
+export type FileScanResult = {
+  fileId: string;
+  status: Exclude<FileVirusScanStatus, "pending">;
+  providerKey: string;
+  scannedAt: string;
+  signature?: string | null;
+  findings?: string[];
+};
+
 export type CreateFileReferenceInput = {
   id: string;
   providerKey?: string;
@@ -62,6 +73,16 @@ export type StorageProvider = {
     input?: { disposition?: "inline" | "attachment" }
   ): Promise<FileDownloadIntent>;
   markDeleted?(reference: FileReference): Promise<FileReference>;
+};
+
+export type FileScannerProvider = {
+  key: string;
+  scan(reference: FileReference): Promise<FileScanResult>;
+  verifyScanEvent?(input: {
+    headers: Record<string, string | string[] | undefined>;
+    body: string;
+    secret?: string;
+  }): Promise<FileScanResult>;
 };
 
 export function createFileReference(input: CreateFileReferenceInput): FileReference {
@@ -135,6 +156,16 @@ export function canAccessFile(
   return Boolean(reference.territoryId && reference.territoryId === context.territoryId);
 }
 
+export function assertFileIsDownloadable(reference: FileReference) {
+  if (reference.deletedAt) {
+    throw new Error("Deleted files cannot be downloaded.");
+  }
+
+  if (!["clean", "not_required"].includes(reference.virusScanStatus)) {
+    throw new Error("Files must pass security scanning before download.");
+  }
+}
+
 export function assertSafeStorageKey(storageKey: string) {
   if (
     storageKey.startsWith("/") ||
@@ -161,6 +192,8 @@ export function createDevelopmentStorageProvider(baseUrl = "http://localhost:300
       };
     },
     async createDownloadIntent(reference, input) {
+      assertFileIsDownloadable(reference);
+
       return {
         reference,
         downloadUrl: `${baseUrl}/download/${encodeURIComponent(reference.storageKey)}`,
@@ -177,6 +210,155 @@ export function createDevelopmentStorageProvider(baseUrl = "http://localhost:300
   };
 }
 
+export function createSignedUrlStorageProvider(input: {
+  key?: string;
+  baseUrl: string;
+  secret: string;
+  expiresInSeconds?: number;
+}): StorageProvider {
+  if (!input.baseUrl || !input.secret) {
+    throw new Error("Signed URL storage provider requires baseUrl and secret.");
+  }
+
+  return {
+    key: input.key ?? "signed-url",
+    async createUploadIntent(reference) {
+      const expiresAt = secondsFromNow(input.expiresInSeconds ?? 900);
+
+      return {
+        reference: {
+          ...reference,
+          providerKey: input.key ?? "signed-url"
+        },
+        uploadUrl: signedUrl(input.baseUrl, "upload", reference.storageKey, expiresAt, input.secret),
+        headers: {
+          "x-raring2go-storage-provider": input.key ?? "signed-url",
+          "content-type": reference.contentType
+        },
+        expiresAt
+      };
+    },
+    async createDownloadIntent(reference, downloadInput) {
+      assertFileIsDownloadable(reference);
+      const expiresAt = secondsFromNow(input.expiresInSeconds ?? 900);
+
+      return {
+        reference: {
+          ...reference,
+          providerKey: input.key ?? "signed-url"
+        },
+        downloadUrl: signedUrl(input.baseUrl, "download", reference.storageKey, expiresAt, input.secret),
+        expiresAt,
+        disposition: downloadInput?.disposition ?? "attachment"
+      };
+    },
+    async markDeleted(reference) {
+      return {
+        ...reference,
+        deletedAt: new Date().toISOString()
+      };
+    }
+  } satisfies StorageProvider;
+}
+
+export function createStorageProviderFromEnv(source: NodeJS.ProcessEnv = process.env) {
+  const provider = source.STORAGE_PROVIDER ?? "development";
+
+  if (provider === "development") {
+    return createDevelopmentStorageProvider(source.STORAGE_DEVELOPMENT_BASE_URL);
+  }
+
+  if (provider === "signed-url") {
+    if (!source.STORAGE_BASE_URL || !source.STORAGE_SIGNING_SECRET) {
+      throw new Error("STORAGE_PROVIDER=signed-url requires STORAGE_BASE_URL and STORAGE_SIGNING_SECRET.");
+    }
+
+    return createSignedUrlStorageProvider({
+      key: source.STORAGE_PROVIDER_KEY,
+      baseUrl: source.STORAGE_BASE_URL,
+      secret: source.STORAGE_SIGNING_SECRET,
+      expiresInSeconds: source.STORAGE_URL_TTL_SECONDS
+        ? Number(source.STORAGE_URL_TTL_SECONDS)
+        : undefined
+    });
+  }
+
+  throw new Error(`Unsupported storage provider: ${provider}`);
+}
+
+export function createMemoryScannerProvider(input?: {
+  key?: string;
+  status?: Exclude<FileVirusScanStatus, "pending">;
+}) {
+  return {
+    key: input?.key ?? "memory-scanner",
+    async scan(reference) {
+      return {
+        fileId: reference.id,
+        status: input?.status ?? "clean",
+        providerKey: input?.key ?? "memory-scanner",
+        scannedAt: new Date().toISOString(),
+        findings: []
+      };
+    }
+  } satisfies FileScannerProvider;
+}
+
+export function applyScanResult(reference: FileReference, result: FileScanResult): FileReference {
+  if (reference.id !== result.fileId) {
+    throw new Error("Scan result does not match the file reference.");
+  }
+
+  return {
+    ...reference,
+    virusScanStatus: result.status,
+    metadata: {
+      ...reference.metadata,
+      scan: {
+        providerKey: result.providerKey,
+        scannedAt: result.scannedAt,
+        findings: result.findings ?? []
+      }
+    }
+  };
+}
+
+export function verifySignedStorageUrl(
+  input: {
+    action: "upload" | "download";
+    storageKey: string;
+    expiresAt: string;
+    signature: string;
+  },
+  secret: string,
+  now = new Date()
+) {
+  if (new Date(input.expiresAt) <= now) {
+    return false;
+  }
+
+  const expected = storageSignature(input.action, input.storageKey, input.expiresAt, secret);
+  const expectedBuffer = Buffer.from(expected, "hex");
+  const actualBuffer = Buffer.from(input.signature, "hex");
+
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
 function minutesFromNow(minutes: number) {
   return new Date(Date.now() + minutes * 60_000).toISOString();
+}
+
+function secondsFromNow(seconds: number) {
+  return new Date(Date.now() + seconds * 1_000).toISOString();
+}
+
+function signedUrl(baseUrl: string, action: "upload" | "download", storageKey: string, expiresAt: string, secret: string) {
+  const url = new URL(`${baseUrl.replace(/\/$/, "")}/${action}/${encodeURIComponent(storageKey)}`);
+  url.searchParams.set("expiresAt", expiresAt);
+  url.searchParams.set("signature", storageSignature(action, storageKey, expiresAt, secret));
+  return url.toString();
+}
+
+function storageSignature(action: "upload" | "download", storageKey: string, expiresAt: string, secret: string) {
+  return createHmac("sha256", secret).update(`${action}:${storageKey}:${expiresAt}`).digest("hex");
 }
