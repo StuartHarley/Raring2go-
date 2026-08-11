@@ -47,6 +47,28 @@ Sign-off:
 | UAT-SEC-001 | AMBER | Script prepared; not executed. |
 | UAT-PROV-001 | AMBER | Script prepared; not executed. |
 
+## Live Provider Verification Matrix
+
+Status values: NOT RUN, PASS, AMBER, FAIL.
+
+| ID | Prerequisite | Exact steps | Expected result | Evidence | Pass/fail | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| VERCEL-001 | Vercel project linked to repo with production env vars. | Deploy production from `main`; open `https://app.raring2go.co.uk/sign-in`; confirm `/app` redirects unauthenticated and loads after sign-in. | Internal app is reachable, authenticated and using production configuration. | Deployment URL, screenshots, Vercel deployment ID. | PASS only when app is live and auth works. | NOT RUN |
+| PUBLIC-001 | `mis.raring2go.co.uk` domain configured and public data seeded/published. | Open a pilot territory page under `https://mis.raring2go.co.uk/areas/[slug]`; confirm `www` is unchanged. | New public UAT site renders approved content only and does not alter existing public site. | Screenshots, URL, territory slug. | PASS only when no internal metadata leaks. | NOT RUN |
+| EMAIL-001 | Postmark domain verified and `EMAIL_PROVIDER=postmark`. | Request a passwordless sign-in email to a project-owned mailbox. | Email arrives from `mail.raring2go.co.uk`; sign-in link works. | Postmark activity entry, email headers, screenshot. | PASS only with real delivered email. | NOT RUN |
+| EMAIL-002 | Postmark broadcast stream configured. | Send one controlled newsletter/test campaign to project-owned recipient. | Message uses broadcast stream and delivery is recorded. | Postmark message ID, recipient screenshot, internal record. | PASS only with controlled live send. | NOT RUN |
+| EMAIL-003 | Postmark webhook configured with app secret. | Trigger/replay bounce and complaint events for test recipient. | Events dedupe and suppression behaviour is visible; no credential leakage. | Webhook log, suppression/internal evidence. | PASS only when duplicate replay is ignored. | NOT RUN |
+| STORAGE-001 | Private R2 bucket and Vercel R2 secrets configured. | Create signed upload intent and upload harmless pilot file. | Object exists in private bucket and is not publicly accessible. | R2 object metadata, failed public access proof. | PASS only when bucket remains private. | NOT RUN |
+| STORAGE-002 | File has clean/not-required scan status. | Request authorised signed download as permitted user. | Short-lived signed URL works for authorised user. | Download URL timestamp, user/context, success screenshot. | PASS only with server-side permission proof. | NOT RUN |
+| STORAGE-003 | Two territory contexts available. | Attempt Territory A access to Territory B file. | Access denied before usable signed URL is issued. | User/context IDs, denial screenshot/log. | PASS only when denial fails closed. | NOT RUN |
+| SCAN-001 | Private scanner deployed and connected to R2. | Scan a harmless clean file. | Scanner returns clean and file becomes downloadable. | Scan result, timestamp, file ID. | PASS only with real scanner result. | NOT RUN |
+| SCAN-002 | Private scanner deployed and test-signature policy approved. | Scan rejected test file/signature. | Scanner returns infected/rejected and download remains blocked. | Scan finding, blocked download evidence. | PASS only when blocked after scan. | NOT RUN |
+| META-001 | Meta app configured and pilot Page admin available. | Connect Facebook Page via `/app/settings/connections`. | Connection is healthy and scoped to correct organisation/territory. | Connection screenshot, Page name/ID evidence. | PASS only with OAuth connection. | NOT RUN |
+| META-002 | Healthy Meta connection and approved post. | Publish one controlled Page post. | Facebook Page post exists once; external reference is stored. | Facebook URL, internal record, screenshot. | PASS only with real external post. | NOT RUN |
+| META-003 | Completed Meta post and reconnect path available. | Retry completed job; revoke/reconnect provider connection. | Retry does not duplicate; revoked credentials fail visibly; reconnect recovers. | Before/after screenshots, failure/recovery evidence. | PASS only when all three behaviours observed. | NOT RUN |
+| BACKUP-001 | Managed Postgres backup enabled. | Confirm scheduled/on-demand backup completes. | Backup is available with timestamp and retention policy. | Provider backup ID/screenshot. | PASS only with provider evidence. | NOT RUN |
+| BACKUP-002 | Non-production restore target available. | Restore latest backup into separate DB and run validation query/smoke checks. | Restore succeeds without damaging production. | Restore log, target DB, validation result. | PASS only after rehearsal. | NOT RUN |
+
 ## UAT-001 Provider Configuration Preflight
 
 Date: 2026-08-11
