@@ -354,7 +354,8 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.journeyApprove,
         fixtureIds.permissions.journeyActivate,
         fixtureIds.permissions.journeyPause,
-        fixtureIds.permissions.journeyExecute
+        fixtureIds.permissions.journeyExecute,
+        fixtureIds.permissions.marketingAnalyticsView
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -548,7 +549,8 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.socialSchedule,
         fixtureIds.permissions.socialCancel,
         fixtureIds.permissions.journeyView,
-        fixtureIds.permissions.journeyExecute
+        fixtureIds.permissions.journeyExecute,
+        fixtureIds.permissions.marketingAnalyticsView
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.franchisee,
         permissionId,

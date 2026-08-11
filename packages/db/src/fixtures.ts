@@ -143,7 +143,8 @@ export const fixtureIds = {
     journeyApprove: "00000000-0000-4000-8000-000000000523",
     journeyActivate: "00000000-0000-4000-8000-000000000524",
     journeyPause: "00000000-0000-4000-8000-000000000525",
-    journeyExecute: "00000000-0000-4000-8000-000000000526"
+    journeyExecute: "00000000-0000-4000-8000-000000000526",
+    marketingAnalyticsView: "00000000-0000-4000-8000-000000000527"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1174,6 +1175,12 @@ export const foundationSeed = {
       module: "marketing.journey",
       action: "execute",
       description: "Run consent-safe marketing automation journey steps."
+    },
+    {
+      id: fixtureIds.permissions.marketingAnalyticsView,
+      module: "marketing.analytics",
+      action: "view",
+      description: "View marketing analytics derived from real audience and channel records."
     }
   ],
   advertisers: [

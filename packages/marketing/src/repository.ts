@@ -21,6 +21,7 @@ import {
   marketingJourneys,
   networkNewsletterMasters,
   newsletterFactoryRuns,
+  socialPublications,
   territoryNewsletterEditions,
   territories
 } from "@raring2go/db";
@@ -57,6 +58,7 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     journeyEntryRows,
     journeyExecutionRows,
     journeyStepRows,
+    socialPublicationRows,
     territoryRows
   ] = await Promise.all([
     db.select().from(audienceContacts),
@@ -82,6 +84,7 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     db.select().from(marketingJourneyAudienceEntries),
     db.select().from(marketingJourneyExecutions),
     db.select().from(marketingJourneyStepExecutions),
+    db.select().from(socialPublications),
     db.select().from(territories)
   ]);
 
@@ -109,6 +112,7 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     journeyAudienceEntries: journeyEntryRows.map(dateRows(["enteredAt", "exitedAt"])) as MarketingData["journeyAudienceEntries"],
     journeyExecutions: journeyExecutionRows.map(dateRows(["runAfter", "completedAt"])) as MarketingData["journeyExecutions"],
     journeyStepExecutions: journeyStepRows.map(dateRows(["scheduledFor", "completedAt"])) as MarketingData["journeyStepExecutions"],
+    socialPublications: socialPublicationRows.map(dateRows(["scheduledAt", "publishedAt"])) as MarketingData["socialPublications"],
     territories: territoryRows as MarketingData["territories"]
   };
 }

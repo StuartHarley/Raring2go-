@@ -136,7 +136,8 @@ describe("foundation fixtures", () => {
       "marketing.journey",
       "marketing.journey",
       "marketing.journey",
-      "marketing.journey"
+      "marketing.journey",
+      "marketing.analytics"
     ]);
   });
 

@@ -21,7 +21,8 @@ export const marketingCapabilities = {
   journeyApprove: { module: "marketing.journey", action: "approve" },
   journeyActivate: { module: "marketing.journey", action: "activate" },
   journeyPause: { module: "marketing.journey", action: "pause" },
-  journeyExecute: { module: "marketing.journey", action: "execute" }
+  journeyExecute: { module: "marketing.journey", action: "execute" },
+  analyticsView: { module: "marketing.analytics", action: "view" }
 } as const;
 
 export type MarketingCapability = keyof typeof marketingCapabilities;

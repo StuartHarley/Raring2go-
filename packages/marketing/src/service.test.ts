@@ -16,6 +16,7 @@ import {
   generateTerritoryNewsletterEditions,
   getPreferenceCentre,
   listJourneys,
+  listMarketingAnalytics,
   listNewsletterFactory,
   pauseJourney,
   previewSegment,
@@ -67,6 +68,7 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "marketing.journey", "activate", "network"),
     grant(ids.roles.hq, "marketing.journey", "pause", "network"),
     grant(ids.roles.hq, "marketing.journey", "execute", "network"),
+    grant(ids.roles.hq, "marketing.analytics", "view", "network"),
     grant(ids.roles.local, "marketing.audience", "view", "own_territory"),
     grant(ids.roles.local, "marketing.audience", "manage", "own_territory"),
     grant(ids.roles.local, "marketing.consent", "manage", "own_territory"),
@@ -81,7 +83,8 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "marketing.newsletter_factory", "view", "own_territory"),
     grant(ids.roles.local, "marketing.newsletter_factory", "contribute", "own_territory"),
     grant(ids.roles.local, "marketing.journey", "view", "own_territory"),
-    grant(ids.roles.local, "marketing.journey", "execute", "own_territory")
+    grant(ids.roles.local, "marketing.journey", "execute", "own_territory"),
+    grant(ids.roles.local, "marketing.analytics", "view", "own_territory")
   ],
   territories: [
     { id: ids.territories.own, franchiseOrganisationId: ids.organisations.franchise },
@@ -200,6 +203,58 @@ describe("marketing audience foundation", () => {
     };
 
     await expect(updatePreferenceProfile(localContext(), permissions, audit(), data, profile)).rejects.toThrow("outside the permitted scope");
+  });
+
+  it("derives marketing analytics from real records without inventing provider metrics", () => {
+    const data = seededData();
+    data.emailDeliveryRecords.push({
+      id: "delivery_1",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      recipientSnapshotId: null,
+      contactId: ids.contact,
+      emailNormalised: "parent@example.test",
+      providerKey: "development",
+      providerMessageId: "message_1",
+      status: "delivered",
+      eventType: "delivered",
+      eventAt: "2026-08-12T10:00:00.000Z",
+      metadata: {}
+    });
+    data.journeyAudienceEntries.push({
+      id: "journey_entry_1",
+      journeyId: "journey_1",
+      journeyVersionId: "journey_version_1",
+      contactId: ids.contact,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: "consent_1",
+      status: "completed",
+      enteredAt: "2026-08-12T10:00:00.000Z",
+      exitedAt: "2026-08-12T10:01:00.000Z",
+      exitReason: "completed",
+      idempotencyKey: "journey:entry:1",
+      metadata: {}
+    });
+    data.socialPublications.push({
+      id: "social_1",
+      territoryId: ids.territories.own,
+      channel: "facebook",
+      publishState: "published",
+      approvalState: "approved",
+      scheduledAt: "2026-08-12T09:00:00.000Z",
+      publishedAt: "2026-08-12T09:00:10.000Z",
+      providerMetrics: null
+    });
+
+    const analytics = listMarketingAnalytics(localContext(), permissions, data);
+
+    expect(analytics.audience.activeSubscribers).toBe(1);
+    expect(analytics.email.delivered).toBe(1);
+    expect(analytics.email.opens).toBeUndefined();
+    expect(analytics.journeys.completed).toBe(1);
+    expect(analytics.social.published).toBe(1);
+    expect(analytics.attribution.every((item) => item.source === "platform")).toBe(true);
   });
 
   it("creates native email campaigns, snapshots eligible recipients and records delivery idempotently", async () => {
@@ -508,6 +563,7 @@ function emptyData(): MarketingData {
     journeyAudienceEntries: [],
     journeyExecutions: [],
     journeyStepExecutions: [],
+    socialPublications: [],
     territories: [
       { id: ids.territories.own, franchiseOrganisationId: ids.organisations.franchise, name: "Own" },
       { id: ids.territories.other, franchiseOrganisationId: "org_other", name: "Other" }

@@ -170,6 +170,7 @@ describe("app shell context and capabilities", () => {
         "preferences",
         "newsletters",
         "journeys",
+        "marketing-analytics",
         "content",
         "social",
         "commercial-command",

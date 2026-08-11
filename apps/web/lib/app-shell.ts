@@ -150,6 +150,16 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory"
   },
   {
+    id: "marketing-analytics",
+    label: "Marketing Analytics",
+    href: "/app/marketing-analytics",
+    capability: {
+      module: "marketing.analytics",
+      action: "view"
+    },
+    contextLevel: "territory"
+  },
+  {
     id: "content",
     label: "Content Studio",
     href: "/app/content",
@@ -361,6 +371,12 @@ const permissionData: PermissionData = {
     },
     {
       roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.marketingAnalyticsView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
       permissionId: fixtureIds.permissions.contentView,
       scope: "network",
       constraints: {}
@@ -386,6 +402,12 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.journeyView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.marketingAnalyticsView,
       scope: "own_territory",
       constraints: {}
     },

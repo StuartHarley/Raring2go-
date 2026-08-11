@@ -156,7 +156,20 @@ export type MarketingData = {
   journeyAudienceEntries: MarketingJourneyAudienceEntry[];
   journeyExecutions: MarketingJourneyExecution[];
   journeyStepExecutions: MarketingJourneyStepExecution[];
+  socialPublications: MarketingSocialPublication[];
   territories: MarketingTerritory[];
+};
+
+export type MarketingSocialPublication = {
+  id: string;
+  territoryId?: string | null;
+  channel: string;
+  publishState: string;
+  approvalState: string;
+  scheduledAt?: string | null;
+  publishedAt?: string | null;
+  providerMetrics?: Record<string, unknown> | null;
+  deletedAt?: Date | null;
 };
 
 export type AudienceContactView = {
@@ -432,5 +445,40 @@ export type PreferenceCentreView = {
     title: string;
     contentType: string;
     relevanceReasons: string[];
+  }>;
+};
+
+export type MarketingAnalyticsOverview = {
+  audience: {
+    totalContacts: number;
+    activeSubscribers: number;
+    suppressions: number;
+    unsubscribes: number;
+    growthByTerritory: Array<{ territoryId: string; subscribers: number }>;
+  };
+  email: {
+    sends: number;
+    delivered: number;
+    failed: number;
+    opens?: number;
+    clicks?: number;
+  };
+  journeys: {
+    entries: number;
+    completed: number;
+    failed: number;
+    dropOff: number;
+  };
+  social: {
+    scheduled: number;
+    published: number;
+    failed: number;
+  };
+  attribution: Array<{
+    source: "platform" | "provider" | "inferred";
+    channel: string;
+    territoryId?: string | null;
+    metric: string;
+    value: number;
   }>;
 };

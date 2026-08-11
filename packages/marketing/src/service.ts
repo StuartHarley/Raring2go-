@@ -25,6 +25,7 @@ import type {
   NewsletterFactoryOverview,
   NewsletterFactoryRun,
   MarketingActorContext,
+  MarketingAnalyticsOverview,
   MarketingData,
   PreferenceCentreView,
   TerritoryNewsletterEdition
@@ -176,6 +177,80 @@ export function listEmailCampaigns(
       scheduled: campaigns.filter((view) => view.campaign.status === "scheduled").length,
       sent: campaigns.filter((view) => view.campaign.status === "sent").length
     }
+  };
+}
+
+export function listMarketingAnalytics(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData
+): MarketingAnalyticsOverview {
+  requireMarketingPermission(context, permissions, "analyticsView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  const territoryAllowed = (territoryId?: string | null) => visibleTerritoryIds == null || !territoryId || visibleTerritoryIds.has(territoryId);
+  const subscriptions = data.subscriptions.filter((subscription) => !subscription.deletedAt && territoryAllowed(subscription.territoryId));
+  const contacts = data.contacts.filter((contact) => !contact.deletedAt && contactVisibleInTerritories(contact.id, visibleTerritoryIds, data));
+  const suppressions = data.suppressions.filter((suppression) => suppression.active && territoryAllowed(suppression.territoryId));
+  const deliveries = data.emailDeliveryRecords.filter((delivery) => !delivery.deletedAt && territoryAllowed(deliveryTerritory(data, delivery.campaignId)));
+  const journeyEntries = data.journeyAudienceEntries.filter((entry) => territoryAllowed(entry.territoryId));
+  const journeyExecutions = data.journeyExecutions.filter((execution) => {
+    const entry = data.journeyAudienceEntries.find((candidate) => candidate.id === execution.entryId);
+    return territoryAllowed(entry?.territoryId);
+  });
+  const social = data.socialPublications.filter((publication) => !publication.deletedAt && territoryAllowed(publication.territoryId));
+
+  const growthByTerritory = Array.from(new Set(subscriptions.map((subscription) => subscription.territoryId))).map((territoryId) => ({
+    territoryId,
+    subscribers: subscriptions.filter((subscription) => subscription.territoryId === territoryId && subscription.status === "subscribed").length
+  }));
+
+  return {
+    audience: {
+      totalContacts: contacts.length,
+      activeSubscribers: subscriptions.filter((subscription) => subscription.status === "subscribed").length,
+      suppressions: suppressions.length,
+      unsubscribes: subscriptions.filter((subscription) => subscription.status === "unsubscribed").length,
+      growthByTerritory
+    },
+    email: {
+      sends: deliveries.length,
+      delivered: deliveries.filter((delivery) => delivery.status === "delivered").length,
+      failed: deliveries.filter((delivery) => delivery.status === "failed" || delivery.status === "bounced").length,
+      opens: providerMetricSum(deliveries.map((delivery) => delivery.metadata), "opens"),
+      clicks: providerMetricSum(deliveries.map((delivery) => delivery.metadata), "clicks")
+    },
+    journeys: {
+      entries: journeyEntries.length,
+      completed: journeyEntries.filter((entry) => entry.status === "completed").length,
+      failed: journeyExecutions.filter((execution) => execution.status === "failed").length,
+      dropOff: journeyEntries.filter((entry) => entry.status === "exited" && entry.exitReason !== "completed").length
+    },
+    social: {
+      scheduled: social.filter((publication) => publication.publishState === "scheduled").length,
+      published: social.filter((publication) => publication.publishState === "published").length,
+      failed: social.filter((publication) => publication.publishState === "failed").length
+    },
+    attribution: [
+      ...growthByTerritory.map((territory) => ({
+        source: "platform" as const,
+        channel: "audience",
+        territoryId: territory.territoryId,
+        metric: "active_subscribers",
+        value: territory.subscribers
+      })),
+      {
+        source: "platform",
+        channel: "journey",
+        metric: "entries",
+        value: journeyEntries.length
+      },
+      {
+        source: "platform",
+        channel: "social",
+        metric: "published",
+        value: social.filter((publication) => publication.publishState === "published").length
+      }
+    ]
   };
 }
 
@@ -1005,6 +1080,20 @@ function preferenceReasons(metadata: Record<string, unknown>, interests: Set<str
     ? metadata.tags.filter((tag): tag is string => typeof tag === "string")
     : [];
   return tags.filter((tag) => interests.has(tag)).map((tag) => `Matches interest: ${tag}`);
+}
+
+function providerMetricSum(rows: Array<Record<string, unknown>>, key: string) {
+  const values = rows
+    .map((row) => row[key])
+    .filter((value): value is number => typeof value === "number");
+  if (values.length === 0) {
+    return undefined;
+  }
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function deliveryTerritory(data: MarketingData, campaignId: string) {
+  return data.emailCampaigns.find((campaign) => campaign.id === campaignId)?.territoryId;
 }
 
 function visibleTerritories(context: MarketingActorContext, data: MarketingData) {
