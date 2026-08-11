@@ -16,4 +16,18 @@ describe("createEnv", () => {
       })
     ).toThrow("Invalid environment");
   });
+
+  it("validates deployment URLs when they are configured", () => {
+    expect(createEnv({
+      APP_URL: "https://app.raring2go.co.uk",
+      NEXT_PUBLIC_SITE_URL: "https://mis.raring2go.co.uk"
+    })).toMatchObject({
+      APP_URL: "https://app.raring2go.co.uk",
+      NEXT_PUBLIC_SITE_URL: "https://mis.raring2go.co.uk"
+    });
+
+    expect(() => createEnv({
+      NEXT_PUBLIC_SITE_URL: "mis.raring2go.co.uk"
+    })).toThrow("Invalid environment");
+  });
 });

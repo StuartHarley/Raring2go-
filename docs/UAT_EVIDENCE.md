@@ -110,6 +110,14 @@ Postmark email transport:
 - Live verification still required: passwordless send, transactional send, newsletter send, bounce/complaint webhook and suppression proof.
 - Status: AMBER until real Postmark DNS and controlled sends are verified.
 
+Vercel/Cloudflare deployment readiness:
+
+- Implementation: `docs/DEPLOYMENT.md` added for `app.raring2go.co.uk`, `mis.raring2go.co.uk`, `mail.raring2go.co.uk`, provider callbacks, noindex/cutover policy and rollback.
+- Automated tests: pending current UAT-001D quality gate for environment URL validation.
+- Configuration still required: Vercel project/environment variables, Cloudflare DNS records and preview/production deployment verification.
+- Live verification still required: deployed auth, app shell, public territory page, Meta callback and email webhook smoke checks.
+- Status: AMBER until deployment and DNS are configured.
+
 Signed URL storage:
 
 - Probe: `STORAGE_PROVIDER=signed-url` with no storage base URL/signing secret.

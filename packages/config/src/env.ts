@@ -7,7 +7,13 @@ const envSchema = z.object({
   NEXT_PUBLIC_APP_NAME: z
     .string()
     .min(1)
-    .default("Raring2go Business-in-a-Box")
+    .default("Raring2go Business-in-a-Box"),
+  APP_URL: z
+    .url()
+    .optional(),
+  NEXT_PUBLIC_SITE_URL: z
+    .url()
+    .optional()
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
