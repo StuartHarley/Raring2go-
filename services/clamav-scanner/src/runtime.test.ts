@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("compiled scanner service runtime", () => {
@@ -29,6 +30,14 @@ describe("compiled scanner service runtime", () => {
         `await import("node:fs/promises").then(({ rm }) => rm(${JSON.stringify(outDir)}, { recursive: true, force: true }))`
       ]);
     }
+  });
+
+  it("keeps the container start script compatible with POSIX sh", async () => {
+    const scriptPath = join(import.meta.dirname, "..", "start.sh");
+    const script = await readFile(scriptPath, "utf8");
+
+    expect(script).not.toContain("wait -n");
+    await run("sh", ["-n", scriptPath]);
   });
 });
 
