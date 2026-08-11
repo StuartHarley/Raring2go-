@@ -1,10 +1,12 @@
 import {
   defaultPublicTerritorySlug,
+  getPublicCommercialDiscovery,
   getPublicDiscovery,
   getPublicHomepage,
   territoryFromSlug,
   type PublicDiscoveryFilters,
-  type PublicDiscoveryKind
+  type PublicDiscoveryKind,
+  type PublicCommercialKind
 } from "@raring2go/public";
 import { createDb } from "@raring2go/db";
 
@@ -29,6 +31,16 @@ export async function readPublicDiscovery(
 
   try {
     return await getPublicDiscovery(db, slug, kind, filters);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPublicCommercialDiscovery(slug: string, kind: PublicCommercialKind) {
+  const { db, sql } = createDb();
+
+  try {
+    return await getPublicCommercialDiscovery(db, slug, kind);
   } finally {
     await sql.end();
   }

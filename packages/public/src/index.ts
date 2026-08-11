@@ -36,6 +36,8 @@ export type PublicPlacement = {
   label: "Sponsored" | "Local business";
   summary: string;
   href: string;
+  advertiserId?: string;
+  tags?: string[];
 };
 
 export type PublicHomepageSlot = {
@@ -105,6 +107,18 @@ export type PublicDiscoveryResult = {
   };
   availableCategories: string[];
   items: PublicContentCard[];
+  emptyState?: string;
+};
+
+export type PublicCommercialKind = "offers" | "competitions" | "businesses";
+
+export type PublicCommercialResult = {
+  territory: PublicTerritory;
+  kind: PublicCommercialKind;
+  heading: string;
+  items: PublicContentCard[];
+  placements: PublicPlacement[];
+  labels: string[];
   emptyState?: string;
 };
 
@@ -276,6 +290,67 @@ export async function getPublicDiscovery(
   };
 }
 
+export async function getPublicCommercialDiscovery(
+  db: PublicDb,
+  slug: string,
+  kind: PublicCommercialKind
+): Promise<PublicCommercialResult | undefined> {
+  const territory = territoryFromSlug(slug);
+  if (!territory) {
+    return undefined;
+  }
+
+  const [publishing, advertising] = await Promise.all([
+    loadPublishingData(db),
+    loadAdvertisingData(db)
+  ]);
+  const contentTypes = kind === "offers"
+    ? new Set(["offer", "advertiser_sponsored"])
+    : kind === "competitions"
+      ? new Set(["competition"])
+      : new Set<string>();
+  const items = kind === "businesses"
+    ? []
+    : publishing.contentItems
+      .filter((item) => !item.deletedAt)
+      .filter((item) => item.status === "approved" || item.status === "published")
+      .filter((item) => item.territoryId === territory.id || item.ownerLevel === "network")
+      .filter((item) => contentTypes.has(item.contentType))
+      .map((item) => contentCard(item, territory));
+  const placements = advertising.advertisers
+    .filter((advertiser) => !advertiser.deletedAt)
+    .filter((advertiser) => advertiser.status === "active")
+    .filter((advertiser) => advertiser.owningTerritoryId === territory.id)
+    .map((advertiser) => {
+      const organisation = advertising.organisations.find((candidate) => candidate.id === advertiser.advertiserOrganisationId);
+      return {
+        id: advertiser.id,
+        advertiserId: advertiser.id,
+        title: organisation?.name ?? "Local advertiser",
+        label: advertiser.commercialMetadata.publicPlacement === "sponsored" ? "Sponsored" as const : "Local business" as const,
+        summary: stringValue(advertiser.commercialMetadata.publicSummary) ?? "Local family-friendly business.",
+        href: `/areas/${territory.slug}/businesses/${advertiser.id}`,
+        tags: advertiser.tags
+      };
+    });
+  const visiblePlacements = kind === "businesses"
+    ? placements
+    : placements.filter((placement) => placement.label === "Sponsored").slice(0, 4);
+  const labels = Array.from(new Set([...visiblePlacements.map((placement) => placement.label), ...items.map(() => "Sponsored")]));
+
+  return {
+    territory,
+    kind,
+    heading: commercialHeading(kind),
+    items,
+    placements: visiblePlacements,
+    labels,
+    emptyState: items.length === 0 && visiblePlacements.length === 0
+      ? "Commercial discovery will appear here when approved offers, competitions or advertiser placements are available."
+      : undefined
+  };
+}
+
 function slot(
   kind: PublicHomepageSlot["kind"],
   heading: string,
@@ -359,6 +434,12 @@ function sameDay(left: Date, right: Date) {
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function commercialHeading(kind: PublicCommercialKind) {
+  if (kind === "offers") return "Offers families will love";
+  if (kind === "competitions") return "Competitions";
+  return "Local family-friendly businesses";
 }
 
 export const defaultPublicTerritorySlug = territorySlug(

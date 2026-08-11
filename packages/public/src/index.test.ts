@@ -4,6 +4,7 @@ import {
   defaultPublicTerritorySlug,
   getPublicDiscovery,
   getPublicHomepage,
+  getPublicCommercialDiscovery,
   publicHomepageTemplate,
   territoryFromSlug
 } from ".";
@@ -52,6 +53,50 @@ describe("@raring2go/public homepage", () => {
         })
       ])
     );
+  });
+});
+
+describe("@raring2go/public commercial discovery", () => {
+  it("labels public sponsored content without exposing drafts", async () => {
+    const discovery = await getPublicCommercialDiscovery(dbWithContent([
+      publicContent({
+        id: "66666666-6666-4666-8666-666666666666",
+        title: "Soft play discount",
+        contentType: "offer",
+        status: "published"
+      }),
+      publicContent({
+        id: "77777777-7777-4777-8777-777777777777",
+        title: "Draft free trial",
+        contentType: "offer",
+        status: "draft"
+      })
+    ]), defaultPublicTerritorySlug, "offers");
+
+    expect(discovery?.items).toHaveLength(1);
+    expect(discovery?.labels).toContain("Sponsored");
+  });
+
+  it("shows active advertiser placements for the selected territory only", async () => {
+    const discovery = await getPublicCommercialDiscovery(dbWithAdvertisers([
+      publicAdvertiser({
+        id: "88888888-8888-4888-8888-888888888888",
+        owningTerritoryId: fixtureIds.territories.suttonColdfield,
+        status: "active"
+      }),
+      publicAdvertiser({
+        id: "99999999-9999-4999-8999-999999999999",
+        owningTerritoryId: fixtureIds.territories.solihull,
+        status: "active"
+      }),
+      publicAdvertiser({
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        owningTerritoryId: fixtureIds.territories.suttonColdfield,
+        status: "paused"
+      })
+    ]), defaultPublicTerritorySlug, "businesses");
+
+    expect(discovery?.placements.map((placement) => placement.id)).toEqual(["88888888-8888-4888-8888-888888888888"]);
   });
 });
 
@@ -196,6 +241,21 @@ function dbWithContent(contentItems: Array<Record<string, unknown>>) {
   };
 }
 
+function dbWithAdvertisers(advertisers: Array<Record<string, unknown>>) {
+  return {
+    select() {
+      return {
+        async from(table: unknown): Promise<Array<Record<string, unknown>>> {
+          if (table === importTable("advertisers")) {
+            return advertisers;
+          }
+          return rowsFor(table);
+        }
+      };
+    }
+  };
+}
+
 function publicContent(overrides: Partial<Record<string, unknown>>) {
   return {
     id: "00000000-0000-4000-8000-000000000000",
@@ -212,6 +272,30 @@ function publicContent(overrides: Partial<Record<string, unknown>>) {
     tags: [],
     relevantDates: { startDate: "2026-10-10" },
     provenance: { location: "Sutton Coldfield" },
+    ...overrides
+  };
+}
+
+function publicAdvertiser(overrides: Partial<Record<string, unknown>>) {
+  return {
+    id: fixtureIds.advertisers.example,
+    advertiserOrganisationId: fixtureIds.organisations.advertiser,
+    owningTerritoryId: fixtureIds.territories.suttonColdfield,
+    accountOwnerUserId: null,
+    status: "active",
+    relationshipState: "retained",
+    source: "test",
+    firstBookedOn: null,
+    lastBookedOn: null,
+    lapsedOn: null,
+    averageSaleValueMinor: 0,
+    annualAdvertiserValueMinor: 0,
+    currency: "GBP",
+    tags: ["family"],
+    commercialMetadata: {
+      publicPlacement: "standard",
+      publicSummary: "A tested local business."
+    },
     ...overrides
   };
 }
