@@ -6,6 +6,8 @@ import {
   getPublicMagazine,
   getPublicParentHub,
   getPublicRecommendations,
+  publicSeoRoutes,
+  publicTerritoryStructuredData,
   territoryFromSlug,
   type PublicDiscoveryFilters,
   type PublicDiscoveryKind,
@@ -14,6 +16,7 @@ import {
 import { createDb } from "@raring2go/db";
 
 export { defaultPublicTerritorySlug, territoryFromSlug };
+export { publicSeoRoutes, publicTerritoryStructuredData };
 
 export async function readPublicHomepage(slug: string) {
   const { db, sql } = createDb();

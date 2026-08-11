@@ -180,6 +180,12 @@ export type PublicRecommendations = {
   emptyState?: string;
 };
 
+export type PublicSeoRoute = {
+  path: string;
+  changeFrequency: "daily" | "weekly" | "monthly";
+  priority: number;
+};
+
 export const publicHomepageTemplate: PublicHomepage["template"] = {
   key: "r2go-territory-homepage",
   version: 1,
@@ -196,6 +202,38 @@ export const publicHomepageTemplate: PublicHomepage["template"] = {
     slot("community", "Community and social", 3)
   ]
 };
+
+export function publicSeoRoutes(baseUrl = "http://localhost:3000"): PublicSeoRoute[] {
+  return foundationSeed.territories.flatMap((territory) => {
+    const slug = territorySlug(territory.name);
+    return [
+      seoRoute(baseUrl, `/areas/${slug}`, "daily", 0.9),
+      seoRoute(baseUrl, `/areas/${slug}/whats-on`, "daily", 0.8),
+      seoRoute(baseUrl, `/areas/${slug}/activities`, "weekly", 0.7),
+      seoRoute(baseUrl, `/areas/${slug}/offers`, "weekly", 0.6),
+      seoRoute(baseUrl, `/areas/${slug}/competitions`, "weekly", 0.6),
+      seoRoute(baseUrl, `/areas/${slug}/businesses`, "monthly", 0.5),
+      seoRoute(baseUrl, `/areas/${slug}/magazine`, "weekly", 0.7)
+    ];
+  });
+}
+
+export function publicTerritoryStructuredData(homepage: PublicHomepage, baseUrl = "http://localhost:3000") {
+  return {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: `Raring2go! ${homepage.territory.name}`,
+    url: `${baseUrl}/areas/${homepage.territory.slug}`,
+    description: homepage.territory.strapline,
+    areaServed: homepage.territory.name,
+    sameAs: [],
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${baseUrl}/areas/${homepage.territory.slug}/whats-on?q={search_term_string}`,
+      "query-input": "required name=search_term_string"
+    }
+  };
+}
 
 export function territorySlug(name: string) {
   return name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -614,6 +652,19 @@ function slot(
     source: kind === "newsletter" ? "local_only" : "local_then_network",
     seasonalTreatment: ["hero", "magazine", "newsletter"].includes(kind),
     commercialTreatment
+  };
+}
+
+function seoRoute(
+  baseUrl: string,
+  path: string,
+  changeFrequency: PublicSeoRoute["changeFrequency"],
+  priority: number
+): PublicSeoRoute {
+  return {
+    path: `${baseUrl.replace(/\/$/, "")}${path}`,
+    changeFrequency,
+    priority
   };
 }
 

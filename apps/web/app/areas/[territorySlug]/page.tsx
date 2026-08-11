@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
-import { readPublicHomepage, territoryFromSlug } from "../../../lib/public-runtime";
+import { publicTerritoryStructuredData, readPublicHomepage, territoryFromSlug } from "../../../lib/public-runtime";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -26,6 +26,12 @@ export default async function TerritoryHomepage({ params }: PageProps) {
 
   return (
     <main className="public-site public-season-autumn">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(publicTerritoryStructuredData(homepage, process.env.NEXT_PUBLIC_SITE_URL))
+        }}
+      />
       <header className="public-nav">
         <Link href={`/areas/${homepage.territory.slug}`} className="public-logo">
           Raring2go!

@@ -7,6 +7,8 @@ import {
   getPublicMagazine,
   getPublicParentHub,
   getPublicRecommendations,
+  publicSeoRoutes,
+  publicTerritoryStructuredData,
   getPublicCommercialDiscovery,
   publicHomepageTemplate,
   territoryFromSlug
@@ -56,6 +58,24 @@ describe("@raring2go/public homepage", () => {
         })
       ])
     );
+  });
+});
+
+describe("@raring2go/public SEO", () => {
+  it("generates public territory routes without internal app URLs", () => {
+    const routes = publicSeoRoutes("https://www.raring2go.example");
+
+    expect(routes.some((route) => route.path.includes("/areas/sutton-coldfield"))).toBe(true);
+    expect(routes.every((route) => !route.path.includes("/app"))).toBe(true);
+  });
+
+  it("creates structured data from the public homepage DTO", async () => {
+    const homepage = await getPublicHomepage(db, defaultPublicTerritorySlug);
+
+    expect(homepage && publicTerritoryStructuredData(homepage, "https://www.raring2go.example")).toMatchObject({
+      "@type": "LocalBusiness",
+      areaServed: "Sutton Coldfield"
+    });
   });
 });
 
