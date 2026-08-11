@@ -4,6 +4,7 @@ import {
   defaultPublicTerritorySlug,
   getPublicDiscovery,
   getPublicHomepage,
+  getPublicMagazine,
   getPublicCommercialDiscovery,
   publicHomepageTemplate,
   territoryFromSlug
@@ -53,6 +54,71 @@ describe("@raring2go/public homepage", () => {
         })
       ])
     );
+  });
+});
+
+describe("@raring2go/public magazine", () => {
+  it("does not expose draft or ungenerated editions", async () => {
+    const magazine = await getPublicMagazine(db, defaultPublicTerritorySlug);
+
+    expect(magazine?.edition).toBeUndefined();
+    expect(magazine?.emptyState).toContain("not public yet");
+  });
+
+  it("exposes only published generated digital output", async () => {
+    const magazine = await getPublicMagazine(dbWithTables({
+      territoryEditions: [
+        {
+          ...foundationSeed.territoryEditions[0],
+          status: "published",
+          digitalStatus: "generated",
+          pageCount: 1
+        }
+      ],
+      publicationOutputs: [
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          territoryEditionId: fixtureIds.territoryEditions.suttonAutumn2026,
+          outputType: "digital",
+          status: "generated",
+          version: 2,
+          sourcePageSnapshot: [],
+          artifact: { storageKey: "public/magazines/sutton-autumn-2026" },
+          preflightResultId: null,
+          idempotencyKey: "test-public-output",
+          corrections: [],
+          metadata: {},
+          generatedByUserId: fixtureIds.users.superAdmin,
+          generatedAt: "2026-08-11"
+        }
+      ],
+      editionPages: [
+        {
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          territoryEditionId: fixtureIds.territoryEditions.suttonAutumn2026,
+          pageNumber: 1,
+          spreadNumber: 1,
+          side: "single",
+          status: "published",
+          templateVersionId: null,
+          assignedContentId: null,
+          advertiserInventoryState: "none",
+          ownerType: "central",
+          deadline: null,
+          sourceMarker: "central",
+          locked: true,
+          readiness: "ready",
+          comments: [],
+          issues: []
+        }
+      ]
+    }), defaultPublicTerritorySlug);
+
+    expect(magazine?.edition).toMatchObject({
+      title: "Autumn 2026 Sutton Coldfield",
+      outputVersion: 2
+    });
+    expect(magazine?.edition?.pages).toHaveLength(1);
   });
 });
 
@@ -248,6 +314,23 @@ function dbWithAdvertisers(advertisers: Array<Record<string, unknown>>) {
         async from(table: unknown): Promise<Array<Record<string, unknown>>> {
           if (table === importTable("advertisers")) {
             return advertisers;
+          }
+          return rowsFor(table);
+        }
+      };
+    }
+  };
+}
+
+function dbWithTables(overrides: Record<string, Array<Record<string, unknown>>>) {
+  return {
+    select() {
+      return {
+        async from(table: unknown): Promise<Array<Record<string, unknown>>> {
+          const tableName = Object.entries(awaitedDbTables as Record<string, unknown>)
+            .find(([, value]) => value === table)?.[0];
+          if (tableName && overrides[tableName]) {
+            return overrides[tableName];
           }
           return rowsFor(table);
         }

@@ -122,6 +122,26 @@ export type PublicCommercialResult = {
   emptyState?: string;
 };
 
+export type PublicMagazine = {
+  territory: PublicTerritory;
+  edition?: {
+    id: string;
+    slug: string;
+    title: string;
+    issueDate?: string | null;
+    pageCount: number;
+    outputVersion: number;
+    artifact: Record<string, unknown>;
+    pages: Array<{
+      pageNumber: number;
+      title: string;
+      status: string;
+      href: string;
+    }>;
+  };
+  emptyState?: string;
+};
+
 export const publicHomepageTemplate: PublicHomepage["template"] = {
   key: "r2go-territory-homepage",
   version: 1,
@@ -348,6 +368,66 @@ export async function getPublicCommercialDiscovery(
     emptyState: items.length === 0 && visiblePlacements.length === 0
       ? "Commercial discovery will appear here when approved offers, competitions or advertiser placements are available."
       : undefined
+  };
+}
+
+export async function getPublicMagazine(db: PublicDb, slug: string): Promise<PublicMagazine | undefined> {
+  const territory = territoryFromSlug(slug);
+  if (!territory) {
+    return undefined;
+  }
+
+  const publishing = await loadPublishingData(db);
+  const editions = publishing.territoryEditions
+    .filter((edition) => !edition.deletedAt)
+    .filter((edition) => edition.territoryId === territory.id)
+    .filter((edition) => edition.status === "published" && edition.digitalStatus === "generated")
+    .sort((left, right) => (right.publicationDate ?? "").localeCompare(left.publicationDate ?? ""));
+  const edition = editions[0];
+  if (!edition) {
+    return {
+      territory,
+      emptyState: "The digital magazine for this area is not public yet. Published generated outputs will appear here."
+    };
+  }
+
+  const output = publishing.publicationOutputs
+    .filter((candidate) => !candidate.deletedAt)
+    .filter((candidate) => candidate.territoryEditionId === edition.id)
+    .filter((candidate) => candidate.outputType === "digital" && candidate.status === "generated")
+    .sort((left, right) => right.version - left.version)[0];
+  if (!output) {
+    return {
+      territory,
+      emptyState: "The digital magazine for this area is not public yet. Published generated outputs will appear here."
+    };
+  }
+
+  const pages = publishing.editionPages
+    .filter((page) => !page.deletedAt && page.territoryEditionId === edition.id)
+    .filter((page) => page.status === "published")
+    .sort((left, right) => left.pageNumber - right.pageNumber)
+    .map((page) => ({
+      pageNumber: page.pageNumber,
+      title: page.assignedContentId
+        ? publishing.contentItems.find((item) => item.id === page.assignedContentId)?.title ?? `Page ${page.pageNumber}`
+        : `Page ${page.pageNumber}`,
+      status: page.status,
+      href: `/areas/${territory.slug}/magazine/${territorySlug(edition.title)}/pages/${page.pageNumber}`
+    }));
+
+  return {
+    territory,
+    edition: {
+      id: edition.id,
+      slug: territorySlug(edition.title),
+      title: edition.title,
+      issueDate: edition.publicationDate,
+      pageCount: edition.pageCount,
+      outputVersion: output.version,
+      artifact: output.artifact,
+      pages
+    }
   };
 }
 

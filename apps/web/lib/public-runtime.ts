@@ -3,6 +3,7 @@ import {
   getPublicCommercialDiscovery,
   getPublicDiscovery,
   getPublicHomepage,
+  getPublicMagazine,
   territoryFromSlug,
   type PublicDiscoveryFilters,
   type PublicDiscoveryKind,
@@ -41,6 +42,16 @@ export async function readPublicCommercialDiscovery(slug: string, kind: PublicCo
 
   try {
     return await getPublicCommercialDiscovery(db, slug, kind);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPublicMagazine(slug: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await getPublicMagazine(db, slug);
   } finally {
     await sql.end();
   }
