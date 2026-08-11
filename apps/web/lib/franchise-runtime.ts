@@ -59,6 +59,7 @@ import {
 import { recordAuditEvent } from "@raring2go/audit";
 import { evaluatePermission } from "@raring2go/permissions";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
+import { createFileReference } from "@raring2go/storage";
 import type {
   AgreementSigner,
   ESignProvider,
@@ -1148,6 +1149,16 @@ function defaultSigners(
 }
 
 function signedArtifact(franchiseId: string, eventId: string) {
+  const file = createFileReference({
+    id: `${eventId}-signed-file`,
+    storageKey: `development/franchise-agreements/${eventId}/signed.pdf`,
+    fileName: "signed-franchise-agreement.pdf",
+    contentType: "application/pdf",
+    accessScope: "territory",
+    territoryId: territoryIdForFranchise(franchiseId),
+    lockedAt: today()
+  });
+
   return {
     id: `${eventId}-signed`,
     franchiseId,
@@ -1155,15 +1166,26 @@ function signedArtifact(franchiseId: string, eventId: string) {
     entityId: fixtureIds.franchiseAgreements.suttonDraft,
     category: "signed_agreement" as const,
     label: "Signed franchise agreement",
-    storageKey: `development/franchise-agreements/${eventId}/signed.pdf`,
-    contentType: "application/pdf",
+    storageKey: file.storageKey,
+    contentType: file.contentType,
     providerMetadata: {
-      provider: "development"
+      provider: file.providerKey,
+      storage: file
     }
   };
 }
 
 function certificateArtifact(franchiseId: string, eventId: string) {
+  const file = createFileReference({
+    id: `${eventId}-certificate-file`,
+    storageKey: `development/franchise-agreements/${eventId}/certificate.pdf`,
+    fileName: "completion-certificate.pdf",
+    contentType: "application/pdf",
+    accessScope: "territory",
+    territoryId: territoryIdForFranchise(franchiseId),
+    lockedAt: today()
+  });
+
   return {
     id: `${eventId}-certificate`,
     franchiseId,
@@ -1171,10 +1193,11 @@ function certificateArtifact(franchiseId: string, eventId: string) {
     entityId: fixtureIds.franchiseAgreements.suttonDraft,
     category: "completion_certificate" as const,
     label: "Completion certificate",
-    storageKey: `development/franchise-agreements/${eventId}/certificate.pdf`,
-    contentType: "application/pdf",
+    storageKey: file.storageKey,
+    contentType: file.contentType,
     providerMetadata: {
-      provider: "development"
+      provider: file.providerKey,
+      storage: file
     }
   };
 }
@@ -1185,6 +1208,16 @@ function documentArtifact(
   documentId: string,
   title: string
 ): FranchiseArtifactReference {
+  const file = createFileReference({
+    id: `${artifactId}-file`,
+    storageKey: `development/franchise-documents/${documentId}/${artifactId}.pdf`,
+    fileName: `${title.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "document"}.pdf`,
+    contentType: "application/pdf",
+    accessScope: "territory",
+    territoryId: territoryIdForFranchise(franchiseId),
+    ownerUserId: fixtureIds.users.superAdmin
+  });
+
   return {
     id: artifactId,
     franchiseId,
@@ -1192,12 +1225,17 @@ function documentArtifact(
     entityId: documentId,
     category: "vault_document",
     label: title,
-    storageKey: `development/franchise-documents/${documentId}/${artifactId}.pdf`,
-    contentType: "application/pdf",
+    storageKey: file.storageKey,
+    contentType: file.contentType,
     providerMetadata: {
-      provider: "development"
+      provider: file.providerKey,
+      storage: file
     }
   };
+}
+
+function territoryIdForFranchise(franchiseId: string) {
+  return foundationSeed.franchises.find((franchise) => franchise.id === franchiseId)?.primaryTerritoryId ?? null;
 }
 
 function today() {

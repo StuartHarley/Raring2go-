@@ -59,6 +59,9 @@ importers:
       '@raring2go/publishing':
         specifier: workspace:*
         version: link:../../packages/publishing
+      '@raring2go/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       next:
         specifier: 16.3.0
         version: 16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@26.2.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -218,6 +221,12 @@ importers:
       '@raring2go/permissions':
         specifier: workspace:*
         version: link:../permissions
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
+
+  packages/storage:
     devDependencies:
       vitest:
         specifier: 4.1.10
