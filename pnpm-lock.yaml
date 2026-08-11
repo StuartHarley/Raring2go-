@@ -56,6 +56,9 @@ importers:
       '@raring2go/permissions':
         specifier: workspace:*
         version: link:../../packages/permissions
+      '@raring2go/public':
+        specifier: workspace:*
+        version: link:../../packages/public
       '@raring2go/publishing':
         specifier: workspace:*
         version: link:../../packages/publishing
@@ -205,6 +208,25 @@ importers:
       '@raring2go/audit':
         specifier: workspace:*
         version: link:../audit
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
+
+  packages/public:
+    dependencies:
+      '@raring2go/advertising':
+        specifier: workspace:*
+        version: link:../advertising
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/marketing':
+        specifier: workspace:*
+        version: link:../marketing
+      '@raring2go/publishing':
+        specifier: workspace:*
+        version: link:../publishing
     devDependencies:
       vitest:
         specifier: 4.1.10

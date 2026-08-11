@@ -1,0 +1,24 @@
+{
+  "name": "@raring2go/public",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@raring2go/advertising": "workspace:*",
+    "@raring2go/db": "workspace:*",
+    "@raring2go/marketing": "workspace:*",
+    "@raring2go/publishing": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  }
+}

@@ -7,8 +7,8 @@ describe("Home", () => {
   it("renders the web application shell", () => {
     const html = renderToString(<Home />);
 
-    expect(html).toContain("Raring2go Business-in-a-Box");
-    expect(html).toContain("The monorepo foundation is ready");
+    expect(html).toContain("Local family discovery");
+    expect(html).toContain("Open local area");
   });
 
   it("renders the design-system gallery for visual regression readiness", () => {

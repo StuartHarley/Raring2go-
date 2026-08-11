@@ -675,6 +675,206 @@ p {
   font-size: 0.9rem;
 }
 
+.public-site {
+  --public-accent: var(--r2-season-autumn);
+  background: #fffdf8;
+  color: #29183d;
+  min-height: 100vh;
+  padding: 0;
+}
+
+.public-nav {
+  align-items: center;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 18px clamp(18px, 4vw, 44px);
+}
+
+.public-logo {
+  color: var(--r2-brand-purple);
+  font-size: 1.4rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.public-nav nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.public-nav nav a,
+.public-actions a,
+.public-band a {
+  color: #29183d;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.public-hero {
+  align-items: end;
+  background:
+    linear-gradient(110deg, rgba(255, 253, 248, 0.98), rgba(255, 253, 248, 0.68)),
+    linear-gradient(135deg, #ffcf5a, #f58220 48%, #6d2a7b);
+  display: grid;
+  min-height: 68vh;
+  padding: clamp(44px, 8vw, 96px) clamp(18px, 5vw, 70px);
+}
+
+.public-hero > div {
+  max-width: 760px;
+}
+
+.public-kicker {
+  color: var(--r2-brand-purple);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-hero h1 {
+  font-family: var(--r2-font-editorial);
+  font-size: clamp(2.6rem, 7vw, 6.2rem);
+  line-height: 0.95;
+  margin: 10px 0 18px;
+}
+
+.public-hero p,
+.public-band p,
+.public-newsletter p,
+.public-card p,
+.public-empty {
+  color: #5a4c66;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.public-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.public-actions a,
+.public-band a,
+.public-newsletter button {
+  background: var(--r2-brand-purple);
+  border-radius: 999px;
+  color: white;
+  padding: 12px 18px;
+}
+
+.public-actions a + a {
+  background: white;
+  color: var(--r2-brand-purple);
+}
+
+.public-layout-note,
+.public-section,
+.public-band,
+.public-newsletter {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: clamp(28px, 5vw, 54px) clamp(18px, 4vw, 44px);
+}
+
+.public-layout-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.public-layout-note span {
+  background: #fff3d2;
+  border: 1px solid #f0d8a0;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.public-section-heading {
+  margin-bottom: 18px;
+}
+
+.public-section h2,
+.public-band h2,
+.public-newsletter h2 {
+  font-family: var(--r2-font-editorial);
+  font-size: clamp(1.8rem, 4vw, 3.2rem);
+  line-height: 1;
+  margin: 0;
+}
+
+.public-card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.public-card {
+  background: white;
+  border: 1px solid #f0e3c5;
+  border-radius: 8px;
+  color: #29183d;
+  min-height: 180px;
+  padding: 18px;
+  text-decoration: none;
+}
+
+.public-card span {
+  color: var(--r2-brand-purple);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.public-card h3 {
+  font-size: 1.35rem;
+  line-height: 1.15;
+  margin: 12px 0;
+}
+
+.public-sponsored {
+  border-top: 4px solid var(--public-accent);
+}
+
+.public-band,
+.public-newsletter {
+  align-items: center;
+  background: #fff7e2;
+  border-radius: 8px;
+  display: flex;
+  gap: 22px;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.public-newsletter form {
+  display: flex;
+  gap: 10px;
+}
+
+.public-newsletter input {
+  border: 1px solid #e2c98e;
+  border-radius: 999px;
+  font: inherit;
+  min-width: 240px;
+  padding: 12px 16px;
+}
+
+.public-newsletter button {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -691,5 +891,18 @@ p {
 
   .search-form {
     display: grid;
+  }
+
+  .public-nav,
+  .public-band,
+  .public-newsletter,
+  .public-newsletter form {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .public-newsletter input {
+    min-width: 0;
+    width: 100%;
   }
 }
