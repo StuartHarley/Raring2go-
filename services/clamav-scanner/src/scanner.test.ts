@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createServer } from "node:net";
 import { Readable } from "node:stream";
 import {
   parseClamdResponse,
   scanFile,
+  scanStreamWithClamd,
   validateScanRequest,
   waitForClamd,
   type ScannerConfig
@@ -90,6 +92,38 @@ describe("ClamAV scanner service", () => {
     expect(parseClamdResponse("UNKNOWN COMMAND\0")).toEqual({
       status: "failed",
       reason: "clamd_unexpected_response"
+    });
+  });
+
+  it("sends INSTREAM before framed chunks and parses clamd responses", async () => {
+    const clean = await runFakeClamdScan({
+      body: Readable.from(["hello", " world"]),
+      responseChunks: [Buffer.from("stream: OK\0")]
+    });
+
+    expect(clean.outcome).toEqual({ status: "clean" });
+    expect(parseClamdFrames(clean.received)).toEqual({
+      command: "zINSTREAM\0",
+      chunks: [Buffer.from("hello"), Buffer.from(" world")],
+      hasTerminator: true
+    });
+
+    const infected = await runFakeClamdScan({
+      body: Readable.from(["eicar"]),
+      responseChunks: [
+        Buffer.from("stream: Eicar-"),
+        Buffer.from("Test-Signature FOUND\0")
+      ]
+    });
+
+    expect(infected.outcome).toEqual({
+      status: "infected",
+      signature: "Eicar-Test-Signature"
+    });
+    expect(parseClamdFrames(infected.received)).toMatchObject({
+      command: "zINSTREAM\0",
+      chunks: [Buffer.from("eicar")],
+      hasTerminator: true
     });
   });
 
@@ -225,3 +259,82 @@ describe("ClamAV scanner service", () => {
     })).toThrow("storageKey");
   });
 });
+
+async function runFakeClamdScan(input: {
+  body: Readable;
+  responseChunks: Buffer[];
+}) {
+  let received = Buffer.alloc(0);
+  let connectionEnded: (() => void) | null = null;
+  const closed = new Promise<void>((resolve) => {
+    connectionEnded = resolve;
+  });
+  const server = createServer((socket) => {
+    socket.on("data", (chunk) => {
+      received = Buffer.concat([received, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+
+      if (hasInstreamTerminator(received)) {
+        for (const responseChunk of input.responseChunks) {
+          socket.write(responseChunk);
+        }
+
+        socket.end();
+      }
+    });
+    socket.on("close", () => {
+      connectionEnded?.();
+    });
+  }).listen(0);
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  const outcome = await scanStreamWithClamd(input.body, {
+    host: "127.0.0.1",
+    port,
+    maxFileBytes: 1024,
+    timeoutMs: 1_000
+  });
+
+  await closed;
+  server.close();
+
+  return { outcome, received };
+}
+
+function hasInstreamTerminator(value: Buffer) {
+  try {
+    return parseClamdFrames(value).hasTerminator;
+  } catch {
+    return false;
+  }
+}
+
+function parseClamdFrames(value: Buffer) {
+  const command = "zINSTREAM\0";
+  const commandBytes = Buffer.from(command);
+
+  expect(value.subarray(0, commandBytes.length)).toEqual(commandBytes);
+
+  const chunks: Buffer[] = [];
+  let offset = commandBytes.length;
+  let hasTerminator = false;
+
+  while (offset + 4 <= value.length) {
+    const size = value.readUInt32BE(offset);
+    offset += 4;
+
+    if (size === 0) {
+      hasTerminator = true;
+      break;
+    }
+
+    expect(offset + size).toBeLessThanOrEqual(value.length);
+    chunks.push(value.subarray(offset, offset + size));
+    offset += size;
+  }
+
+  return {
+    command,
+    chunks,
+    hasTerminator
+  };
+}

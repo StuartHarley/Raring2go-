@@ -1,4 +1,5 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { once } from "node:events";
 import { Socket } from "node:net";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
@@ -241,6 +242,8 @@ export async function scanStreamWithClamd(
     let bytesSeen = 0;
     let response = "";
 
+    body.pause();
+
     function finish(outcome: ClamScanOutcome) {
       if (settled) {
         return;
@@ -264,29 +267,46 @@ export async function scanStreamWithClamd(
 
       finish(parseClamdResponse(response));
     });
-    body.on("error", () => finish({ status: "failed", reason: "object_stream_failed" }));
-    body.on("data", (chunk: Buffer) => {
-      bytesSeen += chunk.length;
-
-      if (bytesSeen > input.maxFileBytes) {
-        finish({ status: "failed", reason: "oversized_file" });
-        return;
-      }
-
-      const size = Buffer.alloc(4);
-      size.writeUInt32BE(chunk.length, 0);
-      socket.write(size);
-      socket.write(chunk);
-    });
-    body.on("end", () => {
-      socket.write(Buffer.alloc(4));
-    });
 
     socket.connect(input.port, input.host, () => {
-      socket.write("zINSTREAM\0");
-      body.resume();
+      void streamBodyToClamd();
     });
+
+    async function streamBodyToClamd() {
+      try {
+        await writeSocket(socket, Buffer.from("zINSTREAM\0"));
+
+        for await (const chunk of body) {
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          bytesSeen += buffer.length;
+
+          if (bytesSeen > input.maxFileBytes) {
+            finish({ status: "failed", reason: "oversized_file" });
+            return;
+          }
+
+          const size = Buffer.alloc(4);
+          size.writeUInt32BE(buffer.length, 0);
+          await writeSocket(socket, size);
+          await writeSocket(socket, buffer);
+        }
+
+        await writeSocket(socket, Buffer.alloc(4));
+      } catch {
+        finish({ status: "failed", reason: "object_stream_failed" });
+      }
+    }
   });
+}
+
+async function writeSocket(socket: Socket, chunk: Buffer) {
+  if (socket.destroyed) {
+    throw new Error("Socket is closed.");
+  }
+
+  if (!socket.write(chunk)) {
+    await once(socket, "drain");
+  }
 }
 
 export function parseClamdResponse(value: string): ClamScanOutcome {
