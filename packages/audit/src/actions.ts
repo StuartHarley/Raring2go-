@@ -84,7 +84,9 @@ export const auditActions = {
   advertiserActivityRecord: "advertiser.activity.record",
   advertiserOpportunityCreate: "advertiser.opportunity.create",
   advertiserOpportunityUpdate: "advertiser.opportunity.update",
-  advertiserOpportunityStageChange: "advertiser.opportunity.stage.change"
+  advertiserOpportunityStageChange: "advertiser.opportunity.stage.change",
+  advertiserPricingChange: "advertiser.pricing.change",
+  advertiserInventoryReserve: "advertiser.inventory.reserve"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

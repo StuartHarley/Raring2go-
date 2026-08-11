@@ -67,7 +67,10 @@ describe("foundation fixtures", () => {
       "advertiser.activity",
       "advertiser.opportunity",
       "advertiser.opportunity",
-      "advertiser.opportunity"
+      "advertiser.opportunity",
+      "advertiser.catalogue",
+      "advertiser.pricing",
+      "advertiser.inventory"
     ]);
   });
 
@@ -174,6 +177,25 @@ describe("foundation fixtures", () => {
       stageId: fixtureIds.pipelineStages.qualified,
       expectedCloseDate: "2026-08-18",
       nextActionDate: "2026-08-10"
+    });
+  });
+
+  it("includes deterministic commercial catalogue and inventory fixtures", () => {
+    expect(foundationSeed.commercialProducts[0]).toMatchObject({
+      key: "full-page-ad",
+      channel: "magazine",
+      requiresInventory: true,
+      requiresArtwork: true
+    });
+    expect(foundationSeed.priceBookItems[0]).toMatchObject({
+      productId: fixtureIds.commercialProducts.fullPageAdvert,
+      standardPriceMinor: 52500,
+      minimumPriceMinor: 42500
+    });
+    expect(foundationSeed.inventorySlots[0]).toMatchObject({
+      territoryEditionId: fixtureIds.territoryEditions.suttonAutumn2026,
+      productId: fixtureIds.commercialProducts.fullPageAdvert,
+      exclusive: true
     });
   });
 

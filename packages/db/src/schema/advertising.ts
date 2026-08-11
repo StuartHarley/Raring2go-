@@ -1,6 +1,7 @@
 import { boolean, date, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
 import { users } from "./identity";
+import { editionPages, territoryEditions } from "./publishing";
 import { organisations, territories } from "./tenancy";
 
 export const advertisers = pgTable(
@@ -157,5 +158,133 @@ export const opportunities = pgTable(
     index("opportunities_next_action_date_idx").on(table.nextActionDate),
     index("opportunities_expected_close_date_idx").on(table.expectedCloseDate),
     index("opportunities_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const commercialProducts = pgTable(
+  "commercial_products",
+  {
+    id,
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    channel: text("channel").notNull(),
+    status: text("status").notNull().default("active"),
+    requiresInventory: boolean("requires_inventory").notNull().default(false),
+    requiresArtwork: boolean("requires_artwork").notNull().default(false),
+    taxCode: text("tax_code").notNull().default("standard_vat"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("commercial_products_key_uidx").on(table.key),
+    index("commercial_products_channel_idx").on(table.channel),
+    index("commercial_products_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const commercialPackages = pgTable(
+  "commercial_packages",
+  {
+    id,
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("active"),
+    lines: jsonb("lines").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("commercial_packages_key_uidx").on(table.key),
+    index("commercial_packages_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const priceBooks = pgTable(
+  "price_books",
+  {
+    id,
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    territoryId: uuid("territory_id").references(() => territories.id),
+    status: text("status").notNull().default("active"),
+    effectiveFrom: date("effective_from", { mode: "date" }),
+    effectiveTo: date("effective_to", { mode: "date" }),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("price_books_key_uidx").on(table.key),
+    index("price_books_territory_id_idx").on(table.territoryId),
+    index("price_books_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const priceBookItems = pgTable(
+  "price_book_items",
+  {
+    id,
+    priceBookId: uuid("price_book_id").notNull().references(() => priceBooks.id),
+    productId: uuid("product_id").notNull().references(() => commercialProducts.id),
+    standardPriceMinor: integer("standard_price_minor").notNull(),
+    minimumPriceMinor: integer("minimum_price_minor").notNull(),
+    currency: text("currency").notNull().default("GBP"),
+    approvalRequiredBelowMinor: integer("approval_required_below_minor").notNull().default(0),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("price_book_items_book_product_uidx").on(table.priceBookId, table.productId),
+    index("price_book_items_product_id_idx").on(table.productId),
+    index("price_book_items_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const inventorySlots = pgTable(
+  "inventory_slots",
+  {
+    id,
+    territoryEditionId: uuid("territory_edition_id").references(() => territoryEditions.id),
+    editionPageId: uuid("edition_page_id").references(() => editionPages.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    productId: uuid("product_id").notNull().references(() => commercialProducts.id),
+    slotKey: text("slot_key").notNull(),
+    inventoryClass: text("inventory_class").notNull(),
+    exclusive: boolean("exclusive").notNull().default(true),
+    status: text("status").notNull().default("available"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("inventory_slots_slot_uidx").on(table.territoryEditionId, table.slotKey),
+    index("inventory_slots_territory_id_idx").on(table.territoryId),
+    index("inventory_slots_product_id_idx").on(table.productId),
+    index("inventory_slots_status_idx").on(table.status),
+    index("inventory_slots_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+export const inventoryReservations = pgTable(
+  "inventory_reservations",
+  {
+    id,
+    inventorySlotId: uuid("inventory_slot_id").notNull().references(() => inventorySlots.id),
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    opportunityId: uuid("opportunity_id").references(() => opportunities.id),
+    status: text("status").notNull().default("reserved"),
+    reservedByUserId: uuid("reserved_by_user_id").references(() => users.id),
+    expiresOn: date("expires_on", { mode: "date" }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("inventory_reservations_slot_id_idx").on(table.inventorySlotId),
+    index("inventory_reservations_advertiser_id_idx").on(table.advertiserId),
+    index("inventory_reservations_status_idx").on(table.status),
+    index("inventory_reservations_deleted_at_idx").on(table.deletedAt)
   ]
 );

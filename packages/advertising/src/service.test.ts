@@ -6,9 +6,11 @@ import {
   createAdvertiser,
   createOpportunity,
   getAdvertiser360,
+  listCatalogue,
   listAdvertisers,
   listPipeline,
   recordAdvertiserActivity,
+  reserveInventorySlot,
   updateAdvertiser
 } from "./service";
 import type { AdvertisingData } from "./types";
@@ -38,15 +40,17 @@ const ids = {
   otherAdvertiser: "advertiser_other",
   contact: "contact_primary",
   activity: "activity_note",
-  metric: "metric_2026"
-  ,
+  metric: "metric_2026",
   stages: {
     lead: "stage_lead",
     qualified: "stage_qualified",
     won: "stage_won",
     lost: "stage_lost"
   },
-  opportunity: "opportunity_renewal"
+  opportunity: "opportunity_renewal",
+  product: "product_full_page",
+  slot: "slot_cover",
+  reservation: "reservation_cover"
 } as const;
 
 const permissions: PermissionData = {
@@ -74,6 +78,8 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.opportunity", "view", "network"),
     grant(ids.roles.hq, "advertiser.opportunity", "create", "network"),
     grant(ids.roles.hq, "advertiser.opportunity", "edit", "network"),
+    grant(ids.roles.hq, "advertiser.catalogue", "view", "network"),
+    grant(ids.roles.hq, "advertiser.inventory", "reserve", "network"),
     grant(ids.roles.local, "advertiser", "view", "own_territory"),
     grant(ids.roles.local, "advertiser", "create", "own_territory"),
     grant(ids.roles.local, "advertiser", "edit", "own_territory"),
@@ -81,7 +87,9 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "advertiser.activity", "record", "own_territory"),
     grant(ids.roles.local, "advertiser.opportunity", "view", "own_territory"),
     grant(ids.roles.local, "advertiser.opportunity", "create", "own_territory"),
-    grant(ids.roles.local, "advertiser.opportunity", "edit", "own_territory")
+    grant(ids.roles.local, "advertiser.opportunity", "edit", "own_territory"),
+    grant(ids.roles.local, "advertiser.catalogue", "view", "own_territory"),
+    grant(ids.roles.local, "advertiser.inventory", "reserve", "own_territory")
   ],
   territories: [
     {
@@ -226,6 +234,36 @@ describe("advertiser CRM foundation", () => {
       auditActions.advertiserOpportunityStageChange
     ]);
   });
+
+  it("lists configurable catalogue and blocks double booking exclusive inventory", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    expect(listCatalogue(localContext(), permissions, data).products.map((product) => product.key)).toEqual([
+      "full-page-ad"
+    ]);
+    await reserveInventorySlot(localContext(), permissions, recorder, data, {
+      id: ids.reservation,
+      inventorySlotId: ids.slot,
+      advertiserId: ids.advertiser,
+      opportunityId: ids.opportunity,
+      status: "reserved",
+      metadata: {}
+    });
+    await expect(
+      reserveInventorySlot(localContext(), permissions, audit(), data, {
+        id: "reservation_duplicate",
+        inventorySlotId: ids.slot,
+        advertiserId: ids.advertiser,
+        opportunityId: ids.opportunity,
+        status: "reserved",
+        metadata: {}
+      })
+    ).rejects.toThrow("already reserved");
+    expect(recorder.events.map((event) => event.action)).toEqual([
+      auditActions.advertiserInventoryReserve
+    ]);
+  });
 });
 
 function hqContext() {
@@ -251,6 +289,12 @@ function emptyData(): AdvertisingData {
     metricSnapshots: [],
     pipelineStages: pipelineStages(),
     opportunities: [],
+    products: [],
+    packages: [],
+    priceBooks: [],
+    priceBookItems: [],
+    inventorySlots: [],
+    inventoryReservations: [],
     organisations: [
       { id: ids.organisations.hq, kind: "hq", name: "HQ" },
       { id: ids.organisations.franchise, kind: "franchise", name: "Own Franchise" },
@@ -307,6 +351,29 @@ function seededData() {
     benchmarkMetadata: {}
   });
   data.opportunities.push(baseOpportunity());
+  data.products.push({
+    id: ids.product,
+    key: "full-page-ad",
+    name: "Full page advert",
+    channel: "magazine",
+    status: "active",
+    requiresInventory: true,
+    requiresArtwork: true,
+    taxCode: "standard_vat",
+    metadata: {}
+  });
+  data.inventorySlots.push({
+    id: ids.slot,
+    territoryEditionId: "edition_autumn",
+    editionPageId: "page_3",
+    territoryId: ids.territories.own,
+    productId: ids.product,
+    slotKey: "autumn-page-3-full",
+    inventoryClass: "full_page",
+    exclusive: true,
+    status: "available",
+    metadata: {}
+  });
   return data;
 }
 

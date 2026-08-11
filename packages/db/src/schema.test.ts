@@ -11,6 +11,8 @@ import {
   advertiserContacts,
   advertiserMetricSnapshots,
   advertisers,
+  commercialPackages,
+  commercialProducts,
   auditEvents,
   franchiseArtifactReferences,
   franchiseAgreements,
@@ -34,8 +36,12 @@ import {
   onboardingTemplatePhases,
   onboardingTemplates,
   onboardingTemplateTasks,
+  inventoryReservations,
+  inventorySlots,
   opportunities,
   pipelineStages,
+  priceBookItems,
+  priceBooks,
   preflightResults,
   publicationOutputs,
   organisations,
@@ -111,6 +117,18 @@ describe("foundation schema", () => {
     expect(opportunities.expectedCloseDate.name).toBe("expected_close_date");
     expect(opportunities.nextActionDate.name).toBe("next_action_date");
     expect(opportunities.lostReason.name).toBe("lost_reason");
+  });
+
+  it("models commercial catalogue pricing and Edition Factory inventory", () => {
+    expect(commercialProducts.channel.name).toBe("channel");
+    expect(commercialProducts.requiresInventory.name).toBe("requires_inventory");
+    expect(commercialPackages.lines.name).toBe("lines");
+    expect(priceBooks.territoryId.name).toBe("territory_id");
+    expect(priceBookItems.minimumPriceMinor.name).toBe("minimum_price_minor");
+    expect(priceBookItems.approvalRequiredBelowMinor.name).toBe("approval_required_below_minor");
+    expect(inventorySlots.territoryEditionId.name).toBe("territory_edition_id");
+    expect(inventorySlots.editionPageId.name).toBe("edition_page_id");
+    expect(inventoryReservations.inventorySlotId.name).toBe("inventory_slot_id");
   });
 
   it("separates agreement templates, versions and generated franchise instances", () => {

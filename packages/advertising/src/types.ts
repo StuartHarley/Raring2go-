@@ -118,6 +118,78 @@ export type OpportunityView = {
     | "normal";
 };
 
+export type CommercialProduct = {
+  id: string;
+  key: string;
+  name: string;
+  channel: string;
+  status: string;
+  requiresInventory: boolean;
+  requiresArtwork: boolean;
+  taxCode: string;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type CommercialPackage = {
+  id: string;
+  key: string;
+  name: string;
+  status: string;
+  lines: Array<Record<string, unknown>>;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type PriceBook = {
+  id: string;
+  key: string;
+  name: string;
+  territoryId?: string | null;
+  status: string;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type PriceBookItem = {
+  id: string;
+  priceBookId: string;
+  productId: string;
+  standardPriceMinor: number;
+  minimumPriceMinor: number;
+  currency: string;
+  approvalRequiredBelowMinor: number;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type InventorySlot = {
+  id: string;
+  territoryEditionId?: string | null;
+  editionPageId?: string | null;
+  territoryId: string;
+  productId: string;
+  slotKey: string;
+  inventoryClass: string;
+  exclusive: boolean;
+  status: string;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
+export type InventoryReservation = {
+  id: string;
+  inventorySlotId: string;
+  advertiserId: string;
+  opportunityId?: string | null;
+  status: string;
+  reservedByUserId?: string | null;
+  expiresOn?: string | null;
+  metadata: Record<string, unknown>;
+  deletedAt?: Date | null;
+};
+
 export type AdvertisingOrganisation = {
   id: string;
   kind: string;
@@ -139,6 +211,12 @@ export type AdvertisingData = {
   metricSnapshots: AdvertiserMetricSnapshot[];
   pipelineStages: PipelineStage[];
   opportunities: Opportunity[];
+  products: CommercialProduct[];
+  packages: CommercialPackage[];
+  priceBooks: PriceBook[];
+  priceBookItems: PriceBookItem[];
+  inventorySlots: InventorySlot[];
+  inventoryReservations: InventoryReservation[];
   organisations: AdvertisingOrganisation[];
   territories: AdvertisingTerritory[];
 };
@@ -165,4 +243,12 @@ export type PipelineView = {
   stale: OpportunityView[];
   myPipeline: OpportunityView[];
   territoryPipeline: OpportunityView[];
+};
+
+export type CatalogueView = {
+  products: CommercialProduct[];
+  packages: CommercialPackage[];
+  priceBooks: PriceBook[];
+  priceBookItems: PriceBookItem[];
+  inventorySlots: InventorySlot[];
 };

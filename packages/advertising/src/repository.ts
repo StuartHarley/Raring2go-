@@ -3,9 +3,15 @@ import {
   advertiserContacts,
   advertiserMetricSnapshots,
   advertisers,
+  commercialPackages,
+  commercialProducts,
+  inventoryReservations,
+  inventorySlots,
   organisations,
   opportunities,
   pipelineStages,
+  priceBookItems,
+  priceBooks,
   territories
 } from "@raring2go/db";
 import type { AdvertisingData } from "./types";
@@ -24,6 +30,12 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     metricRows,
     stageRows,
     opportunityRows,
+    productRows,
+    packageRows,
+    priceBookRows,
+    priceBookItemRows,
+    inventorySlotRows,
+    inventoryReservationRows,
     organisationRows,
     territoryRows
   ] = await Promise.all([
@@ -33,6 +45,12 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     db.select().from(advertiserMetricSnapshots),
     db.select().from(pipelineStages),
     db.select().from(opportunities),
+    db.select().from(commercialProducts),
+    db.select().from(commercialPackages),
+    db.select().from(priceBooks),
+    db.select().from(priceBookItems),
+    db.select().from(inventorySlots),
+    db.select().from(inventoryReservations),
     db.select().from(organisations),
     db.select().from(territories)
   ]);
@@ -54,6 +72,19 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
       nextActionDate: dateString(row.nextActionDate),
       closedAt: dateString(row.closedAt)
     })) as AdvertisingData["opportunities"],
+    products: productRows as AdvertisingData["products"],
+    packages: packageRows as AdvertisingData["packages"],
+    priceBooks: priceBookRows.map((row) => ({
+      ...row,
+      effectiveFrom: dateString(row.effectiveFrom),
+      effectiveTo: dateString(row.effectiveTo)
+    })) as AdvertisingData["priceBooks"],
+    priceBookItems: priceBookItemRows as AdvertisingData["priceBookItems"],
+    inventorySlots: inventorySlotRows as AdvertisingData["inventorySlots"],
+    inventoryReservations: inventoryReservationRows.map((row) => ({
+      ...row,
+      expiresOn: dateString(row.expiresOn)
+    })) as AdvertisingData["inventoryReservations"],
     organisations: organisationRows as AdvertisingData["organisations"],
     territories: territoryRows as AdvertisingData["territories"]
   };

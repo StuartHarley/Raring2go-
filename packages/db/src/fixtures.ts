@@ -74,7 +74,10 @@ export const fixtureIds = {
     advertiserActivityRecord: "00000000-0000-4000-8000-000000000454",
     opportunityView: "00000000-0000-4000-8000-000000000455",
     opportunityCreate: "00000000-0000-4000-8000-000000000456",
-    opportunityEdit: "00000000-0000-4000-8000-000000000457"
+    opportunityEdit: "00000000-0000-4000-8000-000000000457",
+    catalogueView: "00000000-0000-4000-8000-000000000458",
+    pricingManage: "00000000-0000-4000-8000-000000000459",
+    inventoryReserve: "00000000-0000-4000-8000-000000000460"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -97,6 +100,21 @@ export const fixtureIds = {
   },
   opportunities: {
     exampleRenewal: "00000000-0000-4000-8000-000000000710"
+  },
+  commercialProducts: {
+    fullPageAdvert: "00000000-0000-4000-8000-000000000711"
+  },
+  commercialPackages: {
+    printDigitalStarter: "00000000-0000-4000-8000-000000000712"
+  },
+  priceBooks: {
+    network2026: "00000000-0000-4000-8000-000000000713"
+  },
+  priceBookItems: {
+    fullPageNetwork2026: "00000000-0000-4000-8000-000000000714"
+  },
+  inventorySlots: {
+    suttonAutumnPage3: "00000000-0000-4000-8000-000000000715"
   },
   franchises: {
     suttonColdfield: "00000000-0000-4000-8000-000000000901"
@@ -581,6 +599,24 @@ export const foundationSeed = {
       module: "advertiser.opportunity",
       action: "edit",
       description: "Edit advertiser opportunities and stage changes."
+    },
+    {
+      id: fixtureIds.permissions.catalogueView,
+      module: "advertiser.catalogue",
+      action: "view",
+      description: "View commercial products, packages and price books."
+    },
+    {
+      id: fixtureIds.permissions.pricingManage,
+      module: "advertiser.pricing",
+      action: "manage",
+      description: "Manage commercial pricing and discount guardrails."
+    },
+    {
+      id: fixtureIds.permissions.inventoryReserve,
+      module: "advertiser.inventory",
+      action: "reserve",
+      description: "Reserve Edition Factory inventory for commercial bookings."
     }
   ],
   advertisers: [
@@ -728,6 +764,80 @@ export const foundationSeed = {
       createdByUserId: fixtureIds.users.franchisee
     }
   ],
+  commercialProducts: [
+    {
+      id: fixtureIds.commercialProducts.fullPageAdvert,
+      key: "full-page-ad",
+      name: "Full page advert",
+      channel: "magazine",
+      status: "active",
+      requiresInventory: true,
+      requiresArtwork: true,
+      taxCode: "standard_vat",
+      metadata: {
+        inventoryClass: "full_page"
+      }
+    }
+  ],
+  commercialPackages: [
+    {
+      id: fixtureIds.commercialPackages.printDigitalStarter,
+      key: "print-digital-starter",
+      name: "Print and digital starter",
+      status: "active",
+      lines: [
+        {
+          productId: fixtureIds.commercialProducts.fullPageAdvert,
+          quantity: 1
+        }
+      ],
+      metadata: {
+        packageMix: "print_digital"
+      }
+    }
+  ],
+  priceBooks: [
+    {
+      id: fixtureIds.priceBooks.network2026,
+      key: "network-2026",
+      name: "Network 2026",
+      territoryId: null,
+      status: "active",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: "2026-12-31"
+    }
+  ],
+  priceBookItems: [
+    {
+      id: fixtureIds.priceBookItems.fullPageNetwork2026,
+      priceBookId: fixtureIds.priceBooks.network2026,
+      productId: fixtureIds.commercialProducts.fullPageAdvert,
+      standardPriceMinor: 52500,
+      minimumPriceMinor: 42500,
+      currency: "GBP",
+      approvalRequiredBelowMinor: 45000,
+      metadata: {
+        discountGuardrail: true
+      }
+    }
+  ],
+  inventorySlots: [
+    {
+      id: fixtureIds.inventorySlots.suttonAutumnPage3,
+      territoryEditionId: fixtureIds.territoryEditions.suttonAutumn2026,
+      editionPageId: null,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      productId: fixtureIds.commercialProducts.fullPageAdvert,
+      slotKey: "sutton-autumn-2026-page-3-full",
+      inventoryClass: "full_page",
+      exclusive: true,
+      status: "available",
+      metadata: {
+        pageHint: 3
+      }
+    }
+  ],
+  inventoryReservations: [],
   franchises: [
     {
       id: fixtureIds.franchises.suttonColdfield,

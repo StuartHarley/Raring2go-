@@ -35,6 +35,9 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
         <Link href={"/app/advertisers/pipeline" as Route} className="app-link-button">
           Open pipeline
         </Link>
+        <Link href={"/app/advertisers/catalogue" as Route} className="app-link-button">
+          View catalogue
+        </Link>
         <div className="franchise-metrics">
           <article>
             <span>Advertisers</span>

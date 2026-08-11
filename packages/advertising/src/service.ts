@@ -8,6 +8,8 @@ import type {
   AdvertiserRecord,
   AdvertisingActorContext,
   AdvertisingData,
+  CatalogueView,
+  InventoryReservation,
   Opportunity,
   OpportunityView,
   PipelineView
@@ -251,6 +253,60 @@ export async function changeOpportunityStage(
     outcome: stage.outcome ?? "open"
   }));
   return opportunity;
+}
+
+export function listCatalogue(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  data: AdvertisingData
+): CatalogueView {
+  requireAdvertisingPermission(context, permissions, "catalogueView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+
+  return {
+    products: data.products.filter((product) => product.status === "active" && !product.deletedAt),
+    packages: data.packages.filter((bundle) => bundle.status === "active" && !bundle.deletedAt),
+    priceBooks: data.priceBooks.filter((book) => book.status === "active" && !book.deletedAt),
+    priceBookItems: data.priceBookItems.filter((item) => !item.deletedAt),
+    inventorySlots: data.inventorySlots
+      .filter((slot) => !slot.deletedAt)
+      .filter((slot) => visibleTerritoryIds == null || visibleTerritoryIds.has(slot.territoryId))
+  };
+}
+
+export async function reserveInventorySlot(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  reservation: InventoryReservation
+) {
+  requireAdvertisingPermission(context, permissions, "inventoryReserve");
+  const slot = data.inventorySlots.find((candidate) => candidate.id === reservation.inventorySlotId && !candidate.deletedAt);
+  if (!slot) {
+    throw new Error("Inventory slot was not found.");
+  }
+  if (context.territoryId && context.territoryId !== slot.territoryId) {
+    throw new Error("Inventory slot is outside the active territory.");
+  }
+  const advertiser = requireAdvertiser(data, reservation.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser);
+  const activeReservation = data.inventoryReservations.find(
+    (candidate) => candidate.inventorySlotId === slot.id && candidate.status === "reserved" && !candidate.deletedAt
+  );
+  if (slot.exclusive && activeReservation) {
+    throw new Error("Exclusive inventory slot is already reserved.");
+  }
+  slot.status = "reserved";
+  data.inventoryReservations.push({
+    ...reservation,
+    reservedByUserId: reservation.reservedByUserId ?? context.userId
+  });
+  await audit.record(auditEvent(context, auditActions.advertiserInventoryReserve, advertiser, {
+    inventorySlotId: slot.id,
+    opportunityId: reservation.opportunityId ?? null
+  }));
+  return reservation;
 }
 
 function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserRecord): Advertiser360 {

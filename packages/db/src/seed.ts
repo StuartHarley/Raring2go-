@@ -7,6 +7,8 @@ import {
   advertiserContacts,
   advertiserMetricSnapshots,
   advertisers,
+  commercialPackages,
+  commercialProducts,
   agreementTemplates,
   agreementVersions,
   authInvitations,
@@ -18,6 +20,7 @@ import {
   franchiseDocumentVersions,
   franchises,
   franchiseInsurancePolicies,
+  inventorySlots,
   memberships,
   onboardingTemplatePhases,
   onboardingTemplateTasks,
@@ -25,6 +28,8 @@ import {
   organisations,
   opportunities,
   pipelineStages,
+  priceBookItems,
+  priceBooks,
   permissions,
   rolePermissions,
   roles,
@@ -254,7 +259,10 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.advertiserActivityRecord,
         fixtureIds.permissions.opportunityView,
         fixtureIds.permissions.opportunityCreate,
-        fixtureIds.permissions.opportunityEdit
+        fixtureIds.permissions.opportunityEdit,
+        fixtureIds.permissions.catalogueView,
+        fixtureIds.permissions.pricingManage,
+        fixtureIds.permissions.inventoryReserve
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -360,6 +368,18 @@ export async function seedDatabase(databaseUrl?: string) {
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.opportunityEdit,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.catalogueView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.inventoryReserve,
         scope: "own_territory",
         constraints: {}
       }
@@ -541,6 +561,98 @@ export async function seedDatabase(databaseUrl?: string) {
         competitor: sql`excluded.competitor`,
         closedAt: sql`excluded.closed_at`,
         createdByUserId: sql`excluded.created_by_user_id`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(commercialProducts).values(foundationSeed.commercialProducts.map((product) => ({
+      ...product,
+      metadata: { ...product.metadata }
+    }))).onConflictDoUpdate({
+      target: commercialProducts.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        channel: sql`excluded.channel`,
+        status: sql`excluded.status`,
+        requiresInventory: sql`excluded.requires_inventory`,
+        requiresArtwork: sql`excluded.requires_artwork`,
+        taxCode: sql`excluded.tax_code`,
+        metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(commercialPackages).values(foundationSeed.commercialPackages.map((bundle) => ({
+      ...bundle,
+      lines: [...bundle.lines],
+      metadata: { ...bundle.metadata }
+    }))).onConflictDoUpdate({
+      target: commercialPackages.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        status: sql`excluded.status`,
+        lines: sql`excluded.lines`,
+        metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(priceBooks).values(foundationSeed.priceBooks.map((book) => ({
+      ...book,
+      effectiveFrom: book.effectiveFrom ? new Date(book.effectiveFrom) : null,
+      effectiveTo: book.effectiveTo ? new Date(book.effectiveTo) : null
+    }))).onConflictDoUpdate({
+      target: priceBooks.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        territoryId: sql`excluded.territory_id`,
+        status: sql`excluded.status`,
+        effectiveFrom: sql`excluded.effective_from`,
+        effectiveTo: sql`excluded.effective_to`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(priceBookItems).values(foundationSeed.priceBookItems.map((item) => ({
+      ...item,
+      metadata: { ...item.metadata }
+    }))).onConflictDoUpdate({
+      target: priceBookItems.id,
+      set: {
+        priceBookId: sql`excluded.price_book_id`,
+        productId: sql`excluded.product_id`,
+        standardPriceMinor: sql`excluded.standard_price_minor`,
+        minimumPriceMinor: sql`excluded.minimum_price_minor`,
+        currency: sql`excluded.currency`,
+        approvalRequiredBelowMinor: sql`excluded.approval_required_below_minor`,
+        metadata: sql`excluded.metadata`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(inventorySlots).values(foundationSeed.inventorySlots.map((slot) => ({
+      ...slot,
+      metadata: { ...slot.metadata }
+    }))).onConflictDoUpdate({
+      target: inventorySlots.id,
+      set: {
+        territoryEditionId: sql`excluded.territory_edition_id`,
+        editionPageId: sql`excluded.edition_page_id`,
+        territoryId: sql`excluded.territory_id`,
+        productId: sql`excluded.product_id`,
+        slotKey: sql`excluded.slot_key`,
+        inventoryClass: sql`excluded.inventory_class`,
+        exclusive: sql`excluded.exclusive`,
+        status: sql`excluded.status`,
+        metadata: sql`excluded.metadata`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

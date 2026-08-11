@@ -1,5 +1,6 @@
 import {
   getAdvertiser360,
+  listCatalogue,
   listAdvertisers,
   listPipeline,
   loadAdvertisingData
@@ -27,8 +28,10 @@ export const advertisingPermissionData: PermissionData = {
   rolePermissions: [
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.advertiserView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.opportunityView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.catalogueView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.advertiserView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.opportunityView, "own_territory")
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.opportunityView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.catalogueView, "own_territory")
   ],
   territories: foundationSeed.territories.map((territory) => ({
     id: territory.id,
@@ -51,6 +54,16 @@ export async function readPipeline(context: AdvertisingActorContext) {
 
   try {
     return listPipeline(context, advertisingPermissionData, await loadAdvertisingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readCatalogue(context: AdvertisingActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    return listCatalogue(context, advertisingPermissionData, await loadAdvertisingData(db));
   } finally {
     await sql.end();
   }
