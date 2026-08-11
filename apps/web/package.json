@@ -16,6 +16,7 @@
     "@raring2go/auth": "workspace:*",
     "@raring2go/config": "workspace:*",
     "@raring2go/db": "workspace:*",
+    "@raring2go/email": "workspace:*",
     "@raring2go/franchise": "workspace:*",
     "@raring2go/marketing": "workspace:*",
     "@raring2go/permissions": "workspace:*",

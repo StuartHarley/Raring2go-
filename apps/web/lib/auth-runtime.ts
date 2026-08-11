@@ -6,6 +6,10 @@ import {
   requestPasswordlessSignIn,
   revokeSession
 } from "@raring2go/auth";
+import {
+  createEmailProviderFromEnv,
+  sendPasswordlessSignInEmail
+} from "@raring2go/email";
 import { fixtureIds, foundationSeed } from "@raring2go/db";
 import type {
   AuditRecorder,
@@ -135,15 +139,26 @@ export async function requestSignIn(input: {
   returnTo?: string;
   audit?: AuditRecorder;
 }) {
-  return requestPasswordlessSignIn(
+  const delivery = await requestPasswordlessSignIn(
     appAuthRepository,
     input.audit ?? appAuditRecorder,
     {
       email: input.email,
       token: input.token,
-      returnTo: safeReturnTo(input.returnTo)
+      returnTo: safeReturnTo(input.returnTo),
+      baseUrl: publicBaseUrl()
     }
   );
+
+  await sendPasswordlessSignInEmail(createEmailProviderFromEnv(), {
+    to: delivery.email,
+    url: delivery.url ?? signInUrl(input.token),
+    expiresAt: delivery.expiresAt,
+    from: process.env.EMAIL_FROM,
+    idempotencyKey: `passwordless:${delivery.email}:${input.token}`
+  });
+
+  return delivery;
 }
 
 export async function verifySignIn(input: {
@@ -174,4 +189,12 @@ export async function acceptInvite(input: {
   audit?: AuditRecorder;
 }) {
   return acceptInvitation(appAuthRepository, input.audit ?? appAuditRecorder, input);
+}
+
+function publicBaseUrl() {
+  return process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? "http://localhost:3000";
+}
+
+function signInUrl(token: string) {
+  return `${publicBaseUrl()}/sign-in/verify?token=${encodeURIComponent(token)}`;
 }

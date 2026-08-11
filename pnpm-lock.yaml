@@ -47,6 +47,9 @@ importers:
       '@raring2go/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@raring2go/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@raring2go/franchise':
         specifier: workspace:*
         version: link:../../packages/franchise
