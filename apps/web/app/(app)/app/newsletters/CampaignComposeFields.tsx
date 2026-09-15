@@ -22,6 +22,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   renderBlocksToHtml,
+  renderBlocksToText,
   type Block,
   type ButtonBlock,
   type DividerBlock,
@@ -47,16 +48,59 @@ function newDividerBlock(): DividerBlock {
   return { id: crypto.randomUUID(), type: "divider" };
 }
 
-export function BlockEditor() {
+export type SuggestSubjectLines = (input: { draftId: string; campaignTitle: string; bodyPreviewText: string }) => Promise<string[]>;
+export type SuggestBlockCopy = (input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }) => Promise<string>;
+export type AcceptAiSuggestion = (input: { draftId: string; task: "subject_lines" | "block_copy"; blockId?: string; accepted: string }) => Promise<void>;
+
+export function CampaignComposeFields({
+  aiAssistAvailable,
+  suggestSubjectLinesAction,
+  suggestBlockCopyAction,
+  acceptAiSuggestionAction
+}: {
+  aiAssistAvailable: boolean;
+  suggestSubjectLinesAction: SuggestSubjectLines;
+  suggestBlockCopyAction: SuggestBlockCopy;
+  acceptAiSuggestionAction: AcceptAiSuggestion;
+}) {
+  const [draftId] = useState(() => crypto.randomUUID());
+  const [title, setTitle] = useState("");
+  const [subject, setSubject] = useState("");
   const [blocks, setBlocks] = useState<Block[]>(() => [newTextBlock()]);
   const [importHtml, setImportHtml] = useState("");
   const [importSourceLabel, setImportSourceLabel] = useState<string | null>(null);
+  const [subjectSuggestions, setSubjectSuggestions] = useState<string[] | null>(null);
+  const [subjectSuggestState, setSubjectSuggestState] = useState<"idle" | "loading" | "error">("idle");
+  const [subjectSuggestError, setSubjectSuggestError] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const previewHtml = useMemo(() => renderBlocksToHtml(blocks), [blocks]);
+
+  async function handleSuggestSubjectLines() {
+    setSubjectSuggestState("loading");
+    setSubjectSuggestError(null);
+    try {
+      const suggestions = await suggestSubjectLinesAction({
+        draftId,
+        campaignTitle: title,
+        bodyPreviewText: renderBlocksToText(blocks)
+      });
+      setSubjectSuggestions(suggestions);
+      setSubjectSuggestState("idle");
+    } catch (error) {
+      setSubjectSuggestState("error");
+      setSubjectSuggestError(error instanceof Error ? error.message : "Suggestion failed.");
+    }
+  }
+
+  function acceptSubjectSuggestion(text: string) {
+    setSubject(text);
+    setSubjectSuggestions(null);
+    void acceptAiSuggestionAction({ draftId, task: "subject_lines", accepted: text }).catch(() => {});
+  }
 
   function updateBlock(id: string, patch: Partial<Block>) {
     setBlocks((current) => current.map((block) => (block.id === id ? ({ ...block, ...patch } as Block) : block)));
@@ -102,6 +146,37 @@ export function BlockEditor() {
 
   return (
     <div className="block-editor">
+      <label>
+        Title
+        <input type="text" name="title" required value={title} onChange={(event) => setTitle(event.target.value)} />
+      </label>
+
+      <div className="block-editor-subject-field">
+        <label>
+          Subject
+          <input type="text" name="subject" required value={subject} onChange={(event) => setSubject(event.target.value)} />
+        </label>
+        {aiAssistAvailable ? (
+          <div className="block-editor-ai-assist">
+            <button type="button" onClick={handleSuggestSubjectLines} disabled={subjectSuggestState === "loading"}>
+              {subjectSuggestState === "loading" ? "Thinking…" : "✨ Suggest subject lines"}
+            </button>
+            {subjectSuggestError ? <span className="block-editor-error">{subjectSuggestError}</span> : null}
+            {subjectSuggestions ? (
+              <ul className="block-editor-ai-suggestions">
+                {subjectSuggestions.map((suggestion) => (
+                  <li key={suggestion}>
+                    <button type="button" onClick={() => acceptSubjectSuggestion(suggestion)}>
+                      {suggestion}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
       <input type="hidden" name="blocksJson" value={JSON.stringify(blocks)} />
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -114,6 +189,11 @@ export function BlockEditor() {
                 canRemove={blocks.length > 1}
                 onChange={(patch) => updateBlock(block.id, patch)}
                 onRemove={() => removeBlock(block.id)}
+                aiAssistAvailable={aiAssistAvailable}
+                draftId={draftId}
+                campaignTitle={title}
+                suggestBlockCopyAction={suggestBlockCopyAction}
+                acceptAiSuggestionAction={acceptAiSuggestionAction}
               />
             ))}
           </div>
@@ -172,12 +252,22 @@ function SortableBlockRow({
   block,
   canRemove,
   onChange,
-  onRemove
+  onRemove,
+  aiAssistAvailable,
+  draftId,
+  campaignTitle,
+  suggestBlockCopyAction,
+  acceptAiSuggestionAction
 }: {
   block: Block;
   canRemove: boolean;
   onChange: (patch: Partial<Block>) => void;
   onRemove: () => void;
+  aiAssistAvailable: boolean;
+  draftId: string;
+  campaignTitle: string;
+  suggestBlockCopyAction: SuggestBlockCopy;
+  acceptAiSuggestionAction: AcceptAiSuggestion;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -193,7 +283,15 @@ function SortableBlockRow({
           Remove
         </button>
       </div>
-      <BlockFields block={block} onChange={onChange} />
+      <BlockFields
+        block={block}
+        onChange={onChange}
+        aiAssistAvailable={aiAssistAvailable}
+        draftId={draftId}
+        campaignTitle={campaignTitle}
+        suggestBlockCopyAction={suggestBlockCopyAction}
+        acceptAiSuggestionAction={acceptAiSuggestionAction}
+      />
     </div>
   );
 }
@@ -279,7 +377,23 @@ function ImageBlockFields({ block, onChange }: { block: ImageBlock; onChange: (p
   );
 }
 
-function BlockFields({ block, onChange }: { block: Block; onChange: (patch: Partial<Block>) => void }) {
+function BlockFields({
+  block,
+  onChange,
+  aiAssistAvailable,
+  draftId,
+  campaignTitle,
+  suggestBlockCopyAction,
+  acceptAiSuggestionAction
+}: {
+  block: Block;
+  onChange: (patch: Partial<Block>) => void;
+  aiAssistAvailable: boolean;
+  draftId: string;
+  campaignTitle: string;
+  suggestBlockCopyAction: SuggestBlockCopy;
+  acceptAiSuggestionAction: AcceptAiSuggestion;
+}) {
   switch (block.type) {
     case "heading":
       return (
@@ -297,7 +411,17 @@ function BlockFields({ block, onChange }: { block: Block; onChange: (patch: Part
         </div>
       );
     case "text":
-      return <TextBlockEditor block={block} onChange={onChange} />;
+      return (
+        <TextBlockEditor
+          block={block}
+          onChange={onChange}
+          aiAssistAvailable={aiAssistAvailable}
+          draftId={draftId}
+          campaignTitle={campaignTitle}
+          suggestBlockCopyAction={suggestBlockCopyAction}
+          acceptAiSuggestionAction={acceptAiSuggestionAction}
+        />
+      );
     case "image":
       return <ImageBlockFields block={block} onChange={onChange} />;
     case "button":
@@ -324,7 +448,25 @@ function BlockFields({ block, onChange }: { block: Block; onChange: (patch: Part
   }
 }
 
-function TextBlockEditor({ block, onChange }: { block: TextBlock; onChange: (patch: Partial<Block>) => void }) {
+function TextBlockEditor({
+  block,
+  onChange,
+  aiAssistAvailable,
+  draftId,
+  campaignTitle,
+  suggestBlockCopyAction,
+  acceptAiSuggestionAction
+}: {
+  block: TextBlock;
+  onChange: (patch: Partial<Block>) => void;
+  aiAssistAvailable: boolean;
+  draftId: string;
+  campaignTitle: string;
+  suggestBlockCopyAction: SuggestBlockCopy;
+  acceptAiSuggestionAction: AcceptAiSuggestion;
+}) {
+  const [suggestState, setSuggestState] = useState<"idle" | "loading" | "error">("idle");
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -341,6 +483,31 @@ function TextBlockEditor({ block, onChange }: { block: TextBlock; onChange: (pat
     immediatelyRender: false,
     onUpdate: ({ editor: updated }) => onChange({ html: updated.getHTML() })
   });
+
+  async function handleSuggestCopy() {
+    if (!editor) return;
+    setSuggestState("loading");
+    setSuggestError(null);
+    try {
+      const suggestion = await suggestBlockCopyAction({
+        draftId,
+        blockId: block.id,
+        campaignTitle,
+        existingText: editor.getText() || null
+      });
+      const paragraph = `<p>${escapeHtml(suggestion)}</p>`;
+      if (editor.isEmpty) {
+        editor.commands.setContent(paragraph);
+      } else {
+        editor.chain().focus("end").insertContent(paragraph).run();
+      }
+      void acceptAiSuggestionAction({ draftId, task: "block_copy", blockId: block.id, accepted: suggestion }).catch(() => {});
+      setSuggestState("idle");
+    } catch (error) {
+      setSuggestState("error");
+      setSuggestError(error instanceof Error ? error.message : "Suggestion failed.");
+    }
+  }
 
   return (
     <div className="block-editor-fields">
@@ -376,9 +543,19 @@ function TextBlockEditor({ block, onChange }: { block: TextBlock; onChange: (pat
           >
             Link
           </button>
+          {aiAssistAvailable ? (
+            <button type="button" onClick={handleSuggestCopy} disabled={suggestState === "loading"}>
+              {suggestState === "loading" ? "Thinking…" : "✨ Suggest copy"}
+            </button>
+          ) : null}
         </div>
       ) : null}
       <EditorContent editor={editor} className="block-editor-richtext" />
+      {suggestError ? <span className="block-editor-error">{suggestError}</span> : null}
     </div>
   );
+}
+
+function escapeHtml(value: string) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }

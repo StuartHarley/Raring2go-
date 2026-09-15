@@ -66,6 +66,7 @@ export const marketingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailApprove, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailSchedule, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailSend, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailAiAssist, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryManage, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryApprove, "network"),

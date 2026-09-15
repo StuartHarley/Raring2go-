@@ -11,6 +11,7 @@ export const marketingCapabilities = {
   emailSchedule: { module: "marketing.email", action: "schedule" },
   emailSend: { module: "marketing.email", action: "send" },
   emailRecordDelivery: { module: "marketing.email", action: "record_delivery" },
+  emailAiAssist: { module: "marketing.email", action: "ai_assist" },
   newsletterFactoryView: { module: "marketing.newsletter_factory", action: "view" },
   newsletterFactoryManage: { module: "marketing.newsletter_factory", action: "manage" },
   newsletterFactoryApprove: { module: "marketing.newsletter_factory", action: "approve" },
