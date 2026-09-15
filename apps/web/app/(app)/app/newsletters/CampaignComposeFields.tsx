@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -48,6 +48,56 @@ function newDividerBlock(): DividerBlock {
   return { id: crypto.randomUUID(), type: "divider" };
 }
 
+// localStorage draft autosave: a per-browser convenience so an accidental
+// refresh or navigation doesn't lose composed content. Not synced across
+// devices - server-side draft persistence would be a bigger feature.
+const DRAFT_STORAGE_KEY = "raring2go:newsletter-compose-draft";
+
+type StoredDraft = { title: string; subject: string; blocks: Block[] };
+
+function isStoredDraft(value: unknown): value is StoredDraft {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).title === "string" &&
+    typeof (value as Record<string, unknown>).subject === "string" &&
+    Array.isArray((value as Record<string, unknown>).blocks)
+  );
+}
+
+function blockHasContent(block: Block): boolean {
+  switch (block.type) {
+    case "heading":
+      return block.text.trim() !== "";
+    case "text":
+      return block.html.replace(/<[^>]*>/g, "").trim() !== "";
+    case "image":
+      return block.src.trim() !== "" || block.alt.trim() !== "";
+    case "button":
+      return block.label.trim() !== "" || block.href.trim() !== "";
+    case "divider":
+      return false;
+    case "raw-html":
+      return block.html.trim() !== "";
+  }
+}
+
+function draftHasContent(draft: StoredDraft): boolean {
+  return draft.title.trim() !== "" || draft.subject.trim() !== "" || draft.blocks.some(blockHasContent);
+}
+
+function readStoredDraft(): StoredDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return isStoredDraft(parsed) && draftHasContent(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export type SuggestSubjectLines = (input: { draftId: string; campaignTitle: string; bodyPreviewText: string }) => Promise<string[]>;
 export type SuggestBlockCopy = (input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }) => Promise<string>;
 export type AcceptAiSuggestion = (input: { draftId: string; task: "subject_lines" | "block_copy"; blockId?: string; accepted: string }) => Promise<void>;
@@ -72,12 +122,57 @@ export function CampaignComposeFields({
   const [subjectSuggestions, setSubjectSuggestions] = useState<string[] | null>(null);
   const [subjectSuggestState, setSubjectSuggestState] = useState<"idle" | "loading" | "error">("idle");
   const [subjectSuggestError, setSubjectSuggestError] = useState<string | null>(null);
+  const [restoreBanner, setRestoreBanner] = useState<StoredDraft | null>(() => readStoredDraft());
+  const rootRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const previewHtml = useMemo(() => renderBlocksToHtml(blocks), [blocks]);
+
+  useEffect(() => {
+    if (restoreBanner) return; // wait for the user to restore/discard before autosaving over it
+    const handle = setTimeout(() => {
+      try {
+        window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ title, subject, blocks }));
+      } catch {
+        // ignore - autosave is a best-effort convenience
+      }
+    }, 800);
+    return () => clearTimeout(handle);
+  }, [restoreBanner, title, subject, blocks]);
+
+  useEffect(() => {
+    const form = rootRef.current?.closest("form");
+    if (!form) return;
+    const clearDraft = () => {
+      try {
+        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+    };
+    form.addEventListener("submit", clearDraft);
+    return () => form.removeEventListener("submit", clearDraft);
+  }, []);
+
+  function restoreDraft() {
+    if (!restoreBanner) return;
+    setTitle(restoreBanner.title);
+    setSubject(restoreBanner.subject);
+    setBlocks(restoreBanner.blocks.length > 0 ? restoreBanner.blocks : [newTextBlock()]);
+    setRestoreBanner(null);
+  }
+
+  function discardDraft() {
+    try {
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    setRestoreBanner(null);
+  }
 
   async function handleSuggestSubjectLines() {
     setSubjectSuggestState("loading");
@@ -145,7 +240,19 @@ export function CampaignComposeFields({
   }
 
   return (
-    <div className="block-editor">
+    <div className="block-editor" ref={rootRef}>
+      {restoreBanner ? (
+        <div className="block-editor-draft-banner" role="status">
+          <span>You have an unsaved draft saved in this browser.</span>
+          <button type="button" onClick={restoreDraft}>
+            Restore draft
+          </button>
+          <button type="button" onClick={discardDraft}>
+            Discard
+          </button>
+        </div>
+      ) : null}
+
       <label>
         Title
         <input type="text" name="title" required value={title} onChange={(event) => setTitle(event.target.value)} />
