@@ -99,6 +99,11 @@ import {
   preflightResults,
   publicationOutputs,
   organisations,
+  royaltyAdjustments,
+  royaltyLines,
+  royaltyRules,
+  royaltyStatementSequences,
+  royaltyStatements,
   seasons,
   territories,
   territoryEditions,
@@ -471,5 +476,23 @@ describe("foundation schema", () => {
     expect(publicationOutputs.corrections.name).toBe("corrections");
     expect((publicationOutputs as unknown as Record<string, unknown>).printEditionId).toBeUndefined();
     expect((publicationOutputs as unknown as Record<string, unknown>).digitalEditionId).toBeUndefined();
+  });
+
+  it("models royalty rules, statements, lines and adjustments from source revenue", () => {
+    expect(royaltyRules.franchiseId.name).toBe("franchise_id");
+    expect(royaltyRules.revenueBasis.name).toBe("revenue_basis");
+    expect(royaltyRules.rateBps.name).toBe("rate_bps");
+    expect(royaltyRules.supersededByRuleId.name).toBe("superseded_by_rule_id");
+    expect(royaltyStatementSequences.issuerOrganisationId.name).toBe("issuer_organisation_id");
+    expect(royaltyStatements.royaltyRuleId.name).toBe("royalty_rule_id");
+    expect(royaltyStatements.statementNumber.name).toBe("statement_number");
+    expect(royaltyStatements.royaltyRateBpsSnapshot.name).toBe("royalty_rate_bps_snapshot");
+    expect(royaltyStatements.calculatedRoyaltyMinor.name).toBe("calculated_royalty_minor");
+    expect(royaltyStatements.adjustmentsMinor.name).toBe("adjustments_minor");
+    expect(royaltyLines.sourceInvoiceId.name).toBe("source_invoice_id");
+    expect(royaltyLines.sourcePaymentAllocationId.name).toBe("source_payment_allocation_id");
+    expect(royaltyAdjustments.reason.name).toBe("reason");
+    expect((royaltyStatements as unknown as Record<string, unknown>).xeroInvoiceId).toBeUndefined();
+    expect((royaltyRules as unknown as Record<string, unknown>).legalName).toBeUndefined();
   });
 });

@@ -37,7 +37,7 @@ export type NavigationDescriptor = {
   href: string;
   capability: ShellCapability;
   contextLevel: "territory" | "network" | "system";
-  group: "today" | "franchise" | "commercial" | "publishing" | "marketing" | "administration";
+  group: "today" | "franchise" | "commercial" | "publishing" | "marketing" | "finance" | "administration";
 };
 
 export type ResolvedShell = {
@@ -247,6 +247,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "publishing"
   },
   {
+    id: "finance",
+    label: "Royalties",
+    href: "/app/finance",
+    capability: {
+      module: "finance.royalty_statement",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "finance"
+  },
+  {
     id: "roles",
     label: "Roles & Permissions",
     href: "/app/roles",
@@ -298,6 +309,7 @@ export const navigationGroups: Array<{ id: NavigationDescriptor["group"]; label:
   { id: "commercial", label: "Commercial" },
   { id: "publishing", label: "Publishing" },
   { id: "marketing", label: "Marketing" },
+  { id: "finance", label: "Finance" },
   { id: "administration", label: "Administration" }
 ];
 
@@ -560,6 +572,18 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.integrationsTest,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.royaltyStatementView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.royaltyStatementView,
       scope: "own_territory",
       constraints: {}
     }

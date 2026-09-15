@@ -216,6 +216,7 @@ describe("app shell context and capabilities", () => {
         "social",
         "commercial-command",
         "editions",
+        "finance",
         "roles",
         "connections",
         "system",

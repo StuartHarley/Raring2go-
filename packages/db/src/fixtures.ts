@@ -149,7 +149,14 @@ export const fixtureIds = {
     integrationsConnect: "00000000-0000-4000-8000-000000000529",
     integrationsReconnect: "00000000-0000-4000-8000-000000000530",
     integrationsRevoke: "00000000-0000-4000-8000-000000000531",
-    integrationsTest: "00000000-0000-4000-8000-000000000532"
+    integrationsTest: "00000000-0000-4000-8000-000000000532",
+    royaltyRuleView: "00000000-0000-4000-8000-000000000533",
+    royaltyRuleManage: "00000000-0000-4000-8000-000000000534",
+    royaltyStatementView: "00000000-0000-4000-8000-000000000535",
+    royaltyStatementGenerate: "00000000-0000-4000-8000-000000000536",
+    royaltyStatementAdjust: "00000000-0000-4000-8000-000000000537",
+    royaltyStatementSubmit: "00000000-0000-4000-8000-000000000538",
+    royaltyStatementApprove: "00000000-0000-4000-8000-000000000539"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -220,7 +227,8 @@ export const fixtureIds = {
     parentOneNewsletter: "00000000-0000-4000-8000-000000000744"
   },
   audienceSegments: {
-    suttonNewsletter: "00000000-0000-4000-8000-000000000745"
+    suttonNewsletter: "00000000-0000-4000-8000-000000000745",
+    networkNewsletter: "00000000-0000-4000-8000-000000001006"
   },
   audiencePreferenceProfiles: {
     parentOne: "00000000-0000-4000-8000-000000000769"
@@ -340,6 +348,12 @@ export const fixtureIds = {
     mediaPackReady: "00000000-0000-4000-8000-000000000952",
     editionSelected: "00000000-0000-4000-8000-000000000953",
     launchApproved: "00000000-0000-4000-8000-000000000954"
+  },
+  royaltyRules: {
+    suttonStandard: "00000000-0000-4000-8000-000000000955"
+  },
+  royaltyStatementSequences: {
+    hqDefault: "00000000-0000-4000-8000-000000000956"
   },
   seasons: {
     autumn2026: "00000000-0000-4000-8000-000000001001"
@@ -1216,6 +1230,48 @@ export const foundationSeed = {
       module: "integrations",
       action: "test",
       description: "Test provider connection health without exposing secrets."
+    },
+    {
+      id: fixtureIds.permissions.royaltyRuleView,
+      module: "finance.royalty_rule",
+      action: "view",
+      description: "View franchise royalty rules."
+    },
+    {
+      id: fixtureIds.permissions.royaltyRuleManage,
+      module: "finance.royalty_rule",
+      action: "manage",
+      description: "Create and supersede franchise royalty rules."
+    },
+    {
+      id: fixtureIds.permissions.royaltyStatementView,
+      module: "finance.royalty_statement",
+      action: "view",
+      description: "View franchise royalty statements."
+    },
+    {
+      id: fixtureIds.permissions.royaltyStatementGenerate,
+      module: "finance.royalty_statement",
+      action: "generate",
+      description: "Generate franchise royalty statements from source revenue."
+    },
+    {
+      id: fixtureIds.permissions.royaltyStatementAdjust,
+      module: "finance.royalty_statement",
+      action: "adjust",
+      description: "Record auditable adjustments on a royalty statement."
+    },
+    {
+      id: fixtureIds.permissions.royaltyStatementSubmit,
+      module: "finance.royalty_statement",
+      action: "submit",
+      description: "Submit a royalty statement for approval."
+    },
+    {
+      id: fixtureIds.permissions.royaltyStatementApprove,
+      module: "finance.royalty_statement",
+      action: "approve",
+      description: "Approve a franchise royalty statement."
     }
   ],
   advertisers: [
@@ -1571,6 +1627,15 @@ export const foundationSeed = {
       name: "Sutton newsletter audience",
       segmentType: "dynamic",
       definition: { territoryId: fixtureIds.territories.suttonColdfield, subscriptionStatus: "subscribed" },
+      status: "active"
+    },
+    {
+      id: fixtureIds.audienceSegments.networkNewsletter,
+      territoryId: null,
+      key: "network-newsletter",
+      name: "All network newsletter subscribers",
+      segmentType: "dynamic",
+      definition: { subscriptionStatus: "subscribed" },
       status: "active"
     }
   ],
@@ -2147,6 +2212,32 @@ export const foundationSeed = {
       coverEndDate: "2026-09-21",
       evidenceDocumentId: fixtureIds.franchiseDocuments.suttonInsurance,
       verificationStatus: "pending"
+    }
+  ],
+  royaltyRules: [
+    {
+      id: fixtureIds.royaltyRules.suttonStandard,
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      revenueBasis: "collected",
+      rateBps: 800,
+      minimumDueMinor: 0,
+      status: "active",
+      effectiveFrom: "2025-01-01",
+      notes: "Standard 8% royalty on advertiser revenue collected, per the franchise agreement fee schedule.",
+      createdByUserId: fixtureIds.users.superAdmin,
+      approvedByUserId: fixtureIds.users.superAdmin,
+      approvedAt: "2025-01-01"
+    }
+  ],
+  royaltyStatementSequences: [
+    {
+      id: fixtureIds.royaltyStatementSequences.hqDefault,
+      issuerOrganisationId: fixtureIds.organisations.hq,
+      key: "default",
+      prefix: "ROY",
+      nextNumber: 1,
+      padding: 5
     }
   ],
   complianceRequirements: [

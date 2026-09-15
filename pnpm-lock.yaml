@@ -50,6 +50,9 @@ importers:
       '@raring2go/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@raring2go/finance':
+        specifier: workspace:*
+        version: link:../../packages/finance
       '@raring2go/franchise':
         specifier: workspace:*
         version: link:../../packages/franchise
@@ -174,7 +177,24 @@ importers:
 
   packages/email: {}
 
-  packages/finance: {}
+  packages/finance:
+    dependencies:
+      '@raring2go/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
 
   packages/franchise:
     dependencies:
@@ -221,6 +241,9 @@ importers:
       '@raring2go/permissions':
         specifier: workspace:*
         version: link:../permissions
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
     devDependencies:
       vitest:
         specifier: 4.1.10
@@ -2217,6 +2240,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'

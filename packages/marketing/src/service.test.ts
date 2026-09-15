@@ -10,6 +10,7 @@ import {
   createEmailCampaign,
   createJourney,
   createNetworkNewsletterMaster,
+  createNewsletterEditionCampaign,
   createRecipientSnapshot,
   enterJourneyFromEvent,
   executeJourneyStep,
@@ -441,6 +442,204 @@ describe("marketing audience foundation", () => {
       auditActions.marketingNewsletterLocalOverride,
       auditActions.marketingNewsletterFactoryGenerate
     ]);
+  });
+
+  it("clears a required-block warning once the franchisee supplies the local content", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createNetworkNewsletterMaster(hqContext(), permissions, recorder, data, {
+      id: "master_2",
+      templateId: "template_1",
+      title: "Half term guide",
+      status: "draft",
+      seasonKey: "half-term",
+      lockedBlocks: [{ key: "brand-header" }],
+      optionalBlocks: [],
+      localEditableBlocks: [{ key: "local-picks" }],
+      contentRules: { requiredLocalBlocks: ["local-picks"] },
+      createdByUserId: ids.users.hq,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveNetworkNewsletterMaster(hqContext(), permissions, recorder, data, "master_2", "2026-08-11T09:00:00.000Z");
+    await generateTerritoryNewsletterEditions(hqContext(), permissions, recorder, data, {
+      id: "run_own",
+      masterId: "master_2",
+      territoryIds: [ids.territories.own],
+      generatedAt: "2026-08-11T09:05:00.000Z",
+      idempotencyKey: "master_2:initial"
+    });
+    const edition = data.territoryNewsletterEditions.find((candidate) => candidate.masterId === "master_2");
+    if (!edition) throw new Error("Expected a generated edition.");
+    expect(edition.status).toBe("blocked");
+
+    await recordTerritoryNewsletterOverride(localContext(), permissions, recorder, data, edition.id, {
+      "local-picks": [{ title: "Half term craft fair" }]
+    });
+
+    expect(edition.status).toBe("ready");
+    expect(edition.warnings).toEqual([]);
+  });
+
+  it("creates a draft campaign from a ready territory edition and blocks a blocked one", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createNetworkNewsletterMaster(hqContext(), permissions, recorder, data, {
+      id: "master_3",
+      templateId: "template_1",
+      title: "Spring guide",
+      status: "draft",
+      seasonKey: "spring",
+      lockedBlocks: [{ key: "brand-header" }],
+      optionalBlocks: [],
+      localEditableBlocks: [],
+      contentRules: {},
+      createdByUserId: ids.users.hq,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveNetworkNewsletterMaster(hqContext(), permissions, recorder, data, "master_3", "2026-08-11T09:00:00.000Z");
+    await generateTerritoryNewsletterEditions(hqContext(), permissions, recorder, data, {
+      id: "run_spring",
+      masterId: "master_3",
+      territoryIds: [ids.territories.own],
+      generatedAt: "2026-08-11T09:05:00.000Z",
+      idempotencyKey: "master_3:initial"
+    });
+    const edition = data.territoryNewsletterEditions.find((candidate) => candidate.masterId === "master_3");
+    if (!edition) throw new Error("Expected a generated edition.");
+    expect(edition.status).toBe("ready");
+
+    const result = await createNewsletterEditionCampaign(localContext(), permissions, recorder, data, {
+      editionId: edition.id,
+      campaignId: "campaign_from_edition",
+      versionId: "campaign_from_edition_v1",
+      segmentId: ids.segment,
+      subject: "Your local spring guide"
+    });
+
+    expect(result.campaign).toMatchObject({
+      territoryId: ids.territories.own,
+      status: "draft",
+      subject: "Your local spring guide"
+    });
+    expect(edition.emailCampaignId).toBe("campaign_from_edition");
+    expect(data.emailCampaigns).toHaveLength(1);
+
+    await expect(
+      createNewsletterEditionCampaign(localContext(), permissions, recorder, data, {
+        editionId: edition.id,
+        campaignId: "campaign_from_edition_2",
+        versionId: "campaign_from_edition_2_v1",
+        segmentId: ids.segment,
+        subject: "Duplicate attempt"
+      })
+    ).rejects.toThrow("already linked");
+
+    data.territoryNewsletterEditions.push({
+      id: "blocked_edition",
+      masterId: "master_3",
+      territoryId: ids.territories.own,
+      emailCampaignId: null,
+      status: "blocked",
+      inheritedBlocks: [],
+      localOverrides: {},
+      warnings: [{ code: "required_local_content", severity: "blocking", territoryId: ids.territories.own, block: "local-picks" }],
+      generatedAt: "2026-08-11T09:05:00.000Z",
+      approvedAt: null
+    });
+
+    await expect(
+      createNewsletterEditionCampaign(localContext(), permissions, recorder, data, {
+        editionId: "blocked_edition",
+        campaignId: "campaign_blocked",
+        versionId: "campaign_blocked_v1",
+        segmentId: ids.segment,
+        subject: "Should not send"
+      })
+    ).rejects.toThrow("Blocked territory editions");
+  });
+
+  it("keeps national newsletters HQ-only and blocks franchisees from acting on network-wide campaigns", async () => {
+    const data = seededData();
+    data.segments.push({
+      id: "segment_network",
+      territoryId: null,
+      key: "network",
+      name: "All subscribers",
+      segmentType: "dynamic",
+      definition: {},
+      status: "active"
+    });
+    const recorder = audit();
+
+    await expect(
+      createEmailCampaign(localContext(), permissions, recorder, data, {
+        id: "national_campaign",
+        territoryId: null,
+        templateId: "template_1",
+        segmentId: "segment_network",
+        campaignType: "newsletter",
+        status: "draft",
+        title: "National guide",
+        subject: "National guide",
+        preheader: null,
+        scheduledAt: null,
+        approvedAt: null,
+        sentAt: null,
+        metadata: {}
+      }, {
+        id: "national_campaign_v1",
+        campaignId: "national_campaign",
+        versionNumber: 1,
+        status: "draft",
+        subject: "National guide",
+        preheader: null,
+        contentSnapshot: {},
+        createdByUserId: ids.users.local,
+        approvedByUserId: null,
+        approvedAt: null
+      })
+    ).rejects.toThrow("network-wide campaign");
+
+    await createEmailCampaign(hqContext(), permissions, recorder, data, {
+      id: "national_campaign",
+      territoryId: null,
+      templateId: "template_1",
+      segmentId: "segment_network",
+      campaignType: "newsletter",
+      status: "draft",
+      title: "National guide",
+      subject: "National guide",
+      preheader: null,
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "national_campaign_v1",
+      campaignId: "national_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "National guide",
+      preheader: null,
+      contentSnapshot: {},
+      createdByUserId: ids.users.hq,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+
+    await expect(
+      approveEmailCampaignVersion(localContext(), permissions, recorder, data, "national_campaign", "national_campaign_v1", "2026-08-11T09:00:00.000Z")
+    ).rejects.toThrow("network-wide campaign");
+
+    await approveEmailCampaignVersion(hqContext(), permissions, recorder, data, "national_campaign", "national_campaign_v1", "2026-08-11T09:00:00.000Z");
+
+    await expect(
+      scheduleEmailCampaign(localContext(), permissions, recorder, data, "national_campaign", "2026-08-12T09:00:00.000Z")
+    ).rejects.toThrow("network-wide campaign");
   });
 
   it("fails closed for draft masters and cross-territory local newsletter overrides", async () => {

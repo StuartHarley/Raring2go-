@@ -170,6 +170,20 @@ describe("recordAuditEvent", () => {
 
     expect(insert).not.toHaveBeenCalled();
   });
+
+  it("accepts real dot-case action names that use underscored compound words", async () => {
+    const { db, insert } = createInsertDb();
+
+    await expect(
+      recordAuditEvent(db, {
+        action: auditActions.marketingNewsletterFactoryGenerate,
+        actor: { type: "system", systemId: "seed" },
+        entity: { type: "newsletter_factory_run" }
+      })
+    ).resolves.toBeDefined();
+
+    expect(insert).toHaveBeenCalled();
+  });
 });
 
 describe("listAuditEvents", () => {

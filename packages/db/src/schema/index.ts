@@ -2,6 +2,7 @@ export * from "./advertising";
 export * from "./analytics";
 export * from "./audit";
 export * from "./auth";
+export * from "./finance";
 export * from "./franchise";
 export * from "./identity";
 export * from "./integrations";

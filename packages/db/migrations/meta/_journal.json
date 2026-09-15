@@ -232,6 +232,13 @@
       "when": 1786461439036,
       "tag": "0032_luxuriant_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789457947543,
+      "tag": "0033_great_mole_man",
+      "breakpoints": true
     }
   ]
 }

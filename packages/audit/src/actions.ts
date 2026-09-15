@@ -159,12 +159,19 @@ export const auditActions = {
   marketingJourneyEnter: "marketing.journey.enter",
   marketingJourneyStepExecute: "marketing.journey.step.execute",
   marketingJourneyFail: "marketing.journey.fail",
-  audiencePreferenceUpdate: "audience.preference.update"
+  audiencePreferenceUpdate: "audience.preference.update",
+  financeRoyaltyRuleCreate: "finance.royalty.rule.create",
+  financeRoyaltyRuleSupersede: "finance.royalty.rule.supersede",
+  financeRoyaltyStatementGenerate: "finance.royalty.statement.generate",
+  financeRoyaltyStatementAdjust: "finance.royalty.statement.adjust",
+  financeRoyaltyStatementSubmit: "finance.royalty.statement.submit",
+  financeRoyaltyStatementApprove: "finance.royalty.statement.approve",
+  financeRoyaltyStatementVoid: "finance.royalty.statement.void"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});
 
-const actionPattern = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$/;
+const actionPattern = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/;
 
 export function assertAuditAction(action: string) {
   if (!actionPattern.test(action)) {
