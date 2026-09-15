@@ -331,7 +331,7 @@ describe("foundation fixtures", () => {
     );
     expect(foundationSeed.audienceConsentEvents).toHaveLength(1);
     expect(foundationSeed.audienceSuppressions).toEqual([]);
-    expect(foundationSeed.emailTemplates[0]?.requiredBlocks).toContain("unsubscribe");
+    expect(foundationSeed.emailTemplates[0]?.key).toBe("standard-newsletter");
     expect(foundationSeed.emailCampaigns).toEqual([]);
     expect(foundationSeed.emailDeliveryRecords).toEqual([]);
     expect(foundationSeed.networkNewsletterMasters[0]).toMatchObject({

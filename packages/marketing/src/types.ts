@@ -198,8 +198,6 @@ export type EmailTemplate = {
   name: string;
   templateType: string;
   status: string;
-  blocks: Array<Record<string, unknown>>;
-  requiredBlocks: string[];
   metadata: Record<string, unknown>;
   deletedAt?: Date | null;
 };

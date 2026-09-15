@@ -1692,8 +1692,6 @@ export const foundationSeed = {
       name: "Standard Raring2go newsletter",
       templateType: "newsletter",
       status: "approved",
-      blocks: [{ key: "header", locked: true }, { key: "content" }, { key: "footer", locked: true }],
-      requiredBlocks: ["header", "footer", "unsubscribe"],
       metadata: { source: "seed" }
     }
   ],
