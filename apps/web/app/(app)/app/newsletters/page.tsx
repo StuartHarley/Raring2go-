@@ -73,24 +73,44 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
         {composableSegments.length === 0 ? (
           <p>No audience segment is configured yet. Ask HQ to set one up before composing a campaign.</p>
         ) : (
-          <form action={composeEmailCampaignAction.bind(null, context)} className="franchise-form">
-            <label>
-              Audience
-              <select name="segmentId" required>
-                {composableSegments.map((segment) => (
-                  <option key={segment.id} value={segment.id}>
-                    {segment.name}
-                    {segment.territoryId ? "" : " (all territories - national)"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Preheader
-              <input type="text" name="preheader" />
-            </label>
-            <div className="block-editor-field">
-              <span className="block-editor-field-label">Content</span>
+          <form action={composeEmailCampaignAction.bind(null, context)} className="newsletter-compose-form">
+            <div className="newsletter-compose-section">
+              <h3 className="newsletter-compose-section-title">Audience &amp; delivery</h3>
+              <label>
+                Audience
+                <select name="segmentId" required>
+                  {composableSegments.map((segment) => (
+                    <option key={segment.id} value={segment.id}>
+                      {segment.name}
+                      {segment.territoryId ? "" : " (all territories - national)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Preheader
+                <input type="text" name="preheader" />
+              </label>
+              <label>
+                Send via
+                <select name="sendChoice" defaultValue="postmark">
+                  <option value="postmark">Network email (Postmark)</option>
+                  {outlookMailboxes.map((mailbox) => (
+                    <option key={mailbox.id} value={`microsoft:${mailbox.id}`}>
+                      My Outlook mailbox ({mailbox.externalAccountDisplayName})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {outlookMailboxes.length > 0 ? (
+                <p>
+                  Sending via Outlook is limited to small local sends and doesn&apos;t report delivery, bounce or open
+                  tracking. Use the network provider for national or large-audience campaigns.
+                </p>
+              ) : null}
+            </div>
+            <div className="newsletter-compose-section">
+              <h3 className="newsletter-compose-section-title">Content</h3>
               <CampaignComposeFields
                 aiAssistAvailable={aiAssistAvailable}
                 suggestSubjectLinesAction={suggestSubjectLinesAction.bind(null, context)}
@@ -98,23 +118,6 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                 acceptAiSuggestionAction={acceptAiSuggestionAction.bind(null, context)}
               />
             </div>
-            <label>
-              Send via
-              <select name="sendChoice" defaultValue="postmark">
-                <option value="postmark">Network email (Postmark)</option>
-                {outlookMailboxes.map((mailbox) => (
-                  <option key={mailbox.id} value={`microsoft:${mailbox.id}`}>
-                    My Outlook mailbox ({mailbox.externalAccountDisplayName})
-                  </option>
-                ))}
-              </select>
-            </label>
-            {outlookMailboxes.length > 0 ? (
-              <p>
-                Sending via Outlook is limited to small local sends and doesn&apos;t report delivery, bounce or open
-                tracking. Use the network provider for national or large-audience campaigns.
-              </p>
-            ) : null}
             <button type="submit">Create draft campaign</button>
           </form>
         )}
