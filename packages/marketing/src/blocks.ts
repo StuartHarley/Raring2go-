@@ -1,4 +1,8 @@
-import { randomUUID } from "node:crypto";
+// This module must stay free of Node-only imports (no `node:*`, no DB/audit
+// packages) — it is exposed to client components via the
+// "@raring2go/marketing/blocks" subpath export for the live editor preview
+// (see BlockEditor.tsx). Server-only helpers that build blocks (e.g.
+// normalizeContentSnapshot) live in content-snapshot.ts instead.
 
 export type BlockBase = { id: string };
 
@@ -13,13 +17,13 @@ export type Block = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | Divide
 
 export type StructuredContentSnapshot = { version: 1; blocks: Block[] };
 
-const KNOWN_BLOCK_TYPES = new Set<Block["type"]>(["heading", "text", "image", "button", "divider", "raw-html"]);
+export const KNOWN_BLOCK_TYPES = new Set<Block["type"]>(["heading", "text", "image", "button", "divider", "raw-html"]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function looksLikeStructuredSnapshot(raw: Record<string, unknown>): raw is { version: 1; blocks: unknown[] } {
+export function looksLikeStructuredSnapshot(raw: Record<string, unknown>): raw is { version: 1; blocks: unknown[] } {
   return (
     raw.version === 1 &&
     Array.isArray(raw.blocks) &&
@@ -29,38 +33,91 @@ function looksLikeStructuredSnapshot(raw: Record<string, unknown>): raw is { ver
   );
 }
 
-/**
- * Upgrades every content-snapshot shape found in the database to the structured
- * block form. Two legacy shapes exist: `{ text }` from the plain compose form,
- * and `{ inheritedBlocks, localOverrides }` from the HQ newsletter factory (where
- * only `localOverrides["local-picks"]` ever reached a real send). Both are folded
- * into a single TextBlock whose rendered HTML/plain-text is byte-for-byte
- * identical to the pre-block-model renderer, so this is a transparent refactor
- * for every campaign already in the database.
- */
-export function normalizeContentSnapshot(raw: Record<string, unknown>, fallbackTitle: string): StructuredContentSnapshot {
-  if (looksLikeStructuredSnapshot(raw)) {
-    return { version: 1, blocks: raw.blocks as Block[] };
-  }
-
-  if (typeof raw.text === "string" && raw.text.trim()) {
-    return { version: 1, blocks: [textBlock(raw.text)] };
-  }
-
-  const localOverrides = isRecord(raw.localOverrides) ? raw.localOverrides : {};
-  const localPicks = localOverrides["local-picks"];
-  const lines = Array.isArray(localPicks)
-    ? localPicks
-        .map((pick) => (isRecord(pick) && "title" in pick ? String(pick.title) : null))
-        .filter((title): title is string => Boolean(title))
-    : [];
-  const legacyText = [fallbackTitle, "", ...lines].join("\n").trim() || fallbackTitle;
-
-  return { version: 1, blocks: [textBlock(legacyText)] };
+/** Escapes plain text and converts newlines to `<br />`, wrapped in a `<p>`. */
+export function textToHtml(text: string): string {
+  return `<p>${escapeHtml(text).replaceAll("\n", "<br />")}</p>`;
 }
 
-function textBlock(text: string): TextBlock {
-  return { id: randomUUID(), type: "text", html: `<p>${escapeHtml(text).replaceAll("\n", "<br />")}</p>` };
+const LINK_URL_SCHEMES = ["http:", "https:", "mailto:"];
+const IMAGE_SRC_SCHEMES = ["http:", "https:"];
+
+function isSafeUrl(value: string, allowedSchemes: string[]): boolean {
+  try {
+    return allowedSchemes.includes(new URL(value, "https://blocks.raring2go.invalid").protocol);
+  } catch {
+    return false;
+  }
+}
+
+function fail(index: number, message: string): never {
+  throw new Error(`Block at index ${index}: ${message}`);
+}
+
+/**
+ * The real trust boundary for a block array arriving as untrusted client JSON
+ * (the editor's serialized `blocksJson` hidden field). Every block a server
+ * action receives must pass through here before it reaches the domain layer —
+ * an unknown block type, a missing required field, or an unsafe URL scheme
+ * (e.g. `javascript:`) is rejected outright rather than silently dropped or
+ * coerced. Rich-text/raw-HTML fields are validated for shape only here; they
+ * still need `sanitizeRichTextHtml` applied by the caller before persisting.
+ */
+export function validateBlocks(raw: unknown): Block[] {
+  if (!Array.isArray(raw)) {
+    throw new Error("Blocks payload must be an array.");
+  }
+
+  return raw.map((entry, index) => validateBlock(entry, index));
+}
+
+function validateBlock(entry: unknown, index: number): Block {
+  if (!isRecord(entry) || typeof entry.id !== "string" || !entry.id) {
+    return fail(index, "missing a valid id.");
+  }
+
+  const id = entry.id;
+
+  switch (entry.type) {
+    case "heading": {
+      if (typeof entry.text !== "string" || !entry.text.trim()) return fail(index, "heading requires non-empty text.");
+      if (entry.level !== 1 && entry.level !== 2) return fail(index, "heading level must be 1 or 2.");
+      return { id, type: "heading", text: entry.text, level: entry.level };
+    }
+    case "text": {
+      if (typeof entry.html !== "string") return fail(index, "text block requires html.");
+      return { id, type: "text", html: entry.html };
+    }
+    case "image": {
+      if (typeof entry.src !== "string" || !isSafeUrl(entry.src, IMAGE_SRC_SCHEMES)) {
+        return fail(index, "image src must be a valid http(s) URL.");
+      }
+      if (typeof entry.alt !== "string") return fail(index, "image requires alt text.");
+      const href = entry.href;
+      if (href != null && (typeof href !== "string" || !isSafeUrl(href, LINK_URL_SCHEMES))) {
+        return fail(index, "image href must be a valid http(s)/mailto URL.");
+      }
+      const fileId = entry.fileId;
+      if (fileId != null && typeof fileId !== "string") return fail(index, "image fileId must be a string.");
+      return { id, type: "image", src: entry.src, alt: entry.alt, href: href ?? null, fileId: fileId ?? null };
+    }
+    case "button": {
+      if (typeof entry.label !== "string" || !entry.label.trim()) return fail(index, "button requires a non-empty label.");
+      if (typeof entry.href !== "string" || !isSafeUrl(entry.href, LINK_URL_SCHEMES)) {
+        return fail(index, "button href must be a valid http(s)/mailto URL.");
+      }
+      return { id, type: "button", label: entry.label, href: entry.href };
+    }
+    case "divider":
+      return { id, type: "divider" };
+    case "raw-html": {
+      if (typeof entry.html !== "string") return fail(index, "raw-html block requires html.");
+      const sourceLabel = entry.sourceLabel;
+      if (sourceLabel != null && typeof sourceLabel !== "string") return fail(index, "raw-html sourceLabel must be a string.");
+      return { id, type: "raw-html", html: entry.html, sourceLabel: sourceLabel ?? null };
+    }
+    default:
+      return fail(index, `unknown block type "${String((entry as { type?: unknown }).type)}".`);
+  }
 }
 
 export function renderBlocksToHtml(blocks: Block[]): string {

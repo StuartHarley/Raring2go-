@@ -3,6 +3,7 @@ import { listConnectionCards } from "../../../../lib/integrations-runtime";
 import { readEmailCampaignOverview, readSegments } from "../../../../lib/marketing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { BlockEditor } from "./BlockEditor";
 import {
   approveCampaignAction,
   composeEmailCampaignAction,
@@ -90,10 +91,10 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
               Preheader
               <input type="text" name="preheader" />
             </label>
-            <label>
-              Body
-              <textarea name="body" rows={6} required />
-            </label>
+            <div className="block-editor-field">
+              <span className="block-editor-field-label">Content</span>
+              <BlockEditor />
+            </div>
             <label>
               Send via
               <select name="sendChoice" defaultValue="postmark">
