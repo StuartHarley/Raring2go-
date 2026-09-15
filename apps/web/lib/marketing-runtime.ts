@@ -81,6 +81,7 @@ export const marketingPermissionData: PermissionData = {
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailApprove, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailSchedule, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailSend, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailAiAssist, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryContribute, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyView, "own_territory"),
