@@ -2,6 +2,7 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { listConnectionCards } from "../../../../../lib/integrations-runtime";
 import { ProtectedOutcome } from "../../../../../lib/protected-outcome";
+import { ShellAccessError } from "../../../../../lib/app-shell";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -17,6 +18,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps) {
   }
 
   const connection = result.connections[0];
+  const outlookConnection = result.outlookConnections[0];
   const query = new URLSearchParams();
   if (request.organisationId) query.set("organisationId", request.organisationId);
   if (request.territoryId) query.set("territoryId", request.territoryId);
@@ -58,16 +60,55 @@ export default async function ConnectionsPage({ searchParams }: PageProps) {
           </div>
         )}
       </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Email connections</p>
+        <h2>Outlook mailbox</h2>
+        <p>
+          Connect your own Outlook mailbox for personalised outreach sent as you, not for
+          bulk newsletters - large sends stay on the network&apos;s dedicated email provider.
+        </p>
+        {outlookConnection ? (
+          <div className="franchise-list">
+            <div>
+              <strong>{outlookConnection.externalAccountDisplayName}</strong>
+              <span>{outlookConnection.status} - {outlookConnection.lastHealthStatus}</span>
+              <span>Last checked: {outlookConnection.lastHealthCheckAt ? String(outlookConnection.lastHealthCheckAt) : "not checked"}</span>
+              {outlookConnection.lastFailureSummary ? <span>{outlookConnection.lastFailureSummary}</span> : null}
+              <form action={`/api/integrations/microsoft/revoke?connectionId=${encodeURIComponent(outlookConnection.id)}`} method="post">
+                <button type="submit">Disconnect</button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <strong>Outlook is not connected</strong>
+            <p>Connect your Outlook mailbox to send personalised outreach from your own address.</p>
+            <a className="button-primary" href={`/api/integrations/microsoft/start?${query.toString()}`}>
+              Connect Outlook
+            </a>
+          </div>
+        )}
+      </section>
     </AppShell>
   );
 }
 
-async function loadConnections(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
+type ConnectionCards = Awaited<ReturnType<typeof listConnectionCards>>["connections"];
+
+async function loadConnections(
+  request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>
+): Promise<{ connections: ConnectionCards; outlookConnections: ConnectionCards } | { error: ShellAccessError }> {
   try {
-    return await listConnectionCards(request);
+    const [meta, outlook] = await Promise.all([
+      listConnectionCards(request, "meta", "facebook_page"),
+      listConnectionCards(request, "microsoft", "outlook_mailbox")
+    ]);
+
+    return { connections: meta.connections, outlookConnections: outlook.connections };
   } catch (error) {
-    if (error && typeof error === "object" && "kind" in error) {
-      return { error: error as never };
+    if (error instanceof ShellAccessError) {
+      return { error };
     }
     throw error;
   }
