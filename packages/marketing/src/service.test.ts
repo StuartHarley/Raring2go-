@@ -26,7 +26,10 @@ import {
   MICROSOFT_SEND_RECIPIENT_CAP,
   nextEmailSendChunk,
   pauseJourney,
+  createSegment,
   previewSegment,
+  previewSegmentDefinition,
+  updateSegment,
   recordConsentEvent,
   recordEmailDeliveryEvent,
   recordTerritoryNewsletterOverride,
@@ -159,6 +162,85 @@ describe("marketing audience foundation", () => {
       auditActions.marketingConsentRecord,
       auditActions.marketingAudienceSuppress
     ]);
+  });
+
+  it("creates a segment with a nested rule tree and previews/matches it correctly", async () => {
+    const data = seededData();
+    const recorder = audit();
+    await subscribeContactToTerritory(localContext(), permissions, recorder, data, subscription("sub_own_2", ids.contact, ids.territories.own));
+
+    const segment = await createSegment(localContext(), permissions, recorder, data, {
+      id: "segment_vip",
+      key: "vip-sutton",
+      name: "VIP Sutton subscribers",
+      territoryId: ids.territories.own,
+      definition: {
+        kind: "group",
+        match: "all",
+        children: [
+          { kind: "condition", field: "territoryId", operator: "equals", value: ids.territories.own },
+          { kind: "condition", field: "tag", operator: "equals", value: "days-out" }
+        ]
+      }
+    });
+
+    expect(segment.segmentType).toBe("dynamic");
+    expect(previewSegment(localContext(), permissions, data, "segment_vip")).toHaveLength(1);
+    expect(recorder.events.map((event) => event.action)).toContain(auditActions.marketingSegmentCreate);
+
+    await expect(
+      createSegment(localContext(), permissions, recorder, data, {
+        id: "segment_duplicate",
+        key: "vip-sutton",
+        name: "Duplicate key",
+        territoryId: ids.territories.own,
+        definition: { kind: "group", match: "all", children: [] }
+      })
+    ).rejects.toThrow("already exists");
+  });
+
+  it("rejects creating a segment scoped to a territory the actor cannot access", async () => {
+    const data = seededData();
+    await expect(
+      createSegment(localContext(), permissions, audit(), data, {
+        id: "segment_other",
+        key: "other-territory",
+        name: "Other territory",
+        territoryId: ids.territories.other,
+        definition: { kind: "group", match: "all", children: [] }
+      })
+    ).rejects.toThrow("outside the active territory");
+  });
+
+  it("updates a segment's rule definition and re-evaluates membership", async () => {
+    const data = seededData();
+    const recorder = audit();
+    await createSegment(hqContext(), permissions, recorder, data, {
+      id: "segment_updatable",
+      key: "updatable",
+      name: "Updatable",
+      territoryId: ids.territories.own,
+      definition: { kind: "group", match: "all", children: [{ kind: "condition", field: "tag", operator: "equals", value: "nonexistent-tag" }] }
+    });
+
+    expect(previewSegment(localContext(), permissions, data, "segment_updatable")).toHaveLength(0);
+
+    await updateSegment(hqContext(), permissions, recorder, data, "segment_updatable", {
+      definition: { kind: "group", match: "all", children: [{ kind: "condition", field: "subscriptionStatus", operator: "equals", value: "subscribed" }] }
+    });
+
+    expect(previewSegment(localContext(), permissions, data, "segment_updatable")).toHaveLength(1);
+    expect(recorder.events.map((event) => event.action)).toContain(auditActions.marketingSegmentUpdate);
+  });
+
+  it("previews an in-progress, unsaved segment definition without requiring a saved segment", () => {
+    const data = seededData();
+    const preview = previewSegmentDefinition(localContext(), permissions, data, {
+      territoryId: ids.territories.own,
+      definition: { kind: "group", match: "all", children: [{ kind: "condition", field: "territoryId", operator: "equals", value: ids.territories.own }] }
+    });
+    expect(preview).toHaveLength(1);
+    expect(preview[0]?.contact.id).toBe(ids.contact);
   });
 
   it("fails closed for cross-territory audience changes", async () => {

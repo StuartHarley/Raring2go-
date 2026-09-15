@@ -179,6 +179,7 @@ export type AudienceContactView = {
   consentEvents: AudienceConsentEvent[];
   suppressions: AudienceSuppression[];
   activity: AudienceActivityEvent[];
+  profile?: AudiencePreferenceProfile;
 };
 
 export type AudienceOverview = {
