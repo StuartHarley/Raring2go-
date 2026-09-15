@@ -1,15 +1,19 @@
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { hasAiAssistCapability } from "../../../../lib/ai-runtime";
 import { listConnectionCards } from "../../../../lib/integrations-runtime";
 import { readEmailCampaignOverview, readSegments } from "../../../../lib/marketing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
-import { BlockEditor } from "./BlockEditor";
+import { CampaignComposeFields } from "./CampaignComposeFields";
 import {
+  acceptAiSuggestionAction,
   approveCampaignAction,
   composeEmailCampaignAction,
   generateSnapshotAction,
   scheduleCampaignAction,
-  sendCampaignAction
+  sendCampaignAction,
+  suggestBlockCopyAction,
+  suggestSubjectLinesAction
 } from "./actions";
 import type { AudienceSegment } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
@@ -26,7 +30,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, email, composableSegments, outlookMailboxes } = result;
+  const { context, email, composableSegments, outlookMailboxes, aiAssistAvailable } = result;
 
   return (
     <AppShell request={request}>
@@ -71,10 +75,6 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
         ) : (
           <form action={composeEmailCampaignAction.bind(null, context)} className="franchise-form">
             <label>
-              Title
-              <input type="text" name="title" required />
-            </label>
-            <label>
               Audience
               <select name="segmentId" required>
                 {composableSegments.map((segment) => (
@@ -86,16 +86,17 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
               </select>
             </label>
             <label>
-              Subject
-              <input type="text" name="subject" required />
-            </label>
-            <label>
               Preheader
               <input type="text" name="preheader" />
             </label>
             <div className="block-editor-field">
               <span className="block-editor-field-label">Content</span>
-              <BlockEditor />
+              <CampaignComposeFields
+                aiAssistAvailable={aiAssistAvailable}
+                suggestSubjectLinesAction={suggestSubjectLinesAction.bind(null, context)}
+                suggestBlockCopyAction={suggestBlockCopyAction.bind(null, context)}
+                acceptAiSuggestionAction={acceptAiSuggestionAction.bind(null, context)}
+              />
             </div>
             <label>
               Send via
@@ -206,7 +207,7 @@ async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSea
       : segments;
     const outlookMailboxes = outlookConnections.filter((connection) => connection.status === "connected");
 
-    return { context, email, composableSegments, outlookMailboxes };
+    return { context, email, composableSegments, outlookMailboxes, aiAssistAvailable: hasAiAssistCapability(context) };
   } catch (error) {
     return { error };
   }

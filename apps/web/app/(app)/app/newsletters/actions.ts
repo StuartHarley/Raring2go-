@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { renderBlocksToText, sanitizeImportedHtml, sanitizeRichTextHtml, validateBlocks } from "@raring2go/marketing";
 import type { Block } from "@raring2go/marketing";
 import { assertFileIsAttachable } from "../../../../lib/files-runtime";
+import { recordAiSuggestionAccepted, suggestBlockCopy, suggestSubjectLines } from "../../../../lib/ai-runtime";
 import {
   addNewsletterEditionOverride,
   approveCampaignVersion,
@@ -78,6 +79,27 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
   });
 
   revalidatePath("/app/newsletters");
+}
+
+export async function suggestSubjectLinesAction(
+  context: MarketingActorContext,
+  input: { draftId: string; campaignTitle: string; bodyPreviewText: string }
+): Promise<string[]> {
+  return suggestSubjectLines(context, input);
+}
+
+export async function suggestBlockCopyAction(
+  context: MarketingActorContext,
+  input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }
+): Promise<string> {
+  return suggestBlockCopy(context, input);
+}
+
+export async function acceptAiSuggestionAction(
+  context: MarketingActorContext,
+  input: { draftId: string; task: "subject_lines" | "block_copy"; blockId?: string; accepted: string }
+): Promise<void> {
+  await recordAiSuggestionAccepted(context, input);
 }
 
 export async function approveCampaignAction(context: MarketingActorContext, campaignId: string, versionId: string) {

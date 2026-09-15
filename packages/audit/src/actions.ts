@@ -121,6 +121,8 @@ export const auditActions = {
   marketingAudienceSuppress: "marketing.audience.suppress",
   marketingSegmentCreate: "marketing.segment.create",
   marketingSegmentUpdate: "marketing.segment.update",
+  marketingAiSuggestionGenerate: "marketing.ai_suggestion.generate",
+  marketingAiSuggestionAccept: "marketing.ai_suggestion.accept",
   marketingEmailTemplateCreate: "marketing.email.template.create",
   marketingEmailCampaignCreate: "marketing.email.campaign.create",
   marketingEmailCampaignApprove: "marketing.email.campaign.approve",

@@ -1230,6 +1230,55 @@ p {
   margin-bottom: 0;
 }
 
+.block-editor-subject-field {
+  display: grid;
+  gap: 6px;
+}
+
+.block-editor-ai-assist {
+  display: grid;
+  gap: 6px;
+}
+
+.block-editor-ai-assist > button {
+  justify-self: start;
+  border: 1px solid var(--r2-brand-purple);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface-tint);
+  color: var(--r2-brand-purple);
+  font: inherit;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.block-editor-richtext-toolbar > button:last-child[type="button"] {
+  border-color: var(--r2-brand-purple);
+  color: var(--r2-brand-purple);
+  font-weight: 800;
+}
+
+.block-editor-ai-suggestions {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.block-editor-ai-suggestions button {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.block-editor-ai-suggestions button:hover {
+  border-color: var(--r2-brand-purple);
+}
+
 .block-editor-add-menu {
   display: flex;
   flex-wrap: wrap;

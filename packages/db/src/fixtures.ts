@@ -157,7 +157,8 @@ export const fixtureIds = {
     royaltyStatementAdjust: "00000000-0000-4000-8000-000000000537",
     royaltyStatementSubmit: "00000000-0000-4000-8000-000000000538",
     royaltyStatementApprove: "00000000-0000-4000-8000-000000000539",
-    filesUpload: "00000000-0000-4000-8000-000000000540"
+    filesUpload: "00000000-0000-4000-8000-000000000540",
+    emailAiAssist: "00000000-0000-4000-8000-000000000541"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1279,6 +1280,12 @@ export const foundationSeed = {
       module: "files",
       action: "upload",
       description: "Upload a file to be attached to campaign or content."
+    },
+    {
+      id: fixtureIds.permissions.emailAiAssist,
+      module: "marketing.email",
+      action: "ai_assist",
+      description: "Request AI-generated subject line and content suggestions for a newsletter campaign."
     }
   ],
   advertisers: [
