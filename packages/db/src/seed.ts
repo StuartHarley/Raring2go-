@@ -825,6 +825,96 @@ export async function seedDatabase(databaseUrl?: string) {
       }
     });
 
+    // seasons/masterEditions/territoryEditions are seeded here, ahead of their
+    // natural position later in this file (publishing edition fixtures), because
+    // inventorySlots below has a foreign key on territoryEditionId. Their own
+    // dependencies (organisations, territories, users) are already seeded above.
+    await db.insert(seasons).values(foundationSeed.seasons.map((season) => ({
+      ...season,
+      publicationDate: season.publicationDate ? new Date(season.publicationDate) : null,
+      bookingDeadline: season.bookingDeadline ? new Date(season.bookingDeadline) : null,
+      artworkDeadline: season.artworkDeadline ? new Date(season.artworkDeadline) : null,
+      editorialDeadline: season.editorialDeadline ? new Date(season.editorialDeadline) : null,
+      proofDeadline: season.proofDeadline ? new Date(season.proofDeadline) : null,
+      printDeadline: season.printDeadline ? new Date(season.printDeadline) : null,
+      distributionDate: season.distributionDate ? new Date(season.distributionDate) : null
+    }))).onConflictDoUpdate({
+      target: seasons.id,
+      set: {
+        key: sql`excluded.key`,
+        name: sql`excluded.name`,
+        year: sql`excluded.year`,
+        season: sql`excluded.season`,
+        status: sql`excluded.status`,
+        accent: sql`excluded.accent`,
+        publicationDate: sql`excluded.publication_date`,
+        bookingDeadline: sql`excluded.booking_deadline`,
+        artworkDeadline: sql`excluded.artwork_deadline`,
+        editorialDeadline: sql`excluded.editorial_deadline`,
+        proofDeadline: sql`excluded.proof_deadline`,
+        printDeadline: sql`excluded.print_deadline`,
+        distributionDate: sql`excluded.distribution_date`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(masterEditions).values([...foundationSeed.masterEditions]).onConflictDoUpdate({
+      target: masterEditions.id,
+      set: {
+        seasonId: sql`excluded.season_id`,
+        organisationId: sql`excluded.organisation_id`,
+        title: sql`excluded.title`,
+        status: sql`excluded.status`,
+        pageCount: sql`excluded.page_count`,
+        version: sql`excluded.version`,
+        readiness: sql`excluded.readiness`,
+        publicationArchive: sql`excluded.publication_archive`,
+        locked: sql`excluded.locked`,
+        createdByUserId: sql`excluded.created_by_user_id`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(territoryEditions).values(foundationSeed.territoryEditions.map((edition) => ({
+      ...edition,
+      publicationDate: edition.publicationDate ? new Date(edition.publicationDate) : null,
+      bookingDeadline: edition.bookingDeadline ? new Date(edition.bookingDeadline) : null,
+      artworkDeadline: edition.artworkDeadline ? new Date(edition.artworkDeadline) : null,
+      editorialDeadline: edition.editorialDeadline ? new Date(edition.editorialDeadline) : null,
+      proofDeadline: edition.proofDeadline ? new Date(edition.proofDeadline) : null,
+      printDeadline: edition.printDeadline ? new Date(edition.printDeadline) : null,
+      distributionDate: edition.distributionDate ? new Date(edition.distributionDate) : null
+    }))).onConflictDoUpdate({
+      target: territoryEditions.id,
+      set: {
+        masterEditionId: sql`excluded.master_edition_id`,
+        seasonId: sql`excluded.season_id`,
+        territoryId: sql`excluded.territory_id`,
+        franchiseOrganisationId: sql`excluded.franchise_organisation_id`,
+        editorUserId: sql`excluded.editor_user_id`,
+        title: sql`excluded.title`,
+        status: sql`excluded.status`,
+        publicationDate: sql`excluded.publication_date`,
+        bookingDeadline: sql`excluded.booking_deadline`,
+        artworkDeadline: sql`excluded.artwork_deadline`,
+        editorialDeadline: sql`excluded.editorial_deadline`,
+        proofDeadline: sql`excluded.proof_deadline`,
+        printDeadline: sql`excluded.print_deadline`,
+        distributionDate: sql`excluded.distribution_date`,
+        pageCount: sql`excluded.page_count`,
+        printStatus: sql`excluded.print_status`,
+        digitalStatus: sql`excluded.digital_status`,
+        readiness: sql`excluded.readiness`,
+        version: sql`excluded.version`,
+        publicationArchive: sql`excluded.publication_archive`,
+        generatedFromMasterVersion: sql`excluded.generated_from_master_version`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
     await db.insert(inventorySlots).values(foundationSeed.inventorySlots.map((slot) => ({
       ...slot,
       metadata: { ...slot.metadata }
@@ -1591,92 +1681,6 @@ export async function seedDatabase(databaseUrl?: string) {
         dependencyRules: sql`excluded.dependency_rules`,
         readinessGate: sql`excluded.readiness_gate`,
         sortOrder: sql`excluded.sort_order`,
-        updatedAt: sql`now()`,
-        deletedAt: sql`null`
-      }
-    });
-
-    await db.insert(seasons).values(foundationSeed.seasons.map((season) => ({
-      ...season,
-      publicationDate: season.publicationDate ? new Date(season.publicationDate) : null,
-      bookingDeadline: season.bookingDeadline ? new Date(season.bookingDeadline) : null,
-      artworkDeadline: season.artworkDeadline ? new Date(season.artworkDeadline) : null,
-      editorialDeadline: season.editorialDeadline ? new Date(season.editorialDeadline) : null,
-      proofDeadline: season.proofDeadline ? new Date(season.proofDeadline) : null,
-      printDeadline: season.printDeadline ? new Date(season.printDeadline) : null,
-      distributionDate: season.distributionDate ? new Date(season.distributionDate) : null
-    }))).onConflictDoUpdate({
-      target: seasons.id,
-      set: {
-        key: sql`excluded.key`,
-        name: sql`excluded.name`,
-        year: sql`excluded.year`,
-        season: sql`excluded.season`,
-        status: sql`excluded.status`,
-        accent: sql`excluded.accent`,
-        publicationDate: sql`excluded.publication_date`,
-        bookingDeadline: sql`excluded.booking_deadline`,
-        artworkDeadline: sql`excluded.artwork_deadline`,
-        editorialDeadline: sql`excluded.editorial_deadline`,
-        proofDeadline: sql`excluded.proof_deadline`,
-        printDeadline: sql`excluded.print_deadline`,
-        distributionDate: sql`excluded.distribution_date`,
-        updatedAt: sql`now()`,
-        deletedAt: sql`null`
-      }
-    });
-
-    await db.insert(masterEditions).values([...foundationSeed.masterEditions]).onConflictDoUpdate({
-      target: masterEditions.id,
-      set: {
-        seasonId: sql`excluded.season_id`,
-        organisationId: sql`excluded.organisation_id`,
-        title: sql`excluded.title`,
-        status: sql`excluded.status`,
-        pageCount: sql`excluded.page_count`,
-        version: sql`excluded.version`,
-        readiness: sql`excluded.readiness`,
-        publicationArchive: sql`excluded.publication_archive`,
-        locked: sql`excluded.locked`,
-        createdByUserId: sql`excluded.created_by_user_id`,
-        updatedAt: sql`now()`,
-        deletedAt: sql`null`
-      }
-    });
-
-    await db.insert(territoryEditions).values(foundationSeed.territoryEditions.map((edition) => ({
-      ...edition,
-      publicationDate: edition.publicationDate ? new Date(edition.publicationDate) : null,
-      bookingDeadline: edition.bookingDeadline ? new Date(edition.bookingDeadline) : null,
-      artworkDeadline: edition.artworkDeadline ? new Date(edition.artworkDeadline) : null,
-      editorialDeadline: edition.editorialDeadline ? new Date(edition.editorialDeadline) : null,
-      proofDeadline: edition.proofDeadline ? new Date(edition.proofDeadline) : null,
-      printDeadline: edition.printDeadline ? new Date(edition.printDeadline) : null,
-      distributionDate: edition.distributionDate ? new Date(edition.distributionDate) : null
-    }))).onConflictDoUpdate({
-      target: territoryEditions.id,
-      set: {
-        masterEditionId: sql`excluded.master_edition_id`,
-        seasonId: sql`excluded.season_id`,
-        territoryId: sql`excluded.territory_id`,
-        franchiseOrganisationId: sql`excluded.franchise_organisation_id`,
-        editorUserId: sql`excluded.editor_user_id`,
-        title: sql`excluded.title`,
-        status: sql`excluded.status`,
-        publicationDate: sql`excluded.publication_date`,
-        bookingDeadline: sql`excluded.booking_deadline`,
-        artworkDeadline: sql`excluded.artwork_deadline`,
-        editorialDeadline: sql`excluded.editorial_deadline`,
-        proofDeadline: sql`excluded.proof_deadline`,
-        printDeadline: sql`excluded.print_deadline`,
-        distributionDate: sql`excluded.distribution_date`,
-        pageCount: sql`excluded.page_count`,
-        printStatus: sql`excluded.print_status`,
-        digitalStatus: sql`excluded.digital_status`,
-        readiness: sql`excluded.readiness`,
-        version: sql`excluded.version`,
-        publicationArchive: sql`excluded.publication_archive`,
-        generatedFromMasterVersion: sql`excluded.generated_from_master_version`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }
