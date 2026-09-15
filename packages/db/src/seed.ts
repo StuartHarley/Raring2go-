@@ -56,6 +56,8 @@ import {
   permissions,
   rolePermissions,
   roles,
+  royaltyRules,
+  royaltyStatementSequences,
   magazineTemplates,
   magazineTemplateVersions,
   masterEditions,
@@ -1494,6 +1496,38 @@ export async function seedDatabase(databaseUrl?: string) {
         active: sql`excluded.active`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(royaltyRules).values(foundationSeed.royaltyRules.map((rule) => ({
+      ...rule,
+      effectiveFrom: new Date(rule.effectiveFrom),
+      approvedAt: rule.approvedAt ? new Date(rule.approvedAt) : null
+    }))).onConflictDoUpdate({
+      target: royaltyRules.id,
+      set: {
+        revenueBasis: sql`excluded.revenue_basis`,
+        rateBps: sql`excluded.rate_bps`,
+        minimumDueMinor: sql`excluded.minimum_due_minor`,
+        status: sql`excluded.status`,
+        effectiveFrom: sql`excluded.effective_from`,
+        notes: sql`excluded.notes`,
+        approvedByUserId: sql`excluded.approved_by_user_id`,
+        approvedAt: sql`excluded.approved_at`,
+        updatedAt: sql`now()`,
+        deletedAt: sql`null`
+      }
+    });
+
+    await db.insert(royaltyStatementSequences).values([...foundationSeed.royaltyStatementSequences]).onConflictDoUpdate({
+      target: royaltyStatementSequences.id,
+      set: {
+        issuerOrganisationId: sql`excluded.issuer_organisation_id`,
+        key: sql`excluded.key`,
+        prefix: sql`excluded.prefix`,
+        nextNumber: sql`excluded.next_number`,
+        padding: sql`excluded.padding`,
+        updatedAt: sql`now()`
       }
     });
 

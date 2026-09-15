@@ -142,7 +142,14 @@ describe("foundation fixtures", () => {
       "integrations",
       "integrations",
       "integrations",
-      "integrations"
+      "integrations",
+      "finance.royalty_rule",
+      "finance.royalty_rule",
+      "finance.royalty_statement",
+      "finance.royalty_statement",
+      "finance.royalty_statement",
+      "finance.royalty_statement",
+      "finance.royalty_statement"
     ]);
   });
 
@@ -360,6 +367,24 @@ describe("foundation fixtures", () => {
     expect(fixtureIds.invitations.franchiseStaff).toBe(
       "00000000-0000-4000-8000-000000000801"
     );
+  });
+
+  it("includes a deterministic royalty rule fixture without fabricated statement state", () => {
+    expect(fixtureIds.royaltyRules.suttonStandard).toBe(
+      "00000000-0000-4000-8000-000000000955"
+    );
+    expect(foundationSeed.royaltyRules[0]).toMatchObject({
+      franchiseId: fixtureIds.franchises.suttonColdfield,
+      territoryId: fixtureIds.territories.suttonColdfield,
+      revenueBasis: "collected",
+      rateBps: 800,
+      status: "active"
+    });
+    expect(foundationSeed.royaltyStatementSequences[0]).toMatchObject({
+      issuerOrganisationId: fixtureIds.organisations.hq,
+      prefix: "ROY",
+      nextNumber: 1
+    });
   });
 
   it("includes deterministic privacy-light audience preference fixtures", () => {

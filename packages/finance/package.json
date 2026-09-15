@@ -2,10 +2,23 @@
   "name": "@raring2go/finance",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@raring2go/audit": "workspace:*",
+    "@raring2go/db": "workspace:*",
+    "@raring2go/permissions": "workspace:*",
+    "drizzle-orm": "0.45.2"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
   }
 }
