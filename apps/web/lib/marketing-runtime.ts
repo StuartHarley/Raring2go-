@@ -22,6 +22,7 @@ import {
   listNewsletterFactory,
   listSegments,
   loadMarketingData,
+  normalizeContentSnapshot,
   recordTerritoryNewsletterOverride,
   scheduleEmailCampaign,
   updateEmailCampaignRecord,
@@ -235,7 +236,7 @@ export async function composeEmailCampaign(
         status: "draft",
         subject: input.subject,
         preheader: input.preheader,
-        contentSnapshot: { text: input.body },
+        contentSnapshot: normalizeContentSnapshot({ text: input.body }, input.title),
         createdByUserId: context.userId
       };
       await createEmailCampaign(context, marketingPermissionData, auditFor(tx), data, campaign, version);
