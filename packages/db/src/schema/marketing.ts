@@ -336,6 +336,29 @@ export const emailDeliveryRecords = pgTable(
   ]
 );
 
+export const emailSendJobs = pgTable(
+  "email_send_jobs",
+  {
+    id,
+    campaignId: uuid("campaign_id").notNull().references(() => emailCampaigns.id),
+    campaignVersionId: uuid("campaign_version_id").notNull().references(() => emailCampaignVersions.id),
+    recipientSnapshotId: uuid("recipient_snapshot_id").notNull().references(() => emailRecipientSnapshots.id),
+    sendProvider: text("send_provider").notNull().default("postmark"),
+    status: text("status").notNull().default("queued"),
+    cursor: integer("cursor").notNull().default(0),
+    batchSize: integer("batch_size").notNull().default(100),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull(),
+    lastError: text("last_error"),
+    ...timestamps
+  },
+  (table) => [
+    index("email_send_jobs_campaign_id_idx").on(table.campaignId),
+    index("email_send_jobs_claim_idx").on(table.status, table.nextAttemptAt)
+  ]
+);
+
 export const networkNewsletterMasters = pgTable(
   "network_newsletter_masters",
   {

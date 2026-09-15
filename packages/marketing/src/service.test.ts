@@ -12,14 +12,18 @@ import {
   createNetworkNewsletterMaster,
   createNewsletterEditionCampaign,
   createRecipientSnapshot,
+  enqueueEmailSend,
+  generateUnsubscribeToken,
   enterJourneyFromEvent,
   executeJourneyStep,
   generateTerritoryNewsletterEditions,
   getPreferenceCentre,
+  listEmailCampaigns,
   listJourneys,
   listMarketingAnalytics,
   listMarketingCommandCentre,
   listNewsletterFactory,
+  nextEmailSendChunk,
   pauseJourney,
   previewSegment,
   recordConsentEvent,
@@ -28,8 +32,10 @@ import {
   scheduleEmailCampaign,
   subscribeContactToTerritory,
   suppressContact,
+  unsubscribeContactPublicly,
   updatePreferenceProfile,
-  upsertAudienceContact
+  upsertAudienceContact,
+  verifyUnsubscribeToken
 } from "./service";
 import type { MarketingData } from "./types";
 
@@ -382,6 +388,225 @@ describe("marketing audience foundation", () => {
       auditActions.marketingEmailCampaignSchedule,
       auditActions.marketingEmailDeliveryRecord
     ]);
+  });
+
+  it("enqueues a scheduled campaign for sending exactly once and surfaces the active job", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "campaign_2",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Half term",
+      subject: "Half term",
+      preheader: null,
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "campaign_2_v1",
+      campaignId: "campaign_2",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Half term",
+      preheader: null,
+      contentSnapshot: {},
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder, data, "campaign_2", "campaign_2_v1", "2026-08-11T10:00:00.000Z");
+
+    expect(() =>
+      enqueueEmailSend(localContext(), permissions, data, { id: "job_early", campaignId: "campaign_2" })
+    ).toThrow("Only scheduled campaigns");
+
+    await createRecipientSnapshot(localContext(), permissions, recorder, data, {
+      id: "snapshot_2",
+      campaignId: "campaign_2",
+      campaignVersionId: "campaign_2_v1",
+      segmentId: ids.segment,
+      status: "created",
+      generatedAt: "2026-08-11T10:05:00.000Z",
+      idempotencyKey: "snapshot:campaign_2:v1"
+    });
+    await scheduleEmailCampaign(localContext(), permissions, recorder, data, "campaign_2", "2026-08-12T09:00:00.000Z");
+
+    const job = enqueueEmailSend(localContext(), permissions, data, { id: "job_1", campaignId: "campaign_2" });
+    const duplicate = enqueueEmailSend(localContext(), permissions, data, { id: "job_2", campaignId: "campaign_2" });
+
+    expect(job).toMatchObject({
+      id: "job_1",
+      campaignId: "campaign_2",
+      recipientSnapshotId: "snapshot_2",
+      status: "queued",
+      cursor: 0,
+      nextAttemptAt: "2026-08-12T09:00:00.000Z"
+    });
+    expect(duplicate.id).toBe("job_1");
+    expect(data.emailSendJobs).toHaveLength(1);
+
+    const overview = listEmailCampaigns(localContext(), permissions, data);
+    const view = overview.campaigns.find((candidate) => candidate.campaign.id === "campaign_2");
+    expect(view?.activeJob?.id).toBe("job_1");
+  });
+
+  it("computes the next send chunk and detects the final chunk", () => {
+    const snapshot = {
+      id: "snapshot_1",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      segmentId: null,
+      status: "created",
+      generatedAt: "2026-08-11T10:05:00.000Z",
+      recipientCount: 5,
+      excludedCount: 0,
+      recipients: [0, 1, 2, 3, 4].map((index) => ({ contactId: `contact_${index}`, emailNormalised: `p${index}@example.test`, territoryIds: [] })),
+      exclusions: [],
+      idempotencyKey: "snapshot:campaign_1:v1"
+    };
+    const job = {
+      id: "job_1",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      recipientSnapshotId: "snapshot_1",
+      sendProvider: "postmark",
+      status: "processing" as const,
+      cursor: 0,
+      batchSize: 2,
+      attempts: 1,
+      maxAttempts: 5,
+      nextAttemptAt: "2026-08-12T09:00:00.000Z"
+    };
+
+    const first = nextEmailSendChunk(job, snapshot);
+    expect(first.recipients).toHaveLength(2);
+    expect(first.isFinalChunk).toBe(false);
+
+    const last = nextEmailSendChunk({ ...job, cursor: 4 }, snapshot);
+    expect(last.recipients).toHaveLength(1);
+    expect(last.isFinalChunk).toBe(true);
+
+    const empty = nextEmailSendChunk({ ...job, cursor: 5 }, snapshot);
+    expect(empty.recipients).toHaveLength(0);
+    expect(empty.isFinalChunk).toBe(true);
+  });
+
+  it("auto-suppresses contacts on unsubscribe and hard bounce, but not soft bounce", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    const unsubscribed = await recordEmailDeliveryEvent(hqContext(), permissions, recorder, data, {
+      id: "delivery_unsub",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      recipientSnapshotId: "snapshot_1",
+      contactId: ids.contact,
+      emailNormalised: "parent@example.test",
+      providerKey: "postmark",
+      providerMessageId: "message_unsub",
+      status: "failed",
+      eventType: "unsubscribed",
+      eventAt: "2026-08-12T09:01:00.000Z",
+      metadata: {}
+    });
+
+    expect(unsubscribed).toBeDefined();
+    expect(data.contacts.find((contact) => contact.id === ids.contact)?.emailStatus).toBe("suppressed");
+    expect(data.suppressions).toHaveLength(1);
+    expect(data.suppressions[0]).toMatchObject({ contactId: ids.contact, reason: "provider_unsubscribe" });
+  });
+
+  it("auto-suppresses on a hard bounce but not on a soft bounce", async () => {
+    const soft = seededData();
+    const softRecorder = audit();
+
+    await recordEmailDeliveryEvent(hqContext(), permissions, softRecorder, soft, {
+      id: "delivery_soft",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      recipientSnapshotId: "snapshot_1",
+      contactId: ids.contact,
+      emailNormalised: "parent@example.test",
+      providerKey: "postmark",
+      providerMessageId: "message_soft",
+      status: "failed",
+      eventType: "bounced",
+      eventAt: "2026-08-12T09:01:00.000Z",
+      metadata: { type: "SoftBounce" }
+    });
+
+    expect(soft.suppressions).toHaveLength(0);
+    expect(soft.contacts.find((contact) => contact.id === ids.contact)?.emailStatus).toBe("subscribed");
+
+    const hard = seededData();
+    const hardRecorder = audit();
+
+    await recordEmailDeliveryEvent(hqContext(), permissions, hardRecorder, hard, {
+      id: "delivery_hard",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      recipientSnapshotId: "snapshot_1",
+      contactId: ids.contact,
+      emailNormalised: "parent@example.test",
+      providerKey: "postmark",
+      providerMessageId: "message_hard",
+      status: "failed",
+      eventType: "bounced",
+      eventAt: "2026-08-12T09:01:00.000Z",
+      metadata: { type: "HardBounce" }
+    });
+
+    expect(hard.suppressions).toHaveLength(1);
+    expect(hard.suppressions[0]).toMatchObject({ reason: "provider_hard_bounce" });
+    expect(hard.contacts.find((contact) => contact.id === ids.contact)?.emailStatus).toBe("suppressed");
+  });
+
+  it("resolves the contact by normalised email when a delivery event has no contactId", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await recordEmailDeliveryEvent(hqContext(), permissions, recorder, data, {
+      id: "delivery_no_contact_id",
+      campaignId: "campaign_1",
+      campaignVersionId: "campaign_version_1",
+      recipientSnapshotId: "snapshot_1",
+      contactId: null,
+      emailNormalised: "parent@example.test",
+      providerKey: "postmark",
+      providerMessageId: "message_no_id",
+      status: "failed",
+      eventType: "complained",
+      eventAt: "2026-08-12T09:01:00.000Z",
+      metadata: {}
+    });
+
+    expect(data.suppressions).toHaveLength(1);
+    expect(data.suppressions[0]).toMatchObject({ contactId: ids.contact, reason: "provider_spam_complaint" });
+  });
+
+  it("verifies unsubscribe tokens and applies a public unsubscribe exactly once", () => {
+    const secret = "unsubscribe-secret";
+    const token = generateUnsubscribeToken(secret, ids.contact, "campaign_1");
+
+    expect(verifyUnsubscribeToken(secret, ids.contact, "campaign_1", token)).toBe(true);
+    expect(verifyUnsubscribeToken(secret, ids.contact, "campaign_1", "wrong-token")).toBe(false);
+    expect(verifyUnsubscribeToken(secret, ids.contact, "campaign_other", token)).toBe(false);
+
+    const data = seededData();
+    const first = unsubscribeContactPublicly(data, { contactId: ids.contact, campaignId: "campaign_1" });
+    const second = unsubscribeContactPublicly(data, { contactId: ids.contact, campaignId: "campaign_1" });
+
+    expect(first?.suppression.reason).toBe("recipient_unsubscribe");
+    expect(data.contacts.find((contact) => contact.id === ids.contact)?.emailStatus).toBe("suppressed");
+    expect(data.suppressions).toHaveLength(1);
+    expect(second?.suppression.id).toBe(first?.suppression.id);
+    expect(unsubscribeContactPublicly(data, { contactId: "unknown_contact", campaignId: "campaign_1" })).toBeUndefined();
   });
 
   it("generates territory newsletter editions idempotently and preserves local overrides", async () => {
@@ -805,6 +1030,7 @@ function emptyData(): MarketingData {
     emailCampaignVersions: [],
     emailRecipientSnapshots: [],
     emailDeliveryRecords: [],
+    emailSendJobs: [],
     networkNewsletterMasters: [],
     territoryNewsletterEditions: [],
     newsletterFactoryRuns: [],

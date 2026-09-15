@@ -148,6 +148,7 @@ export type MarketingData = {
   emailCampaignVersions: EmailCampaignVersion[];
   emailRecipientSnapshots: EmailRecipientSnapshot[];
   emailDeliveryRecords: EmailDeliveryRecord[];
+  emailSendJobs: EmailSendJob[];
   networkNewsletterMasters: NetworkNewsletterMaster[];
   territoryNewsletterEditions: TerritoryNewsletterEdition[];
   newsletterFactoryRuns: NewsletterFactoryRun[];
@@ -263,13 +264,21 @@ export type EmailDeliveryRecord = {
   deletedAt?: Date | null;
 };
 
-export type EmailDeliveryProvider = {
-  key: string;
-  send(input: {
-    campaign: EmailCampaign;
-    version: EmailCampaignVersion;
-    snapshot: EmailRecipientSnapshot;
-  }): Promise<{ providerBatchId?: string | null }>;
+export type EmailSendJobStatus = "queued" | "processing" | "completed" | "failed";
+
+export type EmailSendJob = {
+  id: string;
+  campaignId: string;
+  campaignVersionId: string;
+  recipientSnapshotId: string;
+  sendProvider: string;
+  status: EmailSendJobStatus;
+  cursor: number;
+  batchSize: number;
+  attempts: number;
+  maxAttempts: number;
+  nextAttemptAt: string;
+  lastError?: string | null;
 };
 
 export type EmailCampaignOverview = {
@@ -278,6 +287,7 @@ export type EmailCampaignOverview = {
     latestVersion?: EmailCampaignVersion;
     latestSnapshot?: EmailRecipientSnapshot;
     deliveryCount: number;
+    activeJob?: EmailSendJob;
   }>;
   totals: {
     campaigns: number;

@@ -6,9 +6,11 @@ import {
   createHttpEmailProvider,
   createMemoryEmailProvider,
   createPostmarkEmailProvider,
+  sendEmailBatch,
   sendPasswordlessSignInEmail,
   validateEmailMessage
 } from "./index";
+import type { EmailMessage } from "./index";
 
 describe("email delivery provider boundary", () => {
   it("validates provider-neutral email messages", () => {
@@ -184,6 +186,113 @@ describe("email delivery provider boundary", () => {
     expect(requests[1]?.body.MessageStream).toBe("broadcast-pilot");
     expect(transactional.raw).not.toHaveProperty("serverToken");
     expect(JSON.stringify(transactional.raw)).not.toContain("postmark-secret-token");
+  });
+
+  it("batches newsletter sends through Postmark's batch endpoint and forwards custom headers", async () => {
+    const requests: Array<{ url: string; body: Array<Record<string, unknown>> }> = [];
+    const provider = createPostmarkEmailProvider({
+      serverToken: "postmark-secret-token",
+      endpoint: "https://postmark.test",
+      fetch: async (url, init) => {
+        const body = JSON.parse(String(init?.body ?? "[]")) as Array<Record<string, unknown>>;
+        requests.push({ url: String(url), body });
+        return new Response(
+          JSON.stringify(body.map((_, index) => ({ MessageID: `pm_batch_${index}`, SubmittedAt: "2026-08-11T10:00:00.000Z" }))),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+    });
+    const messages: EmailMessage[] = [
+      {
+        idempotencyKey: "newsletter_batch_1",
+        purpose: "newsletter",
+        to: [{ email: "one@example.com" }],
+        from: { email: "hello@mail.raring2go.co.uk" },
+        subject: "This week",
+        text: "Things to do",
+        headers: { "List-Unsubscribe": "<mailto:unsubscribe@raring2go.co.uk>" }
+      },
+      {
+        idempotencyKey: "newsletter_batch_2",
+        purpose: "newsletter",
+        to: [{ email: "two@example.com" }],
+        from: { email: "hello@mail.raring2go.co.uk" },
+        subject: "This week",
+        text: "Things to do"
+      }
+    ];
+
+    const results = await provider.sendBatch?.(messages);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("https://postmark.test/email/batch");
+    expect(requests[0]?.body).toHaveLength(2);
+    expect(requests[0]?.body[0]?.Headers).toEqual([
+      { Name: "List-Unsubscribe", Value: "<mailto:unsubscribe@raring2go.co.uk>" }
+    ]);
+    expect(requests[0]?.body[1]?.Headers).toBeUndefined();
+    expect(results).toEqual([
+      expect.objectContaining({ providerMessageId: "pm_batch_0", status: "queued" }),
+      expect.objectContaining({ providerMessageId: "pm_batch_1", status: "queued" })
+    ]);
+  });
+
+  it("splits oversized batches across multiple Postmark batch calls", async () => {
+    const requests: Array<Array<Record<string, unknown>>> = [];
+    const provider = createPostmarkEmailProvider({
+      serverToken: "postmark-secret-token",
+      endpoint: "https://postmark.test",
+      fetch: async (_url, init) => {
+        const body = JSON.parse(String(init?.body ?? "[]")) as Array<Record<string, unknown>>;
+        requests.push(body);
+        return new Response(
+          JSON.stringify(body.map((_, index) => ({ MessageID: `pm_${requests.length}_${index}` }))),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+    });
+    const messages: EmailMessage[] = Array.from({ length: 501 }, (_, index) => ({
+      idempotencyKey: `bulk_${index}`,
+      purpose: "newsletter" as const,
+      to: [{ email: `person${index}@example.com` }],
+      from: { email: "hello@mail.raring2go.co.uk" },
+      subject: "This week",
+      text: "Things to do"
+    }));
+
+    const results = await provider.sendBatch?.(messages);
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toHaveLength(500);
+    expect(requests[1]).toHaveLength(1);
+    expect(results).toHaveLength(501);
+  });
+
+  it("falls back to sequential sends when a provider has no batch endpoint", async () => {
+    const provider = createMemoryEmailProvider();
+    const messages: EmailMessage[] = [
+      {
+        idempotencyKey: "seq_1",
+        purpose: "newsletter",
+        to: [{ email: "one@example.com" }],
+        from: { email: "hello@raring2go.test" },
+        subject: "Hello",
+        text: "Hi"
+      },
+      {
+        idempotencyKey: "seq_2",
+        purpose: "newsletter",
+        to: [{ email: "two@example.com" }],
+        from: { email: "hello@raring2go.test" },
+        subject: "Hello",
+        text: "Hi"
+      }
+    ];
+
+    const results = await sendEmailBatch(provider, messages);
+
+    expect(results).toHaveLength(2);
+    expect(provider.sent.map((record) => record.message.idempotencyKey)).toEqual(["seq_1", "seq_2"]);
   });
 
   it("maps Postmark provider rejection and outage to recoverable failed delivery results", async () => {

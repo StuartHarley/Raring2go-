@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { auditActions } from "@raring2go/audit";
 import { requirePermission, type PermissionData } from "@raring2go/permissions";
 import { marketingCapabilities, type MarketingCapability } from "./permissions";
@@ -16,6 +16,7 @@ import type {
   EmailCampaignOverview,
   EmailDeliveryRecord,
   EmailRecipientSnapshot,
+  EmailSendJob,
   EmailTemplate,
   MarketingJourney,
   MarketingJourneyAudienceEntry,
@@ -168,7 +169,10 @@ export function listEmailCampaigns(
       latestSnapshot: data.emailRecipientSnapshots
         .filter((snapshot) => snapshot.campaignId === campaign.id)
         .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0],
-      deliveryCount: data.emailDeliveryRecords.filter((delivery) => delivery.campaignId === campaign.id && !delivery.deletedAt).length
+      deliveryCount: data.emailDeliveryRecords.filter((delivery) => delivery.campaignId === campaign.id && !delivery.deletedAt).length,
+      activeJob: data.emailSendJobs.find(
+        (job) => job.campaignId === campaign.id && (job.status === "queued" || job.status === "processing")
+      )
     }));
 
   return {
@@ -179,6 +183,15 @@ export function listEmailCampaigns(
       scheduled: campaigns.filter((view) => view.campaign.status === "scheduled").length,
       sent: campaigns.filter((view) => view.campaign.status === "sent").length
     }
+  };
+}
+
+export function nextEmailSendChunk(job: EmailSendJob, snapshot: EmailRecipientSnapshot) {
+  const recipients = snapshot.recipients.slice(job.cursor, job.cursor + job.batchSize);
+
+  return {
+    recipients,
+    isFinalChunk: job.cursor + recipients.length >= snapshot.recipients.length
   };
 }
 
@@ -498,6 +511,50 @@ export async function suppressContact(
   return suppression;
 }
 
+export function generateUnsubscribeToken(secret: string, contactId: string, campaignId: string) {
+  return createHmac("sha256", secret).update(`${contactId}:${campaignId}`).digest("hex");
+}
+
+export function verifyUnsubscribeToken(secret: string, contactId: string, campaignId: string, token: string) {
+  const expected = Buffer.from(generateUnsubscribeToken(secret, contactId, campaignId), "hex");
+  const supplied = Buffer.from(token, "hex");
+  return expected.length === supplied.length && timingSafeEqual(expected, supplied);
+}
+
+export function unsubscribeContactPublicly(
+  data: { contacts: AudienceContact[]; suppressions: AudienceSuppression[] },
+  input: { contactId: string; campaignId: string }
+) {
+  const contact = data.contacts.find((candidate) => candidate.id === input.contactId && !candidate.deletedAt);
+
+  if (!contact) {
+    return undefined;
+  }
+
+  const existing = data.suppressions.find(
+    (candidate) => candidate.contactId === contact.id && candidate.active && candidate.reason === "recipient_unsubscribe"
+  );
+
+  if (existing) {
+    return { contact, suppression: existing };
+  }
+
+  const suppression: AudienceSuppression = {
+    id: randomUUID(),
+    contactId: contact.id,
+    emailNormalised: contact.emailNormalised,
+    territoryId: null,
+    reason: "recipient_unsubscribe",
+    source: "public_unsubscribe_link",
+    active: true,
+    suppressedAt: new Date().toISOString(),
+    metadata: { campaignId: input.campaignId }
+  };
+  data.suppressions.push(suppression);
+  contact.emailStatus = "suppressed";
+  return { contact, suppression };
+}
+
 export function listSegments(
   context: MarketingActorContext,
   permissions: PermissionData,
@@ -666,6 +723,66 @@ export async function scheduleEmailCampaign(
   return campaign;
 }
 
+export function enqueueEmailSend(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData,
+  input: {
+    id: string;
+    campaignId: string;
+    sendProvider?: string;
+    batchSize?: number;
+  }
+): EmailSendJob {
+  requireMarketingPermission(context, permissions, "emailSchedule");
+  const campaign = requireCampaign(data, input.campaignId);
+  ensureCampaignAccess(context, campaign);
+
+  if (campaign.status !== "scheduled") {
+    throw new Error("Only scheduled campaigns can be queued for sending.");
+  }
+
+  const existingJob = data.emailSendJobs.find(
+    (job) => job.campaignId === campaign.id && (job.status === "queued" || job.status === "processing")
+  );
+
+  if (existingJob) {
+    return existingJob;
+  }
+
+  const version = data.emailCampaignVersions
+    .filter((candidate) => candidate.campaignId === campaign.id && candidate.status === "approved" && !candidate.deletedAt)
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+
+  if (!version) {
+    throw new Error("Campaign has no approved version to send.");
+  }
+
+  const snapshot = data.emailRecipientSnapshots
+    .filter((candidate) => candidate.campaignId === campaign.id && candidate.campaignVersionId === version.id)
+    .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0];
+
+  if (!snapshot) {
+    throw new Error("Campaign has no recipient snapshot to send.");
+  }
+
+  const job: EmailSendJob = {
+    id: input.id,
+    campaignId: campaign.id,
+    campaignVersionId: version.id,
+    recipientSnapshotId: snapshot.id,
+    sendProvider: input.sendProvider ?? "postmark",
+    status: "queued",
+    cursor: 0,
+    batchSize: input.batchSize ?? 100,
+    attempts: 0,
+    maxAttempts: 5,
+    nextAttemptAt: campaign.scheduledAt ?? new Date().toISOString()
+  };
+  data.emailSendJobs.push(job);
+  return job;
+}
+
 export async function markEmailCampaignSent(
   context: MarketingActorContext,
   permissions: PermissionData,
@@ -704,22 +821,7 @@ export async function recordEmailDeliveryEvent(
   if (existing) {
     return existing;
   }
-  data.emailDeliveryRecords.push(delivery);
-  if (delivery.eventType === "unsubscribe" && delivery.contactId) {
-    const contact = requireContact(data, delivery.contactId);
-    data.suppressions.push({
-      id: `${delivery.id}_suppression`,
-      contactId: contact.id,
-      emailNormalised: contact.emailNormalised,
-      territoryId: null,
-      reason: "provider_unsubscribe",
-      source: delivery.providerKey ?? "provider",
-      active: true,
-      suppressedAt: delivery.eventAt ?? new Date().toISOString(),
-      metadata: { deliveryId: delivery.id }
-    });
-    contact.emailStatus = "suppressed";
-  }
+  applyEmailDeliveryEvent(data, delivery);
   await audit.record(marketingAuditEvent(context, auditActions.marketingEmailDeliveryRecord, "email_delivery_record", delivery.id, {
     eventType: delivery.eventType ?? delivery.status,
     providerKey: delivery.providerKey ?? null
@@ -1290,6 +1392,53 @@ function ensureContextCanAccessTerritory(context: MarketingActorContext, territo
   if (context.territoryId && context.territoryId !== territoryId) {
     throw new Error("Audience record is outside the active territory.");
   }
+}
+
+export function applyEmailDeliveryEvent(
+  data: { contacts: AudienceContact[]; suppressions: AudienceSuppression[]; emailDeliveryRecords: EmailDeliveryRecord[] },
+  delivery: EmailDeliveryRecord
+) {
+  data.emailDeliveryRecords.push(delivery);
+  const suppressionReason = suppressionReasonForEventType(delivery.eventType, delivery.metadata);
+
+  if (!suppressionReason) {
+    return;
+  }
+
+  const contact = (delivery.contactId && data.contacts.find((candidate) => candidate.id === delivery.contactId && !candidate.deletedAt)) ||
+    data.contacts.find((candidate) => candidate.emailNormalised === delivery.emailNormalised && !candidate.deletedAt);
+
+  if (!contact) {
+    return;
+  }
+
+  data.suppressions.push({
+    id: `${delivery.id}_suppression`,
+    contactId: contact.id,
+    emailNormalised: contact.emailNormalised,
+    territoryId: null,
+    reason: suppressionReason,
+    source: delivery.providerKey ?? "provider",
+    active: true,
+    suppressedAt: delivery.eventAt ?? new Date().toISOString(),
+    metadata: { deliveryId: delivery.id }
+  });
+  contact.emailStatus = "suppressed";
+}
+
+const hardBounceTypes = new Set(["hardbounce", "blocked", "bademailaddress", "manuallydeactivated", "spamnotification"]);
+
+function suppressionReasonForEventType(
+  eventType: EmailDeliveryRecord["eventType"],
+  metadata: Record<string, unknown>
+) {
+  if (eventType === "unsubscribed") return "provider_unsubscribe";
+  if (eventType === "complained") return "provider_spam_complaint";
+  if (eventType === "bounced") {
+    const bounceType = typeof metadata.type === "string" ? metadata.type.toLowerCase() : "";
+    return hardBounceTypes.has(bounceType) ? "provider_hard_bounce" : null;
+  }
+  return null;
 }
 
 function ensureCampaignAccess(context: MarketingActorContext, campaign: { territoryId?: string | null }) {

@@ -13,6 +13,7 @@ import {
   emailCampaigns,
   emailDeliveryRecords,
   emailRecipientSnapshots,
+  emailSendJobs,
   emailTemplates,
   marketingJourneyAudienceEntries,
   marketingJourneyExecutions,
@@ -25,11 +26,14 @@ import {
   territoryNewsletterEditions,
   territories
 } from "@raring2go/db";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type {
+  AudienceSuppression,
   EmailCampaign,
   EmailCampaignVersion,
+  EmailDeliveryRecord,
   EmailRecipientSnapshot,
+  EmailSendJob,
   MarketingData,
   NetworkNewsletterMaster,
   NewsletterFactoryRun,
@@ -61,6 +65,7 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     campaignVersionRows,
     recipientSnapshotRows,
     deliveryRows,
+    sendJobRows,
     newsletterMasterRows,
     newsletterEditionRows,
     newsletterRunRows,
@@ -87,6 +92,7 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     db.select().from(emailCampaignVersions),
     db.select().from(emailRecipientSnapshots),
     db.select().from(emailDeliveryRecords),
+    db.select().from(emailSendJobs),
     db.select().from(networkNewsletterMasters),
     db.select().from(territoryNewsletterEditions),
     db.select().from(newsletterFactoryRuns),
@@ -115,6 +121,7 @@ export async function loadMarketingData(db: DrizzleDb): Promise<MarketingData> {
     emailCampaignVersions: campaignVersionRows.map(dateRows(["approvedAt"])) as MarketingData["emailCampaignVersions"],
     emailRecipientSnapshots: recipientSnapshotRows.map(dateRows(["generatedAt"])) as MarketingData["emailRecipientSnapshots"],
     emailDeliveryRecords: deliveryRows.map(dateRows(["eventAt"])) as MarketingData["emailDeliveryRecords"],
+    emailSendJobs: sendJobRows.map(dateRows(["nextAttemptAt"])) as MarketingData["emailSendJobs"],
     networkNewsletterMasters: newsletterMasterRows.map(dateRows(["approvedAt"])) as MarketingData["networkNewsletterMasters"],
     territoryNewsletterEditions: newsletterEditionRows.map(dateRows(["generatedAt", "approvedAt"])) as MarketingData["territoryNewsletterEditions"],
     newsletterFactoryRuns: newsletterRunRows.map(dateRows(["generatedAt"])) as MarketingData["newsletterFactoryRuns"],
@@ -236,4 +243,152 @@ export async function insertNewsletterFactoryRunRecord(db: MarketingDb, run: New
       generatedAt: new Date(run.generatedAt)
     })
     .onConflictDoNothing();
+}
+
+export async function insertEmailSendJobRecord(db: MarketingDb, job: EmailSendJob) {
+  await db.insert(emailSendJobs).values({
+    ...job,
+    nextAttemptAt: new Date(job.nextAttemptAt)
+  });
+}
+
+export async function claimNextEmailSendJob(db: MarketingDb): Promise<EmailSendJob | undefined> {
+  const claimed = await db.execute(sql`
+    UPDATE email_send_jobs
+    SET status = 'processing', attempts = attempts + 1, updated_at = now()
+    WHERE id = (
+      SELECT id FROM email_send_jobs
+      WHERE (status = 'queued' AND next_attempt_at <= now())
+         OR (status = 'processing' AND updated_at < now() - interval '5 minutes')
+      ORDER BY next_attempt_at ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id
+  `);
+  const claimedId = (Array.isArray(claimed) ? claimed[0] : claimed.rows?.[0])?.id as string | undefined;
+
+  if (!claimedId) {
+    return undefined;
+  }
+
+  const [row] = await db.select().from(emailSendJobs).where(eq(emailSendJobs.id, claimedId));
+  return row ? (dateRows(["nextAttemptAt"])(row) as EmailSendJob) : undefined;
+}
+
+export async function loadEmailSendJobBundle(db: MarketingDb, jobId: string) {
+  const [job] = await db.select().from(emailSendJobs).where(eq(emailSendJobs.id, jobId));
+
+  if (!job) {
+    return undefined;
+  }
+
+  const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, job.campaignId));
+  const [version] = await db.select().from(emailCampaignVersions).where(eq(emailCampaignVersions.id, job.campaignVersionId));
+  const [snapshot] = await db.select().from(emailRecipientSnapshots).where(eq(emailRecipientSnapshots.id, job.recipientSnapshotId));
+
+  if (!campaign || !version || !snapshot) {
+    return undefined;
+  }
+
+  return {
+    job: dateRows(["nextAttemptAt"])(job) as EmailSendJob,
+    campaign: dateRows(["scheduledAt", "approvedAt", "sentAt"])(campaign) as EmailCampaign,
+    version: dateRows(["approvedAt"])(version) as EmailCampaignVersion,
+    snapshot: dateRows(["generatedAt"])(snapshot) as EmailRecipientSnapshot
+  };
+}
+
+export async function advanceEmailSendJob(
+  db: MarketingDb,
+  jobId: string,
+  patch: { cursor?: number; status?: EmailSendJob["status"]; lastError?: string | null; nextAttemptAt?: string }
+) {
+  await db
+    .update(emailSendJobs)
+    .set({
+      ...(patch.cursor !== undefined ? { cursor: patch.cursor } : {}),
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
+      ...(patch.lastError !== undefined ? { lastError: patch.lastError } : {}),
+      ...(patch.nextAttemptAt !== undefined ? { nextAttemptAt: new Date(patch.nextAttemptAt) } : {})
+    })
+    .where(eq(emailSendJobs.id, jobId));
+}
+
+export async function findDeliveryRecordByProviderMessage(
+  db: MarketingDb,
+  providerKey: string,
+  providerMessageId: string
+): Promise<EmailDeliveryRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(emailDeliveryRecords)
+    .where(and(eq(emailDeliveryRecords.providerKey, providerKey), eq(emailDeliveryRecords.providerMessageId, providerMessageId)))
+    .limit(1);
+
+  return row ? (dateRows(["eventAt"])(row) as EmailDeliveryRecord) : undefined;
+}
+
+export async function loadDeliveryEventContext(db: MarketingDb, providerKey: string, providerMessageId: string) {
+  const original = await findDeliveryRecordByProviderMessage(db, providerKey, providerMessageId);
+
+  if (!original) {
+    return undefined;
+  }
+
+  const [contact] = original.contactId
+    ? await db.select().from(audienceContacts).where(eq(audienceContacts.id, original.contactId))
+    : [];
+  const suppressions = original.contactId
+    ? ((await db.select().from(audienceSuppressions).where(eq(audienceSuppressions.contactId, original.contactId))).map(
+        dateRows(["suppressedAt"])
+      ) as AudienceSuppression[])
+    : [];
+
+  return { original, contacts: contact ? [contact] : [], suppressions };
+}
+
+export async function insertEmailDeliveryRecordRows(db: MarketingDb, rows: EmailDeliveryRecord[]) {
+  if (rows.length === 0) {
+    return;
+  }
+
+  await db
+    .insert(emailDeliveryRecords)
+    .values(
+      rows.map((row) => ({
+        ...row,
+        eventAt: row.eventAt ? new Date(row.eventAt) : null
+      }))
+    )
+    .onConflictDoNothing();
+}
+
+export async function loadContactForUnsubscribe(db: MarketingDb, contactId: string) {
+  const [contact] = await db.select().from(audienceContacts).where(eq(audienceContacts.id, contactId));
+
+  if (!contact) {
+    return undefined;
+  }
+
+  const suppressionRows = await db.select().from(audienceSuppressions).where(eq(audienceSuppressions.contactId, contactId));
+
+  return {
+    contact,
+    suppressions: suppressionRows.map(dateRows(["suppressedAt"])) as AudienceSuppression[]
+  };
+}
+
+export async function insertSuppressionRecord(db: MarketingDb, suppression: AudienceSuppression) {
+  await db
+    .insert(audienceSuppressions)
+    .values({
+      ...suppression,
+      suppressedAt: new Date(suppression.suppressedAt)
+    })
+    .onConflictDoNothing();
+}
+
+export async function updateContactEmailStatusRecord(db: MarketingDb, contactId: string, emailStatus: string) {
+  await db.update(audienceContacts).set({ emailStatus }).where(eq(audienceContacts.id, contactId));
 }
