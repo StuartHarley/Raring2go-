@@ -28,6 +28,7 @@ import {
 } from "@raring2go/db";
 import { and, eq, sql } from "drizzle-orm";
 import type {
+  AudienceSegment,
   AudienceSuppression,
   EmailCampaign,
   EmailCampaignVersion,
@@ -142,6 +143,29 @@ function dateRows(keys: string[]) {
       keys.includes(key) && value instanceof Date ? value.toISOString() : value
     ])
   );
+}
+
+export async function insertSegmentRecord(db: MarketingDb, segment: AudienceSegment) {
+  await db.insert(audienceSegments).values({
+    id: segment.id,
+    territoryId: segment.territoryId ?? null,
+    key: segment.key,
+    name: segment.name,
+    segmentType: segment.segmentType,
+    definition: segment.definition,
+    status: segment.status
+  });
+}
+
+export async function updateSegmentRecord(db: MarketingDb, segment: AudienceSegment) {
+  await db
+    .update(audienceSegments)
+    .set({
+      name: segment.name,
+      definition: segment.definition,
+      status: segment.status
+    })
+    .where(eq(audienceSegments.id, segment.id));
 }
 
 export async function insertEmailCampaignGraph(

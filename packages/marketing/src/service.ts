@@ -2,6 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { auditActions } from "@raring2go/audit";
 import { requirePermission, type PermissionData } from "@raring2go/permissions";
 import { marketingCapabilities, type MarketingCapability } from "./permissions";
+import { evaluateSegmentRules, normalizeSegmentDefinition, validateSegmentDefinition } from "./segment-rules";
 import type {
   AudienceConsentEvent,
   AudienceContact,
@@ -578,9 +579,98 @@ export function previewSegment(
   if (segment.territoryId) {
     ensureContextCanAccessTerritory(context, segment.territoryId);
   }
-  const visibleTerritoryIds = visibleTerritories(context, data);
   const audience = listAudienceContacts(context, permissions, data).contacts;
-  return audience.filter((view) => contactMatchesSegment(view, segment, visibleTerritoryIds));
+  return audience.filter((view) => contactMatchesSegment(view, segment));
+}
+
+/**
+ * Live preview for the segment-builder UI: evaluates an in-progress rule
+ * definition that may not be persisted yet, so — unlike previewSegment —
+ * it doesn't require an existing segment row.
+ */
+export function previewSegmentDefinition(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData,
+  input: { territoryId?: string | null; definition: Record<string, unknown> }
+): AudienceContactView[] {
+  requireMarketingPermission(context, permissions, "segmentView");
+  if (input.territoryId) {
+    ensureContextCanAccessTerritory(context, input.territoryId);
+  }
+  const audience = listAudienceContacts(context, permissions, data).contacts;
+  const root = normalizeSegmentDefinition(input.definition, input.territoryId);
+  return audience.filter((view) => !view.suppressions.some((suppression) => suppression.active) && evaluateSegmentRules(view, root));
+}
+
+export async function createSegment(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  input: { id: string; key: string; name: string; territoryId?: string | null; definition: unknown }
+): Promise<AudienceSegment> {
+  requireMarketingPermission(context, permissions, "segmentManage");
+  if (input.territoryId) {
+    ensureContextCanAccessTerritory(context, input.territoryId);
+  }
+  if (data.segments.some((segment) => segment.key === input.key && !segment.deletedAt)) {
+    throw new Error("A segment with this key already exists.");
+  }
+  const root = validateSegmentDefinition(input.definition);
+  const segment: AudienceSegment = {
+    id: input.id,
+    territoryId: input.territoryId ?? null,
+    key: input.key,
+    name: input.name,
+    segmentType: "dynamic",
+    definition: { version: 1, root },
+    status: "active"
+  };
+  data.segments.push(segment);
+  await audit.record(marketingAuditEvent(
+    context,
+    auditActions.marketingSegmentCreate,
+    "audience_segment",
+    segment.id,
+    { key: segment.key, territoryId: segment.territoryId },
+    segment.territoryId
+  ));
+  return segment;
+}
+
+export async function updateSegment(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  segmentId: string,
+  input: { name?: string; definition?: unknown }
+): Promise<AudienceSegment> {
+  requireMarketingPermission(context, permissions, "segmentManage");
+  const segment = requireSegment(data, segmentId);
+  if (segment.territoryId) {
+    ensureContextCanAccessTerritory(context, segment.territoryId);
+  }
+  if (segment.segmentType !== "dynamic") {
+    throw new Error("Only dynamic segments can be edited here.");
+  }
+  if (input.name) {
+    segment.name = input.name;
+  }
+  if (input.definition !== undefined) {
+    const root = validateSegmentDefinition(input.definition);
+    segment.definition = { version: 1, root };
+  }
+  await audit.record(marketingAuditEvent(
+    context,
+    auditActions.marketingSegmentUpdate,
+    "audience_segment",
+    segment.id,
+    { key: segment.key },
+    segment.territoryId
+  ));
+  return segment;
 }
 
 export async function createEmailTemplate(
@@ -1279,22 +1369,14 @@ export async function executeJourneyStep(
   return execution;
 }
 
-function contactMatchesSegment(
-  view: AudienceContactView,
-  segment: AudienceSegment,
-  visibleTerritoryIds: Set<string> | null
-) {
+function contactMatchesSegment(view: AudienceContactView, segment: AudienceSegment) {
   if (view.suppressions.some((suppression) => suppression.active)) {
     return false;
   }
   if (segment.segmentType === "static") {
     return view.contact.metadata.segmentIds instanceof Array && view.contact.metadata.segmentIds.includes(segment.id);
   }
-  const territoryId = typeof segment.definition.territoryId === "string" ? segment.definition.territoryId : segment.territoryId;
-  if (territoryId && (visibleTerritoryIds == null || visibleTerritoryIds.has(territoryId))) {
-    return view.subscriptions.some((subscription) => subscription.territoryId === territoryId && subscription.status === "subscribed");
-  }
-  return view.subscriptions.some((subscription) => subscription.status === "subscribed");
+  return evaluateSegmentRules(view, normalizeSegmentDefinition(segment.definition, segment.territoryId));
 }
 
 function assembleContactView(data: MarketingData, contact: AudienceContact, visibleTerritoryIds: Set<string> | null): AudienceContactView {
@@ -1304,7 +1386,8 @@ function assembleContactView(data: MarketingData, contact: AudienceContact, visi
     subscriptions: data.subscriptions.filter((subscription) => subscription.contactId === contact.id && !subscription.deletedAt && territoryFilter(subscription.territoryId)),
     consentEvents: data.consentEvents.filter((event) => event.contactId === contact.id && territoryFilter(event.territoryId)),
     suppressions: data.suppressions.filter((suppression) => suppression.contactId === contact.id && suppression.active && territoryFilter(suppression.territoryId)),
-    activity: data.activityEvents.filter((event) => event.contactId === contact.id && !event.deletedAt && territoryFilter(event.territoryId))
+    activity: data.activityEvents.filter((event) => event.contactId === contact.id && !event.deletedAt && territoryFilter(event.territoryId)),
+    profile: data.preferenceProfiles.find((profile) => profile.contactId === contact.id && !profile.deletedAt)
   };
 }
 

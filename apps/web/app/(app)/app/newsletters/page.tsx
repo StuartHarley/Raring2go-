@@ -40,6 +40,8 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
         </p>
         <p>
           <a href="/app/newsletters/factory">Open HQ newsletter factory</a>
+          {" · "}
+          <a href="/app/audience/segments">Build an audience segment</a>
         </p>
         <div className="franchise-metrics">
           <article>

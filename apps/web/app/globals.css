@@ -1067,6 +1067,131 @@ p {
   font-weight: 800;
 }
 
+.segment-builder-field {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.segment-builder-form {
+  display: grid;
+}
+
+.segment-builder {
+  display: grid;
+  gap: 10px;
+  font-weight: 400;
+}
+
+.segment-builder-territory {
+  display: grid;
+  gap: 4px;
+  font-weight: 800;
+  max-width: 320px;
+}
+
+.segment-builder-territory select {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.segment-builder-territory-fixed {
+  color: var(--r2-text-muted);
+  font-weight: 800;
+  margin: 0;
+}
+
+.segment-builder-group {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface);
+  padding: 10px;
+}
+
+.segment-builder-nested-group {
+  display: grid;
+  gap: 6px;
+  border-left: 3px solid var(--r2-brand-purple);
+  padding-left: 10px;
+}
+
+.segment-builder-nested-group > button {
+  justify-self: start;
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface);
+  font: inherit;
+  padding: 4px 10px;
+}
+
+.segment-builder-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.segment-builder-group-header select {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.segment-builder-condition {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.segment-builder-condition select,
+.segment-builder-condition input {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  font: inherit;
+  padding: 6px 8px;
+}
+
+.segment-builder-condition input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.segment-builder-condition button {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface-subtle);
+  font: inherit;
+  padding: 4px 10px;
+}
+
+.segment-builder-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.segment-builder-add-row button {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface);
+  font: inherit;
+  padding: 6px 10px;
+}
+
+.segment-builder-preview {
+  font-weight: 800;
+}
+
+.segment-builder-preview-loading {
+  color: var(--r2-text-muted);
+  font-weight: 400;
+}
+
 .block-editor-richtext-toolbar {
   display: flex;
   gap: 4px;

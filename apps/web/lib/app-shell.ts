@@ -170,6 +170,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "marketing"
   },
   {
+    id: "segments",
+    label: "Segments",
+    href: "/app/audience/segments",
+    capability: {
+      module: "marketing.segment",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "marketing"
+  },
+  {
     id: "journeys",
     label: "Journeys",
     href: "/app/journeys",
@@ -451,6 +462,12 @@ const permissionData: PermissionData = {
     },
     {
       roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.segmentView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
       permissionId: fixtureIds.permissions.newsletterFactoryView,
       scope: "network",
       constraints: {}
@@ -482,6 +499,12 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.emailView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.segmentView,
       scope: "own_territory",
       constraints: {}
     },

@@ -6,6 +6,7 @@ import {
   createNetworkNewsletterMaster,
   createNewsletterEditionCampaign,
   createRecipientSnapshot,
+  createSegment,
   enqueueEmailSend,
   generateTerritoryNewsletterEditions,
   insertEmailCampaignGraph,
@@ -13,6 +14,7 @@ import {
   insertEmailSendJobRecord,
   insertNetworkNewsletterMasterRecord,
   insertNewsletterFactoryRunRecord,
+  insertSegmentRecord,
   listAudienceContacts,
   listEmailCampaigns,
   getPreferenceCentre,
@@ -22,11 +24,15 @@ import {
   listNewsletterFactory,
   listSegments,
   loadMarketingData,
+  previewSegment,
+  previewSegmentDefinition,
   recordTerritoryNewsletterOverride,
   scheduleEmailCampaign,
   updateEmailCampaignRecord,
   updateEmailCampaignVersionRecord,
   updateNetworkNewsletterMasterRecord,
+  updateSegment,
+  updateSegmentRecord,
   upsertTerritoryNewsletterEditionRecord
 } from "@raring2go/marketing";
 import { recordAuditEvent } from "@raring2go/audit";
@@ -54,6 +60,7 @@ export const marketingPermissionData: PermissionData = {
   rolePermissions: [
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.audienceView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.segmentView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.segmentManage, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailCreate, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailApprove, "network"),
@@ -67,6 +74,7 @@ export const marketingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.marketingAnalyticsView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.audienceView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.segmentView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.segmentManage, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailCreate, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailApprove, "own_territory"),
@@ -112,6 +120,71 @@ export async function readSegments(context: MarketingActorContext) {
 
   try {
     return listSegments(context, marketingPermissionData, await loadMarketingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readSegmentsWithAudienceCounts(context: MarketingActorContext) {
+  const { db, sql } = createDb();
+
+  try {
+    const data = await loadMarketingData(db);
+    const segments = listSegments(context, marketingPermissionData, data);
+    return segments.map((segment) => ({
+      segment,
+      recipientCount: previewSegment(context, marketingPermissionData, data, segment.id).length
+    }));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function previewSegmentAudience(
+  context: MarketingActorContext,
+  input: { territoryId?: string | null; definition: Record<string, unknown> }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return previewSegmentDefinition(context, marketingPermissionData, await loadMarketingData(db), input);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function createAudienceSegment(
+  context: MarketingActorContext,
+  input: { key: string; name: string; territoryId?: string | null; definition: unknown }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const segment = await createSegment(context, marketingPermissionData, auditFor(tx), data, { id: randomUUID(), ...input });
+      await insertSegmentRecord(tx, segment);
+      return segment;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function updateAudienceSegment(
+  context: MarketingActorContext,
+  segmentId: string,
+  input: { name?: string; definition?: unknown }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const segment = await updateSegment(context, marketingPermissionData, auditFor(tx), data, segmentId, input);
+      await updateSegmentRecord(tx, segment);
+      return segment;
+    });
   } finally {
     await sql.end();
   }
