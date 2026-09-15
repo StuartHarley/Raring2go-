@@ -156,7 +156,8 @@ export const fixtureIds = {
     royaltyStatementGenerate: "00000000-0000-4000-8000-000000000536",
     royaltyStatementAdjust: "00000000-0000-4000-8000-000000000537",
     royaltyStatementSubmit: "00000000-0000-4000-8000-000000000538",
-    royaltyStatementApprove: "00000000-0000-4000-8000-000000000539"
+    royaltyStatementApprove: "00000000-0000-4000-8000-000000000539",
+    filesUpload: "00000000-0000-4000-8000-000000000540"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1272,6 +1273,12 @@ export const foundationSeed = {
       module: "finance.royalty_statement",
       action: "approve",
       description: "Approve a franchise royalty statement."
+    },
+    {
+      id: fixtureIds.permissions.filesUpload,
+      module: "files",
+      action: "upload",
+      description: "Upload a file to be attached to campaign or content."
     }
   ],
   advertisers: [
