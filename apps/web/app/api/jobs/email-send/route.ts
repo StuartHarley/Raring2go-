@@ -7,6 +7,9 @@ import {
   insertEmailDeliveryRecordRows,
   loadEmailSendJobBundle,
   nextEmailSendChunk,
+  normalizeContentSnapshot,
+  renderBlocksToHtml,
+  renderBlocksToText,
   updateEmailCampaignRecord
 } from "@raring2go/marketing";
 import { createEmailProviderFromEnv, createMicrosoftGraphEmailProvider, normalizeEmailAddress, sendEmailBatch } from "@raring2go/email";
@@ -67,7 +70,10 @@ async function processNextEmailSendJob(request: Request) {
       return NextResponse.json({ claimed: true, jobId: job.id, error: "provider_unavailable" }, { status: 502 });
     }
 
-    const messages = recipients.map((recipient) => buildMessage(campaign, version, recipient));
+    const snapshotContent = normalizeContentSnapshot(version.contentSnapshot, campaign.title);
+    const html = renderBlocksToHtml(snapshotContent.blocks);
+    const text = renderBlocksToText(snapshotContent.blocks);
+    const messages = recipients.map((recipient) => buildMessage(campaign, version, recipient, html, text));
 
     let results;
 
@@ -162,7 +168,9 @@ function retryDelayMs(attempts: number) {
 function buildMessage(
   campaign: EmailCampaign,
   version: EmailCampaignVersion,
-  recipient: Record<string, unknown>
+  recipient: Record<string, unknown>,
+  html: string,
+  text: string
 ): EmailMessage {
   const email = normalizeEmailAddress(String(recipient.emailNormalised ?? ""));
   const contactId = recipientContactId(recipient);
@@ -174,8 +182,8 @@ function buildMessage(
     to: [{ email }],
     from: { email: process.env.EMAIL_FROM ?? "no-reply@raring2go.local", name: campaign.title },
     subject: version.subject,
-    text: renderPlainText(campaign, version),
-    html: renderHtml(campaign, version),
+    text,
+    html,
     headers: contactId ? listUnsubscribeHeaders(contactId, campaign.id) : undefined,
     metadata: { campaignId: campaign.id, contactId: contactId ?? "" }
   };
@@ -184,36 +192,6 @@ function buildMessage(
 function recipientContactId(recipient: Record<string, unknown> | undefined) {
   const value = recipient?.contactId;
   return typeof value === "string" && value ? value : null;
-}
-
-function renderPlainText(campaign: EmailCampaign, version: EmailCampaignVersion) {
-  const content = version.contentSnapshot as { text?: unknown; localOverrides?: Record<string, unknown> };
-
-  if (typeof content.text === "string" && content.text.trim()) {
-    return content.text;
-  }
-
-  const localPicks = content.localOverrides?.["local-picks"];
-  const lines = Array.isArray(localPicks)
-    ? localPicks
-        .map((pick) => (pick && typeof pick === "object" && "title" in pick ? String((pick as { title: unknown }).title) : null))
-        .filter((title): title is string => Boolean(title))
-    : [];
-
-  return [campaign.title, "", ...lines].join("\n").trim() || campaign.title;
-}
-
-function renderHtml(campaign: EmailCampaign, version: EmailCampaignVersion) {
-  const text = renderPlainText(campaign, version);
-  return `<p>${escapeHtml(text).replaceAll("\n", "<br />")}</p>`;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
 
 function listUnsubscribeHeaders(contactId: string, campaignId: string) {
