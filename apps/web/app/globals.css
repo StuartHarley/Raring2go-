@@ -1055,6 +1055,18 @@ p {
   margin: 0;
 }
 
+.block-editor-image-upload {
+  display: grid;
+  gap: 4px;
+  font-weight: 800;
+}
+
+.block-editor-error {
+  color: var(--r2-status-danger);
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+
 .block-editor-richtext-toolbar {
   display: flex;
   gap: 4px;

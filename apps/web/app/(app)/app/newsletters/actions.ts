@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { renderBlocksToText, sanitizeImportedHtml, sanitizeRichTextHtml, validateBlocks } from "@raring2go/marketing";
 import type { Block } from "@raring2go/marketing";
+import { assertFileIsAttachable } from "../../../../lib/files-runtime";
 import {
   addNewsletterEditionOverride,
   approveCampaignVersion,
@@ -48,6 +49,15 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
 
   if (blocks.length === 0 || !renderBlocksToText(blocks).trim()) {
     throw new Error("Write the newsletter content before composing a campaign.");
+  }
+
+  // A block's fileId is client-supplied JSON — re-verify server-side that the
+  // referenced upload actually exists, passed its virus scan, and is scoped to
+  // this composer's organisation/territory before it can reach a real campaign.
+  for (const block of blocks) {
+    if (block.type === "image" && block.fileId) {
+      await assertFileIsAttachable(context, block.fileId);
+    }
   }
 
   const sendChoice = String(formData.get("sendChoice") || "postmark");

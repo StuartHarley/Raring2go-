@@ -215,6 +215,70 @@ function blockLabel(block: Block) {
   }
 }
 
+type UploadResponse = { fileId: string; src: string; fileName: string; virusScanStatus: string; error?: string };
+
+function ImageBlockFields({ block, onChange }: { block: ImageBlock; onChange: (patch: Partial<Block>) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/files/upload", { method: "POST", body: formData });
+      const payload = (await response.json()) as UploadResponse;
+
+      if (!response.ok) {
+        setError(payload.error ?? "Upload failed.");
+        return;
+      }
+
+      onChange({ src: payload.src, fileId: payload.fileId, alt: block.alt || payload.fileName });
+    } catch {
+      setError("Upload failed. Check your connection and try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="block-editor-fields">
+      <label className="block-editor-image-upload">
+        Upload an image
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleUpload} disabled={uploading} />
+      </label>
+      {uploading ? <span className="block-editor-import-note">Uploading…</span> : null}
+      {error ? <span className="block-editor-error">{error}</span> : null}
+      <input
+        type="url"
+        value={block.src}
+        placeholder="Or paste an image URL (https://...)"
+        onChange={(event) => onChange({ src: event.target.value, fileId: null })}
+      />
+      <input
+        type="text"
+        value={block.alt}
+        placeholder="Alt text"
+        onChange={(event) => onChange({ alt: event.target.value })}
+      />
+      <input
+        type="url"
+        value={block.href ?? ""}
+        placeholder="Link when clicked (optional)"
+        onChange={(event) => onChange({ href: event.target.value || null })}
+      />
+      {block.fileId ? <p className="block-editor-import-note">Uploaded file attached.</p> : null}
+    </div>
+  );
+}
+
 function BlockFields({ block, onChange }: { block: Block; onChange: (patch: Partial<Block>) => void }) {
   switch (block.type) {
     case "heading":
@@ -235,28 +299,7 @@ function BlockFields({ block, onChange }: { block: Block; onChange: (patch: Part
     case "text":
       return <TextBlockEditor block={block} onChange={onChange} />;
     case "image":
-      return (
-        <div className="block-editor-fields">
-          <input
-            type="url"
-            value={block.src}
-            placeholder="Image URL (https://...)"
-            onChange={(event) => onChange({ src: event.target.value })}
-          />
-          <input
-            type="text"
-            value={block.alt}
-            placeholder="Alt text"
-            onChange={(event) => onChange({ alt: event.target.value })}
-          />
-          <input
-            type="url"
-            value={block.href ?? ""}
-            placeholder="Link when clicked (optional)"
-            onChange={(event) => onChange({ href: event.target.value || null })}
-          />
-        </div>
-      );
+      return <ImageBlockFields block={block} onChange={onChange} />;
     case "button":
       return (
         <div className="block-editor-fields">

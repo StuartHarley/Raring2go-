@@ -59,6 +59,9 @@ importers:
       '@raring2go/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@raring2go/files':
+        specifier: workspace:*
+        version: link:../../packages/files
       '@raring2go/finance':
         specifier: workspace:*
         version: link:../../packages/finance
@@ -191,6 +194,24 @@ importers:
         version: 4.23.12
 
   packages/email: {}
+
+  packages/files:
+    dependencies:
+      '@raring2go/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+      '@raring2go/storage':
+        specifier: workspace:*
+        version: link:../storage
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
 
   packages/finance:
     dependencies:
