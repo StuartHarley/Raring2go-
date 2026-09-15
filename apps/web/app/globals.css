@@ -1342,6 +1342,26 @@ p {
   margin: 0;
 }
 
+.block-editor-draft-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  border: 1px solid var(--r2-status-warning);
+  border-radius: var(--r2-radius-md);
+  background: #fff8eb;
+  padding: 10px 14px;
+  font-size: 0.875rem;
+}
+
+.block-editor-draft-banner button {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface);
+  font: inherit;
+  padding: 4px 10px;
+}
+
 .block-editor-preview {
   border: 1px dashed var(--r2-border-default);
   border-radius: var(--r2-radius-sm);
