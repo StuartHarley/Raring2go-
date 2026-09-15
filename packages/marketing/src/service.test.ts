@@ -1257,8 +1257,6 @@ function seededData(): MarketingData {
     name: "Standard newsletter",
     templateType: "newsletter",
     status: "approved",
-    blocks: [],
-    requiredBlocks: ["unsubscribe"],
     metadata: {}
   });
   return data;

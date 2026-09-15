@@ -260,6 +260,13 @@
       "when": 1789475505207,
       "tag": "0036_yummy_crystal",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789490508319,
+      "tag": "0037_conscious_inhumans",
+      "breakpoints": true
     }
   ]
 }

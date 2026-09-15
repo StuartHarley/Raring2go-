@@ -275,7 +275,7 @@ describe("foundation schema", () => {
   });
 
   it("models native email campaigns with provider-neutral delivery records", () => {
-    expect(emailTemplates.requiredBlocks.name).toBe("required_blocks");
+    expect(emailTemplates.templateType.name).toBe("template_type");
     expect(emailCampaigns.segmentId.name).toBe("segment_id");
     expect(emailCampaigns.status.name).toBe("status");
     expect(emailCampaignVersions.contentSnapshot.name).toBe("content_snapshot");

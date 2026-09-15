@@ -1122,8 +1122,6 @@ export async function seedDatabase(databaseUrl?: string) {
 
     await db.insert(emailTemplates).values(foundationSeed.emailTemplates.map((template) => ({
       ...template,
-      blocks: [...template.blocks],
-      requiredBlocks: [...template.requiredBlocks],
       metadata: { ...template.metadata }
     }))).onConflictDoUpdate({
       target: emailTemplates.id,
@@ -1132,8 +1130,6 @@ export async function seedDatabase(databaseUrl?: string) {
         name: sql`excluded.name`,
         templateType: sql`excluded.template_type`,
         status: sql`excluded.status`,
-        blocks: sql`excluded.blocks`,
-        requiredBlocks: sql`excluded.required_blocks`,
         metadata: sql`excluded.metadata`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`

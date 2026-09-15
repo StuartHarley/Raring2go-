@@ -224,8 +224,6 @@ export const emailTemplates = pgTable(
     name: text("name").notNull(),
     templateType: text("template_type").notNull().default("newsletter"),
     status: text("status").notNull().default("draft"),
-    blocks: jsonb("blocks").$type<Array<Record<string, unknown>>>().notNull().default([]),
-    requiredBlocks: jsonb("required_blocks").$type<string[]>().notNull().default([]),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     ...timestamps,
     ...softDelete
