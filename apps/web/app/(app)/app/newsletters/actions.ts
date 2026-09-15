@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { renderBlocksToText, sanitizeRichTextHtml, validateBlocks } from "@raring2go/marketing";
+import { renderBlocksToText, sanitizeImportedHtml, sanitizeRichTextHtml, validateBlocks } from "@raring2go/marketing";
 import type { Block } from "@raring2go/marketing";
 import {
   addNewsletterEditionOverride,
@@ -35,12 +35,16 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
   }
 
   // The trust boundary: blocksJson is client-authored JSON (the block editor's
-  // serialized state) and must never be accepted as-is. validateBlocks rejects
-  // unknown block types/shapes and unsafe URL schemes; every TextBlock's rich-text
-  // HTML is then sanitized server-side regardless of what the client already did.
-  const blocks: Block[] = validateBlocks(parsedBlocks).map((block) =>
-    block.type === "text" ? { ...block, html: sanitizeRichTextHtml(block.html) } : block
-  );
+  // serialized state, including anything pasted/uploaded through "Import HTML")
+  // and must never be accepted as-is. validateBlocks rejects unknown block
+  // types/shapes and unsafe URL schemes; every TextBlock's rich-text HTML and
+  // every imported RawHtmlBlock's HTML is then sanitized server-side regardless
+  // of what the client already did.
+  const blocks: Block[] = validateBlocks(parsedBlocks).map((block) => {
+    if (block.type === "text") return { ...block, html: sanitizeRichTextHtml(block.html) };
+    if (block.type === "raw-html") return { ...block, html: sanitizeImportedHtml(block.html) };
+    return block;
+  });
 
   if (blocks.length === 0 || !renderBlocksToText(blocks).trim()) {
     throw new Error("Write the newsletter content before composing a campaign.");

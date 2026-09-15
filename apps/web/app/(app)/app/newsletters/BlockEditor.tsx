@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -20,7 +20,16 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { renderBlocksToHtml, type Block, type ButtonBlock, type DividerBlock, type HeadingBlock, type ImageBlock, type TextBlock } from "@raring2go/marketing/blocks";
+import {
+  renderBlocksToHtml,
+  type Block,
+  type ButtonBlock,
+  type DividerBlock,
+  type HeadingBlock,
+  type ImageBlock,
+  type RawHtmlBlock,
+  type TextBlock
+} from "@raring2go/marketing/blocks";
 
 function newHeadingBlock(): HeadingBlock {
   return { id: crypto.randomUUID(), type: "heading", text: "", level: 1 };
@@ -40,6 +49,8 @@ function newDividerBlock(): DividerBlock {
 
 export function BlockEditor() {
   const [blocks, setBlocks] = useState<Block[]>(() => [newTextBlock()]);
+  const [importHtml, setImportHtml] = useState("");
+  const [importSourceLabel, setImportSourceLabel] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -57,6 +68,24 @@ export function BlockEditor() {
 
   function addBlock(factory: () => Block) {
     setBlocks((current) => [...current, factory()]);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImportHtml(await file.text());
+    setImportSourceLabel(file.name);
+  }
+
+  function addImportedBlock() {
+    if (!importHtml.trim()) return;
+    // Deliberately unsanitized here — the server action is the real trust
+    // boundary and re-sanitizes every RawHtmlBlock's html before it is stored.
+    const block: RawHtmlBlock = { id: crypto.randomUUID(), type: "raw-html", html: importHtml, sourceLabel: importSourceLabel };
+    setBlocks((current) => [...current, block]);
+    setImportHtml("");
+    setImportSourceLabel(null);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -99,6 +128,35 @@ export function BlockEditor() {
         <button type="button" onClick={() => addBlock(newButtonBlock)}>+ Button</button>
         <button type="button" onClick={() => addBlock(newDividerBlock)}>+ Divider</button>
       </div>
+
+      <details className="block-editor-import">
+        <summary>Import HTML</summary>
+        <div className="block-editor-import-fields">
+          <label>
+            Upload an HTML file
+            <input type="file" accept=".html,.htm,.txt" onChange={handleImportFile} />
+          </label>
+          <label>
+            Or paste HTML
+            <textarea
+              value={importHtml}
+              onChange={(event) => {
+                setImportHtml(event.target.value);
+                setImportSourceLabel(null);
+              }}
+              rows={4}
+              placeholder="Paste an existing newsletter's HTML here"
+            />
+          </label>
+          <button type="button" onClick={addImportedBlock} disabled={!importHtml.trim()}>
+            Add imported block
+          </button>
+          <p className="block-editor-import-note">
+            Imported HTML is added as its own block and re-sanitized on the server — scripts, event handlers and unsafe
+            links are always stripped, regardless of the source.
+          </p>
+        </div>
+      </details>
 
       <details className="block-editor-preview">
         <summary>Preview email HTML</summary>
