@@ -326,6 +326,33 @@ p {
   max-width: 920px;
 }
 
+.franchise-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  margin-top: 16px;
+}
+
+.franchise-metrics article {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface-raised);
+  padding: 16px;
+}
+
+.franchise-metrics span {
+  color: var(--r2-text-muted);
+  font-size: 0.83rem;
+}
+
+.franchise-metrics strong {
+  display: block;
+  color: var(--r2-text-primary);
+  font-size: 2rem;
+  line-height: 1.1;
+  margin: 6px 0;
+}
+
 .franchise-list {
   display: grid;
   gap: 10px;
@@ -990,6 +1017,10 @@ p {
   font-weight: 400;
 }
 
+.block-editor button {
+  color: var(--r2-text-primary);
+}
+
 .block-editor-list {
   display: grid;
   gap: 10px;
@@ -1081,6 +1112,10 @@ p {
   display: grid;
   gap: 10px;
   font-weight: 400;
+}
+
+.segment-builder button {
+  color: var(--r2-text-primary);
 }
 
 .segment-builder-territory {
