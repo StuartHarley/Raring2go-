@@ -1,5 +1,6 @@
 import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
+import { providerConnections } from "./integrations";
 import { users } from "./identity";
 import { territories } from "./tenancy";
 
@@ -248,6 +249,8 @@ export const emailCampaigns = pgTable(
     title: text("title").notNull(),
     subject: text("subject").notNull(),
     preheader: text("preheader"),
+    sendProvider: text("send_provider").notNull().default("postmark"),
+    sendConnectionId: uuid("send_connection_id").references(() => providerConnections.id),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     sentAt: timestamp("sent_at", { withTimezone: true }),
@@ -344,6 +347,7 @@ export const emailSendJobs = pgTable(
     campaignVersionId: uuid("campaign_version_id").notNull().references(() => emailCampaignVersions.id),
     recipientSnapshotId: uuid("recipient_snapshot_id").notNull().references(() => emailRecipientSnapshots.id),
     sendProvider: text("send_provider").notNull().default("postmark"),
+    sendConnectionId: uuid("send_connection_id").references(() => providerConnections.id),
     status: text("status").notNull().default("queued"),
     cursor: integer("cursor").notNull().default(0),
     batchSize: integer("batch_size").notNull().default(100),

@@ -1,4 +1,5 @@
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { listConnectionCards } from "../../../../lib/integrations-runtime";
 import { readEmailCampaignOverview, readSegments } from "../../../../lib/marketing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
@@ -24,7 +25,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, email, composableSegments } = result;
+  const { context, email, composableSegments, outlookMailboxes } = result;
 
   return (
     <AppShell request={request}>
@@ -93,6 +94,23 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
               Body
               <textarea name="body" rows={6} required />
             </label>
+            <label>
+              Send via
+              <select name="sendChoice" defaultValue="postmark">
+                <option value="postmark">Network email (Postmark)</option>
+                {outlookMailboxes.map((mailbox) => (
+                  <option key={mailbox.id} value={`microsoft:${mailbox.id}`}>
+                    My Outlook mailbox ({mailbox.externalAccountDisplayName})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {outlookMailboxes.length > 0 ? (
+              <p>
+                Sending via Outlook is limited to small local sends and doesn&apos;t report delivery, bounce or open
+                tracking. Use the network provider for national or large-audience campaigns.
+              </p>
+            ) : null}
             <button type="submit">Create draft campaign</button>
           </form>
         )}
@@ -118,6 +136,9 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                   </strong>
                   <span>{view.campaign.status} - {view.latestSnapshot?.recipientCount ?? 0} recipients</span>
                   <span>{view.deliveryCount} delivery events</span>
+                  {view.campaign.sendProvider === "microsoft" ? (
+                    <span>Sent via Outlook - delivery, bounce and open tracking is not available for this campaign</span>
+                  ) : null}
                   {!canAct ? <span>Managed by HQ</span> : null}
                   {canAct && view.campaign.status === "draft" && view.latestVersion ? (
                     <form action={approveCampaignAction.bind(null, context, view.campaign.id, view.latestVersion.id)}>
@@ -170,15 +191,19 @@ async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSea
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
     };
-    const [email, segments] = await Promise.all([
+    const [email, segments, outlookConnections] = await Promise.all([
       readEmailCampaignOverview(context),
-      readSegments(context).catch(() => [] as AudienceSegment[])
+      readSegments(context).catch(() => [] as AudienceSegment[]),
+      listConnectionCards(request, "microsoft", "outlook_mailbox")
+        .then((result) => result.connections)
+        .catch(() => [] as Awaited<ReturnType<typeof listConnectionCards>>["connections"])
     ]);
     const composableSegments = context.territoryId
       ? segments.filter((segment) => segment.territoryId === context.territoryId)
       : segments;
+    const outlookMailboxes = outlookConnections.filter((connection) => connection.status === "connected");
 
-    return { context, email, composableSegments };
+    return { context, email, composableSegments, outlookMailboxes };
   } catch (error) {
     return { error };
   }

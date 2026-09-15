@@ -23,6 +23,7 @@ import {
   listMarketingAnalytics,
   listMarketingCommandCentre,
   listNewsletterFactory,
+  MICROSOFT_SEND_RECIPIENT_CAP,
   nextEmailSendChunk,
   pauseJourney,
   previewSegment,
@@ -329,6 +330,7 @@ describe("marketing audience foundation", () => {
       title: "Weekend ideas",
       subject: "Weekend ideas",
       preheader: "Things to do near you",
+      sendProvider: "postmark",
       scheduledAt: null,
       approvedAt: null,
       sentAt: null,
@@ -404,6 +406,7 @@ describe("marketing audience foundation", () => {
       title: "Half term",
       subject: "Half term",
       preheader: null,
+      sendProvider: "postmark",
       scheduledAt: null,
       approvedAt: null,
       sentAt: null,
@@ -456,6 +459,105 @@ describe("marketing audience foundation", () => {
     expect(view?.activeJob?.id).toBe("job_1");
   });
 
+  it("rejects creating a campaign set to send via Outlook without a connected mailbox", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await expect(
+      createEmailCampaign(localContext(), permissions, recorder, data, {
+        id: "campaign_outlook_missing_connection",
+        territoryId: ids.territories.own,
+        templateId: "template_1",
+        segmentId: ids.segment,
+        campaignType: "newsletter",
+        status: "draft",
+        title: "Outlook draft",
+        subject: "Outlook draft",
+        preheader: null,
+        sendProvider: "microsoft",
+        sendConnectionId: null,
+        scheduledAt: null,
+        approvedAt: null,
+        sentAt: null,
+        metadata: {}
+      }, {
+        id: "campaign_outlook_missing_connection_v1",
+        campaignId: "campaign_outlook_missing_connection",
+        versionNumber: 1,
+        status: "draft",
+        subject: "Outlook draft",
+        preheader: null,
+        contentSnapshot: {},
+        createdByUserId: ids.users.local,
+        approvedByUserId: null,
+        approvedAt: null
+      })
+    ).rejects.toThrow("A connected Outlook mailbox is required");
+  });
+
+  it("enforces the Outlook recipient cap and otherwise queues a Microsoft-provider send job", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "campaign_outlook",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Outlook local send",
+      subject: "Outlook local send",
+      preheader: null,
+      sendProvider: "microsoft",
+      sendConnectionId: "connection_1",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "campaign_outlook_v1",
+      campaignId: "campaign_outlook",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Outlook local send",
+      preheader: null,
+      contentSnapshot: {},
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder, data, "campaign_outlook", "campaign_outlook_v1", "2026-08-11T10:00:00.000Z");
+    await scheduleEmailCampaign(localContext(), permissions, recorder, data, "campaign_outlook", "2026-08-12T09:00:00.000Z");
+    data.emailRecipientSnapshots.push({
+      id: "snapshot_outlook",
+      campaignId: "campaign_outlook",
+      campaignVersionId: "campaign_outlook_v1",
+      segmentId: ids.segment,
+      status: "created",
+      generatedAt: "2026-08-11T10:05:00.000Z",
+      recipientCount: MICROSOFT_SEND_RECIPIENT_CAP + 1,
+      excludedCount: 0,
+      recipients: [],
+      exclusions: [],
+      idempotencyKey: "snapshot:campaign_outlook:v1"
+    });
+
+    expect(() =>
+      enqueueEmailSend(localContext(), permissions, data, { id: "job_outlook_over_cap", campaignId: "campaign_outlook" })
+    ).toThrow(`Outlook sending is limited to ${MICROSOFT_SEND_RECIPIENT_CAP} recipients`);
+
+    data.emailRecipientSnapshots[data.emailRecipientSnapshots.length - 1]!.recipientCount = 5;
+
+    const job = enqueueEmailSend(localContext(), permissions, data, { id: "job_outlook", campaignId: "campaign_outlook" });
+
+    expect(job).toMatchObject({
+      sendProvider: "microsoft",
+      sendConnectionId: "connection_1",
+      batchSize: 10
+    });
+  });
+
   it("computes the next send chunk and detects the final chunk", () => {
     const snapshot = {
       id: "snapshot_1",
@@ -475,7 +577,7 @@ describe("marketing audience foundation", () => {
       campaignId: "campaign_1",
       campaignVersionId: "campaign_version_1",
       recipientSnapshotId: "snapshot_1",
-      sendProvider: "postmark",
+      sendProvider: "postmark" as const,
       status: "processing" as const,
       cursor: 0,
       batchSize: 2,
@@ -811,6 +913,7 @@ describe("marketing audience foundation", () => {
         title: "National guide",
         subject: "National guide",
         preheader: null,
+        sendProvider: "postmark",
         scheduledAt: null,
         approvedAt: null,
         sentAt: null,
@@ -839,6 +942,7 @@ describe("marketing audience foundation", () => {
       title: "National guide",
       subject: "National guide",
       preheader: null,
+      sendProvider: "postmark",
       scheduledAt: null,
       approvedAt: null,
       sentAt: null,

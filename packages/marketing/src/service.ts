@@ -612,6 +612,9 @@ export async function createEmailCampaign(
   if (campaign.templateId && !data.emailTemplates.some((template) => template.id === campaign.templateId && !template.deletedAt)) {
     throw new Error("Email template was not found.");
   }
+  if (campaign.sendProvider === "microsoft" && !campaign.sendConnectionId) {
+    throw new Error("A connected Outlook mailbox is required to send via Outlook.");
+  }
   if (version.campaignId !== campaign.id || version.versionNumber !== 1) {
     throw new Error("Initial campaign version must belong to the campaign and start at version 1.");
   }
@@ -723,6 +726,8 @@ export async function scheduleEmailCampaign(
   return campaign;
 }
 
+export const MICROSOFT_SEND_RECIPIENT_CAP = 200;
+
 export function enqueueEmailSend(
   context: MarketingActorContext,
   permissions: PermissionData,
@@ -730,13 +735,16 @@ export function enqueueEmailSend(
   input: {
     id: string;
     campaignId: string;
-    sendProvider?: string;
     batchSize?: number;
   }
 ): EmailSendJob {
   requireMarketingPermission(context, permissions, "emailSchedule");
   const campaign = requireCampaign(data, input.campaignId);
   ensureCampaignAccess(context, campaign);
+
+  if (campaign.sendProvider === "microsoft" && !campaign.sendConnectionId) {
+    throw new Error("Campaign is set to send via Outlook but has no connected mailbox.");
+  }
 
   if (campaign.status !== "scheduled") {
     throw new Error("Only scheduled campaigns can be queued for sending.");
@@ -766,15 +774,22 @@ export function enqueueEmailSend(
     throw new Error("Campaign has no recipient snapshot to send.");
   }
 
+  if (campaign.sendProvider === "microsoft" && snapshot.recipientCount > MICROSOFT_SEND_RECIPIENT_CAP) {
+    throw new Error(
+      `Outlook sending is limited to ${MICROSOFT_SEND_RECIPIENT_CAP} recipients or fewer (this campaign has ${snapshot.recipientCount}). Use the network email provider for larger sends.`
+    );
+  }
+
   const job: EmailSendJob = {
     id: input.id,
     campaignId: campaign.id,
     campaignVersionId: version.id,
     recipientSnapshotId: snapshot.id,
-    sendProvider: input.sendProvider ?? "postmark",
+    sendProvider: campaign.sendProvider,
+    sendConnectionId: campaign.sendConnectionId ?? null,
     status: "queued",
     cursor: 0,
-    batchSize: input.batchSize ?? 100,
+    batchSize: input.batchSize ?? (campaign.sendProvider === "microsoft" ? 10 : 100),
     attempts: 0,
     maxAttempts: 5,
     nextAttemptAt: campaign.scheduledAt ?? new Date().toISOString()
@@ -1022,6 +1037,8 @@ export async function createNewsletterEditionCampaign(
     title: master.title,
     subject: input.subject,
     preheader: input.preheader ?? null,
+    sendProvider: "postmark",
+    sendConnectionId: null,
     scheduledAt: null,
     approvedAt: null,
     sentAt: null,

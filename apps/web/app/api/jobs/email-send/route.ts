@@ -9,11 +9,12 @@ import {
   nextEmailSendChunk,
   updateEmailCampaignRecord
 } from "@raring2go/marketing";
-import { createEmailProviderFromEnv, normalizeEmailAddress, sendEmailBatch } from "@raring2go/email";
-import type { EmailMessage } from "@raring2go/email";
-import type { EmailCampaign, EmailCampaignVersion } from "@raring2go/marketing";
+import { createEmailProviderFromEnv, createMicrosoftGraphEmailProvider, normalizeEmailAddress, sendEmailBatch } from "@raring2go/email";
+import type { EmailDeliveryProvider, EmailMessage } from "@raring2go/email";
+import type { EmailCampaign, EmailCampaignVersion, EmailSendJob } from "@raring2go/marketing";
 import { auditActions, recordAuditEvent } from "@raring2go/audit";
 import { createDb } from "@raring2go/db";
+import { getValidMicrosoftAccessToken } from "../../../../lib/integrations-runtime";
 
 const MAX_RETRY_DELAY_MS = 30 * 60 * 1000;
 
@@ -57,7 +58,15 @@ async function processNextEmailSendJob(request: Request) {
       return NextResponse.json({ claimed: true, jobId: job.id, sent: 0, completed: true });
     }
 
-    const provider = createEmailProviderFromEnv();
+    let provider: EmailDeliveryProvider;
+
+    try {
+      provider = await resolveSendProvider(job);
+    } catch (error) {
+      await handleJobFailure(db, job, error instanceof Error ? error.message : "Unable to resolve send provider");
+      return NextResponse.json({ claimed: true, jobId: job.id, error: "provider_unavailable" }, { status: 502 });
+    }
+
     const messages = recipients.map((recipient) => buildMessage(campaign, version, recipient));
 
     let results;
@@ -104,6 +113,20 @@ async function processNextEmailSendJob(request: Request) {
   } finally {
     await sql.end();
   }
+}
+
+async function resolveSendProvider(job: EmailSendJob): Promise<EmailDeliveryProvider> {
+  if (job.sendProvider === "microsoft") {
+    if (!job.sendConnectionId) {
+      throw new Error("Outlook send job has no connected mailbox.");
+    }
+    const connectionId = job.sendConnectionId;
+    return createMicrosoftGraphEmailProvider({
+      getAccessToken: () => getValidMicrosoftAccessToken(connectionId)
+    });
+  }
+
+  return createEmailProviderFromEnv();
 }
 
 async function completeJob(db: ReturnType<typeof createDb>["db"], jobId: string, campaign: EmailCampaign) {
