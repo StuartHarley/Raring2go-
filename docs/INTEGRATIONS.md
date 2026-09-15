@@ -206,3 +206,46 @@ If Meta webhooks are enabled, configure callback delivery to the application rou
 8. Revoke or replace the token in a controlled test and confirm failures are visible, recoverable and secret-free.
 
 Live Meta publishing has not been verified until the real Page token and target Page are configured by the project owner.
+
+## Microsoft Outlook Mailbox Connection
+
+A franchisee or HQ user can connect their own Outlook mailbox through Microsoft Graph, following the same provider-neutral `provider_connections` + SecretStore model as the Meta connection above (`provider: "microsoft"`, `connectionType: "outlook_mailbox"` - no schema changes were required).
+
+**This connection is deliberately not the bulk newsletter transport.** Microsoft throttles mailbox sending hard (roughly 30 messages/minute and 10,000 recipients/day per mailbox, tier-dependent) specifically to stop mailboxes being used for bulk mail, and Graph's `sendMail` has no bounce/open/delivery webhook equivalent to Postmark's. The connected mailbox is for personalised, small-volume outreach sent as the franchisee - the network's dedicated bulk newsletter provider (see UAT-001C above) remains the correct channel for national/local newsletter blasts. Any future feature that lets a campaign send through a connected Outlook mailbox must keep a hard recipient-count cap and make the missing delivery tracking visible in the UI, not paper over it.
+
+### Azure AD Requirements
+
+- An Azure AD App Registration in the customer's Microsoft 365 tenant (the project owner must create this - it cannot be done from application code).
+- A client secret generated for the app registration.
+- The redirect URI (`.../api/integrations/microsoft/callback`) added to the app registration's allowed redirect URIs.
+- Delegated Microsoft Graph permissions: `Mail.Send`, `offline_access`, `User.Read`. Admin consent may be required depending on the tenant's configuration.
+- Single-tenant registrations need the tenant's Azure AD directory (tenant) ID; multi-tenant registrations can use `common`.
+
+### Environment Variables
+
+- `MICROSOFT_CLIENT_ID`
+- `MICROSOFT_CLIENT_SECRET`
+- `MICROSOFT_TENANT_ID` (defaults to `common`)
+- `MICROSOFT_OAUTH_REDIRECT_URI`
+- `MICROSOFT_OAUTH_SCOPES` (defaults to `Mail.Send offline_access User.Read`)
+- `INTEGRATION_SECRET_ENCRYPTION_KEY` / `INTEGRATION_SECRET_KEY_VERSION` (shared with the Meta connection)
+
+### OAuth Security Notes
+
+Like the Meta connection, Microsoft OAuth requests use server-generated state that is hashed before persistence, short-lived, bound to the authenticated user and requested organisation/territory context, and consumed once. This flow does not use PKCE for the same reason documented above for Meta: it is a confidential server-side client authenticating with a client secret, and Microsoft's `/oauth2/v2.0/token` endpoint does not require PKCE for that client type.
+
+Unlike Meta, Microsoft access tokens are short-lived (roughly 60-90 minutes) and require the `offline_access` scope to receive a refresh token. Both tokens are stored together as a single encrypted JSON blob through the existing SecretStore (`{accessToken, refreshToken}`) rather than a bare access token string.
+
+### Mailbox Connection Model
+
+The connected mailbox's Microsoft Graph user ID is stored as the account's external account reference, and its email address as the display name. As with Meta, only sanitised, non-secret token metadata (token type, granted scope) is stored on the connection record; the access and refresh tokens live only in SecretStore.
+
+### Controlled Connection Verification
+
+1. Register the Azure AD app and configure the environment variables above.
+2. Connect an Outlook mailbox from `/app/settings/connections`.
+3. Confirm the connection card shows the correct mailbox address and a `connected` status.
+4. Disconnect and confirm the connection is revoked and the stored secret is deleted.
+5. Confirm no access or refresh token ever appears in audit events, logs, or the connection's safe metadata.
+
+Live Microsoft Graph sending is a separate, not-yet-built follow-on (see the newsletter real-sending plan) - this connection is not wired to any send path yet.

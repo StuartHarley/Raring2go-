@@ -5,7 +5,10 @@ import {
   createDrizzleSecretRepository,
   createEncryptedSecretStore,
   createMetaAuthorizationUrl,
+  createMicrosoftAuthorizationUrl,
   createOAuthConnectionTransaction,
+  exchangeMicrosoftOAuthCode,
+  getMicrosoftMailboxIdentity,
   hashOAuthValue,
   integrationCapabilities,
   listMetaFacebookPages,
@@ -47,15 +50,19 @@ export const integrationsPermissionData: PermissionData = {
   }))
 };
 
-export async function listConnectionCards(request: RequestedShellContext) {
+export async function listConnectionCards(
+  request: RequestedShellContext,
+  provider: string = "meta",
+  connectionType: string = "facebook_page"
+) {
   const shell = await requireShellPermission(request, { module: "integrations", action: "view" });
   const { db, sql } = createDb();
 
   try {
     const repository = createDrizzleProviderConnectionRepository(db);
     const connections = await repository.listConnections({
-      provider: "meta",
-      connectionType: "facebook_page",
+      provider,
+      connectionType,
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId ?? undefined
     });
@@ -227,6 +234,98 @@ export async function disconnectMetaConnection(request: RequestedShellContext, c
   } finally {
     await sql.end();
   }
+}
+
+export const disconnectMicrosoftConnection = disconnectMetaConnection;
+
+export async function startMicrosoftConnection(request: RequestedShellContext, returnTo?: string | null) {
+  const shell = await requireShellPermission(request, { module: "integrations", action: "connect" });
+  const { db, sql } = createDb();
+
+  try {
+    const repository = createDrizzleProviderConnectionRepository(db);
+    const transaction = await createOAuthConnectionTransaction({
+      context: {
+        userId: shell.userId,
+        organisationId: shell.activeContext.organisationId,
+        territoryId: shell.activeContext.territoryId
+      },
+      permissions: integrationsPermissionData,
+      repository,
+      provider: "microsoft",
+      connectionType: "outlook_mailbox",
+      returnTo: safeInternalReturnTo(returnTo)
+    });
+    return createMicrosoftAuthorizationUrl({
+      config: microsoftConfig(),
+      state: transaction.state
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function completeMicrosoftConnection(input: {
+  request: RequestedShellContext;
+  state: string;
+  code: string;
+}) {
+  const shell = await resolveShell(input.request);
+  if (shell.kind !== "authenticated") {
+    throw new Error("Microsoft OAuth callback requires an active session.");
+  }
+  const { db, sql } = createDb();
+
+  try {
+    const repository = createDrizzleProviderConnectionRepository(db);
+    const transaction = await repository.consumeOAuthTransaction({
+      stateHash: hashOAuthValue(input.state),
+      userId: shell.userId,
+      now: new Date()
+    });
+    const config = microsoftConfig();
+    const token = await exchangeMicrosoftOAuthCode({ config, code: input.code });
+    const mailbox = await getMicrosoftMailboxIdentity({ accessToken: token.accessToken });
+
+    const secretStore = createEncryptedSecretStore({
+      repository: createDrizzleSecretRepository(db),
+      encryptionKey: requiredEnv("INTEGRATION_SECRET_ENCRYPTION_KEY"),
+      keyVersion: process.env.INTEGRATION_SECRET_KEY_VERSION ?? "v1"
+    });
+    const connection = await completeProviderConnection({
+      context: {
+        userId: shell.userId,
+        organisationId: transaction.organisationId,
+        territoryId: transaction.territoryId
+      },
+      permissions: integrationsPermissionData,
+      repository,
+      secretStore,
+      audit: drizzleAuditRecorder(db),
+      provider: "microsoft",
+      connectionType: "outlook_mailbox",
+      externalAccountId: mailbox.id,
+      externalAccountDisplayName: mailbox.mail ?? mailbox.userPrincipalName ?? mailbox.displayName,
+      grantedScopes: typeof token.safeMetadata.scope === "string" ? token.safeMetadata.scope.split(" ") : config.scopes,
+      token: JSON.stringify({ accessToken: token.accessToken, refreshToken: token.refreshToken }),
+      tokenExpiryAt: token.expiresAt,
+      providerSafeMetadata: { ...token.safeMetadata, displayName: mailbox.displayName }
+    });
+
+    return { connection, returnTo: transaction.returnTo };
+  } finally {
+    await sql.end();
+  }
+}
+
+function microsoftConfig() {
+  return {
+    clientId: requiredEnv("MICROSOFT_CLIENT_ID"),
+    clientSecret: requiredEnv("MICROSOFT_CLIENT_SECRET"),
+    tenantId: process.env.MICROSOFT_TENANT_ID ?? "common",
+    redirectUri: requiredEnv("MICROSOFT_OAUTH_REDIRECT_URI"),
+    scopes: (process.env.MICROSOFT_OAUTH_SCOPES ?? "Mail.Send offline_access User.Read").split(" ").map((scope) => scope.trim())
+  };
 }
 
 function metaConfig() {
