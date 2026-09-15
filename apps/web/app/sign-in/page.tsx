@@ -1,5 +1,3 @@
-import Link from "next/link";
-import type { Route } from "next";
 import { requestSignInAction } from "./actions";
 import { safeReturnTo } from "../../lib/auth-runtime";
 
@@ -11,7 +9,6 @@ export default async function SignInPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const returnTo = safeReturnTo(first(params.returnTo));
   const sent = first(params.sent) === "1";
-  const devToken = first(params.devToken);
 
   return (
     <main className="auth-page">
@@ -30,15 +27,6 @@ export default async function SignInPage({ searchParams }: PageProps) {
         {sent ? (
           <div className="auth-note" role="status">
             <p>Sign-in link requested.</p>
-            {devToken && process.env.NODE_ENV !== "production" ? (
-              <Link
-                href={`/sign-in/verify?token=${encodeURIComponent(
-                  devToken
-                )}&returnTo=${encodeURIComponent(returnTo)}` as Route}
-              >
-                Open development sign-in link
-              </Link>
-            ) : null}
           </div>
         ) : null}
       </section>
