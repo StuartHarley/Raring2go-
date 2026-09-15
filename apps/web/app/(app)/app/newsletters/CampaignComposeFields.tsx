@@ -286,7 +286,7 @@ export function CampaignComposeFields({
 
       <input type="hidden" name="blocksJson" value={JSON.stringify(blocks)} />
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext id="newsletter-compose-blocks" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={blocks.map((block) => block.id)} strategy={verticalListSortingStrategy}>
           <div className="block-editor-list">
             {blocks.map((block) => (
