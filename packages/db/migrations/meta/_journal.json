@@ -239,6 +239,13 @@
       "when": 1789457947543,
       "tag": "0033_great_mole_man",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789461442967,
+      "tag": "0034_woozy_blue_shield",
+      "breakpoints": true
     }
   ]
 }

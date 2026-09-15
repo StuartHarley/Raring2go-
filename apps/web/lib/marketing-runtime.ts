@@ -6,9 +6,11 @@ import {
   createNetworkNewsletterMaster,
   createNewsletterEditionCampaign,
   createRecipientSnapshot,
+  enqueueEmailSend,
   generateTerritoryNewsletterEditions,
   insertEmailCampaignGraph,
   insertEmailRecipientSnapshotRecord,
+  insertEmailSendJobRecord,
   insertNetworkNewsletterMasterRecord,
   insertNewsletterFactoryRunRecord,
   listAudienceContacts,
@@ -20,7 +22,6 @@ import {
   listNewsletterFactory,
   listSegments,
   loadMarketingData,
-  markEmailCampaignSent,
   recordTerritoryNewsletterOverride,
   scheduleEmailCampaign,
   updateEmailCampaignRecord,
@@ -174,6 +175,7 @@ export async function composeEmailCampaign(
     title: string;
     subject: string;
     preheader: string | null;
+    body: string;
   }
 ) {
   const { db, sql } = createDb();
@@ -209,7 +211,7 @@ export async function composeEmailCampaign(
         status: "draft",
         subject: input.subject,
         preheader: input.preheader,
-        contentSnapshot: {},
+        contentSnapshot: { text: input.body },
         createdByUserId: context.userId
       };
       await createEmailCampaign(context, marketingPermissionData, auditFor(tx), data, campaign, version);
@@ -291,33 +293,20 @@ export async function scheduleCampaign(context: MarketingActorContext, campaignI
       const data = await loadMarketingData(tx);
       const campaign = await scheduleEmailCampaign(context, marketingPermissionData, auditFor(tx), data, campaignId, scheduledAt);
       await updateEmailCampaignRecord(tx, campaign);
-      return campaign;
+      const newJobId = randomUUID();
+      const job = enqueueEmailSend(context, marketingPermissionData, data, { id: newJobId, campaignId });
+      if (job.id === newJobId) {
+        await insertEmailSendJobRecord(tx, job);
+      }
+      return { campaign, job };
     });
   } finally {
     await sql.end();
   }
 }
 
-export async function sendCampaign(context: MarketingActorContext, campaignId: string) {
-  const { db, sql } = createDb();
-
-  try {
-    return await db.transaction(async (tx) => {
-      const data = await loadMarketingData(tx);
-      const campaign = await markEmailCampaignSent(
-        context,
-        marketingPermissionData,
-        auditFor(tx),
-        data,
-        campaignId,
-        new Date().toISOString()
-      );
-      await updateEmailCampaignRecord(tx, campaign);
-      return campaign;
-    });
-  } finally {
-    await sql.end();
-  }
+export async function sendCampaignNow(context: MarketingActorContext, campaignId: string) {
+  return scheduleCampaign(context, campaignId, new Date().toISOString());
 }
 
 export async function createNewsletterMaster(

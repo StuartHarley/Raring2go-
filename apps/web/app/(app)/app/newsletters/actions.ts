@@ -12,7 +12,7 @@ import {
   generateCampaignRecipientSnapshot,
   generateNewsletterEditions,
   scheduleCampaign,
-  sendCampaign
+  sendCampaignNow
 } from "../../../../lib/marketing-runtime";
 import type { MarketingActorContext } from "@raring2go/marketing";
 
@@ -23,13 +23,20 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
     throw new Error("Select an audience segment before composing a campaign.");
   }
 
+  const body = String(formData.get("body") || "");
+
+  if (!body.trim()) {
+    throw new Error("Write the newsletter body before composing a campaign.");
+  }
+
   await composeEmailCampaign(context, {
     campaignId: randomUUID(),
     versionId: randomUUID(),
     segmentId,
     title: String(formData.get("title") || "Newsletter"),
     subject: String(formData.get("subject") || ""),
-    preheader: String(formData.get("preheader") || "") || null
+    preheader: String(formData.get("preheader") || "") || null,
+    body
   });
 
   revalidatePath("/app/newsletters");
@@ -60,7 +67,7 @@ export async function scheduleCampaignAction(context: MarketingActorContext, cam
 }
 
 export async function sendCampaignAction(context: MarketingActorContext, campaignId: string) {
-  await sendCampaign(context, campaignId);
+  await sendCampaignNow(context, campaignId);
   revalidatePath("/app/newsletters");
   revalidatePath("/app/newsletters/factory");
 }

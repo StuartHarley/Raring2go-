@@ -89,6 +89,10 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
               Preheader
               <input type="text" name="preheader" />
             </label>
+            <label>
+              Body
+              <textarea name="body" rows={6} required />
+            </label>
             <button type="submit">Create draft campaign</button>
           </form>
         )}
@@ -126,18 +130,24 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                     </form>
                   ) : null}
                   {canAct && view.campaign.status === "approved" && view.latestSnapshot ? (
-                    <form action={scheduleCampaignAction.bind(null, context, view.campaign.id)} className="franchise-form">
-                      <label>
-                        Send at
-                        <input type="datetime-local" name="scheduledAt" required />
-                      </label>
-                      <button type="submit">Schedule</button>
-                    </form>
+                    <>
+                      <form action={sendCampaignAction.bind(null, context, view.campaign.id)}>
+                        <button type="submit">Send now</button>
+                      </form>
+                      <form action={scheduleCampaignAction.bind(null, context, view.campaign.id)} className="franchise-form">
+                        <label>
+                          Send at
+                          <input type="datetime-local" name="scheduledAt" required />
+                        </label>
+                        <button type="submit">Schedule</button>
+                      </form>
+                    </>
                   ) : null}
-                  {canAct && view.campaign.status === "scheduled" ? (
-                    <form action={sendCampaignAction.bind(null, context, view.campaign.id)}>
-                      <button type="submit">Send now</button>
-                    </form>
+                  {(view.campaign.status === "scheduled" || view.campaign.status === "sending") && view.activeJob ? (
+                    <span>
+                      Sending: {view.activeJob.cursor}/{view.latestSnapshot?.recipientCount ?? 0} sent
+                      {view.campaign.status === "scheduled" ? ` (starts ${new Date(view.campaign.scheduledAt ?? "").toLocaleString()})` : ""}
+                    </span>
                   ) : null}
                 </div>
               );

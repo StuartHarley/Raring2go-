@@ -20,6 +20,7 @@ export type EmailMessage = {
   subject: string;
   text: string;
   html?: string | null;
+  headers?: Record<string, string>;
   metadata?: Record<string, string | number | boolean | null>;
 };
 
@@ -54,12 +55,34 @@ export type EmailDeliveryEvent = {
 export type EmailDeliveryProvider = {
   readonly providerKey: string;
   send(message: EmailMessage): Promise<EmailDeliveryResult>;
+  sendBatch?(messages: EmailMessage[]): Promise<EmailDeliveryResult[]>;
   verifyWebhook?(input: {
     headers: Record<string, string | string[] | undefined>;
     body: string;
     secret?: string;
   }): Promise<EmailDeliveryEvent[]>;
 };
+
+export async function sendEmailBatch(
+  provider: EmailDeliveryProvider,
+  messages: EmailMessage[]
+): Promise<EmailDeliveryResult[]> {
+  if (messages.length === 0) {
+    return [];
+  }
+
+  if (provider.sendBatch) {
+    return provider.sendBatch(messages);
+  }
+
+  const results: EmailDeliveryResult[] = [];
+
+  for (const message of messages) {
+    results.push(await provider.send(message));
+  }
+
+  return results;
+}
 
 export type SentEmailRecord = EmailDeliveryResult & {
   message: EmailMessage;
@@ -239,6 +262,8 @@ export function createHttpEmailProvider(input: {
   } satisfies EmailDeliveryProvider;
 }
 
+const POSTMARK_BATCH_LIMIT = 500;
+
 export function createPostmarkEmailProvider(input: {
   serverToken: string;
   transactionalMessageStream?: string;
@@ -251,12 +276,77 @@ export function createPostmarkEmailProvider(input: {
   }
 
   const endpoint = (input.endpoint ?? "https://api.postmarkapp.com").replace(/\/$/, "");
+  const streamFor = (message: EmailMessage) =>
+    message.purpose === "newsletter"
+      ? input.broadcastMessageStream ?? "broadcast"
+      : input.transactionalMessageStream ?? "outbound";
+  const postmarkPayload = (message: EmailMessage) => ({
+    From: formatRecipient(message.from),
+    To: message.to.map((recipient) => normalizeEmailAddress(recipient.email)).join(","),
+    ...(message.replyTo ? { ReplyTo: formatRecipient(message.replyTo) } : {}),
+    Subject: message.subject,
+    TextBody: message.text,
+    ...(message.html ? { HtmlBody: message.html } : {}),
+    ...(message.headers && Object.keys(message.headers).length > 0
+      ? { Headers: Object.entries(message.headers).map(([Name, Value]) => ({ Name, Value })) }
+      : {}),
+    MessageStream: streamFor(message),
+    Metadata: stringifyMetadata({
+      ...message.metadata,
+      purpose: message.purpose,
+      idempotencyKey: message.idempotencyKey
+    })
+  });
+  const resultFromResponse = (
+    message: EmailMessage,
+    response: { ok: boolean; status: number },
+    payload: Record<string, unknown>
+  ): EmailDeliveryResult => {
+    const recipients = message.to.map((recipient) => normalizeEmailAddress(recipient.email));
+
+    if (!response.ok || (typeof payload.ErrorCode === "number" && payload.ErrorCode !== 0)) {
+      return {
+        providerKey: "postmark",
+        providerMessageId: `postmark_failed_${message.idempotencyKey}`,
+        accepted: [],
+        rejected: recipients,
+        status: "failed",
+        raw: sanitizeProviderPayload({
+          status: response.status,
+          errorCode: payload.ErrorCode,
+          message: payload.Message
+        })
+      };
+    }
+
+    return {
+      providerKey: "postmark",
+      providerMessageId: String(payload.MessageID ?? `postmark_${message.idempotencyKey}`),
+      accepted: recipients,
+      rejected: [],
+      status: "queued",
+      raw: sanitizeProviderPayload({
+        submittedAt: payload.SubmittedAt,
+        message: payload.Message
+      })
+    };
+  };
+  const outageResult = (message: EmailMessage, error: unknown): EmailDeliveryResult => ({
+    providerKey: "postmark",
+    providerMessageId: `postmark_failed_${message.idempotencyKey}`,
+    accepted: [],
+    rejected: message.to.map((recipient) => normalizeEmailAddress(recipient.email)),
+    status: "failed",
+    raw: {
+      reason: "provider_outage",
+      message: error instanceof Error ? error.message : "Unknown provider error"
+    }
+  });
 
   return {
     providerKey: "postmark",
     async send(message) {
       validateEmailMessage(message);
-      const recipients = message.to.map((recipient) => normalizeEmailAddress(recipient.email));
       const fetcher = input.fetch ?? fetch;
 
       try {
@@ -266,65 +356,43 @@ export function createPostmarkEmailProvider(input: {
             "content-type": "application/json",
             "x-postmark-server-token": input.serverToken
           },
-          body: JSON.stringify({
-            From: formatRecipient(message.from),
-            To: recipients.join(","),
-            ...(message.replyTo ? { ReplyTo: formatRecipient(message.replyTo) } : {}),
-            Subject: message.subject,
-            TextBody: message.text,
-            ...(message.html ? { HtmlBody: message.html } : {}),
-            MessageStream: message.purpose === "newsletter"
-              ? input.broadcastMessageStream ?? "broadcast"
-              : input.transactionalMessageStream ?? "outbound",
-            Metadata: stringifyMetadata({
-              ...message.metadata,
-              purpose: message.purpose,
-              idempotencyKey: message.idempotencyKey
-            })
-          })
+          body: JSON.stringify(postmarkPayload(message))
         });
-
         const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
 
-        if (!response.ok) {
-          return {
-            providerKey: "postmark",
-            providerMessageId: `postmark_failed_${message.idempotencyKey}`,
-            accepted: [],
-            rejected: recipients,
-            status: "failed",
-            raw: sanitizeProviderPayload({
-              status: response.status,
-              errorCode: payload.ErrorCode,
-              message: payload.Message
-            })
-          } satisfies EmailDeliveryResult;
-        }
-
-        return {
-          providerKey: "postmark",
-          providerMessageId: String(payload.MessageID ?? `postmark_${message.idempotencyKey}`),
-          accepted: recipients,
-          rejected: [],
-          status: "queued",
-          raw: sanitizeProviderPayload({
-            submittedAt: payload.SubmittedAt,
-            message: payload.Message
-          })
-        } satisfies EmailDeliveryResult;
+        return resultFromResponse(message, response, payload);
       } catch (error) {
-        return {
-          providerKey: "postmark",
-          providerMessageId: `postmark_failed_${message.idempotencyKey}`,
-          accepted: [],
-          rejected: recipients,
-          status: "failed",
-          raw: {
-            reason: "provider_outage",
-            message: error instanceof Error ? error.message : "Unknown provider error"
-          }
-        };
+        return outageResult(message, error);
       }
+    },
+    async sendBatch(messages) {
+      messages.forEach(validateEmailMessage);
+      const fetcher = input.fetch ?? fetch;
+      const results: EmailDeliveryResult[] = [];
+
+      for (let offset = 0; offset < messages.length; offset += POSTMARK_BATCH_LIMIT) {
+        const chunk = messages.slice(offset, offset + POSTMARK_BATCH_LIMIT);
+
+        try {
+          const response = await fetcher(`${endpoint}/email/batch`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-postmark-server-token": input.serverToken
+            },
+            body: JSON.stringify(chunk.map(postmarkPayload))
+          });
+          const payload = await response.json().catch(() => []) as Array<Record<string, unknown>>;
+
+          chunk.forEach((message, index) => {
+            results.push(resultFromResponse(message, response, payload[index] ?? {}));
+          });
+        } catch (error) {
+          chunk.forEach((message) => results.push(outageResult(message, error)));
+        }
+      }
+
+      return results;
     },
     async verifyWebhook({ headers, body, secret }) {
       if (secret) {
