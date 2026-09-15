@@ -1,11 +1,38 @@
 import { auditActions, recordAuditEvent } from "@raring2go/audit";
 import { createAiGatewayFromEnv } from "@raring2go/ai";
 import type { AiGateway } from "@raring2go/ai";
+import { createDevelopmentMemoryRateLimiter } from "@raring2go/auth";
+import type { RateLimiter } from "@raring2go/auth";
 import { createDb } from "@raring2go/db";
 import { evaluatePermission, requirePermission } from "@raring2go/permissions";
 import { marketingCapabilities } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { marketingPermissionData } from "./marketing-runtime";
+
+const rateLimiterKey = Symbol.for("raring2go.ai-assist-rate-limiter");
+const globalRateLimiter = globalThis as typeof globalThis & {
+  [rateLimiterKey]?: RateLimiter;
+};
+
+function getAiAssistRateLimiter(): RateLimiter {
+  if (!globalRateLimiter[rateLimiterKey]) {
+    globalRateLimiter[rateLimiterKey] = createDevelopmentMemoryRateLimiter({
+      limit: Number(process.env.AI_ASSIST_RATE_LIMIT ?? 20),
+      windowMs: Number(process.env.AI_ASSIST_RATE_LIMIT_WINDOW_MS ?? 60 * 60 * 1000)
+    });
+  }
+
+  return globalRateLimiter[rateLimiterKey];
+}
+
+async function enforceAiAssistRateLimit(context: MarketingActorContext) {
+  const key = context.territoryId ?? context.userId;
+  const decision = await getAiAssistRateLimiter().check(key);
+
+  if (!decision.allowed) {
+    throw new Error(`AI assist limit reached for this territory. Try again after ${decision.resetAt.toLocaleTimeString()}.`);
+  }
+}
 
 function requireAiAssistPermission(context: MarketingActorContext) {
   const capability = marketingCapabilities.emailAiAssist;
@@ -55,6 +82,7 @@ export async function suggestSubjectLines(
   input: { draftId: string; campaignTitle: string; bodyPreviewText: string }
 ): Promise<string[]> {
   requireAiAssistPermission(context);
+  await enforceAiAssistRateLimit(context);
   const gateway = requireGateway();
   const result = await gateway.generateSubjectLines({
     campaignTitle: input.campaignTitle,
@@ -78,6 +106,7 @@ export async function suggestBlockCopy(
   input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }
 ): Promise<string> {
   requireAiAssistPermission(context);
+  await enforceAiAssistRateLimit(context);
   const gateway = requireGateway();
   const result = await gateway.generateContentSuggestion({
     campaignTitle: input.campaignTitle,
@@ -101,6 +130,7 @@ export async function recordAiSuggestionAccepted(
   context: MarketingActorContext,
   input: { draftId: string; task: "subject_lines" | "block_copy"; blockId?: string; accepted: string }
 ): Promise<void> {
+  requireAiAssistPermission(context);
   await recordSuggestionEvent(context, auditActions.marketingAiSuggestionAccept, {
     task: input.task,
     draftId: input.draftId,
