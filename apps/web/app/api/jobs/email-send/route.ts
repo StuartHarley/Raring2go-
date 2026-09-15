@@ -57,6 +57,7 @@ async function processNextEmailSendJob(request: Request) {
     const { recipients, isFinalChunk } = nextEmailSendChunk(job, snapshot);
 
     if (recipients.length === 0) {
+      await advanceEmailSendJob(db, job.id, { status: "completed" });
       await completeJob(db, job.id, campaign);
       return NextResponse.json({ claimed: true, jobId: job.id, sent: 0, completed: true });
     }
