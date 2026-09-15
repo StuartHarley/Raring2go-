@@ -348,6 +348,71 @@ describe("marketing audience foundation", () => {
     expect(analytics.attribution.every((item) => item.source === "platform")).toBe(true);
   });
 
+  it("surfaces per-campaign analytics and flags Outlook-sent campaigns as untracked", () => {
+    const data = seededData();
+    data.emailCampaigns.push(
+      {
+        id: "campaign_postmark",
+        territoryId: ids.territories.own,
+        templateId: "template_1",
+        segmentId: ids.segment,
+        campaignType: "newsletter",
+        status: "sent",
+        title: "Weekend ideas",
+        subject: "Weekend ideas",
+        preheader: null,
+        sendProvider: "postmark",
+        sendConnectionId: null,
+        scheduledAt: "2026-08-12T09:00:00.000Z",
+        approvedAt: "2026-08-11T10:00:00.000Z",
+        sentAt: "2026-08-12T09:05:00.000Z",
+        metadata: {}
+      },
+      {
+        id: "campaign_outlook",
+        territoryId: ids.territories.own,
+        templateId: "template_1",
+        segmentId: ids.segment,
+        campaignType: "newsletter",
+        status: "sent",
+        title: "Local update",
+        subject: "Local update",
+        preheader: null,
+        sendProvider: "microsoft",
+        sendConnectionId: "connection_1",
+        scheduledAt: "2026-08-12T09:00:00.000Z",
+        approvedAt: "2026-08-11T10:00:00.000Z",
+        sentAt: "2026-08-12T09:05:00.000Z",
+        metadata: {}
+      }
+    );
+    data.emailDeliveryRecords.push({
+      id: "delivery_postmark",
+      campaignId: "campaign_postmark",
+      campaignVersionId: "campaign_version_1",
+      recipientSnapshotId: null,
+      contactId: ids.contact,
+      emailNormalised: "parent@example.test",
+      providerKey: "development",
+      providerMessageId: "message_1",
+      status: "delivered",
+      eventType: "delivered",
+      eventAt: "2026-08-12T10:00:00.000Z",
+      metadata: {}
+    });
+
+    const analytics = listMarketingAnalytics(localContext(), permissions, data);
+    const campaigns = analytics.email.campaigns;
+    const postmark = campaigns.find((campaign) => campaign.campaignId === "campaign_postmark");
+    const outlook = campaigns.find((campaign) => campaign.campaignId === "campaign_outlook");
+
+    expect(postmark?.trackingAvailable).toBe(true);
+    expect(postmark?.delivered).toBe(1);
+    expect(outlook?.trackingAvailable).toBe(false);
+    expect(outlook?.delivered).toBe(0);
+    expect(outlook?.opens).toBeUndefined();
+  });
+
   it("surfaces command centre action items from scoped channel health", () => {
     const data = seededData();
     data.journeyAudienceEntries.push({

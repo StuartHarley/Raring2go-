@@ -478,6 +478,17 @@ export type MarketingAnalyticsOverview = {
     failed: number;
     opens?: number;
     clicks?: number;
+    campaigns: Array<{
+      campaignId: string;
+      title: string;
+      sendProvider: EmailSendProvider;
+      sentAt?: string | null;
+      delivered: number;
+      failed: number;
+      opens?: number;
+      clicks?: number;
+      trackingAvailable: boolean;
+    }>;
   };
   journeys: {
     entries: number;

@@ -75,6 +75,32 @@ export default async function MarketingAnalyticsPage({ searchParams }: PageProps
       </section>
 
       <section className="app-panel franchise-panel">
+        <p className="eyebrow">Campaign performance</p>
+        <h2>Sent campaigns</h2>
+        <div className="franchise-list">
+          {analytics.email.campaigns.length === 0 ? (
+            <div>
+              <span>No sent campaigns in scope yet.</span>
+            </div>
+          ) : (
+            analytics.email.campaigns.map((campaign) => (
+              <div key={campaign.campaignId}>
+                <strong>{campaign.title}</strong>
+                {campaign.trackingAvailable ? (
+                  <span>
+                    {campaign.delivered} delivered - {campaign.failed} failed - opens{" "}
+                    {campaign.opens ?? "not reported"} - clicks {campaign.clicks ?? "not reported"}
+                  </span>
+                ) : (
+                  <span>Sent via Outlook - delivery, bounce and open tracking is not available for this campaign</span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="app-panel franchise-panel">
         <p className="eyebrow">Attribution foundation</p>
         <h2>Trackable references</h2>
         <div className="franchise-list">

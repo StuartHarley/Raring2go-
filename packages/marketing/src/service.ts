@@ -215,6 +215,29 @@ export function listMarketingAnalytics(
   });
   const social = data.socialPublications.filter((publication) => !publication.deletedAt && territoryAllowed(publication.territoryId));
 
+  const sentCampaigns = data.emailCampaigns.filter(
+    (campaign) =>
+      !campaign.deletedAt &&
+      (campaign.status === "sent" || campaign.status === "sending") &&
+      territoryAllowed(campaign.territoryId)
+  );
+  const campaignAnalytics = sentCampaigns.map((campaign) => {
+    const campaignDeliveries = deliveries.filter((delivery) => delivery.campaignId === campaign.id);
+    const trackingAvailable = campaign.sendProvider !== "microsoft";
+
+    return {
+      campaignId: campaign.id,
+      title: campaign.title,
+      sendProvider: campaign.sendProvider,
+      sentAt: campaign.sentAt,
+      delivered: campaignDeliveries.filter((delivery) => delivery.status === "delivered").length,
+      failed: campaignDeliveries.filter((delivery) => delivery.status === "failed" || delivery.status === "bounced").length,
+      opens: trackingAvailable ? providerMetricSum(campaignDeliveries.map((delivery) => delivery.metadata), "opens") : undefined,
+      clicks: trackingAvailable ? providerMetricSum(campaignDeliveries.map((delivery) => delivery.metadata), "clicks") : undefined,
+      trackingAvailable
+    };
+  });
+
   const growthByTerritory = Array.from(new Set(subscriptions.map((subscription) => subscription.territoryId))).map((territoryId) => ({
     territoryId,
     subscribers: subscriptions.filter((subscription) => subscription.territoryId === territoryId && subscription.status === "subscribed").length
@@ -233,7 +256,8 @@ export function listMarketingAnalytics(
       delivered: deliveries.filter((delivery) => delivery.status === "delivered").length,
       failed: deliveries.filter((delivery) => delivery.status === "failed" || delivery.status === "bounced").length,
       opens: providerMetricSum(deliveries.map((delivery) => delivery.metadata), "opens"),
-      clicks: providerMetricSum(deliveries.map((delivery) => delivery.metadata), "clicks")
+      clicks: providerMetricSum(deliveries.map((delivery) => delivery.metadata), "clicks"),
+      campaigns: campaignAnalytics
     },
     journeys: {
       entries: journeyEntries.length,
