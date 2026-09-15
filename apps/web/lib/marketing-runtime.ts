@@ -31,7 +31,8 @@ import {
 } from "@raring2go/marketing";
 import { recordAuditEvent } from "@raring2go/audit";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
-import type { MarketingActorContext } from "@raring2go/marketing";
+import { createDrizzleProviderConnectionRepository } from "@raring2go/integrations";
+import type { EmailSendProvider, MarketingActorContext } from "@raring2go/marketing";
 import type { PermissionData } from "@raring2go/permissions";
 
 export const marketingPermissionData: PermissionData = {
@@ -176,6 +177,8 @@ export async function composeEmailCampaign(
     subject: string;
     preheader: string | null;
     body: string;
+    sendProvider?: EmailSendProvider;
+    sendConnectionId?: string | null;
   }
 ) {
   const { db, sql } = createDb();
@@ -189,6 +192,25 @@ export async function composeEmailCampaign(
         throw new Error("Audience segment was not found.");
       }
 
+      const sendProvider = input.sendProvider ?? "postmark";
+      const sendConnectionId = sendProvider === "microsoft" ? (input.sendConnectionId ?? null) : null;
+
+      if (sendProvider === "microsoft") {
+        if (!sendConnectionId) {
+          throw new Error("A connected Outlook mailbox is required to send via Outlook.");
+        }
+        const connectionRepository = createDrizzleProviderConnectionRepository(tx);
+        const connection = await connectionRepository.getConnection(sendConnectionId);
+        if (
+          !connection ||
+          connection.provider !== "microsoft" ||
+          connection.status !== "connected" ||
+          (segment.territoryId ? connection.territoryId !== segment.territoryId : Boolean(connection.territoryId))
+        ) {
+          throw new Error("The selected Outlook mailbox is not connected for this territory.");
+        }
+      }
+
       const campaign = {
         id: input.campaignId,
         territoryId: segment.territoryId ?? null,
@@ -199,6 +221,8 @@ export async function composeEmailCampaign(
         title: input.title,
         subject: input.subject,
         preheader: input.preheader,
+        sendProvider,
+        sendConnectionId,
         scheduledAt: null,
         approvedAt: null,
         sentAt: null,

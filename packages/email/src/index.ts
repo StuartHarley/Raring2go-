@@ -412,6 +412,85 @@ export function createPostmarkEmailProvider(input: {
   } satisfies EmailDeliveryProvider;
 }
 
+export function createMicrosoftGraphEmailProvider(input: {
+  getAccessToken: () => Promise<string>;
+  endpoint?: string;
+  fetch?: typeof fetch;
+}) {
+  const endpoint = (input.endpoint ?? "https://graph.microsoft.com/v1.0").replace(/\/$/, "");
+
+  return {
+    providerKey: "microsoft-graph",
+    async send(message) {
+      validateEmailMessage(message);
+      const recipients = message.to.map((recipient) => normalizeEmailAddress(recipient.email));
+      const fetcher = input.fetch ?? fetch;
+
+      try {
+        const accessToken = await input.getAccessToken();
+        const response = await fetcher(`${endpoint}/me/sendMail`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            message: {
+              subject: message.subject,
+              body: {
+                contentType: message.html ? "HTML" : "Text",
+                content: message.html ?? message.text
+              },
+              toRecipients: recipients.map((email) => ({ emailAddress: { address: email } })),
+              ...(message.replyTo
+                ? { replyTo: [{ emailAddress: { address: normalizeEmailAddress(message.replyTo.email) } }] }
+                : {})
+            },
+            saveToSentItems: true
+          })
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({})) as { error?: { code?: string; message?: string } };
+
+          return {
+            providerKey: "microsoft-graph",
+            providerMessageId: `graph_failed_${message.idempotencyKey}`,
+            accepted: [],
+            rejected: recipients,
+            status: "failed",
+            raw: sanitizeProviderPayload({
+              status: response.status,
+              code: payload.error?.code,
+              message: payload.error?.message
+            })
+          } satisfies EmailDeliveryResult;
+        }
+
+        return {
+          providerKey: "microsoft-graph",
+          providerMessageId: `graph_${message.idempotencyKey}`,
+          accepted: recipients,
+          rejected: [],
+          status: "queued"
+        } satisfies EmailDeliveryResult;
+      } catch (error) {
+        return {
+          providerKey: "microsoft-graph",
+          providerMessageId: `graph_failed_${message.idempotencyKey}`,
+          accepted: [],
+          rejected: recipients,
+          status: "failed",
+          raw: {
+            reason: "provider_outage",
+            message: error instanceof Error ? error.message : "Unknown provider error"
+          }
+        } satisfies EmailDeliveryResult;
+      }
+    }
+  } satisfies EmailDeliveryProvider;
+}
+
 export function createEmailProviderFromEnv(
   source: NodeJS.ProcessEnv = process.env
 ) {

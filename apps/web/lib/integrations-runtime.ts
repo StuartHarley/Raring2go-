@@ -8,10 +8,12 @@ import {
   createMicrosoftAuthorizationUrl,
   createOAuthConnectionTransaction,
   exchangeMicrosoftOAuthCode,
+  getConnectionCredential,
   getMicrosoftMailboxIdentity,
   hashOAuthValue,
   integrationCapabilities,
   listMetaFacebookPages,
+  refreshMicrosoftAccessToken,
   revokeProviderConnection,
   safeInternalReturnTo
 } from "@raring2go/integrations";
@@ -326,6 +328,63 @@ function microsoftConfig() {
     redirectUri: requiredEnv("MICROSOFT_OAUTH_REDIRECT_URI"),
     scopes: (process.env.MICROSOFT_OAUTH_SCOPES ?? "Mail.Send offline_access User.Read").split(" ").map((scope) => scope.trim())
   };
+}
+
+type StoredMicrosoftToken = { accessToken: string; refreshToken: string | null };
+
+export async function getValidMicrosoftAccessToken(connectionId: string): Promise<string> {
+  const { db, sql } = createDb();
+
+  try {
+    const repository = createDrizzleProviderConnectionRepository(db);
+    const connection = await repository.getConnection(connectionId);
+
+    if (!connection || connection.provider !== "microsoft" || connection.status !== "connected") {
+      throw new Error("Outlook mailbox connection is not available.");
+    }
+
+    const secretStore = createEncryptedSecretStore({
+      repository: createDrizzleSecretRepository(db),
+      encryptionKey: requiredEnv("INTEGRATION_SECRET_ENCRYPTION_KEY"),
+      keyVersion: process.env.INTEGRATION_SECRET_KEY_VERSION ?? "v1"
+    });
+    const stored = JSON.parse(await getConnectionCredential({ connection, secretStore })) as StoredMicrosoftToken;
+    const expiresSoon = !connection.tokenExpiryAt || new Date(connection.tokenExpiryAt).getTime() < Date.now() + 60_000;
+
+    if (!expiresSoon) {
+      return stored.accessToken;
+    }
+
+    if (!stored.refreshToken) {
+      await repository.updateConnection(connection.id, {
+        status: "expired",
+        lastHealthStatus: "expired",
+        lastFailureSummary: "Outlook access token expired and no refresh token is available. Reconnect required.",
+        lastHealthCheckAt: new Date()
+      });
+      throw new Error("Outlook mailbox connection has expired and needs to be reconnected.");
+    }
+
+    const refreshed = await refreshMicrosoftAccessToken({ config: microsoftConfig(), refreshToken: stored.refreshToken });
+    const newSecret = await secretStore.set({
+      providerConnectionId: connection.id,
+      value: JSON.stringify({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken } satisfies StoredMicrosoftToken),
+      additionalAuthenticatedData: connection.id
+    });
+    await repository.updateConnection(connection.id, {
+      secretRef: newSecret.secretRef,
+      tokenExpiryAt: refreshed.expiresAt,
+      refreshedAt: new Date(),
+      lastHealthStatus: "healthy",
+      lastHealthCheckAt: new Date(),
+      lastFailureCode: null,
+      lastFailureSummary: null
+    });
+
+    return refreshed.accessToken;
+  } finally {
+    await sql.end();
+  }
 }
 
 function metaConfig() {

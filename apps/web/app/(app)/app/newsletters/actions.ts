@@ -29,6 +29,11 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
     throw new Error("Write the newsletter body before composing a campaign.");
   }
 
+  const sendChoice = String(formData.get("sendChoice") || "postmark");
+  const [sendProviderChoice, sendConnectionIdChoice] = sendChoice.split(":");
+  const sendProvider = sendProviderChoice === "microsoft" ? "microsoft" : "postmark";
+  const sendConnectionId = sendProvider === "microsoft" ? sendConnectionIdChoice || null : null;
+
   await composeEmailCampaign(context, {
     campaignId: randomUUID(),
     versionId: randomUUID(),
@@ -36,7 +41,9 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
     title: String(formData.get("title") || "Newsletter"),
     subject: String(formData.get("subject") || ""),
     preheader: String(formData.get("preheader") || "") || null,
-    body
+    body,
+    sendProvider,
+    sendConnectionId
   });
 
   revalidatePath("/app/newsletters");

@@ -203,6 +203,8 @@ export type EmailTemplate = {
   deletedAt?: Date | null;
 };
 
+export type EmailSendProvider = "postmark" | "microsoft";
+
 export type EmailCampaign = {
   id: string;
   territoryId?: string | null;
@@ -213,6 +215,8 @@ export type EmailCampaign = {
   title: string;
   subject: string;
   preheader?: string | null;
+  sendProvider: EmailSendProvider;
+  sendConnectionId?: string | null;
   scheduledAt?: string | null;
   approvedAt?: string | null;
   sentAt?: string | null;
@@ -271,7 +275,8 @@ export type EmailSendJob = {
   campaignId: string;
   campaignVersionId: string;
   recipientSnapshotId: string;
-  sendProvider: string;
+  sendProvider: EmailSendProvider;
+  sendConnectionId?: string | null;
   status: EmailSendJobStatus;
   cursor: number;
   batchSize: number;

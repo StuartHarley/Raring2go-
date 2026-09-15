@@ -246,6 +246,13 @@
       "when": 1789461442967,
       "tag": "0034_woozy_blue_shield",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789465390920,
+      "tag": "0035_tiresome_thaddeus_ross",
+      "breakpoints": true
     }
   ]
 }

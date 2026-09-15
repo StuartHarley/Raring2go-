@@ -5,12 +5,13 @@ import {
   createEmailProviderFromEnv,
   createHttpEmailProvider,
   createMemoryEmailProvider,
+  createMicrosoftGraphEmailProvider,
   createPostmarkEmailProvider,
   sendEmailBatch,
   sendPasswordlessSignInEmail,
   validateEmailMessage
 } from "./index";
-import type { EmailMessage } from "./index";
+import type { EmailDeliveryProvider, EmailMessage } from "./index";
 
 describe("email delivery provider boundary", () => {
   it("validates provider-neutral email messages", () => {
@@ -371,6 +372,71 @@ describe("email delivery provider boundary", () => {
     });
     expect(dedupe.accept(events![1]!)).toBe(true);
     expect(dedupe.accept(events![1]!)).toBe(false);
+  });
+
+  it("sends through Microsoft Graph as the connected mailbox and has no batch or webhook support", async () => {
+    const requests: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
+    const provider: EmailDeliveryProvider = createMicrosoftGraphEmailProvider({
+      getAccessToken: async () => "graph-access-token",
+      fetch: async (url, init) => {
+        requests.push({
+          url: String(url),
+          authorization: (init?.headers as Record<string, string> | undefined)?.authorization ?? null,
+          body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+        });
+        return new Response(null, { status: 202 });
+      }
+    });
+
+    const result = await provider.send({
+      idempotencyKey: "outlook_1",
+      purpose: "newsletter",
+      to: [{ email: "Parent@Example.com" }],
+      from: { email: "franchisee@raring2go.co.uk", name: "Sutton Coldfield" },
+      subject: "Half term ideas",
+      text: "Things to do",
+      html: "<p>Things to do</p>"
+    });
+
+    expect(requests[0]?.url).toBe("https://graph.microsoft.com/v1.0/me/sendMail");
+    expect(requests[0]?.authorization).toBe("Bearer graph-access-token");
+    const body = requests[0]?.body as { message: { toRecipients: Array<{ emailAddress: { address: string } }> } };
+    expect(body.message.toRecipients).toEqual([{ emailAddress: { address: "parent@example.com" } }]);
+    expect(result).toMatchObject({ providerKey: "microsoft-graph", status: "queued", accepted: ["parent@example.com"] });
+    expect(provider.sendBatch).toBeUndefined();
+    expect(provider.verifyWebhook).toBeUndefined();
+  });
+
+  it("maps a Microsoft Graph rejection and an access-token failure to recoverable failed results", async () => {
+    const rejected = createMicrosoftGraphEmailProvider({
+      getAccessToken: async () => "graph-access-token",
+      fetch: async () => new Response(JSON.stringify({
+        error: { code: "ErrorSendAsDenied", message: "Client does not have permissions to send as this user." }
+      }), { status: 403, headers: { "content-type": "application/json" } })
+    });
+    const tokenFailure = createMicrosoftGraphEmailProvider({
+      getAccessToken: async () => {
+        throw new Error("Outlook mailbox connection has expired.");
+      }
+    });
+    const message = {
+      idempotencyKey: "outlook_2",
+      purpose: "newsletter" as const,
+      to: [{ email: "person@example.com" }],
+      from: { email: "franchisee@raring2go.co.uk" },
+      subject: "Hello",
+      text: "Hello"
+    };
+
+    await expect(rejected.send(message)).resolves.toMatchObject({
+      status: "failed",
+      rejected: ["person@example.com"],
+      raw: { status: 403, code: "ErrorSendAsDenied" }
+    });
+    await expect(tokenFailure.send(message)).resolves.toMatchObject({
+      status: "failed",
+      raw: { reason: "provider_outage", message: "Outlook mailbox connection has expired." }
+    });
   });
 
   it("fails closed for missing Postmark configuration and invalid webhook secrets", async () => {
