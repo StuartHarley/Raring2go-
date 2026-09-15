@@ -496,6 +496,8 @@ p {
   border-radius: var(--r2-radius-sm);
   font: inherit;
   padding: 10px;
+  width: 100%;
+  min-width: 0;
 }
 
 .franchise-form button {
