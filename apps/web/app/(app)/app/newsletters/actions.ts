@@ -2,6 +2,8 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { renderBlocksToText, sanitizeRichTextHtml, validateBlocks } from "@raring2go/marketing";
+import type { Block } from "@raring2go/marketing";
 import {
   addNewsletterEditionOverride,
   approveCampaignVersion,
@@ -23,10 +25,25 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
     throw new Error("Select an audience segment before composing a campaign.");
   }
 
-  const body = String(formData.get("body") || "");
+  const blocksJson = String(formData.get("blocksJson") || "");
+  let parsedBlocks: unknown;
 
-  if (!body.trim()) {
-    throw new Error("Write the newsletter body before composing a campaign.");
+  try {
+    parsedBlocks = JSON.parse(blocksJson);
+  } catch {
+    throw new Error("The newsletter content could not be read. Try composing it again.");
+  }
+
+  // The trust boundary: blocksJson is client-authored JSON (the block editor's
+  // serialized state) and must never be accepted as-is. validateBlocks rejects
+  // unknown block types/shapes and unsafe URL schemes; every TextBlock's rich-text
+  // HTML is then sanitized server-side regardless of what the client already did.
+  const blocks: Block[] = validateBlocks(parsedBlocks).map((block) =>
+    block.type === "text" ? { ...block, html: sanitizeRichTextHtml(block.html) } : block
+  );
+
+  if (blocks.length === 0 || !renderBlocksToText(blocks).trim()) {
+    throw new Error("Write the newsletter content before composing a campaign.");
   }
 
   const sendChoice = String(formData.get("sendChoice") || "postmark");
@@ -41,7 +58,7 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
     title: String(formData.get("title") || "Newsletter"),
     subject: String(formData.get("subject") || ""),
     preheader: String(formData.get("preheader") || "") || null,
-    body,
+    blocks,
     sendProvider,
     sendConnectionId
   });

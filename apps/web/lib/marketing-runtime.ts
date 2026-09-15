@@ -22,7 +22,6 @@ import {
   listNewsletterFactory,
   listSegments,
   loadMarketingData,
-  normalizeContentSnapshot,
   recordTerritoryNewsletterOverride,
   scheduleEmailCampaign,
   updateEmailCampaignRecord,
@@ -33,7 +32,7 @@ import {
 import { recordAuditEvent } from "@raring2go/audit";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import { createDrizzleProviderConnectionRepository } from "@raring2go/integrations";
-import type { EmailSendProvider, MarketingActorContext } from "@raring2go/marketing";
+import type { Block, EmailSendProvider, MarketingActorContext } from "@raring2go/marketing";
 import type { PermissionData } from "@raring2go/permissions";
 
 export const marketingPermissionData: PermissionData = {
@@ -177,11 +176,16 @@ export async function composeEmailCampaign(
     title: string;
     subject: string;
     preheader: string | null;
-    body: string;
+    blocks: Block[];
     sendProvider?: EmailSendProvider;
     sendConnectionId?: string | null;
   }
 ) {
+  if (input.blocks.length === 0) {
+    throw new Error("Add at least one block before composing a campaign.");
+  }
+
+
   const { db, sql } = createDb();
 
   try {
@@ -236,7 +240,7 @@ export async function composeEmailCampaign(
         status: "draft",
         subject: input.subject,
         preheader: input.preheader,
-        contentSnapshot: normalizeContentSnapshot({ text: input.body }, input.title),
+        contentSnapshot: { version: 1 as const, blocks: input.blocks },
         createdByUserId: context.userId
       };
       await createEmailCampaign(context, marketingPermissionData, auditFor(tx), data, campaign, version);

@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@dnd-kit/utilities": "3.2.2",
     "@raring2go/advertising": "workspace:*",
     "@raring2go/audit": "workspace:*",
     "@raring2go/auth": "workspace:*",
@@ -22,9 +25,11 @@
     "@raring2go/integrations": "workspace:*",
     "@raring2go/marketing": "workspace:*",
     "@raring2go/permissions": "workspace:*",
-    "@raring2go/publishing": "workspace:*",
     "@raring2go/public": "workspace:*",
+    "@raring2go/publishing": "workspace:*",
     "@raring2go/storage": "workspace:*",
+    "@tiptap/react": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
     "drizzle-orm": "0.45.2",
     "next": "16.3.0",
     "react": "19.2.8",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { normalizeContentSnapshot, renderBlocksToHtml, renderBlocksToText, type Block } from "./blocks";
+import { renderBlocksToHtml, renderBlocksToText, validateBlocks, type Block } from "./blocks";
+import { normalizeContentSnapshot } from "./content-snapshot";
 
 // Mirrors the old renderPlainText/renderHtml logic exactly, so tests can assert
 // the new block pipeline reproduces it byte-for-byte for every shape already
@@ -134,5 +135,55 @@ describe("normalizeContentSnapshot / renderers", () => {
     expect(text).toContain("An image");
     expect(text).toContain("Shop now: https://example.test/shop");
     expect(text).toContain("Imported");
+  });
+});
+
+describe("validateBlocks (untrusted-JSON trust boundary)", () => {
+  it("accepts a well-formed array of every block type", () => {
+    const raw = [
+      { id: "b1", type: "heading", text: "Hello", level: 1 },
+      { id: "b2", type: "text", html: "<p>Body</p>" },
+      { id: "b3", type: "image", src: "https://example.test/a.png", alt: "Alt text", href: "https://example.test" },
+      { id: "b4", type: "button", label: "Shop", href: "https://example.test/shop" },
+      { id: "b5", type: "divider" },
+      { id: "b6", type: "raw-html", html: "<div>Imported</div>" }
+    ];
+
+    expect(validateBlocks(raw)).toEqual([
+      { id: "b1", type: "heading", text: "Hello", level: 1 },
+      { id: "b2", type: "text", html: "<p>Body</p>" },
+      { id: "b3", type: "image", src: "https://example.test/a.png", alt: "Alt text", href: "https://example.test", fileId: null },
+      { id: "b4", type: "button", label: "Shop", href: "https://example.test/shop" },
+      { id: "b5", type: "divider" },
+      { id: "b6", type: "raw-html", html: "<div>Imported</div>", sourceLabel: null }
+    ]);
+  });
+
+  it("rejects a non-array payload", () => {
+    expect(() => validateBlocks({ not: "an array" })).toThrow("must be an array");
+  });
+
+  it("rejects a block missing an id", () => {
+    expect(() => validateBlocks([{ type: "heading", text: "Hi", level: 1 }])).toThrow(/missing a valid id/);
+  });
+
+  it("rejects an unknown block type", () => {
+    expect(() => validateBlocks([{ id: "b1", type: "video", src: "https://example.test/v.mp4" }])).toThrow(/unknown block type/);
+  });
+
+  it("rejects a javascript: URL in a button href", () => {
+    expect(() =>
+      validateBlocks([{ id: "b1", type: "button", label: "Click me", href: "javascript:alert(1)" }])
+    ).toThrow(/href must be a valid/);
+  });
+
+  it("rejects a javascript: URL in an image src", () => {
+    expect(() =>
+      validateBlocks([{ id: "b1", type: "image", src: "javascript:alert(1)", alt: "x" }])
+    ).toThrow(/src must be a valid/);
+  });
+
+  it("rejects a heading with an invalid level", () => {
+    expect(() => validateBlocks([{ id: "b1", type: "heading", text: "Hi", level: 3 }])).toThrow(/level must be 1 or 2/);
   });
 });
