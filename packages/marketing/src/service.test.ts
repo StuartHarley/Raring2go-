@@ -50,7 +50,7 @@ import {
   upsertAudienceContact,
   verifyUnsubscribeToken
 } from "./service";
-import type { MarketingData } from "./types";
+import type { MarketingData, MarketingJourneyVersion } from "./types";
 
 const ids = {
   users: { hq: "user_hq", local: "user_local" },
@@ -1944,6 +1944,14 @@ describe("marketing audience foundation", () => {
     })).rejects.toThrow("outside the active territory");
   });
 
+  it("rejects a journey version that isn't version 1", async () => {
+    const data = seededData();
+
+    await expect(
+      createJourney(hqContext(), permissions, audit(), data, journey(), { ...journeyVersion(), versionNumber: 2 })
+    ).rejects.toThrow("must belong to the journey and start at version 1");
+  });
+
   it("creates, activates and executes event-driven journeys with consent and idempotency", async () => {
     const data = seededData();
     const recorder = audit();
@@ -2144,15 +2152,22 @@ function journey() {
   };
 }
 
-function journeyVersion() {
+function journeyVersion(): MarketingJourneyVersion {
   return {
     id: "journey_welcome_v1",
     journeyId: "journey_welcome",
     versionNumber: 1,
     status: "draft",
-    trigger: { eventType: "audience.subscribed" },
-    conditions: [{ type: "subscribed", purpose: "newsletter" }],
-    steps: [{ key: "welcome-email", actionType: "send_email", templateKey: "welcome" }],
+    trigger: { type: "contact_subscribed_to_territory" },
+    conditions: [],
+    steps: [
+      {
+        key: "welcome-email",
+        actionType: "send_email",
+        delayMinutes: 0,
+        email: { subject: "Welcome to Raring2go", blocks: [{ id: "block_1", type: "text", html: "<p>Welcome!</p>" }] }
+      }
+    ],
     aiSuggestions: { subjectLines: ["Welcome to Raring2go"] },
     approvedByUserId: null,
     approvedAt: null

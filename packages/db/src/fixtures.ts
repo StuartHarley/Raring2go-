@@ -2005,14 +2005,14 @@ export const foundationSeed = {
       journeyId: fixtureIds.marketingJourneys.welcomeSeries,
       versionNumber: 1,
       status: "approved",
-      trigger: { eventType: "audience.subscribed", territoryRequired: true },
-      conditions: [{ type: "consent", status: "subscribed" }, { type: "suppression", behaviour: "exclude" }],
+      trigger: { type: "contact_subscribed_to_territory" },
+      conditions: [{ kind: "condition", field: "subscriptionStatus", operator: "equals", value: "subscribed" }],
       steps: [
         {
           key: "welcome-email",
           actionType: "send_email",
-          templateKey: "standard-newsletter",
-          delay: { amount: 0, unit: "minutes" }
+          delayMinutes: 0,
+          email: { subject: "Welcome to Raring2go!", blocks: [{ id: "welcome_email_block_1", type: "text", html: "<p>Welcome to the family!</p>" }] }
         }
       ],
       aiSuggestions: { allowed: false },

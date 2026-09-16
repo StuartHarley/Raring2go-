@@ -36,6 +36,8 @@ import type {
   EmailRecipientSnapshot,
   EmailSendJob,
   MarketingData,
+  MarketingJourney,
+  MarketingJourneyVersion,
   NetworkNewsletterMaster,
   NewsletterFactoryRun,
   TerritoryNewsletterEdition
@@ -213,6 +215,47 @@ export async function updateEmailCampaignVersionRecord(db: MarketingDb, version:
       approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
     })
     .where(eq(emailCampaignVersions.id, version.id));
+}
+
+export async function insertJourneyGraph(
+  db: MarketingDb,
+  input: { journey: MarketingJourney; version: MarketingJourneyVersion }
+) {
+  await db.insert(marketingJourneys).values({
+    ...input.journey,
+    approvedAt: input.journey.approvedAt ? new Date(input.journey.approvedAt) : null,
+    activatedAt: input.journey.activatedAt ? new Date(input.journey.activatedAt) : null,
+    pausedAt: input.journey.pausedAt ? new Date(input.journey.pausedAt) : null
+  });
+  await db.insert(marketingJourneyVersions).values({
+    ...input.version,
+    approvedAt: input.version.approvedAt ? new Date(input.version.approvedAt) : null
+  });
+}
+
+export async function updateJourneyRecord(db: MarketingDb, journey: MarketingJourney) {
+  await db
+    .update(marketingJourneys)
+    .set({
+      status: journey.status,
+      approvedByUserId: journey.approvedByUserId,
+      approvedAt: journey.approvedAt ? new Date(journey.approvedAt) : null,
+      activatedAt: journey.activatedAt ? new Date(journey.activatedAt) : null,
+      pausedAt: journey.pausedAt ? new Date(journey.pausedAt) : null,
+      metadata: journey.metadata
+    })
+    .where(eq(marketingJourneys.id, journey.id));
+}
+
+export async function updateJourneyVersionRecord(db: MarketingDb, version: MarketingJourneyVersion) {
+  await db
+    .update(marketingJourneyVersions)
+    .set({
+      status: version.status,
+      approvedByUserId: version.approvedByUserId,
+      approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
+    })
+    .where(eq(marketingJourneyVersions.id, version.id));
 }
 
 export async function insertEmailRecipientSnapshotRecord(db: MarketingDb, snapshot: EmailRecipientSnapshot) {

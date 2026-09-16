@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
+  activateJourney,
   approveEmailCampaignVersion,
+  approveJourneyVersion,
   approveNetworkNewsletterMaster,
   compareSubjectLineVariants,
   createEmailCampaign,
   createEmailCampaignVersion,
+  createJourney,
   createNetworkNewsletterMaster,
   createNewsletterEditionCampaign,
   createRecipientSnapshot,
@@ -18,6 +21,7 @@ import {
   insertEmailCampaignVersionRecord,
   insertEmailRecipientSnapshotRecord,
   insertEmailSendJobRecord,
+  insertJourneyGraph,
   insertNetworkNewsletterMasterRecord,
   insertNewsletterFactoryRunRecord,
   insertSegmentRecord,
@@ -30,6 +34,7 @@ import {
   listNewsletterFactory,
   listSegments,
   loadMarketingData,
+  pauseJourney,
   previewSegment,
   previewSegmentDefinition,
   recordTerritoryNewsletterOverride,
@@ -37,6 +42,8 @@ import {
   startSubjectLineTest,
   updateEmailCampaignRecord,
   updateEmailCampaignVersionRecord,
+  updateJourneyRecord,
+  updateJourneyVersionRecord,
   updateNetworkNewsletterMasterRecord,
   updateSegment,
   updateSegmentRecord,
@@ -45,7 +52,16 @@ import {
 import { recordAuditEvent } from "@raring2go/audit";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import { createDrizzleProviderConnectionRepository } from "@raring2go/integrations";
-import type { Block, EmailSendProvider, MarketingActorContext } from "@raring2go/marketing";
+import type {
+  Block,
+  EmailSendProvider,
+  JourneyCondition,
+  JourneyStep,
+  JourneyTrigger,
+  MarketingActorContext,
+  MarketingJourney,
+  MarketingJourneyVersion
+} from "@raring2go/marketing";
 import type { PermissionData } from "@raring2go/permissions";
 
 export const marketingPermissionData: PermissionData = {
@@ -79,6 +95,11 @@ export const marketingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryApprove, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryContribute, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyCreate, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyEdit, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyApprove, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyActivate, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyPause, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.marketingAnalyticsView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.audienceView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.segmentView, "own_territory"),
@@ -214,6 +235,120 @@ export async function readJourneyOverview(context: MarketingActorContext) {
 
   try {
     return listJourneys(context, marketingPermissionData, await loadMarketingData(db));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function createMarketingJourney(
+  context: MarketingActorContext,
+  input: {
+    journeyId: string;
+    versionId: string;
+    key: string;
+    name: string;
+    territoryId?: string | null;
+    purpose: string;
+    description?: string | null;
+    frequencyCap?: Record<string, unknown>;
+    trigger: JourneyTrigger;
+    conditions: JourneyCondition[];
+    steps: JourneyStep[];
+    aiSuggestions?: Record<string, unknown>;
+  }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const journey: MarketingJourney = {
+        id: input.journeyId,
+        key: input.key,
+        name: input.name,
+        territoryId: input.territoryId ?? null,
+        status: "draft",
+        purpose: input.purpose,
+        description: input.description ?? null,
+        frequencyCap: input.frequencyCap ?? {},
+        metadata: {},
+        createdByUserId: context.userId,
+        approvedByUserId: null,
+        approvedAt: null,
+        activatedAt: null,
+        pausedAt: null
+      };
+      const version: MarketingJourneyVersion = {
+        id: input.versionId,
+        journeyId: journey.id,
+        versionNumber: 1,
+        status: "draft",
+        trigger: input.trigger,
+        conditions: input.conditions,
+        steps: input.steps,
+        aiSuggestions: input.aiSuggestions ?? {},
+        approvedByUserId: null,
+        approvedAt: null
+      };
+      await createJourney(context, marketingPermissionData, auditFor(tx), data, journey, version);
+      await insertJourneyGraph(tx, { journey, version });
+      return journey;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function approveMarketingJourneyVersion(context: MarketingActorContext, journeyId: string, versionId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const version = await approveJourneyVersion(
+        context,
+        marketingPermissionData,
+        auditFor(tx),
+        data,
+        journeyId,
+        versionId,
+        new Date().toISOString()
+      );
+      const journey = data.journeys.find((candidate) => candidate.id === journeyId)!;
+      await updateJourneyVersionRecord(tx, version);
+      await updateJourneyRecord(tx, journey);
+      return version;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function activateMarketingJourney(context: MarketingActorContext, journeyId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const journey = await activateJourney(context, marketingPermissionData, auditFor(tx), data, journeyId, new Date().toISOString());
+      await updateJourneyRecord(tx, journey);
+      return journey;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function pauseMarketingJourney(context: MarketingActorContext, journeyId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const journey = await pauseJourney(context, marketingPermissionData, auditFor(tx), data, journeyId, new Date().toISOString());
+      await updateJourneyRecord(tx, journey);
+      return journey;
+    });
   } finally {
     await sql.end();
   }
