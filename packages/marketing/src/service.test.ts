@@ -552,6 +552,163 @@ describe("marketing audience foundation", () => {
     ]);
   });
 
+  it("bakes per-segment block visibility into each recipient's hiddenBlockIds at snapshot time", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    const vipContactId = "contact_vip";
+    data.contacts.push({ ...contact("vip@example.test"), id: vipContactId, tags: ["vip"] });
+    data.subscriptions.push(subscription("sub_vip", vipContactId, ids.territories.own));
+    const vipSegment = await createSegment(localContext(), permissions, recorder, data, {
+      id: "segment_vip",
+      key: "vip",
+      name: "VIP",
+      territoryId: ids.territories.own,
+      definition: { kind: "group", match: "all", children: [{ kind: "condition", field: "tag", operator: "equals", value: "vip" }] }
+    });
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "gated_campaign",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Gated content",
+      subject: "Gated content",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "gated_campaign_v1",
+      campaignId: "gated_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Gated content",
+      preheader: null,
+      contentSnapshot: {
+        version: 1,
+        blocks: [
+          { id: "block_everyone", type: "divider" },
+          { id: "block_vip_only", type: "divider", visibleSegmentId: vipSegment.id }
+        ]
+      },
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder, data, "gated_campaign", "gated_campaign_v1", "2026-08-11T10:00:00.000Z");
+
+    const snapshot = await createRecipientSnapshot(localContext(), permissions, recorder, data, {
+      id: "gated_snapshot",
+      campaignId: "gated_campaign",
+      campaignVersionId: "gated_campaign_v1",
+      segmentId: ids.segment,
+      status: "created",
+      generatedAt: "2026-08-11T10:05:00.000Z",
+      idempotencyKey: "gated:snapshot"
+    });
+
+    expect(snapshot.recipientCount).toBe(2);
+    const nonVip = snapshot.recipients.find((recipient) => recipient.contactId === ids.contact) as { hiddenBlockIds: string[] };
+    const vip = snapshot.recipients.find((recipient) => recipient.contactId === vipContactId) as { hiddenBlockIds: string[] };
+    expect(nonVip.hiddenBlockIds).toEqual(["block_vip_only"]);
+    expect(vip.hiddenBlockIds).toEqual([]);
+
+    // A campaign with no gated blocks gets no hiddenBlockIds key at all - byte-for-byte
+    // identical to the pre-feature shape.
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "ungated_campaign",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Ungated content",
+      subject: "Ungated content",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "ungated_campaign_v1",
+      campaignId: "ungated_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Ungated content",
+      preheader: null,
+      contentSnapshot: { version: 1, blocks: [{ id: "block_plain", type: "divider" }] },
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder, data, "ungated_campaign", "ungated_campaign_v1", "2026-08-11T10:00:00.000Z");
+    const ungatedSnapshot = await createRecipientSnapshot(localContext(), permissions, recorder, data, {
+      id: "ungated_snapshot",
+      campaignId: "ungated_campaign",
+      campaignVersionId: "ungated_campaign_v1",
+      segmentId: ids.segment,
+      status: "created",
+      generatedAt: "2026-08-11T10:06:00.000Z",
+      idempotencyKey: "ungated:snapshot"
+    });
+    expect(Object.keys(ungatedSnapshot.recipients[0]!)).not.toContain("hiddenBlockIds");
+  });
+
+  it("rejects generating a recipient snapshot for a version gated to a deleted or inaccessible segment", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "bad_gate_campaign",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Bad gate",
+      subject: "Bad gate",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "bad_gate_campaign_v1",
+      campaignId: "bad_gate_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Bad gate",
+      preheader: null,
+      contentSnapshot: {
+        version: 1,
+        blocks: [{ id: "block_gated", type: "divider", visibleSegmentId: "segment_does_not_exist" }]
+      },
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder, data, "bad_gate_campaign", "bad_gate_campaign_v1", "2026-08-11T10:00:00.000Z");
+
+    await expect(
+      createRecipientSnapshot(localContext(), permissions, recorder, data, {
+        id: "bad_gate_snapshot",
+        campaignId: "bad_gate_campaign",
+        campaignVersionId: "bad_gate_campaign_v1",
+        segmentId: ids.segment,
+        status: "created",
+        generatedAt: "2026-08-11T10:05:00.000Z",
+        idempotencyKey: "bad_gate:snapshot"
+      })
+    ).rejects.toThrow("Audience segment was not found");
+  });
+
   it("enqueues a scheduled campaign for sending exactly once and surfaces the active job", async () => {
     const data = seededData();
     const recorder = audit();

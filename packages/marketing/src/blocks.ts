@@ -4,7 +4,7 @@
 // (see BlockEditor.tsx). Server-only helpers that build blocks (e.g.
 // normalizeContentSnapshot) live in content-snapshot.ts instead.
 
-export type BlockBase = { id: string };
+export type BlockBase = { id: string; visibleSegmentId?: string | null };
 
 export type HeadingBlock = BlockBase & { type: "heading"; text: string; level: 1 | 2 };
 export type TextBlock = BlockBase & { type: "text"; html: string };
@@ -53,6 +53,12 @@ function fail(index: number, message: string): never {
   throw new Error(`Block at index ${index}: ${message}`);
 }
 
+function normalizeVisibleSegmentId(value: unknown, index: number): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return fail(index, "visibleSegmentId must be a string or null.");
+  return value;
+}
+
 /**
  * The real trust boundary for a block array arriving as untrusted client JSON
  * (the editor's serialized `blocksJson` hidden field). Every block a server
@@ -76,16 +82,17 @@ function validateBlock(entry: unknown, index: number): Block {
   }
 
   const id = entry.id;
+  const visibleSegmentId = normalizeVisibleSegmentId(entry.visibleSegmentId, index);
 
   switch (entry.type) {
     case "heading": {
       if (typeof entry.text !== "string" || !entry.text.trim()) return fail(index, "heading requires non-empty text.");
       if (entry.level !== 1 && entry.level !== 2) return fail(index, "heading level must be 1 or 2.");
-      return { id, type: "heading", text: entry.text, level: entry.level };
+      return { id, type: "heading", text: entry.text, level: entry.level, visibleSegmentId };
     }
     case "text": {
       if (typeof entry.html !== "string") return fail(index, "text block requires html.");
-      return { id, type: "text", html: entry.html };
+      return { id, type: "text", html: entry.html, visibleSegmentId };
     }
     case "image": {
       if (typeof entry.src !== "string" || !isSafeUrl(entry.src, IMAGE_SRC_SCHEMES)) {
@@ -98,22 +105,22 @@ function validateBlock(entry: unknown, index: number): Block {
       }
       const fileId = entry.fileId;
       if (fileId != null && typeof fileId !== "string") return fail(index, "image fileId must be a string.");
-      return { id, type: "image", src: entry.src, alt: entry.alt, href: href ?? null, fileId: fileId ?? null };
+      return { id, type: "image", src: entry.src, alt: entry.alt, href: href ?? null, fileId: fileId ?? null, visibleSegmentId };
     }
     case "button": {
       if (typeof entry.label !== "string" || !entry.label.trim()) return fail(index, "button requires a non-empty label.");
       if (typeof entry.href !== "string" || !isSafeUrl(entry.href, LINK_URL_SCHEMES)) {
         return fail(index, "button href must be a valid http(s)/mailto URL.");
       }
-      return { id, type: "button", label: entry.label, href: entry.href };
+      return { id, type: "button", label: entry.label, href: entry.href, visibleSegmentId };
     }
     case "divider":
-      return { id, type: "divider" };
+      return { id, type: "divider", visibleSegmentId };
     case "raw-html": {
       if (typeof entry.html !== "string") return fail(index, "raw-html block requires html.");
       const sourceLabel = entry.sourceLabel;
       if (sourceLabel != null && typeof sourceLabel !== "string") return fail(index, "raw-html sourceLabel must be a string.");
-      return { id, type: "raw-html", html: entry.html, sourceLabel: sourceLabel ?? null };
+      return { id, type: "raw-html", html: entry.html, sourceLabel: sourceLabel ?? null, visibleSegmentId };
     }
     default:
       return fail(index, `unknown block type "${String((entry as { type?: unknown }).type)}".`);

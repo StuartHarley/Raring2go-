@@ -119,6 +119,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
               <CampaignComposeFields
                 aiAssistAvailable={aiAssistAvailable}
                 lastNewsletter={lastNewsletter}
+                segments={composableSegments}
                 suggestSubjectLinesAction={suggestSubjectLinesAction.bind(null, context)}
                 suggestBlockCopyAction={suggestBlockCopyAction.bind(null, context)}
                 acceptAiSuggestionAction={acceptAiSuggestionAction.bind(null, context)}

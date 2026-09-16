@@ -33,6 +33,7 @@ import {
   type TextBlock
 } from "@raring2go/marketing/blocks";
 import { templateGallery, type TemplateGalleryEntry } from "@raring2go/marketing/template-gallery";
+import type { AudienceSegment } from "@raring2go/marketing";
 
 // Sample values so the live preview shows roughly what a real recipient will
 // see - never sent, purely a preview affordance.
@@ -113,12 +114,14 @@ export type LastNewsletter = { title: string; subject: string; blocks: Block[] }
 export function CampaignComposeFields({
   aiAssistAvailable,
   lastNewsletter,
+  segments,
   suggestSubjectLinesAction,
   suggestBlockCopyAction,
   acceptAiSuggestionAction
 }: {
   aiAssistAvailable: boolean;
   lastNewsletter?: LastNewsletter;
+  segments: AudienceSegment[];
   suggestSubjectLinesAction: SuggestSubjectLines;
   suggestBlockCopyAction: SuggestBlockCopy;
   acceptAiSuggestionAction: AcceptAiSuggestion;
@@ -517,6 +520,7 @@ export function CampaignComposeFields({
                 aiAssistAvailable={aiAssistAvailable}
                 draftId={draftId}
                 campaignTitle={title}
+                segments={segments}
                 suggestBlockCopyAction={suggestBlockCopyAction}
                 acceptAiSuggestionAction={acceptAiSuggestionAction}
               />
@@ -582,6 +586,7 @@ function SortableBlockRow({
   aiAssistAvailable,
   draftId,
   campaignTitle,
+  segments,
   suggestBlockCopyAction,
   acceptAiSuggestionAction
 }: {
@@ -593,6 +598,7 @@ function SortableBlockRow({
   aiAssistAvailable: boolean;
   draftId: string;
   campaignTitle: string;
+  segments: AudienceSegment[];
   suggestBlockCopyAction: SuggestBlockCopy;
   acceptAiSuggestionAction: AcceptAiSuggestion;
 }) {
@@ -606,6 +612,18 @@ function SortableBlockRow({
           ⠿
         </button>
         <span className="block-editor-row-type">{blockLabel(block)}</span>
+        <select
+          aria-label="Restrict this block to a segment"
+          value={block.visibleSegmentId ?? ""}
+          onChange={(event) => onChange({ visibleSegmentId: event.target.value || null })}
+        >
+          <option value="">Show to everyone</option>
+          {segments.map((segment) => (
+            <option key={segment.id} value={segment.id}>
+              Only show to: {segment.name}
+            </option>
+          ))}
+        </select>
         <button type="button" onClick={onDuplicate} aria-label="Duplicate block">
           Duplicate
         </button>
