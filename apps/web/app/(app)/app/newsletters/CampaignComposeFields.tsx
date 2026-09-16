@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -127,6 +127,8 @@ export function CampaignComposeFields({
   const [subjectSuggestState, setSubjectSuggestState] = useState<"idle" | "loading" | "error">("idle");
   const [subjectSuggestError, setSubjectSuggestError] = useState<string | null>(null);
   const [restoreBanner, setRestoreBanner] = useState<StoredDraft | null>(() => readStoredDraft());
+  const [past, setPast] = useState<Block[][]>([]);
+  const [future, setFuture] = useState<Block[][]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -193,6 +195,62 @@ export function CampaignComposeFields({
   const canStartFromLastNewsletter =
     Boolean(lastNewsletter) && !restoreBanner && !draftHasContent({ title, subject, blocks });
 
+  // Block-level structural undo/redo (add/remove/duplicate/reorder) only -
+  // per-keystroke text edits stay owned by native input undo and Tiptap's
+  // own history inside the rich-text block.
+  const MAX_HISTORY = 50;
+
+  function pushHistory(snapshot: Block[]) {
+    setPast((current) => {
+      const next = [...current, snapshot];
+      return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
+    });
+    setFuture([]);
+  }
+
+  const undo = useCallback(() => {
+    if (past.length === 0) return;
+    const previous = past[past.length - 1]!;
+    setFuture((currentFuture) => [blocks, ...currentFuture]);
+    setPast((currentPast) => currentPast.slice(0, -1));
+    setBlocks(previous);
+  }, [past, blocks]);
+
+  const redo = useCallback(() => {
+    if (future.length === 0) return;
+    const next = future[0]!;
+    setPast((currentPast) => [...currentPast, blocks]);
+    setFuture((currentFuture) => currentFuture.slice(1));
+    setBlocks(next);
+  }, [future, blocks]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const key = event.key.toLowerCase();
+      const isUndo = (event.metaKey || event.ctrlKey) && !event.shiftKey && key === "z";
+      const isRedo = (event.metaKey || event.ctrlKey) && event.shiftKey && key === "z";
+      if (!isUndo && !isRedo) return;
+
+      const active = document.activeElement;
+      const isTextEditingContext =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        (active instanceof HTMLElement && active.isContentEditable);
+
+      if (isTextEditingContext) return; // let native input undo / Tiptap's own history handle it
+
+      event.preventDefault();
+      if (isRedo) {
+        redo();
+      } else {
+        undo();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [undo, redo]);
+
   async function handleSuggestSubjectLines() {
     setSubjectSuggestState("loading");
     setSubjectSuggestError(null);
@@ -221,11 +279,24 @@ export function CampaignComposeFields({
   }
 
   function removeBlock(id: string) {
-    setBlocks((current) => (current.length > 1 ? current.filter((block) => block.id !== id) : current));
+    if (blocks.length <= 1) return;
+    pushHistory(blocks);
+    setBlocks(blocks.filter((block) => block.id !== id));
+  }
+
+  function duplicateBlock(id: string) {
+    const index = blocks.findIndex((block) => block.id === id);
+    if (index === -1) return;
+    pushHistory(blocks);
+    const clone = { ...blocks[index], id: crypto.randomUUID() } as Block;
+    const next = [...blocks];
+    next.splice(index + 1, 0, clone);
+    setBlocks(next);
   }
 
   function addBlock(factory: () => Block) {
-    setBlocks((current) => [...current, factory()]);
+    pushHistory(blocks);
+    setBlocks([...blocks, factory()]);
   }
 
   async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
@@ -238,10 +309,11 @@ export function CampaignComposeFields({
 
   function addImportedBlock() {
     if (!importHtml.trim()) return;
+    pushHistory(blocks);
     // Deliberately unsanitized here — the server action is the real trust
     // boundary and re-sanitizes every RawHtmlBlock's html before it is stored.
     const block: RawHtmlBlock = { id: crypto.randomUUID(), type: "raw-html", html: importHtml, sourceLabel: importSourceLabel };
-    setBlocks((current) => [...current, block]);
+    setBlocks([...blocks, block]);
     setImportHtml("");
     setImportSourceLabel(null);
   }
@@ -250,12 +322,11 @@ export function CampaignComposeFields({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    setBlocks((current) => {
-      const oldIndex = current.findIndex((block) => block.id === active.id);
-      const newIndex = current.findIndex((block) => block.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return current;
-      return arrayMove(current, oldIndex, newIndex);
-    });
+    const oldIndex = blocks.findIndex((block) => block.id === active.id);
+    const newIndex = blocks.findIndex((block) => block.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    pushHistory(blocks);
+    setBlocks(arrayMove(blocks, oldIndex, newIndex));
   }
 
   return (
@@ -314,6 +385,15 @@ export function CampaignComposeFields({
 
       <input type="hidden" name="blocksJson" value={JSON.stringify(blocks)} />
 
+      <div className="block-editor-history-controls">
+        <button type="button" onClick={undo} disabled={past.length === 0} aria-label="Undo">
+          ↶ Undo
+        </button>
+        <button type="button" onClick={redo} disabled={future.length === 0} aria-label="Redo">
+          ↷ Redo
+        </button>
+      </div>
+
       <DndContext id="newsletter-compose-blocks" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={blocks.map((block) => block.id)} strategy={verticalListSortingStrategy}>
           <div className="block-editor-list">
@@ -324,6 +404,7 @@ export function CampaignComposeFields({
                 canRemove={blocks.length > 1}
                 onChange={(patch) => updateBlock(block.id, patch)}
                 onRemove={() => removeBlock(block.id)}
+                onDuplicate={() => duplicateBlock(block.id)}
                 aiAssistAvailable={aiAssistAvailable}
                 draftId={draftId}
                 campaignTitle={title}
@@ -388,6 +469,7 @@ function SortableBlockRow({
   canRemove,
   onChange,
   onRemove,
+  onDuplicate,
   aiAssistAvailable,
   draftId,
   campaignTitle,
@@ -398,6 +480,7 @@ function SortableBlockRow({
   canRemove: boolean;
   onChange: (patch: Partial<Block>) => void;
   onRemove: () => void;
+  onDuplicate: () => void;
   aiAssistAvailable: boolean;
   draftId: string;
   campaignTitle: string;
@@ -414,6 +497,9 @@ function SortableBlockRow({
           ⠿
         </button>
         <span className="block-editor-row-type">{blockLabel(block)}</span>
+        <button type="button" onClick={onDuplicate} aria-label="Duplicate block">
+          Duplicate
+        </button>
         <button type="button" onClick={onRemove} disabled={!canRemove} aria-label="Remove block">
           Remove
         </button>
