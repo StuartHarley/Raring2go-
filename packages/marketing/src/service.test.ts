@@ -528,6 +528,10 @@ describe("marketing audience foundation", () => {
       recipientCount: 1,
       excludedCount: 0
     });
+    expect(snapshot.recipients[0]).toMatchObject({
+      contactId: ids.contact,
+      firstName: "Pat"
+    });
     expect(duplicate.id).toBe("delivery_1");
     expect(data.emailCampaigns[0]?.status).toBe("scheduled");
     expect(recorder.events.map((event) => event.action)).toEqual([

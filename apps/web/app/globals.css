@@ -1313,6 +1313,21 @@ p {
   gap: 6px;
 }
 
+.block-editor-merge-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.block-editor-merge-tags button {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface-subtle);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 4px 8px;
+}
+
 .block-editor-ai-assist {
   display: grid;
   gap: 6px;

@@ -794,6 +794,8 @@ export async function createRecipientSnapshot(
   const recipients = segmentContacts.map((view) => ({
     contactId: view.contact.id,
     emailNormalised: view.contact.emailNormalised,
+    firstName: view.contact.firstName ?? null,
+    lastName: view.contact.lastName ?? null,
     territoryIds: view.subscriptions.map((subscription) => subscription.territoryId)
   }));
   const allContactIds = new Set(data.contacts.map((contact) => contact.id));

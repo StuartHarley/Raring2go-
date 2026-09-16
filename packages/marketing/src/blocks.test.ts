@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderBlocksToHtml, renderBlocksToText, validateBlocks, type Block } from "./blocks";
+import { renderBlocksToHtml, renderBlocksToText, substituteMergeTags, validateBlocks, type Block } from "./blocks";
 import { normalizeContentSnapshot } from "./content-snapshot";
 
 // Mirrors the old renderPlainText/renderHtml logic exactly, so tests can assert
@@ -185,5 +185,25 @@ describe("validateBlocks (untrusted-JSON trust boundary)", () => {
 
   it("rejects a heading with an invalid level", () => {
     expect(() => validateBlocks([{ id: "b1", type: "heading", text: "Hi", level: 3 }])).toThrow(/level must be 1 or 2/);
+  });
+});
+
+describe("substituteMergeTags", () => {
+  it("substitutes firstName and lastName tokens with the recipient's own data", () => {
+    expect(substituteMergeTags("Hi {{firstName}} {{lastName}}!", { firstName: "Pat", lastName: "Jones" })).toBe(
+      "Hi Pat Jones!"
+    );
+  });
+
+  it("is case-insensitive and tolerates whitespace inside the braces", () => {
+    expect(substituteMergeTags("{{ FirstName }}", { firstName: "Pat" })).toBe("Pat");
+  });
+
+  it("resolves a missing field to an empty string rather than a placeholder", () => {
+    expect(substituteMergeTags("Hi {{firstName}},", { firstName: null, lastName: null })).toBe("Hi ,");
+  });
+
+  it("leaves content with no tokens untouched", () => {
+    expect(substituteMergeTags("No tokens here.", { firstName: "Pat" })).toBe("No tokens here.");
   });
 });

@@ -144,6 +144,29 @@ function renderBlockToHtml(block: Block): string {
   }
 }
 
+export type MergeTagRecipient = { firstName?: string | null; lastName?: string | null };
+
+const MERGE_TAG_PATTERN = /\{\{\s*(firstName|lastName)\s*\}\}/gi;
+
+/**
+ * Substitutes {{firstName}}/{{lastName}} tokens with a recipient's own data.
+ * A missing field resolves to an empty string rather than a placeholder like
+ * "there" - silently blank reads better than a template dropping obvious
+ * filler text into a real subject line or body.
+ */
+export function substituteMergeTags(content: string, recipient: MergeTagRecipient): string {
+  return content.replace(MERGE_TAG_PATTERN, (_match, tag: string) => {
+    switch (tag.toLowerCase()) {
+      case "firstname":
+        return recipient.firstName?.trim() ?? "";
+      case "lastname":
+        return recipient.lastName?.trim() ?? "";
+      default:
+        return "";
+    }
+  });
+}
+
 export function renderBlocksToText(blocks: Block[]): string {
   return blocks
     .map(renderBlockToText)
