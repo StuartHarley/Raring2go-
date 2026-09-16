@@ -1,3 +1,6 @@
+import type { Block } from "./blocks";
+import type { SegmentRuleCondition } from "./segment-rules";
+
 export type MarketingActorContext = {
   userId: string;
   organisationId?: string | null;
@@ -408,14 +411,39 @@ export type MarketingJourney = {
   deletedAt?: Date | null;
 };
 
+/**
+ * Deliberately narrow for v1 - one variant, structured as a discriminated
+ * union so later trigger types can be added without a breaking change.
+ */
+export type JourneyTrigger = { type: "contact_subscribed_to_territory" };
+
+/**
+ * Reused directly from segment-rules.ts rather than a parallel type -
+ * MarketingJourneyVersion.conditions is already a flat array, exactly what
+ * SegmentRuleGroup.children holds, so evaluateSegmentRules can evaluate a
+ * journey's conditions unmodified by wrapping them as a single implicit-AND
+ * group: { kind: "group", match: "all", children: version.conditions }.
+ */
+export type JourneyCondition = SegmentRuleCondition;
+
+export type JourneyStepSendEmail = {
+  key: string;
+  actionType: "send_email";
+  /** Delay before this step runs, relative to the previous step (or entry for the first step). */
+  delayMinutes: number;
+  email: { subject: string; blocks: Block[] };
+};
+
+export type JourneyStep = JourneyStepSendEmail;
+
 export type MarketingJourneyVersion = {
   id: string;
   journeyId: string;
   versionNumber: number;
   status: string;
-  trigger: Record<string, unknown>;
-  conditions: Array<Record<string, unknown>>;
-  steps: Array<Record<string, unknown>>;
+  trigger: JourneyTrigger;
+  conditions: JourneyCondition[];
+  steps: JourneyStep[];
   aiSuggestions: Record<string, unknown>;
   approvedByUserId?: string | null;
   approvedAt?: string | null;
