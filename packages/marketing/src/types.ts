@@ -210,7 +210,7 @@ export type EmailCampaign = {
   templateId?: string | null;
   segmentId?: string | null;
   campaignType: string;
-  status: "draft" | "approved" | "scheduled" | "sending" | "sent" | "cancelled" | (string & {});
+  status: "draft" | "approved" | "testing" | "scheduled" | "sending" | "sent" | "cancelled" | (string & {});
   title: string;
   subject: string;
   preheader?: string | null;
@@ -223,14 +223,17 @@ export type EmailCampaign = {
   deletedAt?: Date | null;
 };
 
+export type EmailCampaignVersionVariantKey = "a" | "b";
+
 export type EmailCampaignVersion = {
   id: string;
   campaignId: string;
   versionNumber: number;
-  status: string;
+  status: "draft" | "testing" | "approved" | "rejected" | (string & {});
   subject: string;
   preheader?: string | null;
   contentSnapshot: Record<string, unknown>;
+  variantKey?: EmailCampaignVersionVariantKey | null;
   createdByUserId?: string | null;
   approvedByUserId?: string | null;
   approvedAt?: string | null;
@@ -249,6 +252,7 @@ export type EmailRecipientSnapshot = {
   recipients: Array<Record<string, unknown>>;
   exclusions: Array<Record<string, unknown>>;
   idempotencyKey: string;
+  variantKey?: EmailCampaignVersionVariantKey | "remainder" | null;
 };
 
 export type EmailDeliveryRecord = {
@@ -285,6 +289,17 @@ export type EmailSendJob = {
   lastError?: string | null;
 };
 
+export type EmailCampaignAbTestMetadata = {
+  sampleFraction: number;
+  variantAContactIds: string[];
+  variantBContactIds: string[];
+  startedAt: string;
+  startedByUserId?: string | null;
+  winnerVersionId?: string;
+  decidedAt?: string;
+  decidedByUserId?: string | null;
+};
+
 export type EmailCampaignOverview = {
   campaigns: Array<{
     campaign: EmailCampaign;
@@ -292,6 +307,12 @@ export type EmailCampaignOverview = {
     latestSnapshot?: EmailRecipientSnapshot;
     deliveryCount: number;
     activeJob?: EmailSendJob;
+    variants: Array<{
+      version: EmailCampaignVersion;
+      snapshot?: EmailRecipientSnapshot;
+      job?: EmailSendJob;
+    }>;
+    remainderSnapshot?: EmailRecipientSnapshot;
   }>;
   totals: {
     campaigns: number;

@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { auditActions } from "@raring2go/audit";
 import { requirePermission, type PermissionData } from "@raring2go/permissions";
 import { marketingCapabilities, type MarketingCapability } from "./permissions";
@@ -13,6 +13,7 @@ import type {
   AudienceSuppression,
   AudienceTerritorySubscription,
   EmailCampaign,
+  EmailCampaignAbTestMetadata,
   EmailCampaignVersion,
   EmailCampaignOverview,
   EmailDeliveryRecord,
@@ -173,7 +174,22 @@ export function listEmailCampaigns(
       deliveryCount: data.emailDeliveryRecords.filter((delivery) => delivery.campaignId === campaign.id && !delivery.deletedAt).length,
       activeJob: data.emailSendJobs.find(
         (job) => job.campaignId === campaign.id && (job.status === "queued" || job.status === "processing")
-      )
+      ),
+      variants: data.emailCampaignVersions
+        .filter((version) => version.campaignId === campaign.id && !version.deletedAt && (version.variantKey === "a" || version.variantKey === "b"))
+        .sort((left, right) => left.versionNumber - right.versionNumber)
+        .map((version) => ({
+          version,
+          snapshot: data.emailRecipientSnapshots
+            .filter((snapshot) => snapshot.campaignVersionId === version.id)
+            .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0],
+          job: data.emailSendJobs
+            .filter((job) => job.campaignVersionId === version.id)
+            .sort((left, right) => right.nextAttemptAt.localeCompare(left.nextAttemptAt))[0]
+        })),
+      remainderSnapshot: data.emailRecipientSnapshots
+        .filter((snapshot) => snapshot.campaignId === campaign.id && snapshot.variantKey === "remainder")
+        .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0]
     }));
 
   return {
@@ -741,6 +757,42 @@ export async function createEmailCampaign(
   return campaign;
 }
 
+export async function createEmailCampaignVersion(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  campaignId: string,
+  version: EmailCampaignVersion
+) {
+  requireMarketingPermission(context, permissions, "emailCreate");
+  const campaign = requireCampaign(data, campaignId);
+  ensureCampaignAccess(context, campaign);
+  if (campaign.status !== "draft") {
+    throw new Error("Additional variants can only be added to a draft campaign.");
+  }
+  if (version.campaignId !== campaign.id) {
+    throw new Error("Campaign version does not belong to campaign.");
+  }
+  if (version.variantKey !== "a" && version.variantKey !== "b") {
+    throw new Error("A new campaign version must declare variant \"a\" or \"b\".");
+  }
+  const siblings = data.emailCampaignVersions.filter((candidate) => candidate.campaignId === campaign.id && !candidate.deletedAt);
+  if (siblings.some((sibling) => sibling.variantKey === version.variantKey)) {
+    throw new Error(`Campaign already has a variant "${version.variantKey}".`);
+  }
+  const maxVersionNumber = siblings.reduce((max, sibling) => Math.max(max, sibling.versionNumber), 0);
+  if (version.versionNumber !== maxVersionNumber + 1) {
+    throw new Error("Campaign version number must follow the existing versions.");
+  }
+  data.emailCampaignVersions.push(version);
+  await audit.record(marketingAuditEvent(context, auditActions.marketingEmailCampaignVersionCreate, "email_campaign", campaign.id, {
+    versionId: version.id,
+    variantKey: version.variantKey
+  }, campaign.territoryId));
+  return version;
+}
+
 export async function approveEmailCampaignVersion(
   context: MarketingActorContext,
   permissions: PermissionData,
@@ -773,7 +825,10 @@ export async function createRecipientSnapshot(
   permissions: PermissionData,
   audit: MarketingAuditRecorder,
   data: MarketingData,
-  snapshot: Omit<EmailRecipientSnapshot, "recipientCount" | "excludedCount" | "recipients" | "exclusions">
+  snapshot: Omit<EmailRecipientSnapshot, "recipientCount" | "excludedCount" | "recipients" | "exclusions"> & {
+    restrictToContactIds?: string[];
+    heldOutExclusionReason?: string;
+  }
 ) {
   requireMarketingPermission(context, permissions, "emailSchedule");
   const existing = data.emailRecipientSnapshots.find((candidate) => candidate.idempotencyKey === snapshot.idempotencyKey);
@@ -783,15 +838,18 @@ export async function createRecipientSnapshot(
   const campaign = requireCampaign(data, snapshot.campaignId);
   ensureCampaignAccess(context, campaign);
   const version = requireCampaignVersion(data, snapshot.campaignVersionId);
-  if (version.status !== "approved") {
-    throw new Error("Only approved campaign versions can create recipient snapshots.");
+  if (version.status !== "approved" && version.status !== "testing") {
+    throw new Error("Only approved or in-test campaign versions can create recipient snapshots.");
   }
   const segmentId = snapshot.segmentId ?? campaign.segmentId;
   if (!segmentId) {
     throw new Error("Campaign requires an audience segment before scheduling.");
   }
   const segmentContacts = previewSegment(context, permissions, data, segmentId);
-  const recipients = segmentContacts.map((view) => ({
+  const { restrictToContactIds, heldOutExclusionReason, ...snapshotInput } = snapshot;
+  const allowlist = restrictToContactIds ? new Set(restrictToContactIds) : null;
+  const eligibleContacts = allowlist ? segmentContacts.filter((view) => allowlist.has(view.contact.id)) : segmentContacts;
+  const recipients = eligibleContacts.map((view) => ({
     contactId: view.contact.id,
     emailNormalised: view.contact.emailNormalised,
     firstName: view.contact.firstName ?? null,
@@ -800,11 +858,17 @@ export async function createRecipientSnapshot(
   }));
   const allContactIds = new Set(data.contacts.map((contact) => contact.id));
   const recipientIds = new Set(recipients.map((recipient) => recipient.contactId));
+  const heldOutIds = allowlist
+    ? new Set(segmentContacts.filter((view) => !allowlist.has(view.contact.id)).map((view) => view.contact.id))
+    : new Set<string>();
   const exclusions = [...allContactIds]
     .filter((contactId) => !recipientIds.has(contactId))
-    .map((contactId) => ({ contactId, reason: "not_eligible_or_suppressed" }));
+    .map((contactId) => ({
+      contactId,
+      reason: heldOutIds.has(contactId) ? (heldOutExclusionReason ?? "held_out_for_ab_test") : "not_eligible_or_suppressed"
+    }));
   const created: EmailRecipientSnapshot = {
-    ...snapshot,
+    ...snapshotInput,
     segmentId,
     recipientCount: recipients.length,
     excludedCount: exclusions.length,
@@ -852,6 +916,8 @@ export function enqueueEmailSend(
     id: string;
     campaignId: string;
     batchSize?: number;
+    campaignVersionId?: string;
+    recipientSnapshotId?: string;
   }
 ): EmailSendJob {
   requireMarketingPermission(context, permissions, "emailSchedule");
@@ -862,32 +928,44 @@ export function enqueueEmailSend(
     throw new Error("Campaign is set to send via Outlook but has no connected mailbox.");
   }
 
-  if (campaign.status !== "scheduled") {
+  const explicitTarget = Boolean(input.campaignVersionId);
+
+  if (!explicitTarget && campaign.status !== "scheduled") {
     throw new Error("Only scheduled campaigns can be queued for sending.");
   }
 
+  const version = input.campaignVersionId
+    ? requireCampaignVersion(data, input.campaignVersionId)
+    : data.emailCampaignVersions
+        .filter((candidate) => candidate.campaignId === campaign.id && candidate.status === "approved" && !candidate.deletedAt)
+        .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+
+  if (!version) {
+    throw new Error("Campaign has no approved version to send.");
+  }
+  if (version.campaignId !== campaign.id) {
+    throw new Error("Campaign version does not belong to campaign.");
+  }
+
   const existingJob = data.emailSendJobs.find(
-    (job) => job.campaignId === campaign.id && (job.status === "queued" || job.status === "processing")
+    (job) => job.campaignId === campaign.id && job.campaignVersionId === version.id && (job.status === "queued" || job.status === "processing")
   );
 
   if (existingJob) {
     return existingJob;
   }
 
-  const version = data.emailCampaignVersions
-    .filter((candidate) => candidate.campaignId === campaign.id && candidate.status === "approved" && !candidate.deletedAt)
-    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
-
-  if (!version) {
-    throw new Error("Campaign has no approved version to send.");
-  }
-
-  const snapshot = data.emailRecipientSnapshots
-    .filter((candidate) => candidate.campaignId === campaign.id && candidate.campaignVersionId === version.id)
-    .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0];
+  const snapshot = input.recipientSnapshotId
+    ? requireRecipientSnapshot(data, input.recipientSnapshotId)
+    : data.emailRecipientSnapshots
+        .filter((candidate) => candidate.campaignId === campaign.id && candidate.campaignVersionId === version.id)
+        .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0];
 
   if (!snapshot) {
     throw new Error("Campaign has no recipient snapshot to send.");
+  }
+  if (snapshot.campaignId !== campaign.id || snapshot.campaignVersionId !== version.id) {
+    throw new Error("Recipient snapshot does not belong to this campaign version.");
   }
 
   if (campaign.sendProvider === "microsoft" && snapshot.recipientCount > MICROSOFT_SEND_RECIPIENT_CAP) {
@@ -912,6 +990,256 @@ export function enqueueEmailSend(
   };
   data.emailSendJobs.push(job);
   return job;
+}
+
+const DEFAULT_AB_TEST_SAMPLE_FRACTION = 0.2;
+
+/** Deterministic [0,1) hash of a string, so the same key always lands in the same bucket. */
+function stableUnitInterval(key: string): number {
+  const digest = createHash("sha256").update(key).digest();
+  return digest.readUInt32BE(0) / 0xffffffff;
+}
+
+export function splitSegmentForAbTest(
+  segmentContacts: AudienceContactView[],
+  input: { sampleFraction?: number } = {}
+): { variantAContactIds: string[]; variantBContactIds: string[]; remainderContactIds: string[] } {
+  const sampleFraction = input.sampleFraction ?? DEFAULT_AB_TEST_SAMPLE_FRACTION;
+  const sampled = segmentContacts.filter((view) => stableUnitInterval(view.contact.id) < sampleFraction);
+  const variantAContactIds: string[] = [];
+  const variantBContactIds: string[] = [];
+  for (const view of sampled) {
+    (stableUnitInterval(`${view.contact.id}:ab`) < 0.5 ? variantAContactIds : variantBContactIds).push(view.contact.id);
+  }
+  const sampledIds = new Set([...variantAContactIds, ...variantBContactIds]);
+  const remainderContactIds = segmentContacts
+    .filter((view) => !sampledIds.has(view.contact.id))
+    .map((view) => view.contact.id);
+  return { variantAContactIds, variantBContactIds, remainderContactIds };
+}
+
+function requireVariantPair(data: MarketingData, campaignId: string) {
+  const variants = data.emailCampaignVersions.filter(
+    (candidate) => candidate.campaignId === campaignId && !candidate.deletedAt && (candidate.variantKey === "a" || candidate.variantKey === "b")
+  );
+  const variantA = variants.find((candidate) => candidate.variantKey === "a");
+  const variantB = variants.find((candidate) => candidate.variantKey === "b");
+  if (!variantA || !variantB) {
+    throw new Error("Campaign does not have both an \"a\" and a \"b\" subject-line variant.");
+  }
+  return { variantA, variantB };
+}
+
+export async function startSubjectLineTest(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  input: { campaignId: string; sampleFraction?: number; startedAt: string; snapshotIdA: string; snapshotIdB: string; jobIdA: string; jobIdB: string }
+) {
+  requireMarketingPermission(context, permissions, "emailApprove");
+  const campaign = requireCampaign(data, input.campaignId);
+  ensureCampaignAccess(context, campaign);
+  if (campaign.status !== "draft") {
+    throw new Error("Only draft campaigns can start a subject-line test.");
+  }
+  if (!campaign.segmentId) {
+    throw new Error("Campaign requires an audience segment before starting a test.");
+  }
+  const { variantA, variantB } = requireVariantPair(data, campaign.id);
+  if (variantA.status !== "draft" || variantB.status !== "draft") {
+    throw new Error("Both subject-line variants must be in draft status to start a test.");
+  }
+
+  const segmentContacts = previewSegment(context, permissions, data, campaign.segmentId);
+  const split = splitSegmentForAbTest(segmentContacts, { sampleFraction: input.sampleFraction });
+
+  variantA.status = "testing";
+  variantA.approvedByUserId = context.userId;
+  variantA.approvedAt = input.startedAt;
+  variantB.status = "testing";
+  variantB.approvedByUserId = context.userId;
+  variantB.approvedAt = input.startedAt;
+  campaign.status = "testing";
+  campaign.metadata = {
+    ...campaign.metadata,
+    abTest: {
+      sampleFraction: input.sampleFraction ?? DEFAULT_AB_TEST_SAMPLE_FRACTION,
+      variantAContactIds: split.variantAContactIds,
+      variantBContactIds: split.variantBContactIds,
+      startedAt: input.startedAt,
+      startedByUserId: context.userId
+    } satisfies EmailCampaignAbTestMetadata
+  };
+
+  const snapshotA = await createRecipientSnapshot(context, permissions, audit, data, {
+    id: input.snapshotIdA,
+    campaignId: campaign.id,
+    campaignVersionId: variantA.id,
+    segmentId: campaign.segmentId,
+    status: "created",
+    generatedAt: input.startedAt,
+    idempotencyKey: `${campaign.id}:${variantA.id}:sample`,
+    variantKey: "a",
+    restrictToContactIds: split.variantAContactIds
+  });
+  const snapshotB = await createRecipientSnapshot(context, permissions, audit, data, {
+    id: input.snapshotIdB,
+    campaignId: campaign.id,
+    campaignVersionId: variantB.id,
+    segmentId: campaign.segmentId,
+    status: "created",
+    generatedAt: input.startedAt,
+    idempotencyKey: `${campaign.id}:${variantB.id}:sample`,
+    variantKey: "b",
+    restrictToContactIds: split.variantBContactIds
+  });
+
+  const jobA = enqueueEmailSend(context, permissions, data, {
+    id: input.jobIdA,
+    campaignId: campaign.id,
+    campaignVersionId: variantA.id,
+    recipientSnapshotId: snapshotA.id
+  });
+  const jobB = enqueueEmailSend(context, permissions, data, {
+    id: input.jobIdB,
+    campaignId: campaign.id,
+    campaignVersionId: variantB.id,
+    recipientSnapshotId: snapshotB.id
+  });
+
+  await audit.record(marketingAuditEvent(context, auditActions.marketingSubjectLineTestStart, "email_campaign", campaign.id, {
+    variantAVersionId: variantA.id,
+    variantBVersionId: variantB.id,
+    sampleFraction: input.sampleFraction ?? DEFAULT_AB_TEST_SAMPLE_FRACTION
+  }, campaign.territoryId));
+
+  return { campaign, variantA, variantB, snapshotA, snapshotB, jobA, jobB };
+}
+
+export function compareSubjectLineVariants(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  data: MarketingData,
+  campaignId: string
+) {
+  requireMarketingPermission(context, permissions, "emailView");
+  const campaign = requireCampaign(data, campaignId);
+  ensureCampaignAccess(context, campaign);
+  const { variantA, variantB } = requireVariantPair(data, campaign.id);
+
+  const variantSummary = (version: EmailCampaignVersion) => {
+    const deliveries = data.emailDeliveryRecords.filter((delivery) => delivery.campaignVersionId === version.id && !delivery.deletedAt);
+    const delivered = new Set(
+      deliveries.filter((delivery) => delivery.eventType === "delivered").map((delivery) => delivery.contactId ?? delivery.emailNormalised)
+    ).size;
+    const opened = new Set(
+      deliveries.filter((delivery) => delivery.eventType === "opened").map((delivery) => delivery.contactId ?? delivery.emailNormalised)
+    ).size;
+    const snapshot = data.emailRecipientSnapshots
+      .filter((candidate) => candidate.campaignVersionId === version.id)
+      .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0];
+    return {
+      version,
+      snapshot,
+      sent: new Set(deliveries.map((delivery) => delivery.contactId ?? delivery.emailNormalised)).size,
+      delivered,
+      opened,
+      openRate: delivered > 0 ? opened / delivered : null
+    };
+  };
+
+  const variants = [variantSummary(variantA), variantSummary(variantB)];
+  const canDeclareWinner = variants.every((variant) => variant.delivered > 0) && variantA.status === "testing" && variantB.status === "testing";
+
+  return { campaign, variants, canDeclareWinner };
+}
+
+export async function declareSubjectLineWinner(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  input: { campaignId: string; winningVersionId: string; decidedAt: string }
+) {
+  requireMarketingPermission(context, permissions, "emailApprove");
+  const campaign = requireCampaign(data, input.campaignId);
+  ensureCampaignAccess(context, campaign);
+  if (campaign.status !== "testing") {
+    throw new Error("Only campaigns with a running subject-line test can declare a winner.");
+  }
+  const { variantA, variantB } = requireVariantPair(data, campaign.id);
+  const winner = [variantA, variantB].find((candidate) => candidate.id === input.winningVersionId);
+  if (!winner) {
+    throw new Error("Winning version does not belong to this campaign's subject-line test.");
+  }
+  const loser = winner.id === variantA.id ? variantB : variantA;
+
+  winner.status = "approved";
+  winner.approvedByUserId = context.userId;
+  winner.approvedAt = input.decidedAt;
+  loser.status = "rejected";
+
+  campaign.status = "approved";
+  campaign.approvedAt = input.decidedAt;
+  const abTest = (campaign.metadata.abTest ?? {}) as EmailCampaignAbTestMetadata;
+  campaign.metadata = {
+    ...campaign.metadata,
+    abTest: {
+      ...abTest,
+      winnerVersionId: winner.id,
+      decidedAt: input.decidedAt,
+      decidedByUserId: context.userId
+    } satisfies EmailCampaignAbTestMetadata
+  };
+
+  await audit.record(marketingAuditEvent(context, auditActions.marketingSubjectLineTestDeclareWinner, "email_campaign", campaign.id, {
+    winnerVersionId: winner.id,
+    loserVersionId: loser.id
+  }, campaign.territoryId));
+
+  return { campaign, winner, loser };
+}
+
+export async function createWinnerRemainderSnapshot(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  input: { campaignId: string; id: string; generatedAt: string }
+) {
+  const campaign = requireCampaign(data, input.campaignId);
+  ensureCampaignAccess(context, campaign);
+  if (campaign.status !== "approved") {
+    throw new Error("The subject-line test must have a declared winner before sending to the remainder.");
+  }
+  const abTest = campaign.metadata.abTest as EmailCampaignAbTestMetadata | undefined;
+  if (!abTest || !abTest.winnerVersionId) {
+    throw new Error("This campaign has no subject-line test to send a remainder for.");
+  }
+  if (!campaign.segmentId) {
+    throw new Error("Campaign requires an audience segment before scheduling.");
+  }
+
+  const winner = requireCampaignVersion(data, abTest.winnerVersionId);
+  const segmentContacts = previewSegment(context, permissions, data, campaign.segmentId);
+  const testedIds = new Set([...abTest.variantAContactIds, ...abTest.variantBContactIds]);
+  const remainderContactIds = segmentContacts
+    .filter((view) => !testedIds.has(view.contact.id))
+    .map((view) => view.contact.id);
+
+  return createRecipientSnapshot(context, permissions, audit, data, {
+    id: input.id,
+    campaignId: campaign.id,
+    campaignVersionId: winner.id,
+    segmentId: campaign.segmentId,
+    status: "created",
+    generatedAt: input.generatedAt,
+    idempotencyKey: `${campaign.id}:${winner.id}:remainder`,
+    variantKey: "remainder",
+    restrictToContactIds: remainderContactIds,
+    heldOutExclusionReason: "already_sent_ab_test_sample"
+  });
 }
 
 export async function markEmailCampaignSent(
@@ -1605,6 +1933,14 @@ function requireCampaignVersion(data: MarketingData, versionId: string) {
     throw new Error("Email campaign version was not found.");
   }
   return version;
+}
+
+function requireRecipientSnapshot(data: MarketingData, snapshotId: string) {
+  const snapshot = data.emailRecipientSnapshots.find((candidate) => candidate.id === snapshotId);
+  if (!snapshot) {
+    throw new Error("Email recipient snapshot was not found.");
+  }
+  return snapshot;
 }
 
 function requireJourney(data: MarketingData, journeyId: string) {

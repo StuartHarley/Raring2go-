@@ -59,7 +59,7 @@ async function processNextEmailSendJob(request: Request) {
 
     if (recipients.length === 0) {
       await advanceEmailSendJob(db, job.id, { status: "completed" });
-      await completeJob(db, job.id, campaign);
+      await completeSendJob(db, job.id, campaign);
       return NextResponse.json({ claimed: true, jobId: job.id, sent: 0, completed: true });
     }
 
@@ -108,11 +108,11 @@ async function processNextEmailSendJob(request: Request) {
 
     if (isFinalChunk) {
       await advanceEmailSendJob(db, job.id, { cursor: newCursor, status: "completed" });
-      await completeJob(db, job.id, campaign);
+      await completeSendJob(db, job.id, campaign);
     } else {
       await advanceEmailSendJob(db, job.id, { cursor: newCursor, status: "queued" });
 
-      if (campaign.status !== "sending") {
+      if (campaign.status !== "sending" && campaign.status !== "testing") {
         await updateEmailCampaignRecord(db, { ...campaign, status: "sending" });
       }
     }
@@ -137,7 +137,19 @@ async function resolveSendProvider(job: EmailSendJob): Promise<EmailDeliveryProv
   return createEmailProviderFromEnv();
 }
 
-async function completeJob(db: ReturnType<typeof createDb>["db"], jobId: string, campaign: EmailCampaign) {
+/**
+ * A completed job means only that job's own recipient batch (which, during a
+ * subject-line A/B test, is one variant's small sample — not the whole
+ * campaign) finished sending. While the campaign is `"testing"`, leave its
+ * status alone so a human still has to declare a winner and send the
+ * remainder; only mark the campaign `"sent"` for an ordinary single-version
+ * send (or the post-test remainder send, by which point status is no longer
+ * `"testing"`).
+ */
+async function completeSendJob(db: ReturnType<typeof createDb>["db"], jobId: string, campaign: EmailCampaign) {
+  if (campaign.status === "testing") {
+    return;
+  }
   const sentCampaign: EmailCampaign = { ...campaign, status: "sent", sentAt: new Date().toISOString() };
   await updateEmailCampaignRecord(db, sentCampaign);
   await recordAuditEvent(db, {

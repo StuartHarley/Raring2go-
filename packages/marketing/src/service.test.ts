@@ -7,11 +7,15 @@ import {
   activateJourney,
   approveJourneyVersion,
   approveNetworkNewsletterMaster,
+  compareSubjectLineVariants,
   createEmailCampaign,
+  createEmailCampaignVersion,
   createJourney,
   createNetworkNewsletterMaster,
   createNewsletterEditionCampaign,
   createRecipientSnapshot,
+  createWinnerRemainderSnapshot,
+  declareSubjectLineWinner,
   enqueueEmailSend,
   generateUnsubscribeToken,
   enterJourneyFromEvent,
@@ -34,6 +38,8 @@ import {
   recordEmailDeliveryEvent,
   recordTerritoryNewsletterOverride,
   scheduleEmailCampaign,
+  splitSegmentForAbTest,
+  startSubjectLineTest,
   subscribeContactToTerritory,
   suppressContact,
   unsubscribeContactPublicly,
@@ -750,6 +756,296 @@ describe("marketing audience foundation", () => {
     expect(empty.isFinalChunk).toBe(true);
   });
 
+  it("splits a segment deterministically into two disjoint sample variants plus a remainder", () => {
+    const contacts = Array.from({ length: 200 }, (_, index) => fakeContactView(`contact_${index}`));
+
+    const split = splitSegmentForAbTest(contacts, { sampleFraction: 0.2 });
+    const variantA = new Set(split.variantAContactIds);
+    const variantB = new Set(split.variantBContactIds);
+    const remainder = new Set(split.remainderContactIds);
+
+    expect(split.variantAContactIds.length + split.variantBContactIds.length + split.remainderContactIds.length).toBe(200);
+    for (const id of variantA) {
+      expect(variantB.has(id)).toBe(false);
+      expect(remainder.has(id)).toBe(false);
+    }
+    for (const id of variantB) {
+      expect(remainder.has(id)).toBe(false);
+    }
+    const sampled = variantA.size + variantB.size;
+    expect(sampled).toBeGreaterThan(10);
+    expect(sampled).toBeLessThan(70);
+
+    expect(splitSegmentForAbTest(contacts, { sampleFraction: 0.2 })).toEqual(split);
+  });
+
+  it("runs a full subject-line A/B test: start, compare, declare a winner, then snapshot the remainder", async () => {
+    const data = seededData();
+    const recorder = audit();
+    for (let index = 0; index < 20; index += 1) {
+      const contactId = `ab_contact_${index}`;
+      data.contacts.push({ ...contact(`ab${index}@example.test`), id: contactId, firstName: `Person${index}` });
+      data.subscriptions.push(subscription(`ab_sub_${index}`, contactId, ids.territories.own));
+    }
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "ab_campaign",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Half term A/B",
+      subject: "Subject A",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "ab_campaign_v1",
+      campaignId: "ab_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Subject A",
+      preheader: null,
+      contentSnapshot: { blocks: [] },
+      variantKey: "a",
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+
+    await expect(
+      createEmailCampaignVersion(localContext(), permissions, recorder, data, "ab_campaign", {
+        id: "ab_campaign_v_bad",
+        campaignId: "ab_campaign",
+        versionNumber: 2,
+        status: "draft",
+        subject: "Subject C",
+        preheader: null,
+        contentSnapshot: {},
+        variantKey: undefined
+      })
+    ).rejects.toThrow("must declare variant");
+
+    await createEmailCampaignVersion(localContext(), permissions, recorder, data, "ab_campaign", {
+      id: "ab_campaign_v2",
+      campaignId: "ab_campaign",
+      versionNumber: 2,
+      status: "draft",
+      subject: "Subject B",
+      preheader: null,
+      contentSnapshot: { blocks: [] },
+      variantKey: "b",
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+
+    await expect(
+      createEmailCampaignVersion(localContext(), permissions, recorder, data, "ab_campaign", {
+        id: "ab_campaign_v3",
+        campaignId: "ab_campaign",
+        versionNumber: 3,
+        status: "draft",
+        subject: "Subject C",
+        preheader: null,
+        contentSnapshot: {},
+        variantKey: "a"
+      })
+    ).rejects.toThrow("already has a variant");
+
+    const started = await startSubjectLineTest(localContext(), permissions, recorder, data, {
+      campaignId: "ab_campaign",
+      sampleFraction: 0.5,
+      startedAt: "2026-08-11T10:00:00.000Z",
+      snapshotIdA: "ab_snapshot_a",
+      snapshotIdB: "ab_snapshot_b",
+      jobIdA: "ab_job_a",
+      jobIdB: "ab_job_b"
+    });
+
+    expect(data.emailCampaigns.find((candidate) => candidate.id === "ab_campaign")?.status).toBe("testing");
+    expect(started.variantA.status).toBe("testing");
+    expect(started.variantB.status).toBe("testing");
+    expect(started.jobA.campaignVersionId).toBe("ab_campaign_v1");
+    expect(started.jobB.campaignVersionId).toBe("ab_campaign_v2");
+    expect(data.emailSendJobs).toHaveLength(2);
+
+    const testedIds = new Set([...started.snapshotA.recipients, ...started.snapshotB.recipients].map((recipient) => (recipient as { contactId: string }).contactId));
+    expect(testedIds.size).toBe(started.snapshotA.recipientCount + started.snapshotB.recipientCount);
+    expect(testedIds.size).toBeGreaterThan(0);
+    expect(testedIds.size).toBeLessThan(20);
+
+    // Both variants' sample sends can be queued at once - the dedup check is scoped
+    // per campaign version, not the whole campaign.
+    expect(() =>
+      enqueueEmailSend(localContext(), permissions, data, {
+        id: "ab_job_a_dup",
+        campaignId: "ab_campaign",
+        campaignVersionId: "ab_campaign_v1",
+        recipientSnapshotId: "ab_snapshot_a"
+      })
+    ).not.toThrow();
+    expect(data.emailSendJobs).toHaveLength(2);
+
+    for (const contactId of started.snapshotA.recipients.map((recipient) => (recipient as { contactId: string }).contactId)) {
+      await recordEmailDeliveryEvent(localContext(), permissions, recorder, data, {
+        id: `delivery_a_delivered_${contactId}`,
+        campaignId: "ab_campaign",
+        campaignVersionId: "ab_campaign_v1",
+        recipientSnapshotId: "ab_snapshot_a",
+        contactId,
+        emailNormalised: `${contactId}@example.test`,
+        providerKey: "test-provider",
+        providerMessageId: `msg_a_${contactId}`,
+        status: "delivered",
+        eventType: "delivered",
+        eventAt: "2026-08-11T10:05:00.000Z",
+        metadata: {}
+      });
+    }
+    expect(started.snapshotA.recipientCount).toBeGreaterThan(0);
+    expect(started.snapshotB.recipientCount).toBeGreaterThan(0);
+
+    const firstVariantAContactId = (started.snapshotA.recipients[0] as { contactId: string }).contactId;
+    await recordEmailDeliveryEvent(localContext(), permissions, recorder, data, {
+      id: "delivery_a_opened",
+      campaignId: "ab_campaign",
+      campaignVersionId: "ab_campaign_v1",
+      recipientSnapshotId: "ab_snapshot_a",
+      contactId: firstVariantAContactId,
+      emailNormalised: `${firstVariantAContactId}@example.test`,
+      providerKey: "test-provider",
+      providerMessageId: `msg_a_${firstVariantAContactId}`,
+      status: "opened",
+      eventType: "opened",
+      eventAt: "2026-08-11T11:00:00.000Z",
+      metadata: {}
+    });
+
+    const comparisonBeforeVariantBDelivery = compareSubjectLineVariants(localContext(), permissions, data, "ab_campaign");
+    expect(comparisonBeforeVariantBDelivery.canDeclareWinner).toBe(false);
+
+    const firstVariantBContactId = (started.snapshotB.recipients[0] as { contactId: string }).contactId;
+    await recordEmailDeliveryEvent(localContext(), permissions, recorder, data, {
+      id: "delivery_b_delivered",
+      campaignId: "ab_campaign",
+      campaignVersionId: "ab_campaign_v2",
+      recipientSnapshotId: "ab_snapshot_b",
+      contactId: firstVariantBContactId,
+      emailNormalised: `${firstVariantBContactId}@example.test`,
+      providerKey: "test-provider",
+      providerMessageId: `msg_b_${firstVariantBContactId}`,
+      status: "delivered",
+      eventType: "delivered",
+      eventAt: "2026-08-11T10:05:00.000Z",
+      metadata: {}
+    });
+
+    // In production, delivery records only appear once the worker has actually sent
+    // the batch, at which point it has also advanced the job to "completed" - mirror
+    // that here so the later remainder send correctly starts a fresh job instead of
+    // reusing a still-"queued" sample job.
+    started.jobA.status = "completed";
+    started.jobB.status = "completed";
+
+    const comparison = compareSubjectLineVariants(localContext(), permissions, data, "ab_campaign");
+    expect(comparison.canDeclareWinner).toBe(true);
+    const variantAStats = comparison.variants.find((candidate) => candidate.version.id === "ab_campaign_v1")!;
+    expect(variantAStats.delivered).toBe(started.snapshotA.recipientCount);
+    expect(variantAStats.opened).toBe(1);
+    expect(variantAStats.openRate).toBe(1 / started.snapshotA.recipientCount);
+
+    const decision = await declareSubjectLineWinner(localContext(), permissions, recorder, data, {
+      campaignId: "ab_campaign",
+      winningVersionId: "ab_campaign_v1",
+      decidedAt: "2026-08-12T09:00:00.000Z"
+    });
+
+    expect(decision.winner.status).toBe("approved");
+    expect(decision.loser.status).toBe("rejected");
+    expect(data.emailCampaigns.find((candidate) => candidate.id === "ab_campaign")?.status).toBe("approved");
+
+    const remainder = await createWinnerRemainderSnapshot(localContext(), permissions, recorder, data, {
+      campaignId: "ab_campaign",
+      id: "ab_snapshot_remainder",
+      generatedAt: "2026-08-12T09:05:00.000Z"
+    });
+
+    const totalSegmentContacts = previewSegment(localContext(), permissions, data, ids.segment).length;
+    expect(remainder.campaignVersionId).toBe("ab_campaign_v1");
+    expect(remainder.recipientCount).toBe(totalSegmentContacts - testedIds.size);
+    for (const recipient of remainder.recipients) {
+      expect(testedIds.has((recipient as { contactId: string }).contactId)).toBe(false);
+    }
+    for (const exclusion of remainder.exclusions) {
+      const typed = exclusion as { contactId: string; reason: string };
+      if (testedIds.has(typed.contactId)) {
+        expect(typed.reason).toBe("already_sent_ab_test_sample");
+      }
+    }
+
+    await scheduleEmailCampaign(localContext(), permissions, recorder, data, "ab_campaign", "2026-08-12T09:10:00.000Z");
+    const remainderJob = enqueueEmailSend(localContext(), permissions, data, { id: "ab_job_remainder", campaignId: "ab_campaign" });
+    expect(remainderJob.campaignVersionId).toBe("ab_campaign_v1");
+    expect(remainderJob.recipientSnapshotId).toBe("ab_snapshot_remainder");
+  });
+
+  it("rejects starting a subject-line test without both variants, and rejects declaring a winner outside a running test", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "single_campaign",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Single subject",
+      subject: "Only subject",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "single_campaign_v1",
+      campaignId: "single_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Only subject",
+      preheader: null,
+      contentSnapshot: {},
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+
+    await expect(
+      startSubjectLineTest(localContext(), permissions, recorder, data, {
+        campaignId: "single_campaign",
+        startedAt: "2026-08-11T10:00:00.000Z",
+        snapshotIdA: "s_a",
+        snapshotIdB: "s_b",
+        jobIdA: "j_a",
+        jobIdB: "j_b"
+      })
+    ).rejects.toThrow("both an \"a\" and a \"b\"");
+
+    await expect(
+      declareSubjectLineWinner(localContext(), permissions, recorder, data, {
+        campaignId: "single_campaign",
+        winningVersionId: "single_campaign_v1",
+        decidedAt: "2026-08-12T09:00:00.000Z"
+      })
+    ).rejects.toThrow("running subject-line test");
+  });
+
   it("auto-suppresses contacts on unsubscribe and hard bounce, but not soft bounce", async () => {
     const data = seededData();
     const recorder = audit();
@@ -1310,6 +1606,25 @@ function contact(email: string) {
     emailStatus: "subscribed",
     tags: ["days-out"],
     metadata: {}
+  };
+}
+
+function fakeContactView(contactId: string) {
+  return {
+    contact: {
+      id: contactId,
+      email: `${contactId}@example.test`,
+      emailNormalised: `${contactId}@example.test`,
+      firstName: null,
+      lastName: null,
+      emailStatus: "subscribed",
+      tags: [],
+      metadata: {}
+    },
+    subscriptions: [],
+    consentEvents: [],
+    suppressions: [],
+    activity: []
   };
 }
 

@@ -1376,6 +1376,29 @@ p {
   font-weight: 800;
 }
 
+.block-editor-ab-test {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface-subtle);
+  padding: 10px 12px;
+}
+
+.newsletter-ab-test-comparison {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface-subtle);
+  padding: 10px 12px;
+}
+
+.newsletter-ab-test-comparison > div {
+  display: grid;
+  gap: 4px;
+}
+
 .block-editor-ai-suggestions {
   display: grid;
   gap: 6px;

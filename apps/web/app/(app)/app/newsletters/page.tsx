@@ -1,7 +1,7 @@
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { hasAiAssistCapability } from "../../../../lib/ai-runtime";
 import { listConnectionCards } from "../../../../lib/integrations-runtime";
-import { readEmailCampaignOverview, readSegments } from "../../../../lib/marketing-runtime";
+import { readEmailCampaignOverview, readSegments, readSubjectLineComparison } from "../../../../lib/marketing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { CampaignComposeFields } from "./CampaignComposeFields";
@@ -9,9 +9,12 @@ import {
   acceptAiSuggestionAction,
   approveCampaignAction,
   composeEmailCampaignAction,
+  declareWinnerAction,
   generateSnapshotAction,
+  generateWinnerRemainderSnapshotAction,
   scheduleCampaignAction,
   sendCampaignAction,
+  startAbTestAction,
   suggestBlockCopyAction,
   suggestSubjectLinesAction
 } from "./actions";
@@ -31,7 +34,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, email, composableSegments, outlookMailboxes, aiAssistAvailable, lastNewsletter } = result;
+  const { context, email, composableSegments, outlookMailboxes, aiAssistAvailable, lastNewsletter, comparisons } = result;
 
   return (
     <AppShell request={request}>
@@ -137,6 +140,13 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
           ) : (
             email.campaigns.map((view) => {
               const canAct = !context.territoryId || context.territoryId === view.campaign.territoryId;
+              const isAbTest = view.variants.length === 2;
+              const comparison = comparisons.get(view.campaign.id);
+              // For an A/B campaign, "Send now"/"Schedule" must target the post-winner
+              // remainder snapshot, not the small sample snapshot from the test itself
+              // (which is what latestSnapshot would otherwise resolve to right after a
+              // winner is declared, since the remainder snapshot doesn't exist yet).
+              const sendableSnapshot = isAbTest ? view.remainderSnapshot : view.latestSnapshot;
 
               return (
                 <div key={view.campaign.id}>
@@ -149,17 +159,69 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                     <span>Sent via Outlook - delivery, bounce and open tracking is not available for this campaign</span>
                   ) : null}
                   {!canAct ? <span>Managed by HQ</span> : null}
-                  {canAct && view.campaign.status === "draft" && view.latestVersion ? (
+
+                  {canAct && view.campaign.status === "draft" && isAbTest ? (
+                    <form action={startAbTestAction.bind(null, context, view.campaign.id)} className="franchise-form">
+                      <p>
+                        Subject A: {view.variants[0]!.version.subject} · Subject B: {view.variants[1]!.version.subject}
+                      </p>
+                      <label>
+                        Test sample size (% of audience)
+                        <input type="number" name="sampleFraction" min={2} max={50} defaultValue={20} />
+                      </label>
+                      <button type="submit">Start subject-line test</button>
+                    </form>
+                  ) : null}
+
+                  {canAct && view.campaign.status === "draft" && !isAbTest && view.latestVersion ? (
                     <form action={approveCampaignAction.bind(null, context, view.campaign.id, view.latestVersion.id)}>
                       <button type="submit">Approve</button>
                     </form>
                   ) : null}
-                  {canAct && view.campaign.status === "approved" ? (
+
+                  {view.campaign.status === "testing" ? (
+                    <div className="newsletter-ab-test-comparison">
+                      {view.variants.map((variant) => {
+                        const stats = comparison?.variants.find((candidate) => candidate.version.id === variant.version.id);
+                        return (
+                          <div key={variant.version.id}>
+                            <strong>Variant {variant.version.variantKey?.toUpperCase()}: {variant.version.subject}</strong>
+                            <span>{variant.snapshot?.recipientCount ?? 0} sent to sample</span>
+                            {stats ? (
+                              <span>
+                                {stats.delivered} delivered · {stats.opened} opened
+                                {stats.openRate !== null ? ` · ${Math.round(stats.openRate * 100)}% open rate` : ""}
+                              </span>
+                            ) : null}
+                            {canAct && comparison?.canDeclareWinner ? (
+                              <form action={declareWinnerAction.bind(null, context, view.campaign.id, variant.version.id)}>
+                                <button type="submit">Declare this the winner</button>
+                              </form>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {canAct && view.campaign.status === "approved" && isAbTest ? (
+                    <>
+                      <p>Winner: {view.variants.find((variant) => variant.version.status === "approved")?.version.subject}</p>
+                      {!view.remainderSnapshot ? (
+                        <form action={generateWinnerRemainderSnapshotAction.bind(null, context, view.campaign.id)}>
+                          <button type="submit">Generate recipient snapshot for the rest of the audience</button>
+                        </form>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  {canAct && view.campaign.status === "approved" && !isAbTest ? (
                     <form action={generateSnapshotAction.bind(null, context, view.campaign.id)}>
                       <button type="submit">Generate recipient snapshot</button>
                     </form>
                   ) : null}
-                  {canAct && view.campaign.status === "approved" && view.latestSnapshot ? (
+
+                  {canAct && view.campaign.status === "approved" && sendableSnapshot ? (
                     <>
                       <form action={sendCampaignAction.bind(null, context, view.campaign.id)}>
                         <button type="submit">Send now</button>
@@ -212,6 +274,14 @@ async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSea
       : segments;
     const outlookMailboxes = outlookConnections.filter((connection) => connection.status === "connected");
     const lastNewsletter = findLastNewsletter(email.campaigns);
+    const testingCampaigns = email.campaigns.filter((view) => view.campaign.status === "testing");
+    const comparisonEntries = await Promise.all(
+      testingCampaigns.map(async (view) => {
+        const comparison = await readSubjectLineComparison(context, view.campaign.id).catch(() => undefined);
+        return [view.campaign.id, comparison] as const;
+      })
+    );
+    const comparisons = new Map(comparisonEntries.filter(([, comparison]) => comparison !== undefined));
 
     return {
       context,
@@ -219,7 +289,8 @@ async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSea
       composableSegments,
       outlookMailboxes,
       aiAssistAvailable: hasAiAssistCapability(context),
-      lastNewsletter
+      lastNewsletter,
+      comparisons
     };
   } catch (error) {
     return { error };
