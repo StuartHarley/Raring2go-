@@ -1101,7 +1101,7 @@ p {
   flex: 1;
 }
 
-.block-editor-row-header button:last-child {
+.block-editor-row-header button:not(.block-editor-drag-handle) {
   border: 1px solid var(--r2-border-default);
   border-radius: var(--r2-radius-sm);
   background: var(--r2-surface);
@@ -1355,6 +1355,24 @@ p {
 
 .block-editor-ai-suggestions button:hover {
   border-color: var(--r2-brand-purple);
+}
+
+.block-editor-history-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.block-editor-history-controls button {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface);
+  font: inherit;
+  padding: 6px 10px;
+}
+
+.block-editor-history-controls button:disabled {
+  color: var(--r2-text-muted);
+  cursor: not-allowed;
 }
 
 .block-editor-add-menu {
