@@ -252,7 +252,7 @@ export type EmailRecipientSnapshot = {
   recipients: Array<Record<string, unknown>>;
   exclusions: Array<Record<string, unknown>>;
   idempotencyKey: string;
-  variantKey?: EmailCampaignVersionVariantKey | "remainder" | null;
+  variantKey?: EmailCampaignVersionVariantKey | "remainder" | "sto" | null;
 };
 
 export type EmailDeliveryRecord = {
@@ -300,6 +300,14 @@ export type EmailCampaignAbTestMetadata = {
   decidedByUserId?: string | null;
 };
 
+export type EmailCampaignSendTimeOptimizationMetadata = {
+  enabled: true;
+  defaultHour: number;
+  bucketHours: number[];
+  startedAt: string;
+  startedByUserId?: string | null;
+};
+
 export type EmailCampaignOverview = {
   campaigns: Array<{
     campaign: EmailCampaign;
@@ -313,6 +321,10 @@ export type EmailCampaignOverview = {
       job?: EmailSendJob;
     }>;
     remainderSnapshot?: EmailRecipientSnapshot;
+    sendJobs: Array<{
+      job: EmailSendJob;
+      snapshot?: EmailRecipientSnapshot;
+    }>;
   }>;
   totals: {
     campaigns: number;

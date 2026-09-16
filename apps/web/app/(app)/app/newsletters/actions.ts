@@ -18,6 +18,7 @@ import {
   generateNewsletterEditions,
   generateWinnerRemainderSnapshot,
   scheduleCampaign,
+  scheduleCampaignWithSendTimeOptimization,
   sendCampaignNow,
   startAbTest
 } from "../../../../lib/marketing-runtime";
@@ -146,6 +147,32 @@ export async function scheduleCampaignAction(context: MarketingActorContext, cam
   }
 
   await scheduleCampaign(context, campaignId, new Date(scheduledAt).toISOString());
+  revalidatePath("/app/newsletters");
+  revalidatePath("/app/newsletters/factory");
+}
+
+export async function scheduleWithSendTimeOptimizationAction(
+  context: MarketingActorContext,
+  campaignId: string,
+  formData: FormData
+) {
+  const scheduledAt = String(formData.get("scheduledAt") || "");
+
+  if (!scheduledAt) {
+    throw new Error("Choose a date and time to schedule this campaign.");
+  }
+
+  const defaultHourRaw = String(formData.get("defaultHour") || "");
+  const defaultHour = defaultHourRaw ? Number(defaultHourRaw) : undefined;
+
+  if (defaultHour !== undefined && (!Number.isInteger(defaultHour) || defaultHour < 0 || defaultHour > 23)) {
+    throw new Error("Default hour must be an integer between 0 and 23.");
+  }
+
+  await scheduleCampaignWithSendTimeOptimization(context, campaignId, {
+    scheduledAt: new Date(scheduledAt).toISOString(),
+    defaultHour
+  });
   revalidatePath("/app/newsletters");
   revalidatePath("/app/newsletters/factory");
 }

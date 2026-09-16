@@ -12,6 +12,7 @@ import {
   createWinnerRemainderSnapshot,
   declareSubjectLineWinner,
   enqueueEmailSend,
+  enqueueSendTimeOptimizedSend,
   generateTerritoryNewsletterEditions,
   insertEmailCampaignGraph,
   insertEmailCampaignVersionRecord,
@@ -441,6 +442,36 @@ export async function scheduleCampaign(context: MarketingActorContext, campaignI
 
 export async function sendCampaignNow(context: MarketingActorContext, campaignId: string) {
   return scheduleCampaign(context, campaignId, new Date().toISOString());
+}
+
+export async function scheduleCampaignWithSendTimeOptimization(
+  context: MarketingActorContext,
+  campaignId: string,
+  input: { scheduledAt: string; defaultHour?: number }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      await scheduleEmailCampaign(context, marketingPermissionData, auditFor(tx), data, campaignId, input.scheduledAt);
+      const result = await enqueueSendTimeOptimizedSend(context, marketingPermissionData, auditFor(tx), data, {
+        campaignId,
+        scheduledAt: input.scheduledAt,
+        defaultHour: input.defaultHour
+      });
+      await updateEmailCampaignRecord(tx, result.campaign);
+      for (const snapshot of result.snapshots) {
+        await insertEmailRecipientSnapshotRecord(tx, snapshot);
+      }
+      for (const job of result.jobs) {
+        await insertEmailSendJobRecord(tx, job);
+      }
+      return result;
+    });
+  } finally {
+    await sql.end();
+  }
 }
 
 export async function startAbTest(context: MarketingActorContext, campaignId: string, sampleFraction?: number) {

@@ -5,6 +5,7 @@ import {
   claimNextEmailSendJob,
   generateUnsubscribeToken,
   insertEmailDeliveryRecordRows,
+  listEmailSendJobsForCampaignVersion,
   loadEmailSendJobBundle,
   nextEmailSendChunk,
   normalizeContentSnapshot,
@@ -59,7 +60,7 @@ async function processNextEmailSendJob(request: Request) {
 
     if (recipients.length === 0) {
       await advanceEmailSendJob(db, job.id, { status: "completed" });
-      await completeSendJob(db, job.id, campaign);
+      await completeSendJob(db, job, campaign);
       return NextResponse.json({ claimed: true, jobId: job.id, sent: 0, completed: true });
     }
 
@@ -108,7 +109,7 @@ async function processNextEmailSendJob(request: Request) {
 
     if (isFinalChunk) {
       await advanceEmailSendJob(db, job.id, { cursor: newCursor, status: "completed" });
-      await completeSendJob(db, job.id, campaign);
+      await completeSendJob(db, job, campaign);
     } else {
       await advanceEmailSendJob(db, job.id, { cursor: newCursor, status: "queued" });
 
@@ -138,16 +139,23 @@ async function resolveSendProvider(job: EmailSendJob): Promise<EmailDeliveryProv
 }
 
 /**
- * A completed job means only that job's own recipient batch (which, during a
- * subject-line A/B test, is one variant's small sample — not the whole
- * campaign) finished sending. While the campaign is `"testing"`, leave its
- * status alone so a human still has to declare a winner and send the
- * remainder; only mark the campaign `"sent"` for an ordinary single-version
- * send (or the post-test remainder send, by which point status is no longer
- * `"testing"`).
+ * A completed job means only that job's own recipient batch finished sending
+ * — during a subject-line A/B test that's one variant's small sample; during
+ * a send-time-optimized send it's one hour-bucket, and other buckets' jobs
+ * may still be sitting queued with a future nextAttemptAt hours or days away.
+ * Only flip the campaign to "sent" once every sibling job sharing this
+ * campaignVersionId has reached a terminal state (completed or failed).
  */
-async function completeSendJob(db: ReturnType<typeof createDb>["db"], jobId: string, campaign: EmailCampaign) {
+async function completeSendJob(db: ReturnType<typeof createDb>["db"], job: EmailSendJob, campaign: EmailCampaign) {
   if (campaign.status === "testing") {
+    return;
+  }
+  const siblingJobs = await listEmailSendJobsForCampaignVersion(db, campaign.id, job.campaignVersionId);
+  const allSiblingsTerminal = siblingJobs.every((sibling) => sibling.status === "completed" || sibling.status === "failed");
+  if (!allSiblingsTerminal) {
+    if (campaign.status !== "sending") {
+      await updateEmailCampaignRecord(db, { ...campaign, status: "sending" });
+    }
     return;
   }
   const sentCampaign: EmailCampaign = { ...campaign, status: "sent", sentAt: new Date().toISOString() };
@@ -157,7 +165,7 @@ async function completeSendJob(db: ReturnType<typeof createDb>["db"], jobId: str
     actor: { type: "system", systemId: "email-send-worker" },
     entity: { type: "email_campaign", id: campaign.id },
     scope: { territoryId: campaign.territoryId ?? undefined },
-    after: { sentAt: sentCampaign.sentAt, jobId }
+    after: { sentAt: sentCampaign.sentAt, jobId: job.id }
   });
 }
 

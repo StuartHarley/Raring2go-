@@ -132,6 +132,7 @@ export const auditActions = {
   marketingEmailRecipientSnapshotCreate: "marketing.email.recipient_snapshot.create",
   marketingSubjectLineTestStart: "marketing.email.subject_line_test.start",
   marketingSubjectLineTestDeclareWinner: "marketing.email.subject_line_test.declare_winner",
+  marketingSendTimeOptimizationSchedule: "marketing.email.send_time_optimization.schedule",
   marketingEmailDeliveryRecord: "marketing.email.delivery.record",
   marketingNewsletterMasterCreate: "marketing.newsletter_factory.master.create",
   marketingNewsletterMasterApprove: "marketing.newsletter_factory.master.approve",
