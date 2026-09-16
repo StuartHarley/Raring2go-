@@ -32,6 +32,7 @@ import {
   type RawHtmlBlock,
   type TextBlock
 } from "@raring2go/marketing/blocks";
+import { templateGallery, type TemplateGalleryEntry } from "@raring2go/marketing/template-gallery";
 
 // Sample values so the live preview shows roughly what a real recipient will
 // see - never sent, purely a preview affordance.
@@ -212,20 +213,24 @@ export function CampaignComposeFields({
     setRestoreBanner(null);
   }
 
-  function startFromLastNewsletter() {
-    if (!lastNewsletter) return;
-    setTitle(lastNewsletter.title);
-    setSubject(lastNewsletter.subject);
-    // Fresh ids for every block - never reuse the source campaign's block ids.
-    setBlocks(
-      lastNewsletter.blocks.length > 0
-        ? lastNewsletter.blocks.map((block) => ({ ...block, id: crypto.randomUUID() }) as Block)
-        : [newTextBlock()]
-    );
+  function applyStartingPoint(source: { title: string; subject: string; blocks: Block[] }) {
+    setTitle(source.title);
+    setSubject(source.subject);
+    // Fresh ids for every block - never reuse the source's block ids.
+    setBlocks(source.blocks.length > 0 ? source.blocks.map((block) => ({ ...block, id: crypto.randomUUID() }) as Block) : [newTextBlock()]);
   }
 
-  const canStartFromLastNewsletter =
-    Boolean(lastNewsletter) && !restoreBanner && !draftHasContent({ title, subject, blocks });
+  function startFromLastNewsletter() {
+    if (!lastNewsletter) return;
+    applyStartingPoint(lastNewsletter);
+  }
+
+  function startFromTemplate(entry: TemplateGalleryEntry) {
+    applyStartingPoint(entry);
+  }
+
+  const canOfferStartingPoint = !restoreBanner && !draftHasContent({ title, subject, blocks });
+  const canStartFromLastNewsletter = Boolean(lastNewsletter) && canOfferStartingPoint;
 
   // Block-level structural undo/redo (add/remove/duplicate/reorder) only -
   // per-keystroke text edits stay owned by native input undo and Tiptap's
@@ -398,12 +403,19 @@ export function CampaignComposeFields({
         </div>
       ) : null}
 
-      {canStartFromLastNewsletter ? (
+      {canOfferStartingPoint ? (
         <div className="block-editor-draft-banner" role="status">
-          <span>Want a head start? Reuse your last newsletter&apos;s content.</span>
-          <button type="button" onClick={startFromLastNewsletter}>
-            Start from your last newsletter
-          </button>
+          <span>Want a head start?</span>
+          {canStartFromLastNewsletter ? (
+            <button type="button" onClick={startFromLastNewsletter}>
+              Start from your last newsletter
+            </button>
+          ) : null}
+          {templateGallery.map((entry) => (
+            <button type="button" key={entry.key} onClick={() => startFromTemplate(entry)}>
+              {entry.name}
+            </button>
+          ))}
         </div>
       ) : null}
 
