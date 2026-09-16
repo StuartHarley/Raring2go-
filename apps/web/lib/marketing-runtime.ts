@@ -2,14 +2,19 @@ import { randomUUID } from "node:crypto";
 import {
   approveEmailCampaignVersion,
   approveNetworkNewsletterMaster,
+  compareSubjectLineVariants,
   createEmailCampaign,
+  createEmailCampaignVersion,
   createNetworkNewsletterMaster,
   createNewsletterEditionCampaign,
   createRecipientSnapshot,
   createSegment,
+  createWinnerRemainderSnapshot,
+  declareSubjectLineWinner,
   enqueueEmailSend,
   generateTerritoryNewsletterEditions,
   insertEmailCampaignGraph,
+  insertEmailCampaignVersionRecord,
   insertEmailRecipientSnapshotRecord,
   insertEmailSendJobRecord,
   insertNetworkNewsletterMasterRecord,
@@ -28,6 +33,7 @@ import {
   previewSegmentDefinition,
   recordTerritoryNewsletterOverride,
   scheduleEmailCampaign,
+  startSubjectLineTest,
   updateEmailCampaignRecord,
   updateEmailCampaignVersionRecord,
   updateNetworkNewsletterMasterRecord,
@@ -254,6 +260,8 @@ export async function composeEmailCampaign(
     blocks: Block[];
     sendProvider?: EmailSendProvider;
     sendConnectionId?: string | null;
+    variantBSubject?: string | null;
+    variantBVersionId?: string;
   }
 ) {
   if (input.blocks.length === 0) {
@@ -308,6 +316,7 @@ export async function composeEmailCampaign(
         sentAt: null,
         metadata: {}
       };
+      const runningAbTest = Boolean(input.variantBSubject);
       const version = {
         id: input.versionId,
         campaignId: campaign.id,
@@ -316,10 +325,31 @@ export async function composeEmailCampaign(
         subject: input.subject,
         preheader: input.preheader,
         contentSnapshot: { version: 1 as const, blocks: input.blocks },
+        variantKey: runningAbTest ? ("a" as const) : null,
         createdByUserId: context.userId
       };
       await createEmailCampaign(context, marketingPermissionData, auditFor(tx), data, campaign, version);
       await insertEmailCampaignGraph(tx, { campaign, version });
+
+      if (runningAbTest) {
+        if (!input.variantBVersionId) {
+          throw new Error("A second version id is required to run a subject-line test.");
+        }
+        const variantB = {
+          id: input.variantBVersionId,
+          campaignId: campaign.id,
+          versionNumber: 2,
+          status: "draft",
+          subject: input.variantBSubject!,
+          preheader: input.preheader,
+          contentSnapshot: version.contentSnapshot,
+          variantKey: "b" as const,
+          createdByUserId: context.userId
+        };
+        await createEmailCampaignVersion(context, marketingPermissionData, auditFor(tx), data, campaign.id, variantB);
+        await insertEmailCampaignVersionRecord(tx, variantB);
+      }
+
       return campaign;
     });
   } finally {
@@ -411,6 +441,85 @@ export async function scheduleCampaign(context: MarketingActorContext, campaignI
 
 export async function sendCampaignNow(context: MarketingActorContext, campaignId: string) {
   return scheduleCampaign(context, campaignId, new Date().toISOString());
+}
+
+export async function startAbTest(context: MarketingActorContext, campaignId: string, sampleFraction?: number) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const result = await startSubjectLineTest(context, marketingPermissionData, auditFor(tx), data, {
+        campaignId,
+        sampleFraction,
+        startedAt: new Date().toISOString(),
+        snapshotIdA: randomUUID(),
+        snapshotIdB: randomUUID(),
+        jobIdA: randomUUID(),
+        jobIdB: randomUUID()
+      });
+      await updateEmailCampaignRecord(tx, result.campaign);
+      await updateEmailCampaignVersionRecord(tx, result.variantA);
+      await updateEmailCampaignVersionRecord(tx, result.variantB);
+      await insertEmailRecipientSnapshotRecord(tx, result.snapshotA);
+      await insertEmailRecipientSnapshotRecord(tx, result.snapshotB);
+      await insertEmailSendJobRecord(tx, result.jobA);
+      await insertEmailSendJobRecord(tx, result.jobB);
+      return result;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readSubjectLineComparison(context: MarketingActorContext, campaignId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return compareSubjectLineVariants(context, marketingPermissionData, await loadMarketingData(db), campaignId);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function declareWinner(context: MarketingActorContext, campaignId: string, winningVersionId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const result = await declareSubjectLineWinner(context, marketingPermissionData, auditFor(tx), data, {
+        campaignId,
+        winningVersionId,
+        decidedAt: new Date().toISOString()
+      });
+      await updateEmailCampaignRecord(tx, result.campaign);
+      await updateEmailCampaignVersionRecord(tx, result.winner);
+      await updateEmailCampaignVersionRecord(tx, result.loser);
+      return result;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function generateWinnerRemainderSnapshot(context: MarketingActorContext, campaignId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const snapshot = await createWinnerRemainderSnapshot(context, marketingPermissionData, auditFor(tx), data, {
+        campaignId,
+        id: randomUUID(),
+        generatedAt: new Date().toISOString()
+      });
+      await insertEmailRecipientSnapshotRecord(tx, snapshot);
+      return snapshot;
+    });
+  } finally {
+    await sql.end();
+  }
 }
 
 export async function createNewsletterMaster(

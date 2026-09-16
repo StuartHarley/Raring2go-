@@ -184,6 +184,13 @@ export async function insertEmailCampaignGraph(
   });
 }
 
+export async function insertEmailCampaignVersionRecord(db: MarketingDb, version: EmailCampaignVersion) {
+  await db.insert(emailCampaignVersions).values({
+    ...version,
+    approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
+  });
+}
+
 export async function updateEmailCampaignRecord(db: MarketingDb, campaign: EmailCampaign) {
   await db
     .update(emailCampaigns)
@@ -191,7 +198,8 @@ export async function updateEmailCampaignRecord(db: MarketingDb, campaign: Email
       status: campaign.status,
       scheduledAt: campaign.scheduledAt ? new Date(campaign.scheduledAt) : null,
       approvedAt: campaign.approvedAt ? new Date(campaign.approvedAt) : null,
-      sentAt: campaign.sentAt ? new Date(campaign.sentAt) : null
+      sentAt: campaign.sentAt ? new Date(campaign.sentAt) : null,
+      metadata: campaign.metadata
     })
     .where(eq(emailCampaigns.id, campaign.id));
 }

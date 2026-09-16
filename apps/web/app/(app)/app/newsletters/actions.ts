@@ -13,10 +13,13 @@ import {
   composeEmailCampaign,
   createCampaignFromEdition,
   createNewsletterMaster,
+  declareWinner,
   generateCampaignRecipientSnapshot,
   generateNewsletterEditions,
+  generateWinnerRemainderSnapshot,
   scheduleCampaign,
-  sendCampaignNow
+  sendCampaignNow,
+  startAbTest
 } from "../../../../lib/marketing-runtime";
 import type { MarketingActorContext } from "@raring2go/marketing";
 
@@ -66,6 +69,8 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
   const sendProvider = sendProviderChoice === "microsoft" ? "microsoft" : "postmark";
   const sendConnectionId = sendProvider === "microsoft" ? sendConnectionIdChoice || null : null;
 
+  const variantBSubject = String(formData.get("subjectB") || "").trim() || null;
+
   await composeEmailCampaign(context, {
     campaignId: randomUUID(),
     versionId: randomUUID(),
@@ -75,7 +80,9 @@ export async function composeEmailCampaignAction(context: MarketingActorContext,
     preheader: String(formData.get("preheader") || "") || null,
     blocks,
     sendProvider,
-    sendConnectionId
+    sendConnectionId,
+    variantBSubject,
+    variantBVersionId: variantBSubject ? randomUUID() : undefined
   });
 
   revalidatePath("/app/newsletters");
@@ -112,6 +119,23 @@ export async function generateSnapshotAction(context: MarketingActorContext, cam
   await generateCampaignRecipientSnapshot(context, campaignId);
   revalidatePath("/app/newsletters");
   revalidatePath("/app/newsletters/factory");
+}
+
+export async function startAbTestAction(context: MarketingActorContext, campaignId: string, formData: FormData) {
+  const sampleFractionRaw = String(formData.get("sampleFraction") || "");
+  const sampleFraction = sampleFractionRaw ? Number(sampleFractionRaw) / 100 : undefined;
+  await startAbTest(context, campaignId, sampleFraction);
+  revalidatePath("/app/newsletters");
+}
+
+export async function declareWinnerAction(context: MarketingActorContext, campaignId: string, winningVersionId: string) {
+  await declareWinner(context, campaignId, winningVersionId);
+  revalidatePath("/app/newsletters");
+}
+
+export async function generateWinnerRemainderSnapshotAction(context: MarketingActorContext, campaignId: string) {
+  await generateWinnerRemainderSnapshot(context, campaignId);
+  revalidatePath("/app/newsletters");
 }
 
 export async function scheduleCampaignAction(context: MarketingActorContext, campaignId: string, formData: FormData) {

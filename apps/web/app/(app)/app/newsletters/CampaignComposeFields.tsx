@@ -59,7 +59,7 @@ function newDividerBlock(): DividerBlock {
 // devices - server-side draft persistence would be a bigger feature.
 const DRAFT_STORAGE_KEY = "raring2go:newsletter-compose-draft";
 
-type StoredDraft = { title: string; subject: string; blocks: Block[] };
+type StoredDraft = { title: string; subject: string; blocks: Block[]; abTestEnabled?: boolean; subjectB?: string };
 
 function isStoredDraft(value: unknown): value is StoredDraft {
   return (
@@ -126,6 +126,8 @@ export function CampaignComposeFields({
   const [draftId] = useState(() => crypto.randomUUID());
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
+  const [abTestEnabled, setAbTestEnabled] = useState(false);
+  const [subjectB, setSubjectB] = useState("");
   const [blocks, setBlocks] = useState<Block[]>(() => [newTextBlock()]);
   const [importHtml, setImportHtml] = useState("");
   const [importSourceLabel, setImportSourceLabel] = useState<string | null>(null);
@@ -162,7 +164,7 @@ export function CampaignComposeFields({
     const handle = setTimeout(() => {
       autosaveTimeoutRef.current = null;
       try {
-        window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ title, subject, blocks }));
+        window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ title, subject, blocks, abTestEnabled, subjectB }));
       } catch {
         // ignore - autosave is a best-effort convenience
       }
@@ -174,7 +176,7 @@ export function CampaignComposeFields({
         autosaveTimeoutRef.current = null;
       }
     };
-  }, [restoreBanner, title, subject, blocks]);
+  }, [restoreBanner, title, subject, blocks, abTestEnabled, subjectB]);
 
   useEffect(() => {
     const form = rootRef.current?.closest("form");
@@ -201,6 +203,8 @@ export function CampaignComposeFields({
     setTitle(restoreBanner.title);
     setSubject(restoreBanner.subject);
     setBlocks(restoreBanner.blocks.length > 0 ? restoreBanner.blocks : [newTextBlock()]);
+    setAbTestEnabled(restoreBanner.abTestEnabled ?? false);
+    setSubjectB(restoreBanner.subjectB ?? "");
     setRestoreBanner(null);
   }
 
@@ -462,6 +466,29 @@ export function CampaignComposeFields({
               </ul>
             ) : null}
           </div>
+        ) : null}
+      </div>
+
+      <div className="block-editor-ab-test">
+        <label>
+          <input
+            type="checkbox"
+            checked={abTestEnabled}
+            onChange={(event) => setAbTestEnabled(event.target.checked)}
+          />
+          Run a subject-line A/B test
+        </label>
+        {abTestEnabled ? (
+          <label>
+            Subject B
+            <input
+              type="text"
+              name="subjectB"
+              required={abTestEnabled}
+              value={subjectB}
+              onChange={(event) => setSubjectB(event.target.value)}
+            />
+          </label>
         ) : null}
       </div>
 

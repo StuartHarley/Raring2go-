@@ -274,6 +274,7 @@ export const emailCampaignVersions = pgTable(
     subject: text("subject").notNull(),
     preheader: text("preheader"),
     contentSnapshot: jsonb("content_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    variantKey: text("variant_key"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id),
     approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
@@ -302,6 +303,7 @@ export const emailRecipientSnapshots = pgTable(
     recipients: jsonb("recipients").$type<Array<Record<string, unknown>>>().notNull().default([]),
     exclusions: jsonb("exclusions").$type<Array<Record<string, unknown>>>().notNull().default([]),
     idempotencyKey: text("idempotency_key").notNull(),
+    variantKey: text("variant_key"),
     ...timestamps
   },
   (table) => [
