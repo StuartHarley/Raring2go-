@@ -74,9 +74,29 @@ async function processNextEmailSendJob(request: Request) {
     }
 
     const snapshotContent = normalizeContentSnapshot(version.contentSnapshot, campaign.title);
-    const html = renderBlocksToHtml(snapshotContent.blocks);
-    const text = renderBlocksToText(snapshotContent.blocks);
-    const messages = recipients.map((recipient) => buildMessage(campaign, version, recipient, html, text));
+    const hasGatedBlocks = snapshotContent.blocks.some((block) => Boolean(block.visibleSegmentId));
+
+    let messages: EmailMessage[];
+
+    if (!hasGatedBlocks) {
+      const html = renderBlocksToHtml(snapshotContent.blocks);
+      const text = renderBlocksToText(snapshotContent.blocks);
+      messages = recipients.map((recipient) => buildMessage(campaign, version, recipient, html, text));
+    } else {
+      const renderedBySignature = new Map<string, { html: string; text: string }>();
+      messages = recipients.map((recipient) => {
+        const hiddenBlockIds = recipientHiddenBlockIds(recipient);
+        const signature = hiddenBlockIds.length === 0 ? "" : [...hiddenBlockIds].sort().join(",");
+        let rendered = renderedBySignature.get(signature);
+        if (!rendered) {
+          const hidden = new Set(hiddenBlockIds);
+          const visibleBlocks = hidden.size === 0 ? snapshotContent.blocks : snapshotContent.blocks.filter((block) => !hidden.has(block.id));
+          rendered = { html: renderBlocksToHtml(visibleBlocks), text: renderBlocksToText(visibleBlocks) };
+          renderedBySignature.set(signature, rendered);
+        }
+        return buildMessage(campaign, version, recipient, rendered.html, rendered.text);
+      });
+    }
 
     let results;
 
@@ -224,6 +244,11 @@ function recipientMergeTagFields(recipient: Record<string, unknown>) {
 function recipientContactId(recipient: Record<string, unknown> | undefined) {
   const value = recipient?.contactId;
   return typeof value === "string" && value ? value : null;
+}
+
+function recipientHiddenBlockIds(recipient: Record<string, unknown>): string[] {
+  const value = recipient.hiddenBlockIds;
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
 function listUnsubscribeHeaders(contactId: string, campaignId: string) {

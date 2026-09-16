@@ -150,13 +150,20 @@ describe("validateBlocks (untrusted-JSON trust boundary)", () => {
     ];
 
     expect(validateBlocks(raw)).toEqual([
-      { id: "b1", type: "heading", text: "Hello", level: 1 },
-      { id: "b2", type: "text", html: "<p>Body</p>" },
-      { id: "b3", type: "image", src: "https://example.test/a.png", alt: "Alt text", href: "https://example.test", fileId: null },
-      { id: "b4", type: "button", label: "Shop", href: "https://example.test/shop" },
-      { id: "b5", type: "divider" },
-      { id: "b6", type: "raw-html", html: "<div>Imported</div>", sourceLabel: null }
+      { id: "b1", type: "heading", text: "Hello", level: 1, visibleSegmentId: null },
+      { id: "b2", type: "text", html: "<p>Body</p>", visibleSegmentId: null },
+      { id: "b3", type: "image", src: "https://example.test/a.png", alt: "Alt text", href: "https://example.test", fileId: null, visibleSegmentId: null },
+      { id: "b4", type: "button", label: "Shop", href: "https://example.test/shop", visibleSegmentId: null },
+      { id: "b5", type: "divider", visibleSegmentId: null },
+      { id: "b6", type: "raw-html", html: "<div>Imported</div>", sourceLabel: null, visibleSegmentId: null }
     ]);
+  });
+
+  it("carries a block's visibleSegmentId through unchanged, and rejects a non-string value", () => {
+    const gated = validateBlocks([{ id: "b1", type: "divider", visibleSegmentId: "segment_vip" }]);
+    expect(gated[0]).toMatchObject({ visibleSegmentId: "segment_vip" });
+
+    expect(() => validateBlocks([{ id: "b1", type: "divider", visibleSegmentId: 42 }])).toThrow("visibleSegmentId must be a string or null");
   });
 
   it("rejects a non-array payload", () => {

@@ -1,6 +1,8 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { auditActions } from "@raring2go/audit";
 import { requirePermission, type PermissionData } from "@raring2go/permissions";
+import type { Block } from "./blocks";
+import { normalizeContentSnapshot } from "./content-snapshot";
 import { marketingCapabilities, type MarketingCapability } from "./permissions";
 import { evaluateSegmentRules, normalizeSegmentDefinition, validateSegmentDefinition } from "./segment-rules";
 import type {
@@ -862,12 +864,19 @@ export async function createRecipientSnapshot(
   const { restrictToContactIds, heldOutExclusionReason, ...snapshotInput } = snapshot;
   const allowlist = restrictToContactIds ? new Set(restrictToContactIds) : null;
   const eligibleContacts = allowlist ? segmentContacts.filter((view) => allowlist.has(view.contact.id)) : segmentContacts;
+  const hiddenBlockIdsByContactId = resolveHiddenBlockIdsByContact(context, data, campaign, version, eligibleContacts);
   const recipients = eligibleContacts.map((view) => ({
     contactId: view.contact.id,
     emailNormalised: view.contact.emailNormalised,
     firstName: view.contact.firstName ?? null,
     lastName: view.contact.lastName ?? null,
-    territoryIds: view.subscriptions.map((subscription) => subscription.territoryId)
+    territoryIds: view.subscriptions.map((subscription) => subscription.territoryId),
+    // Per-segment dynamic content blocks: which of this version's gated block
+    // ids this specific recipient should not see, baked in at snapshot time
+    // (see resolveHiddenBlockIdsByContact). Omitted entirely when the version
+    // has no gated blocks, so this is a byte-for-byte no-op for every
+    // pre-existing campaign.
+    ...(hiddenBlockIdsByContactId ? { hiddenBlockIds: hiddenBlockIdsByContactId.get(view.contact.id) ?? [] } : {})
   }));
   const allContactIds = new Set(data.contacts.map((contact) => contact.id));
   const recipientIds = new Set(recipients.map((recipient) => recipient.contactId));
@@ -1913,6 +1922,51 @@ function contactMatchesSegment(view: AudienceContactView, segment: AudienceSegme
     return view.contact.metadata.segmentIds instanceof Array && view.contact.metadata.segmentIds.includes(segment.id);
   }
   return evaluateSegmentRules(view, normalizeSegmentDefinition(segment.definition, segment.territoryId));
+}
+
+/**
+ * Per-segment dynamic content blocks: a block whose `visibleSegmentId` is set
+ * is only shown to recipients who match that segment. Computed once here, not
+ * at send time - this is the cheapest point with full AudienceContactViews
+ * already assembled; the send-worker never reloads full audience views, so
+ * re-deriving membership at send time would mean rebuilding contact views
+ * from scratch inside the cron worker. Returns null when the version has no
+ * gated blocks so the vast majority of campaigns skip this entirely.
+ */
+function resolveHiddenBlockIdsByContact(
+  context: MarketingActorContext,
+  data: MarketingData,
+  campaign: EmailCampaign,
+  version: EmailCampaignVersion,
+  eligibleContacts: AudienceContactView[]
+): Map<string, string[]> | null {
+  const snapshotContent = normalizeContentSnapshot(version.contentSnapshot, campaign.title);
+  const gatedBlocks = (snapshotContent.blocks as Block[])
+    .filter((block) => Boolean(block.visibleSegmentId))
+    .map((block) => ({ id: block.id, segmentId: block.visibleSegmentId as string }));
+
+  if (gatedBlocks.length === 0) {
+    return null;
+  }
+
+  const resolvedSegments = new Map<string, AudienceSegment>();
+  for (const { segmentId } of gatedBlocks) {
+    if (resolvedSegments.has(segmentId)) continue;
+    const segment = requireSegment(data, segmentId);
+    if (segment.territoryId) {
+      ensureContextCanAccessTerritory(context, segment.territoryId);
+    }
+    resolvedSegments.set(segmentId, segment);
+  }
+
+  const result = new Map<string, string[]>();
+  for (const view of eligibleContacts) {
+    const hidden = gatedBlocks
+      .filter((gated) => !contactMatchesSegment(view, resolvedSegments.get(gated.segmentId)!))
+      .map((gated) => gated.id);
+    result.set(view.contact.id, hidden);
+  }
+  return result;
 }
 
 function assembleContactView(data: MarketingData, contact: AudienceContact, visibleTerritoryIds: Set<string> | null): AudienceContactView {

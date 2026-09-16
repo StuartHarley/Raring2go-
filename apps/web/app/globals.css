@@ -1109,6 +1109,16 @@ p {
   padding: 4px 10px;
 }
 
+.block-editor-row-header select {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 4px 8px;
+  max-width: 180px;
+}
+
 .block-editor-fields {
   display: grid;
   gap: 8px;
