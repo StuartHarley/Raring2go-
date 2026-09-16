@@ -15,7 +15,8 @@ import {
   suggestBlockCopyAction,
   suggestSubjectLinesAction
 } from "./actions";
-import type { AudienceSegment } from "@raring2go/marketing";
+import { normalizeContentSnapshot } from "@raring2go/marketing";
+import type { AudienceSegment, EmailCampaignOverview } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
 
 type PageProps = {
@@ -30,7 +31,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, email, composableSegments, outlookMailboxes, aiAssistAvailable } = result;
+  const { context, email, composableSegments, outlookMailboxes, aiAssistAvailable, lastNewsletter } = result;
 
   return (
     <AppShell request={request}>
@@ -113,6 +114,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
               <h3 className="newsletter-compose-section-title">Content</h3>
               <CampaignComposeFields
                 aiAssistAvailable={aiAssistAvailable}
+                lastNewsletter={lastNewsletter}
                 suggestSubjectLinesAction={suggestSubjectLinesAction.bind(null, context)}
                 suggestBlockCopyAction={suggestBlockCopyAction.bind(null, context)}
                 acceptAiSuggestionAction={acceptAiSuggestionAction.bind(null, context)}
@@ -209,8 +211,16 @@ async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSea
       ? segments.filter((segment) => segment.territoryId === context.territoryId)
       : segments;
     const outlookMailboxes = outlookConnections.filter((connection) => connection.status === "connected");
+    const lastNewsletter = findLastNewsletter(email.campaigns);
 
-    return { context, email, composableSegments, outlookMailboxes, aiAssistAvailable: hasAiAssistCapability(context) };
+    return {
+      context,
+      email,
+      composableSegments,
+      outlookMailboxes,
+      aiAssistAvailable: hasAiAssistCapability(context),
+      lastNewsletter
+    };
   } catch (error) {
     return { error };
   }
@@ -230,4 +240,27 @@ function protectedOutcome(error: unknown) {
   }
 
   throw error;
+}
+
+function findLastNewsletter(campaigns: EmailCampaignOverview["campaigns"]) {
+  const candidates = campaigns
+    .filter((view) => !view.campaign.deletedAt && view.latestVersion)
+    .sort((left, right) => {
+      const leftDate = left.campaign.sentAt ?? left.campaign.scheduledAt ?? left.campaign.approvedAt ?? "";
+      const rightDate = right.campaign.sentAt ?? right.campaign.scheduledAt ?? right.campaign.approvedAt ?? "";
+      return rightDate.localeCompare(leftDate);
+    });
+  const latest = candidates[0];
+
+  if (!latest?.latestVersion) {
+    return undefined;
+  }
+
+  const snapshot = normalizeContentSnapshot(latest.latestVersion.contentSnapshot, latest.campaign.title);
+
+  return {
+    title: latest.campaign.title,
+    subject: latest.latestVersion.subject,
+    blocks: snapshot.blocks
+  };
 }

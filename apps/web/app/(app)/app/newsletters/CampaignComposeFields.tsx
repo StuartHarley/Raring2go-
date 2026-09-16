@@ -102,13 +102,17 @@ export type SuggestSubjectLines = (input: { draftId: string; campaignTitle: stri
 export type SuggestBlockCopy = (input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }) => Promise<string>;
 export type AcceptAiSuggestion = (input: { draftId: string; task: "subject_lines" | "block_copy"; blockId?: string; accepted: string }) => Promise<void>;
 
+export type LastNewsletter = { title: string; subject: string; blocks: Block[] };
+
 export function CampaignComposeFields({
   aiAssistAvailable,
+  lastNewsletter,
   suggestSubjectLinesAction,
   suggestBlockCopyAction,
   acceptAiSuggestionAction
 }: {
   aiAssistAvailable: boolean;
+  lastNewsletter?: LastNewsletter;
   suggestSubjectLinesAction: SuggestSubjectLines;
   suggestBlockCopyAction: SuggestBlockCopy;
   acceptAiSuggestionAction: AcceptAiSuggestion;
@@ -173,6 +177,21 @@ export function CampaignComposeFields({
     }
     setRestoreBanner(null);
   }
+
+  function startFromLastNewsletter() {
+    if (!lastNewsletter) return;
+    setTitle(lastNewsletter.title);
+    setSubject(lastNewsletter.subject);
+    // Fresh ids for every block - never reuse the source campaign's block ids.
+    setBlocks(
+      lastNewsletter.blocks.length > 0
+        ? lastNewsletter.blocks.map((block) => ({ ...block, id: crypto.randomUUID() }) as Block)
+        : [newTextBlock()]
+    );
+  }
+
+  const canStartFromLastNewsletter =
+    Boolean(lastNewsletter) && !restoreBanner && !draftHasContent({ title, subject, blocks });
 
   async function handleSuggestSubjectLines() {
     setSubjectSuggestState("loading");
@@ -249,6 +268,15 @@ export function CampaignComposeFields({
           </button>
           <button type="button" onClick={discardDraft}>
             Discard
+          </button>
+        </div>
+      ) : null}
+
+      {canStartFromLastNewsletter ? (
+        <div className="block-editor-draft-banner" role="status">
+          <span>Want a head start? Reuse your last newsletter&apos;s content.</span>
+          <button type="button" onClick={startFromLastNewsletter}>
+            Start from your last newsletter
           </button>
         </div>
       ) : null}
