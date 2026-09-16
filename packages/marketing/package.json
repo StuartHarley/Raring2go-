@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./blocks": "./src/blocks.ts"
+    "./blocks": "./src/blocks.ts",
+    "./template-gallery": "./src/template-gallery.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
