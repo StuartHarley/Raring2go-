@@ -130,6 +130,11 @@ export function CampaignComposeFields({
   const [past, setPast] = useState<Block[][]>([]);
   const [future, setFuture] = useState<Block[][]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Shared with the submit handler below so a real submit can cancel a
+  // still-pending debounced write - otherwise a keystroke within 800ms of
+  // clicking submit leaves this timer armed, and it fires shortly after the
+  // submit handler clears the draft, silently resurrecting it.
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -140,19 +145,32 @@ export function CampaignComposeFields({
   useEffect(() => {
     if (restoreBanner) return; // wait for the user to restore/discard before autosaving over it
     const handle = setTimeout(() => {
+      autosaveTimeoutRef.current = null;
       try {
         window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ title, subject, blocks }));
       } catch {
         // ignore - autosave is a best-effort convenience
       }
     }, 800);
-    return () => clearTimeout(handle);
+    autosaveTimeoutRef.current = handle;
+    return () => {
+      clearTimeout(handle);
+      if (autosaveTimeoutRef.current === handle) {
+        autosaveTimeoutRef.current = null;
+      }
+    };
   }, [restoreBanner, title, subject, blocks]);
 
   useEffect(() => {
     const form = rootRef.current?.closest("form");
     if (!form) return;
     const clearDraft = () => {
+      // Cancel any debounced write still pending from a keystroke made just
+      // before submit - clearing localStorage alone doesn't stop it firing.
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = null;
+      }
       try {
         window.localStorage.removeItem(DRAFT_STORAGE_KEY);
       } catch {
