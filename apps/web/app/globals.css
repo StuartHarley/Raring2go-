@@ -1135,6 +1135,32 @@ p {
   font-weight: 800;
 }
 
+.block-editor-image-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.block-editor-image-library button {
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface);
+  padding: 4px;
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+
+.block-editor-image-library button:hover {
+  border-color: var(--r2-brand-purple);
+}
+
+.block-editor-image-library img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--r2-radius-sm);
+}
+
 .block-editor-error {
   color: var(--r2-status-danger);
   font-size: 0.8125rem;

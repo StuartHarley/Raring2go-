@@ -1,5 +1,5 @@
 import { fileReferences } from "@raring2go/db";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, isNull, like } from "drizzle-orm";
 import type { FileReference } from "@raring2go/storage";
 
 type FilesDb = any;
@@ -60,4 +60,44 @@ export async function getFileReferenceRecord(db: FilesDb, id: string): Promise<F
   const rows = await db.select().from(fileReferences).where(eq(fileReferences.id, id));
   const row = rows[0];
   return row ? rowToFileReference(row) : undefined;
+}
+
+/**
+ * Lists previously uploaded files for reuse (e.g. a "choose from your
+ * uploads" gallery) - own organisation/territory scope only, matching every
+ * other territory boundary in this app. Ordered most-recent first.
+ */
+export async function listFileReferences(
+  db: FilesDb,
+  filter: {
+    organisationId?: string | null;
+    territoryId?: string | null;
+    contentTypePrefix?: string;
+    virusScanStatus?: FileReference["virusScanStatus"];
+    limit?: number;
+  }
+): Promise<FileReference[]> {
+  const conditions = [isNull(fileReferences.deletedAt)];
+
+  if (filter.organisationId) {
+    conditions.push(eq(fileReferences.organisationId, filter.organisationId));
+  }
+  if (filter.territoryId) {
+    conditions.push(eq(fileReferences.territoryId, filter.territoryId));
+  }
+  if (filter.contentTypePrefix) {
+    conditions.push(like(fileReferences.contentType, `${filter.contentTypePrefix}%`));
+  }
+  if (filter.virusScanStatus) {
+    conditions.push(eq(fileReferences.virusScanStatus, filter.virusScanStatus));
+  }
+
+  const rows = await db
+    .select()
+    .from(fileReferences)
+    .where(and(...conditions))
+    .orderBy(desc(fileReferences.createdAt))
+    .limit(filter.limit ?? 24);
+
+  return rows.map(rowToFileReference);
 }

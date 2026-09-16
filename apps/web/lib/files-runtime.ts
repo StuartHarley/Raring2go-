@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
-import { completeFileUpload, getFileReferenceRecord, insertFileReferenceRecord, requireFilesPermission } from "@raring2go/files";
+import { completeFileUpload, getFileReferenceRecord, insertFileReferenceRecord, listFileReferences, requireFilesPermission } from "@raring2go/files";
 import type { FilesActorContext } from "@raring2go/files";
 import { canAccessFile, assertFileIsDownloadable, createScannerProviderFromEnv, createStorageProviderFromEnv } from "@raring2go/storage";
 import type { FileReference } from "@raring2go/storage";
@@ -95,6 +95,46 @@ export async function uploadNewsletterImage(
         : "";
 
     return { fileId: reference.id, src, fileName: reference.fileName, virusScanStatus: reference.virusScanStatus };
+  } finally {
+    await sql.end();
+  }
+}
+
+export type UploadedImageOption = {
+  fileId: string;
+  src: string;
+  fileName: string;
+};
+
+/**
+ * Lists the composer's own previously uploaded, scanned-clean images, so a
+ * newsletter image block can reuse one instead of always uploading again.
+ * Own organisation/territory scope only, matching every other territory
+ * boundary in this app.
+ */
+export async function listMyUploadedImages(context: FilesActorContext): Promise<UploadedImageOption[]> {
+  requireFilesPermission(context, filesPermissionData, "upload");
+
+  const { db, sql } = createDb();
+
+  try {
+    const references = await listFileReferences(db, {
+      organisationId: context.organisationId,
+      territoryId: context.territoryId,
+      contentTypePrefix: "image/",
+      virusScanStatus: "clean"
+    });
+
+    const storage = createStorageProviderFromEnv();
+    const options = await Promise.all(
+      references.map(async (reference) => ({
+        fileId: reference.id,
+        fileName: reference.fileName,
+        src: (await storage.createDownloadIntent(reference, { disposition: "inline" })).downloadUrl
+      }))
+    );
+
+    return options;
   } finally {
     await sql.end();
   }

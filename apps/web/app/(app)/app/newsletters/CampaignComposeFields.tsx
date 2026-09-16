@@ -617,10 +617,44 @@ function blockLabel(block: Block) {
 }
 
 type UploadResponse = { fileId: string; src: string; fileName: string; virusScanStatus: string; error?: string };
+type UploadedImageOption = { fileId: string; src: string; fileName: string };
+type LibraryResponse = { images: UploadedImageOption[]; error?: string };
 
 function ImageBlockFields({ block, onChange }: { block: ImageBlock; onChange: (patch: Partial<Block>) => void }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [library, setLibrary] = useState<UploadedImageOption[] | null>(null);
+  const [libraryState, setLibraryState] = useState<"idle" | "loading" | "error">("idle");
+
+  async function handleBrowseLibrary() {
+    if (library) {
+      setLibrary(null);
+      return;
+    }
+
+    setLibraryState("loading");
+    try {
+      const response = await fetch("/api/files/list");
+      const payload = (await response.json()) as LibraryResponse;
+
+      if (!response.ok) {
+        setLibraryState("error");
+        setError(payload.error ?? "Could not load your uploads.");
+        return;
+      }
+
+      setLibrary(payload.images);
+      setLibraryState("idle");
+    } catch {
+      setLibraryState("error");
+      setError("Could not load your uploads. Check your connection and try again.");
+    }
+  }
+
+  function chooseFromLibrary(option: UploadedImageOption) {
+    onChange({ src: option.src, fileId: option.fileId, alt: block.alt || option.fileName });
+    setLibrary(null);
+  }
 
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -656,6 +690,22 @@ function ImageBlockFields({ block, onChange }: { block: ImageBlock; onChange: (p
         <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleUpload} disabled={uploading} />
       </label>
       {uploading ? <span className="block-editor-import-note">Uploading…</span> : null}
+      <button type="button" onClick={handleBrowseLibrary} disabled={libraryState === "loading"}>
+        {libraryState === "loading" ? "Loading…" : library ? "Hide your uploads" : "Choose from your uploads"}
+      </button>
+      {library ? (
+        library.length === 0 ? (
+          <p className="block-editor-import-note">No previous uploads yet - upload an image once to reuse it here.</p>
+        ) : (
+          <div className="block-editor-image-library">
+            {library.map((option) => (
+              <button type="button" key={option.fileId} onClick={() => chooseFromLibrary(option)} title={option.fileName}>
+                <img src={option.src} alt={option.fileName} />
+              </button>
+            ))}
+          </div>
+        )
+      ) : null}
       {error ? <span className="block-editor-error">{error}</span> : null}
       <input
         type="url"
