@@ -23,6 +23,7 @@ import StarterKit from "@tiptap/starter-kit";
 import {
   renderBlocksToHtml,
   renderBlocksToText,
+  substituteMergeTags,
   type Block,
   type ButtonBlock,
   type DividerBlock,
@@ -31,6 +32,10 @@ import {
   type RawHtmlBlock,
   type TextBlock
 } from "@raring2go/marketing/blocks";
+
+// Sample values so the live preview shows roughly what a real recipient will
+// see - never sent, purely a preview affordance.
+const PREVIEW_MERGE_TAG_SAMPLE = { firstName: "Alex", lastName: "Sample" };
 
 function newHeadingBlock(): HeadingBlock {
   return { id: crypto.randomUUID(), type: "heading", text: "", level: 1 };
@@ -130,6 +135,12 @@ export function CampaignComposeFields({
   const [past, setPast] = useState<Block[][]>([]);
   const [future, setFuture] = useState<Block[][]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
+  const subjectInputRef = useRef<HTMLInputElement>(null);
+  // Clicking a toolbar button blurs the subject input first, and a blurred
+  // input's selectionStart/End isn't reliably preserved across browsers - so
+  // the last known caret position is tracked separately via onSelect instead
+  // of read live at click time.
+  const subjectSelectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
   // Shared with the submit handler below so a real submit can cancel a
   // still-pending debounced write - otherwise a keystroke within 800ms of
   // clicking submit leaves this timer armed, and it fires shortly after the
@@ -140,7 +151,10 @@ export function CampaignComposeFields({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const previewHtml = useMemo(() => renderBlocksToHtml(blocks), [blocks]);
+  const previewHtml = useMemo(
+    () => substituteMergeTags(renderBlocksToHtml(blocks), PREVIEW_MERGE_TAG_SAMPLE),
+    [blocks]
+  );
 
   useEffect(() => {
     if (restoreBanner) return; // wait for the user to restore/discard before autosaving over it
@@ -292,6 +306,29 @@ export function CampaignComposeFields({
     void acceptAiSuggestionAction({ draftId, task: "subject_lines", accepted: text }).catch(() => {});
   }
 
+  function captureSubjectSelection() {
+    // Fires on the button's mousedown, which happens before the subject
+    // input blurs - onSelect doesn't reliably fire for a plain caret move
+    // with no text highlighted, so this is the point where the real caret
+    // position is still readable.
+    const input = subjectInputRef.current;
+    if (!input) return;
+    subjectSelectionRef.current = { start: input.selectionStart ?? subject.length, end: input.selectionEnd ?? subject.length };
+  }
+
+  function insertSubjectToken(token: string) {
+    const { start, end } = subjectSelectionRef.current;
+    const next = `${subject.slice(0, start)}${token}${subject.slice(end)}`;
+    setSubject(next);
+    const cursor = start + token.length;
+    subjectSelectionRef.current = { start: cursor, end: cursor };
+    requestAnimationFrame(() => {
+      const input = subjectInputRef.current;
+      input?.focus();
+      input?.setSelectionRange(cursor, cursor);
+    });
+  }
+
   function updateBlock(id: string, patch: Partial<Block>) {
     setBlocks((current) => current.map((block) => (block.id === id ? ({ ...block, ...patch } as Block) : block)));
   }
@@ -378,8 +415,23 @@ export function CampaignComposeFields({
       <div className="block-editor-subject-field">
         <label>
           Subject
-          <input type="text" name="subject" required value={subject} onChange={(event) => setSubject(event.target.value)} />
+          <input
+            type="text"
+            name="subject"
+            required
+            ref={subjectInputRef}
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+          />
         </label>
+        <div className="block-editor-merge-tags">
+          <button type="button" onMouseDown={captureSubjectSelection} onClick={() => insertSubjectToken("{{firstName}}")}>
+            Insert first name
+          </button>
+          <button type="button" onMouseDown={captureSubjectSelection} onClick={() => insertSubjectToken("{{lastName}}")}>
+            Insert last name
+          </button>
+        </div>
         {aiAssistAvailable ? (
           <div className="block-editor-ai-assist">
             <button type="button" onClick={handleSuggestSubjectLines} disabled={subjectSuggestState === "loading"}>
@@ -781,6 +833,9 @@ function TextBlockEditor({
             aria-pressed={editor.isActive("link")}
           >
             Link
+          </button>
+          <button type="button" onClick={() => editor.chain().focus().insertContent("{{firstName}}").run()}>
+            Insert first name
           </button>
           {aiAssistAvailable ? (
             <button type="button" onClick={handleSuggestCopy} disabled={suggestState === "loading"}>

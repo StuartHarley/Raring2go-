@@ -10,6 +10,7 @@ import {
   normalizeContentSnapshot,
   renderBlocksToHtml,
   renderBlocksToText,
+  substituteMergeTags,
   updateEmailCampaignRecord
 } from "@raring2go/marketing";
 import { createEmailProviderFromEnv, createMicrosoftGraphEmailProvider, normalizeEmailAddress, sendEmailBatch } from "@raring2go/email";
@@ -176,17 +177,27 @@ function buildMessage(
   const email = normalizeEmailAddress(String(recipient.emailNormalised ?? ""));
   const contactId = recipientContactId(recipient);
   const idempotencyKey = `${campaign.id}:${version.id}:${contactId ?? email}`;
+  const mergeTagFields = recipientMergeTagFields(recipient);
 
   return {
     idempotencyKey,
     purpose: "newsletter",
     to: [{ email }],
     from: { email: process.env.EMAIL_FROM ?? "no-reply@raring2go.local", name: campaign.title },
-    subject: version.subject,
-    text,
-    html,
+    subject: substituteMergeTags(version.subject, mergeTagFields),
+    text: substituteMergeTags(text, mergeTagFields),
+    html: substituteMergeTags(html, mergeTagFields),
     headers: contactId ? listUnsubscribeHeaders(contactId, campaign.id) : undefined,
     metadata: { campaignId: campaign.id, contactId: contactId ?? "" }
+  };
+}
+
+function recipientMergeTagFields(recipient: Record<string, unknown>) {
+  const firstName = recipient.firstName;
+  const lastName = recipient.lastName;
+  return {
+    firstName: typeof firstName === "string" ? firstName : null,
+    lastName: typeof lastName === "string" ? lastName : null
   };
 }
 
