@@ -347,6 +347,19 @@ export async function advanceEmailSendJob(
     .where(eq(emailSendJobs.id, jobId));
 }
 
+export async function listEmailSendJobsForCampaignVersion(
+  db: MarketingDb,
+  campaignId: string,
+  campaignVersionId: string
+): Promise<EmailSendJob[]> {
+  const rows = await db
+    .select()
+    .from(emailSendJobs)
+    .where(and(eq(emailSendJobs.campaignId, campaignId), eq(emailSendJobs.campaignVersionId, campaignVersionId)));
+
+  return rows.map(dateRows(["nextAttemptAt"])) as EmailSendJob[];
+}
+
 export async function findDeliveryRecordByProviderMessage(
   db: MarketingDb,
   providerKey: string,

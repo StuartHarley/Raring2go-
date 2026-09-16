@@ -1399,6 +1399,23 @@ p {
   gap: 4px;
 }
 
+.newsletter-sto-progress {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--r2-border-default);
+  border-radius: var(--r2-radius-sm);
+  background: var(--r2-surface-subtle);
+  padding: 10px 12px;
+}
+
+.newsletter-sto-progress ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-size: 0.8125rem;
+}
+
 .block-editor-ai-suggestions {
   display: grid;
   gap: 6px;

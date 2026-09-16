@@ -13,6 +13,7 @@ import {
   generateSnapshotAction,
   generateWinnerRemainderSnapshotAction,
   scheduleCampaignAction,
+  scheduleWithSendTimeOptimizationAction,
   sendCampaignAction,
   startAbTestAction,
   suggestBlockCopyAction,
@@ -235,7 +236,38 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                       </form>
                     </>
                   ) : null}
-                  {(view.campaign.status === "scheduled" || view.campaign.status === "sending") && view.activeJob ? (
+
+                  {canAct && view.campaign.status === "approved" && !isAbTest ? (
+                    <form action={scheduleWithSendTimeOptimizationAction.bind(null, context, view.campaign.id)} className="franchise-form">
+                      <label>
+                        Send at (earliest)
+                        <input type="datetime-local" name="scheduledAt" required />
+                      </label>
+                      <label>
+                        Default hour for contacts with no engagement history (UTC, 0-23)
+                        <input type="number" name="defaultHour" min={0} max={23} defaultValue={9} />
+                      </label>
+                      <button type="submit">Schedule with send-time optimization</button>
+                    </form>
+                  ) : null}
+
+                  {view.sendJobs.length > 1 ? (
+                    <div className="newsletter-sto-progress">
+                      <span>
+                        Optimized send: {view.sendJobs.filter((entry) => entry.job.status === "completed").length}/{view.sendJobs.length} send windows complete
+                        {" · "}
+                        {view.sendJobs.reduce((total, entry) => total + entry.job.cursor, 0)}/
+                        {view.sendJobs.reduce((total, entry) => total + (entry.snapshot?.recipientCount ?? 0), 0)} sent
+                      </span>
+                      <ul>
+                        {view.sendJobs.map((entry) => (
+                          <li key={entry.job.id}>
+                            {new Date(entry.job.nextAttemptAt).toLocaleString()} — {entry.job.status} ({entry.job.cursor}/{entry.snapshot?.recipientCount ?? 0})
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (view.campaign.status === "scheduled" || view.campaign.status === "sending") && view.activeJob ? (
                     <span>
                       Sending: {view.activeJob.cursor}/{view.latestSnapshot?.recipientCount ?? 0} sent
                       {view.campaign.status === "scheduled" ? ` (starts ${new Date(view.campaign.scheduledAt ?? "").toLocaleString()})` : ""}

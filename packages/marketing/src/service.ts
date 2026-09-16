@@ -14,6 +14,7 @@ import type {
   AudienceTerritorySubscription,
   EmailCampaign,
   EmailCampaignAbTestMetadata,
+  EmailCampaignSendTimeOptimizationMetadata,
   EmailCampaignVersion,
   EmailCampaignOverview,
   EmailDeliveryRecord,
@@ -163,11 +164,13 @@ export function listEmailCampaigns(
   const campaigns = data.emailCampaigns
     .filter((campaign) => !campaign.deletedAt)
     .filter((campaign) => visibleTerritoryIds == null || !campaign.territoryId || visibleTerritoryIds.has(campaign.territoryId))
-    .map((campaign) => ({
-      campaign,
-      latestVersion: data.emailCampaignVersions
+    .map((campaign) => {
+      const latestVersion = data.emailCampaignVersions
         .filter((version) => version.campaignId === campaign.id && !version.deletedAt)
-        .sort((left, right) => right.versionNumber - left.versionNumber)[0],
+        .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+      return {
+      campaign,
+      latestVersion,
       latestSnapshot: data.emailRecipientSnapshots
         .filter((snapshot) => snapshot.campaignId === campaign.id)
         .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0],
@@ -175,6 +178,15 @@ export function listEmailCampaigns(
       activeJob: data.emailSendJobs.find(
         (job) => job.campaignId === campaign.id && (job.status === "queued" || job.status === "processing")
       ),
+      sendJobs: latestVersion
+        ? data.emailSendJobs
+            .filter((job) => job.campaignVersionId === latestVersion.id)
+            .sort((left, right) => left.nextAttemptAt.localeCompare(right.nextAttemptAt))
+            .map((job) => ({
+              job,
+              snapshot: data.emailRecipientSnapshots.find((snapshot) => snapshot.id === job.recipientSnapshotId)
+            }))
+        : [],
       variants: data.emailCampaignVersions
         .filter((version) => version.campaignId === campaign.id && !version.deletedAt && (version.variantKey === "a" || version.variantKey === "b"))
         .sort((left, right) => left.versionNumber - right.versionNumber)
@@ -190,7 +202,8 @@ export function listEmailCampaigns(
       remainderSnapshot: data.emailRecipientSnapshots
         .filter((snapshot) => snapshot.campaignId === campaign.id && snapshot.variantKey === "remainder")
         .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0]
-    }));
+      };
+    });
 
   return {
     campaigns,
@@ -918,6 +931,7 @@ export function enqueueEmailSend(
     batchSize?: number;
     campaignVersionId?: string;
     recipientSnapshotId?: string;
+    nextAttemptAt?: string;
   }
 ): EmailSendJob {
   requireMarketingPermission(context, permissions, "emailSchedule");
@@ -948,7 +962,11 @@ export function enqueueEmailSend(
   }
 
   const existingJob = data.emailSendJobs.find(
-    (job) => job.campaignId === campaign.id && job.campaignVersionId === version.id && (job.status === "queued" || job.status === "processing")
+    (job) =>
+      job.campaignId === campaign.id &&
+      job.campaignVersionId === version.id &&
+      (input.recipientSnapshotId ? job.recipientSnapshotId === input.recipientSnapshotId : true) &&
+      (job.status === "queued" || job.status === "processing")
   );
 
   if (existingJob) {
@@ -986,7 +1004,7 @@ export function enqueueEmailSend(
     batchSize: input.batchSize ?? (campaign.sendProvider === "microsoft" ? 10 : 100),
     attempts: 0,
     maxAttempts: 5,
-    nextAttemptAt: campaign.scheduledAt ?? new Date().toISOString()
+    nextAttemptAt: input.nextAttemptAt ?? campaign.scheduledAt ?? new Date().toISOString()
   };
   data.emailSendJobs.push(job);
   return job;
@@ -1016,6 +1034,73 @@ export function splitSegmentForAbTest(
     .filter((view) => !sampledIds.has(view.contact.id))
     .map((view) => view.contact.id);
   return { variantAContactIds, variantBContactIds, remainderContactIds };
+}
+
+const DEFAULT_SEND_TIME_OPTIMIZATION_HOUR = 9;
+
+/**
+ * For each contact, the UTC hour-of-day (0-23) they most often open/click a
+ * campaign email, based on data.emailDeliveryRecords. Contacts with no
+ * opened/clicked history get input.defaultHour. Ties are broken toward the
+ * lowest hour for determinism.
+ *
+ * No timezone data exists anywhere in this app (not on AudienceContact, not
+ * on territories) - this is a raw UTC hour, not a local-time hour. It's the
+ * best signal available, not a per-contact-timezone-corrected one.
+ */
+export function computeContactEngagementHours(
+  data: MarketingData,
+  contactIds: string[],
+  input: { defaultHour?: number } = {}
+): Record<string, number> {
+  const defaultHour = input.defaultHour ?? DEFAULT_SEND_TIME_OPTIMIZATION_HOUR;
+  const contactIdSet = new Set(contactIds);
+  const hourCountsByContact = new Map<string, number[]>();
+
+  for (const delivery of data.emailDeliveryRecords) {
+    if (delivery.deletedAt) continue;
+    if (delivery.eventType !== "opened" && delivery.eventType !== "clicked") continue;
+    if (!delivery.contactId || !contactIdSet.has(delivery.contactId) || !delivery.eventAt) continue;
+    const hour = new Date(delivery.eventAt).getUTCHours();
+    const counts = hourCountsByContact.get(delivery.contactId) ?? new Array(24).fill(0);
+    counts[hour] += 1;
+    hourCountsByContact.set(delivery.contactId, counts);
+  }
+
+  const result: Record<string, number> = {};
+  for (const contactId of contactIds) {
+    const counts = hourCountsByContact.get(contactId);
+    if (!counts) {
+      result[contactId] = defaultHour;
+      continue;
+    }
+    let bestHour = 0;
+    let bestCount = -1;
+    for (let hour = 0; hour < 24; hour += 1) {
+      if (counts[hour]! > bestCount) {
+        bestCount = counts[hour]!;
+        bestHour = hour;
+      }
+    }
+    result[contactId] = bestHour;
+  }
+  return result;
+}
+
+/**
+ * The next UTC instant at or after `anchor` whose hour-of-day equals `hour`
+ * (minutes/seconds/ms zeroed). Never returns an instant before `anchor` -
+ * this is what lets a campaign's scheduledAt act as a hard floor: no bucket
+ * fires earlier than the campaign's chosen launch time, even if that
+ * bucket's best hour is earlier in the clock than anchor's minute-of-hour.
+ */
+export function nextOccurrenceOfHour(anchor: Date, hour: number): Date {
+  const candidate = new Date(anchor);
+  candidate.setUTCHours(hour, 0, 0, 0);
+  if (candidate.getTime() < anchor.getTime()) {
+    candidate.setUTCDate(candidate.getUTCDate() + 1);
+  }
+  return candidate;
 }
 
 function requireVariantPair(data: MarketingData, campaignId: string) {
@@ -1240,6 +1325,103 @@ export async function createWinnerRemainderSnapshot(
     restrictToContactIds: remainderContactIds,
     heldOutExclusionReason: "already_sent_ab_test_sample"
   });
+}
+
+export async function enqueueSendTimeOptimizedSend(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  input: { campaignId: string; scheduledAt: string; defaultHour?: number }
+): Promise<{
+  campaign: EmailCampaign;
+  version: EmailCampaignVersion;
+  snapshots: EmailRecipientSnapshot[];
+  jobs: EmailSendJob[];
+}> {
+  requireMarketingPermission(context, permissions, "emailSchedule");
+  const campaign = requireCampaign(data, input.campaignId);
+  ensureCampaignAccess(context, campaign);
+  if (campaign.status !== "scheduled") {
+    throw new Error("Only scheduled campaigns can be queued for send-time-optimized sending.");
+  }
+  if (!campaign.segmentId) {
+    throw new Error("Campaign requires an audience segment before scheduling.");
+  }
+  const version = data.emailCampaignVersions
+    .filter((candidate) => candidate.campaignId === campaign.id && candidate.status === "approved" && !candidate.deletedAt)
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+  if (!version) {
+    throw new Error("Campaign has no approved version to send.");
+  }
+
+  const segmentContacts = previewSegment(context, permissions, data, campaign.segmentId);
+  const contactIds = segmentContacts.map((view) => view.contact.id);
+  if (contactIds.length === 0) {
+    throw new Error("Campaign audience segment has no eligible recipients to schedule.");
+  }
+  const bestHours = computeContactEngagementHours(data, contactIds, { defaultHour: input.defaultHour });
+
+  const buckets = new Map<number, string[]>();
+  for (const contactId of contactIds) {
+    const hour = bestHours[contactId]!;
+    const bucket = buckets.get(hour);
+    if (bucket) {
+      bucket.push(contactId);
+    } else {
+      buckets.set(hour, [contactId]);
+    }
+  }
+
+  const anchor = new Date(input.scheduledAt);
+  const bucketHours = [...buckets.keys()].sort((left, right) => left - right);
+  const snapshots: EmailRecipientSnapshot[] = [];
+  const jobs: EmailSendJob[] = [];
+
+  for (const hour of bucketHours) {
+    const bucketContactIds = buckets.get(hour)!;
+    const snapshot = await createRecipientSnapshot(context, permissions, audit, data, {
+      id: randomUUID(),
+      campaignId: campaign.id,
+      campaignVersionId: version.id,
+      segmentId: campaign.segmentId,
+      status: "created",
+      generatedAt: input.scheduledAt,
+      idempotencyKey: `${campaign.id}:${version.id}:sto:${hour}`,
+      variantKey: "sto",
+      restrictToContactIds: bucketContactIds,
+      heldOutExclusionReason: "scheduled_in_different_send_time_bucket"
+    });
+    snapshots.push(snapshot);
+
+    const job = enqueueEmailSend(context, permissions, data, {
+      id: randomUUID(),
+      campaignId: campaign.id,
+      campaignVersionId: version.id,
+      recipientSnapshotId: snapshot.id,
+      nextAttemptAt: nextOccurrenceOfHour(anchor, hour).toISOString()
+    });
+    jobs.push(job);
+  }
+
+  campaign.metadata = {
+    ...campaign.metadata,
+    sto: {
+      enabled: true,
+      defaultHour: input.defaultHour ?? DEFAULT_SEND_TIME_OPTIMIZATION_HOUR,
+      bucketHours,
+      startedAt: input.scheduledAt,
+      startedByUserId: context.userId
+    } satisfies EmailCampaignSendTimeOptimizationMetadata
+  };
+
+  await audit.record(marketingAuditEvent(context, auditActions.marketingSendTimeOptimizationSchedule, "email_campaign", campaign.id, {
+    versionId: version.id,
+    bucketCount: bucketHours.length,
+    recipientCount: contactIds.length
+  }, campaign.territoryId));
+
+  return { campaign, version, snapshots, jobs };
 }
 
 export async function markEmailCampaignSent(

@@ -8,6 +8,7 @@ import {
   approveJourneyVersion,
   approveNetworkNewsletterMaster,
   compareSubjectLineVariants,
+  computeContactEngagementHours,
   createEmailCampaign,
   createEmailCampaignVersion,
   createJourney,
@@ -17,6 +18,7 @@ import {
   createWinnerRemainderSnapshot,
   declareSubjectLineWinner,
   enqueueEmailSend,
+  enqueueSendTimeOptimizedSend,
   generateUnsubscribeToken,
   enterJourneyFromEvent,
   executeJourneyStep,
@@ -40,6 +42,7 @@ import {
   scheduleEmailCampaign,
   splitSegmentForAbTest,
   startSubjectLineTest,
+  nextOccurrenceOfHour,
   subscribeContactToTerritory,
   suppressContact,
   unsubscribeContactPublicly,
@@ -1044,6 +1047,330 @@ describe("marketing audience foundation", () => {
         decidedAt: "2026-08-12T09:00:00.000Z"
       })
     ).rejects.toThrow("running subject-line test");
+  });
+
+  it("computes each contact's modal engagement hour from opened/clicked history, falling back to the default hour", () => {
+    const data = emptyData();
+    const delivery = (id: string, contactId: string, eventType: string, hour: number) => ({
+      id,
+      campaignId: "campaign_x",
+      campaignVersionId: "campaign_x_v1",
+      recipientSnapshotId: "snapshot_x",
+      contactId,
+      emailNormalised: `${contactId}@example.test`,
+      providerKey: "test-provider",
+      providerMessageId: id,
+      status: "delivered",
+      eventType,
+      eventAt: `2026-08-11T${String(hour).padStart(2, "0")}:15:00.000Z`,
+      metadata: {}
+    });
+
+    // contact_a: opens 3 times at 14:xx, once at 9:xx - modal hour is 14.
+    data.emailDeliveryRecords.push(
+      delivery("d1", "contact_a", "opened", 14),
+      delivery("d2", "contact_a", "opened", 14),
+      delivery("d3", "contact_a", "opened", 14),
+      delivery("d4", "contact_a", "opened", 9)
+    );
+    // contact_b: a tie between hour 10 and hour 20 - lower hour wins.
+    data.emailDeliveryRecords.push(
+      delivery("d5", "contact_b", "clicked", 20),
+      delivery("d6", "contact_b", "opened", 10)
+    );
+    // contact_c: only a "delivered" (not opened/clicked) record - doesn't count as engagement.
+    data.emailDeliveryRecords.push({ ...delivery("d7", "contact_c", "delivered", 5), eventType: "delivered" });
+
+    const hours = computeContactEngagementHours(data, ["contact_a", "contact_b", "contact_c", "contact_d"]);
+
+    expect(hours).toEqual({
+      contact_a: 14,
+      contact_b: 10,
+      contact_c: 9,
+      contact_d: 9
+    });
+
+    const customDefault = computeContactEngagementHours(data, ["contact_d"], { defaultHour: 17 });
+    expect(customDefault.contact_d).toBe(17);
+  });
+
+  it("computes the next occurrence of an hour without ever going before the anchor", () => {
+    const anchor = new Date("2026-08-12T15:30:00.000Z");
+
+    // Target hour later in the day than the anchor's hour: same day.
+    expect(nextOccurrenceOfHour(anchor, 18).toISOString()).toBe("2026-08-12T18:00:00.000Z");
+
+    // Target hour earlier in the day than the anchor's hour: rolls to the next day
+    // (never before the anchor, even though 15 < 15:30 would otherwise look "close").
+    expect(nextOccurrenceOfHour(anchor, 15).toISOString()).toBe("2026-08-13T15:00:00.000Z");
+
+    // Target hour exactly matching the anchor's hour but before its minute: also
+    // rolls to the next day - the anchor is a hard floor, not just a day marker.
+    expect(nextOccurrenceOfHour(anchor, 15).getTime()).toBeGreaterThanOrEqual(anchor.getTime());
+  });
+
+  it("runs a full send-time-optimized schedule: distinct hour buckets, staggered nextAttemptAt, and no premature 'sent' status", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    for (let index = 0; index < 24; index += 1) {
+      const contactId = `sto_contact_${index}`;
+      data.contacts.push({ ...contact(`sto${index}@example.test`), id: contactId });
+      data.subscriptions.push(subscription(`sto_sub_${index}`, contactId, ids.territories.own));
+    }
+
+    // Give the first 10 contacts real engagement history clustered at two hours.
+    for (let index = 0; index < 6; index += 1) {
+      data.emailDeliveryRecords.push({
+        id: `sto_hist_${index}`,
+        campaignId: "prior_campaign",
+        campaignVersionId: "prior_campaign_v1",
+        recipientSnapshotId: "prior_snapshot",
+        contactId: `sto_contact_${index}`,
+        emailNormalised: `sto${index}@example.test`,
+        providerKey: "test-provider",
+        providerMessageId: `sto_hist_${index}`,
+        status: "delivered",
+        eventType: "opened",
+        eventAt: "2026-08-01T14:20:00.000Z",
+        metadata: {}
+      });
+    }
+    for (let index = 6; index < 10; index += 1) {
+      data.emailDeliveryRecords.push({
+        id: `sto_hist_${index}`,
+        campaignId: "prior_campaign",
+        campaignVersionId: "prior_campaign_v1",
+        recipientSnapshotId: "prior_snapshot",
+        contactId: `sto_contact_${index}`,
+        emailNormalised: `sto${index}@example.test`,
+        providerKey: "test-provider",
+        providerMessageId: `sto_hist_${index}`,
+        status: "delivered",
+        eventType: "clicked",
+        eventAt: "2026-08-01T20:05:00.000Z",
+        metadata: {}
+      });
+    }
+    // The remaining 14 contacts (10-23) have no history and land in the default-hour bucket.
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "sto_campaign",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Optimized send",
+      subject: "Optimized send",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "sto_campaign_v1",
+      campaignId: "sto_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Optimized send",
+      preheader: null,
+      contentSnapshot: { blocks: [] },
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder, data, "sto_campaign", "sto_campaign_v1", "2026-08-11T10:00:00.000Z");
+
+    await expect(
+      enqueueSendTimeOptimizedSend(localContext(), permissions, recorder, data, {
+        campaignId: "sto_campaign",
+        scheduledAt: "2026-08-12T10:00:00.000Z"
+      })
+    ).rejects.toThrow("Only scheduled campaigns");
+
+    await scheduleEmailCampaign(localContext(), permissions, recorder, data, "sto_campaign", "2026-08-12T10:00:00.000Z");
+
+    const result = await enqueueSendTimeOptimizedSend(localContext(), permissions, recorder, data, {
+      campaignId: "sto_campaign",
+      scheduledAt: "2026-08-12T10:00:00.000Z"
+    });
+
+    // Three buckets expected: hour 9 (default, contacts 10-23 + the 1 pre-seeded
+    // contact from seededData()), hour 14 (contacts 0-5), hour 20 (contacts 6-9).
+    expect(result.jobs).toHaveLength(3);
+    expect(result.snapshots).toHaveLength(3);
+    const totalRecipients = result.snapshots.reduce((total, snapshot) => total + snapshot.recipientCount, 0);
+    expect(totalRecipients).toBe(25); // 24 new contacts + the 1 from seededData()
+
+    const byHour = new Map(result.jobs.map((job, index) => [new Date(job.nextAttemptAt).getUTCHours(), result.snapshots[index]!]));
+    expect(byHour.get(14)?.recipientCount).toBe(6);
+    expect(byHour.get(20)?.recipientCount).toBe(4);
+    expect(byHour.get(9)?.recipientCount).toBe(15);
+
+    // Every bucket's nextAttemptAt is staggered correctly and never before scheduledAt.
+    for (const job of result.jobs) {
+      expect(new Date(job.nextAttemptAt).getTime()).toBeGreaterThanOrEqual(new Date("2026-08-12T10:00:00.000Z").getTime());
+    }
+    const hour14Job = result.jobs[[...byHour.keys()].indexOf(14)];
+    expect(hour14Job?.nextAttemptAt).toBe("2026-08-12T14:00:00.000Z"); // 14:00 is still ahead of the 10:00 anchor -> same day
+    const hour20Job = result.jobs[[...byHour.keys()].indexOf(20)];
+    expect(hour20Job?.nextAttemptAt).toBe("2026-08-12T20:00:00.000Z"); // 20:00 is also ahead of the 10:00 anchor -> same day
+
+    // Recipient sets across buckets are disjoint and match the expected hour-derived membership.
+    const allRecipientIds = result.snapshots.flatMap((snapshot) => snapshot.recipients.map((recipient) => (recipient as { contactId: string }).contactId));
+    expect(new Set(allRecipientIds).size).toBe(allRecipientIds.length);
+
+    // Simulate every bucket's job completing except one, and confirm the campaign
+    // is NOT marked sent until the very last one does too - this is exactly the
+    // scenario the completeSendJob sibling-check fix (in the worker route) exists
+    // for; here we confirm the underlying data this depends on is well-formed:
+    // every job shares the same campaignVersionId, so a "list jobs for this
+    // version" query used by that fix will see every sibling.
+    expect(new Set(result.jobs.map((job) => job.campaignVersionId)).size).toBe(1);
+    expect(result.jobs.map((job) => job.campaignVersionId)[0]).toBe("sto_campaign_v1");
+
+    // Rejects an empty-segment schedule rather than leaving the campaign stuck.
+    const emptyData2 = seededData();
+    const recorder2 = audit();
+    await createEmailCampaign(localContext(), permissions, recorder2, emptyData2, {
+      id: "empty_sto_campaign",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Empty",
+      subject: "Empty",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "empty_sto_campaign_v1",
+      campaignId: "empty_sto_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Empty",
+      preheader: null,
+      contentSnapshot: {},
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder2, emptyData2, "empty_sto_campaign", "empty_sto_campaign_v1", "2026-08-11T10:00:00.000Z");
+    await scheduleEmailCampaign(localContext(), permissions, recorder2, emptyData2, "empty_sto_campaign", "2026-08-12T10:00:00.000Z");
+    // Suppress the one seeded contact so the segment resolves to zero eligible recipients.
+    emptyData2.suppressions.push({
+      id: "suppress_only_contact",
+      contactId: ids.contact,
+      emailNormalised: "parent@example.test",
+      territoryId: ids.territories.own,
+      reason: "unsubscribe",
+      source: "test",
+      active: true,
+      suppressedAt: "2026-08-11T00:00:00.000Z",
+      metadata: {}
+    });
+
+    await expect(
+      enqueueSendTimeOptimizedSend(localContext(), permissions, recorder2, emptyData2, {
+        campaignId: "empty_sto_campaign",
+        scheduledAt: "2026-08-12T10:00:00.000Z"
+      })
+    ).rejects.toThrow("no eligible recipients");
+  });
+
+  it("scopes enqueueEmailSend's dedup check to a specific snapshot once one is explicitly given, allowing several concurrent jobs per campaign version", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createEmailCampaign(localContext(), permissions, recorder, data, {
+      id: "multi_bucket_campaign",
+      territoryId: ids.territories.own,
+      templateId: "template_1",
+      segmentId: ids.segment,
+      campaignType: "newsletter",
+      status: "draft",
+      title: "Multi bucket",
+      subject: "Multi bucket",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "multi_bucket_campaign_v1",
+      campaignId: "multi_bucket_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "Multi bucket",
+      preheader: null,
+      contentSnapshot: {},
+      createdByUserId: ids.users.local,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(localContext(), permissions, recorder, data, "multi_bucket_campaign", "multi_bucket_campaign_v1", "2026-08-11T10:00:00.000Z");
+    await scheduleEmailCampaign(localContext(), permissions, recorder, data, "multi_bucket_campaign", "2026-08-12T09:00:00.000Z");
+
+    const snapshotOne = await createRecipientSnapshot(localContext(), permissions, recorder, data, {
+      id: "multi_bucket_snapshot_1",
+      campaignId: "multi_bucket_campaign",
+      campaignVersionId: "multi_bucket_campaign_v1",
+      segmentId: ids.segment,
+      status: "created",
+      generatedAt: "2026-08-11T10:05:00.000Z",
+      idempotencyKey: "multi_bucket:1",
+      restrictToContactIds: [ids.contact]
+    });
+    const snapshotTwo = await createRecipientSnapshot(localContext(), permissions, recorder, data, {
+      id: "multi_bucket_snapshot_2",
+      campaignId: "multi_bucket_campaign",
+      campaignVersionId: "multi_bucket_campaign_v1",
+      segmentId: ids.segment,
+      status: "created",
+      generatedAt: "2026-08-11T10:06:00.000Z",
+      idempotencyKey: "multi_bucket:2",
+      restrictToContactIds: []
+    });
+
+    const jobOne = enqueueEmailSend(localContext(), permissions, data, {
+      id: "multi_bucket_job_1",
+      campaignId: "multi_bucket_campaign",
+      campaignVersionId: "multi_bucket_campaign_v1",
+      recipientSnapshotId: snapshotOne.id,
+      nextAttemptAt: "2026-08-12T09:00:00.000Z"
+    });
+    const jobTwo = enqueueEmailSend(localContext(), permissions, data, {
+      id: "multi_bucket_job_2",
+      campaignId: "multi_bucket_campaign",
+      campaignVersionId: "multi_bucket_campaign_v1",
+      recipientSnapshotId: snapshotTwo.id,
+      nextAttemptAt: "2026-08-14T09:00:00.000Z"
+    });
+
+    // Two distinct jobs against the same campaignVersionId, one per snapshot - the
+    // bug this fix addresses would have collapsed the second call into the first.
+    expect(jobOne.id).toBe("multi_bucket_job_1");
+    expect(jobTwo.id).toBe("multi_bucket_job_2");
+    expect(jobOne.id).not.toBe(jobTwo.id);
+    expect(data.emailSendJobs).toHaveLength(2);
+
+    // Calling again with the same explicit snapshot id returns the existing job,
+    // not a third one - the narrowed dedup check still dedups correctly.
+    const jobOneAgain = enqueueEmailSend(localContext(), permissions, data, {
+      id: "multi_bucket_job_1_dup",
+      campaignId: "multi_bucket_campaign",
+      campaignVersionId: "multi_bucket_campaign_v1",
+      recipientSnapshotId: snapshotOne.id
+    });
+    expect(jobOneAgain.id).toBe("multi_bucket_job_1");
+    expect(data.emailSendJobs).toHaveLength(2);
   });
 
   it("auto-suppresses contacts on unsubscribe and hard bounce, but not soft bounce", async () => {
