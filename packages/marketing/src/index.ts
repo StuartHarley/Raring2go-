@@ -1,6 +1,7 @@
 export * from "./blocks";
 export * from "./content-snapshot";
 export * from "./html-sanitize";
+export * from "./journey-validation";
 export * from "./permissions";
 export * from "./repository";
 export * from "./segment-rules";

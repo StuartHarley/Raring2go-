@@ -19,6 +19,7 @@ import {
   enterJourneyFromEvent,
   findActiveJourneysForTrigger,
   generateTerritoryNewsletterEditions,
+  getJourneyDetail,
   insertEmailCampaignGraph,
   insertEmailCampaignVersionRecord,
   insertEmailRecipientSnapshotRecord,
@@ -47,6 +48,7 @@ import {
   subscribeContactToTerritory,
   updateEmailCampaignRecord,
   updateEmailCampaignVersionRecord,
+  updateJourneyDraft,
   updateJourneyRecord,
   updateJourneyVersionRecord,
   updateNetworkNewsletterMasterRecord,
@@ -68,7 +70,8 @@ import type {
   MarketingJourney,
   MarketingJourneyVersion
 } from "@raring2go/marketing";
-import type { PermissionData } from "@raring2go/permissions";
+import { evaluatePermission, type PermissionData } from "@raring2go/permissions";
+import { marketingCapabilities, type MarketingCapability } from "@raring2go/marketing";
 
 export const marketingPermissionData: PermissionData = {
   roleAssignments: [
@@ -128,6 +131,22 @@ export const marketingPermissionData: PermissionData = {
     franchiseOrganisationId: territory.franchiseOrganisationId
   }))
 };
+
+export function hasMarketingCapability(context: MarketingActorContext, capability: MarketingCapability): boolean {
+  const required = marketingCapabilities[capability];
+  return evaluatePermission(
+    {
+      userId: context.userId,
+      module: required.module,
+      action: required.action,
+      context: {
+        organisationId: context.organisationId ?? undefined,
+        territoryId: context.territoryId ?? undefined
+      }
+    },
+    marketingPermissionData
+  ).allowed;
+}
 
 export async function readAudienceOverview(context: MarketingActorContext) {
   const { db, sql } = createDb();
@@ -248,6 +267,16 @@ export async function readJourneyOverview(context: MarketingActorContext) {
   }
 }
 
+export async function readJourneyDetail(context: MarketingActorContext, journeyId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return getJourneyDetail(context, marketingPermissionData, await loadMarketingData(db), journeyId);
+  } finally {
+    await sql.end();
+  }
+}
+
 export async function createMarketingJourney(
   context: MarketingActorContext,
   input: {
@@ -301,6 +330,33 @@ export async function createMarketingJourney(
       await createJourney(context, marketingPermissionData, auditFor(tx), data, journey, version);
       await insertJourneyGraph(tx, { journey, version });
       return journey;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function updateMarketingJourneyDraft(
+  context: MarketingActorContext,
+  journeyId: string,
+  patch: {
+    name?: string;
+    description?: string | null;
+    purpose?: string;
+    trigger?: JourneyTrigger;
+    conditions?: JourneyCondition[];
+    steps?: JourneyStep[];
+  }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const { journey, version } = await updateJourneyDraft(context, marketingPermissionData, auditFor(tx), data, journeyId, patch);
+      await updateJourneyRecord(tx, journey);
+      await updateJourneyVersionRecord(tx, version);
+      return { journey, version };
     });
   } finally {
     await sql.end();

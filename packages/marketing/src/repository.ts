@@ -241,6 +241,9 @@ export async function updateJourneyRecord(db: MarketingDb, journey: MarketingJou
   await db
     .update(marketingJourneys)
     .set({
+      name: journey.name,
+      description: journey.description,
+      purpose: journey.purpose,
       status: journey.status,
       approvedByUserId: journey.approvedByUserId,
       approvedAt: journey.approvedAt ? new Date(journey.approvedAt) : null,
@@ -256,6 +259,9 @@ export async function updateJourneyVersionRecord(db: MarketingDb, version: Marke
     .update(marketingJourneyVersions)
     .set({
       status: version.status,
+      trigger: version.trigger,
+      conditions: version.conditions,
+      steps: version.steps,
       approvedByUserId: version.approvedByUserId,
       approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
     })

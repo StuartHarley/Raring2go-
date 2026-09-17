@@ -24,6 +24,7 @@ import {
   executeJourneyStep,
   findActiveJourneysForTrigger,
   generateTerritoryNewsletterEditions,
+  getJourneyDetail,
   getPreferenceCentre,
   listEmailCampaigns,
   listJourneys,
@@ -47,6 +48,7 @@ import {
   subscribeContactToTerritory,
   suppressContact,
   unsubscribeContactPublicly,
+  updateJourneyDraft,
   updatePreferenceProfile,
   upsertAudienceContact,
   verifyUnsubscribeToken
@@ -2195,6 +2197,67 @@ describe("marketing audience foundation", () => {
     expect(stepOutputOne.jobId).not.toBe(stepOutputTwo.jobId);
     expect(data.emailCampaigns.filter((campaign) => campaign.id === stepOutputOne.campaignId)).toHaveLength(1);
     expect(data.emailSendJobs).toHaveLength(2);
+  });
+
+  it("lets a draft journey's content be edited, but never once it's been approved", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createJourney(hqContext(), permissions, recorder, data, journey(), journeyVersion());
+
+    const { journey: updated, version } = await updateJourneyDraft(hqContext(), permissions, recorder, data, "journey_welcome", {
+      name: "Renamed welcome journey",
+      description: "Updated description",
+      steps: [
+        { key: "welcome-email", actionType: "send_email", delayMinutes: 0, email: { subject: "New subject", blocks: [{ id: "b1", type: "text", html: "<p>New</p>" }] } },
+        { key: "second-step", actionType: "send_email", delayMinutes: 30, email: { subject: "Follow up", blocks: [{ id: "b2", type: "text", html: "<p>Second</p>" }] } }
+      ]
+    });
+
+    expect(updated.name).toBe("Renamed welcome journey");
+    expect(updated.description).toBe("Updated description");
+    expect(version.steps).toHaveLength(2);
+    expect(version.steps[0]!.email.subject).toBe("New subject");
+
+    await expect(
+      updateJourneyDraft(hqContext(), permissions, recorder, data, "journey_welcome", { steps: [] })
+    ).rejects.toThrow("A journey needs at least one step.");
+
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_welcome", "journey_welcome_v1", "2026-08-11T09:00:00.000Z");
+
+    await expect(
+      updateJourneyDraft(hqContext(), permissions, recorder, data, "journey_welcome", { name: "Too late" })
+    ).rejects.toThrow("Only a draft journey can be edited.");
+  });
+
+  it("returns a journey's latest version (draft or approved) plus its execution summary", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createJourney(hqContext(), permissions, recorder, data, journey(), journeyVersion());
+
+    const draftDetail = getJourneyDetail(hqContext(), permissions, data, "journey_welcome");
+    expect(draftDetail.journey.status).toBe("draft");
+    expect(draftDetail.latestVersion?.versionNumber).toBe(1);
+    expect(draftDetail.entries).toBe(0);
+
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_welcome", "journey_welcome_v1", "2026-08-11T09:00:00.000Z");
+    await activateJourney(hqContext(), permissions, recorder, data, "journey_welcome", "2026-08-11T09:05:00.000Z");
+    await enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: "journey_welcome",
+      contactId: ids.contact,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: "event_detail",
+      enteredAt: "2026-08-11T09:10:00.000Z",
+      idempotencyKey: "audience.subscribed:event_detail"
+    });
+
+    const activeDetail = getJourneyDetail(hqContext(), permissions, data, "journey_welcome");
+    expect(activeDetail.journey.status).toBe("active");
+    expect(activeDetail.latestVersion?.status).toBe("approved");
+    expect(activeDetail.entries).toBe(1);
+    expect(activeDetail.activeExecutions).toBe(1);
   });
 
   it("prevents journeys from sending to suppressed contacts and can pause automation", async () => {
