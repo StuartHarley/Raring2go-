@@ -12,11 +12,17 @@ export type ContentSuggestionInput = {
   instructions?: string | null;
 };
 
+export type AiUsage = {
+  inputTokens: number;
+  outputTokens: number;
+};
+
 export type AiSuggestionResult<T> = {
   output: T;
   providerKey: string;
   modelReference: string;
   promptTemplateVersion: string;
+  usage: AiUsage;
 };
 
 /**
@@ -69,7 +75,8 @@ export function createAnthropicAiGateway(input: { apiKey: string; model?: string
         output: subjectLines,
         providerKey: "anthropic",
         modelReference: model,
-        promptTemplateVersion: SUBJECT_LINES_PROMPT_VERSION
+        promptTemplateVersion: SUBJECT_LINES_PROMPT_VERSION,
+        usage: usageFromMessage(message)
       };
     },
     async generateContentSuggestion(contentInput) {
@@ -93,7 +100,8 @@ export function createAnthropicAiGateway(input: { apiKey: string; model?: string
         output: textFromMessage(message).trim(),
         providerKey: "anthropic",
         modelReference: model,
-        promptTemplateVersion: CONTENT_SUGGESTION_PROMPT_VERSION
+        promptTemplateVersion: CONTENT_SUGGESTION_PROMPT_VERSION,
+        usage: usageFromMessage(message)
       };
     }
   };
@@ -113,7 +121,8 @@ export function createDeterministicAiGateway(): AiGateway {
         output: [`${base} — inside this week`, `Don't miss: ${base}`, `${base} for your family`],
         providerKey: "deterministic",
         modelReference: "deterministic-subject-template",
-        promptTemplateVersion: SUBJECT_LINES_PROMPT_VERSION
+        promptTemplateVersion: SUBJECT_LINES_PROMPT_VERSION,
+        usage: { inputTokens: 0, outputTokens: 0 }
       };
     },
     async generateContentSuggestion(input) {
@@ -122,7 +131,8 @@ export function createDeterministicAiGateway(): AiGateway {
         output: `Here's what's happening with ${base} this week — come and join us for something fun and local.`,
         providerKey: "deterministic",
         modelReference: "deterministic-content-template",
-        promptTemplateVersion: CONTENT_SUGGESTION_PROMPT_VERSION
+        promptTemplateVersion: CONTENT_SUGGESTION_PROMPT_VERSION,
+        usage: { inputTokens: 0, outputTokens: 0 }
       };
     }
   };
@@ -155,6 +165,13 @@ function textFromMessage(message: Anthropic.Messages.Message): string {
     .filter((block): block is Anthropic.Messages.TextBlock => block.type === "text")
     .map((block) => block.text)
     .join("\n");
+}
+
+function usageFromMessage(message: Anthropic.Messages.Message): AiUsage {
+  return {
+    inputTokens: message.usage.input_tokens,
+    outputTokens: message.usage.output_tokens
+  };
 }
 
 function parseJsonStringArray(text: string): string[] {

@@ -2,14 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createAiGatewayFromEnv, createAnthropicAiGateway, createDeterministicAiGateway } from "./gateway";
 
-function fakeMessage(text: string): Anthropic.Messages.Message {
-  return { content: [{ type: "text", text }] } as unknown as Anthropic.Messages.Message;
+function fakeMessage(text: string, usage: { input_tokens: number; output_tokens: number } = { input_tokens: 120, output_tokens: 40 }): Anthropic.Messages.Message {
+  return { content: [{ type: "text", text }], usage } as unknown as Anthropic.Messages.Message;
 }
 
-function fakeClient(text: string): Anthropic {
+function fakeClient(text: string, usage?: { input_tokens: number; output_tokens: number }): Anthropic {
   return {
     messages: {
-      create: vi.fn(async () => fakeMessage(text))
+      create: vi.fn(async () => fakeMessage(text, usage))
     }
   } as unknown as Anthropic;
 }
@@ -22,6 +22,7 @@ describe("createDeterministicAiGateway", () => {
     expect(result.output).toHaveLength(3);
     expect(result.output.every((line) => line.includes("Half term ideas"))).toBe(true);
     expect(result.providerKey).toBe("deterministic");
+    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
   });
 
   it("returns a template content suggestion using the campaign title", async () => {
@@ -30,6 +31,7 @@ describe("createDeterministicAiGateway", () => {
 
     expect(result.output).toContain("Half term ideas");
     expect(result.providerKey).toBe("deterministic");
+    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
   });
 });
 
@@ -39,7 +41,7 @@ describe("createAnthropicAiGateway", () => {
   });
 
   it("parses a clean JSON array response into subject line suggestions", async () => {
-    const client = fakeClient('["Half term is here!", "Book your spot", "This week: half term fun"]');
+    const client = fakeClient('["Half term is here!", "Book your spot", "This week: half term fun"]', { input_tokens: 150, output_tokens: 22 });
     const gateway = createAnthropicAiGateway({ apiKey: "test-key", client });
 
     const result = await gateway.generateSubjectLines({ campaignTitle: "Half term ideas", bodyPreviewText: "Come along" });
@@ -47,6 +49,7 @@ describe("createAnthropicAiGateway", () => {
     expect(result.output).toEqual(["Half term is here!", "Book your spot", "This week: half term fun"]);
     expect(result.providerKey).toBe("anthropic");
     expect(result.modelReference).toBe("claude-haiku-4-5-20251001");
+    expect(result.usage).toEqual({ inputTokens: 150, outputTokens: 22 });
     expect(client.messages.create).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "claude-haiku-4-5-20251001",
@@ -80,6 +83,7 @@ describe("createAnthropicAiGateway", () => {
     const result = await gateway.generateContentSuggestion({ campaignTitle: "Half term ideas" });
 
     expect(result.output).toBe("Come and join us this weekend for family fun.");
+    expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 40 });
   });
 });
 
