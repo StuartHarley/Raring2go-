@@ -1739,7 +1739,7 @@ export async function createJourney(
   version: MarketingJourneyVersion
 ) {
   requireMarketingPermission(context, permissions, "journeyCreate");
-  if (journey.territoryId) ensureContextCanAccessTerritory(context, journey.territoryId);
+  ensureJourneyAccess(context, journey);
   if (version.journeyId !== journey.id || version.versionNumber !== 1) {
     throw new Error("Initial journey version must belong to the journey and start at version 1.");
   }
@@ -1763,7 +1763,7 @@ export async function approveJourneyVersion(
 ) {
   requireMarketingPermission(context, permissions, "journeyApprove");
   const journey = requireJourney(data, journeyId);
-  if (journey.territoryId) ensureContextCanAccessTerritory(context, journey.territoryId);
+  ensureJourneyAccess(context, journey);
   const version = requireJourneyVersion(data, versionId);
   if (version.journeyId !== journey.id) throw new Error("Journey version does not belong to journey.");
   version.status = "approved";
@@ -1788,6 +1788,7 @@ export async function activateJourney(
 ) {
   requireMarketingPermission(context, permissions, "journeyActivate");
   const journey = requireJourney(data, journeyId);
+  ensureJourneyAccess(context, journey);
   if (!data.journeyVersions.some((version) => version.journeyId === journey.id && version.status === "approved" && !version.deletedAt)) {
     throw new Error("Journey requires an approved version before activation.");
   }
@@ -1808,6 +1809,7 @@ export async function pauseJourney(
 ) {
   requireMarketingPermission(context, permissions, "journeyPause");
   const journey = requireJourney(data, journeyId);
+  ensureJourneyAccess(context, journey);
   journey.status = "paused";
   journey.pausedAt = pausedAt;
   await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyPause, "marketing_journey", journey.id, {}, journey.territoryId));
@@ -1837,7 +1839,7 @@ export async function updateJourneyDraft(
 ) {
   requireMarketingPermission(context, permissions, "journeyEdit");
   const journey = requireJourney(data, journeyId);
-  if (journey.territoryId) ensureContextCanAccessTerritory(context, journey.territoryId);
+  ensureJourneyAccess(context, journey);
   if (journey.status !== "draft") {
     throw new Error("Only a draft journey can be edited.");
   }
@@ -2282,6 +2284,14 @@ function requireMarketingPermission(
 function ensureContextCanAccessTerritory(context: MarketingActorContext, territoryId: string) {
   if (context.territoryId && context.territoryId !== territoryId) {
     throw new Error("Audience record is outside the active territory.");
+  }
+}
+
+function ensureJourneyAccess(context: MarketingActorContext, journey: { territoryId?: string | null }) {
+  if (journey.territoryId) {
+    ensureContextCanAccessTerritory(context, journey.territoryId);
+  } else if (context.territoryId) {
+    throw new Error("A territory-scoped actor cannot act on a network-wide journey.");
   }
 }
 
