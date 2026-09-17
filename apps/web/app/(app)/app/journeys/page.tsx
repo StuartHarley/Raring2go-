@@ -1,7 +1,12 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
-import { readJourneyOverview } from "../../../../lib/marketing-runtime";
+import { hasMarketingCapability, listNetworkTerritories, readJourneyOverview } from "../../../../lib/marketing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { JourneyBuilderFields } from "./JourneyBuilderFields";
+import { activateJourneyAction, createJourneyAction, pauseJourneyAction } from "./actions";
+import type { MarketingActorContext } from "@raring2go/marketing";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -15,6 +20,8 @@ export default async function JourneysPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
+  const { context, overview, territoryOptions, canCreate, canActivate, canPause } = result;
+
   return (
     <AppShell request={request}>
       <section className="app-panel franchise-panel">
@@ -27,45 +34,83 @@ export default async function JourneysPage({ searchParams }: PageProps) {
         <div className="franchise-metrics">
           <article>
             <span>Journeys</span>
-            <strong>{result.journeys.length}</strong>
+            <strong>{overview.journeys.length}</strong>
           </article>
           <article>
             <span>Audience entries</span>
-            <strong>{result.journeys.reduce((total, journey) => total + journey.entries, 0)}</strong>
+            <strong>{overview.journeys.reduce((total, journey) => total + journey.entries, 0)}</strong>
           </article>
           <article>
             <span>Active runs</span>
-            <strong>{result.journeys.reduce((total, journey) => total + journey.activeExecutions, 0)}</strong>
+            <strong>{overview.journeys.reduce((total, journey) => total + journey.activeExecutions, 0)}</strong>
           </article>
           <article>
             <span>Failed runs</span>
-            <strong>{result.totals.failedExecutions}</strong>
+            <strong>{overview.totals.failedExecutions}</strong>
           </article>
         </div>
       </section>
+
+      {canCreate ? (
+        <section className="app-panel franchise-panel">
+          <p className="eyebrow">New journey</p>
+          <h2>Create a journey</h2>
+          <form action={createJourneyAction.bind(null, context)} className="franchise-form journey-builder-form">
+            <JourneyBuilderFields
+              initial={{
+                name: "",
+                description: "",
+                territoryId: context.territoryId ?? "",
+                conditions: [],
+                steps: []
+              }}
+              territoryOptions={territoryOptions}
+            />
+            <button type="submit">Create journey</button>
+          </form>
+        </section>
+      ) : null}
 
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Configured journeys</p>
         <h2>Execution health</h2>
         <div className="franchise-list">
-          {result.journeys.length === 0 ? (
+          {overview.journeys.length === 0 ? (
             <div>
               <strong>No journeys configured</strong>
               <span>Approved journeys will appear here once automation is configured.</span>
             </div>
           ) : (
-            result.journeys.map((journey) => (
-              <div key={journey.journey.id}>
-                <strong>{journey.journey.name}</strong>
+            overview.journeys.map((view) => (
+              <div key={view.journey.id}>
+                <strong>{view.journey.name}</strong>
                 <span>
-                  {journey.journey.status} - version{" "}
-                  {journey.activeVersion?.versionNumber ?? "not approved"}
+                  {view.journey.status} - version{" "}
+                  {view.activeVersion?.versionNumber ?? "not approved"}
                 </span>
                 <span>
-                  {journey.entries} entries - {journey.activeExecutions} active -{" "}
-                  {journey.failedExecutions} failed
+                  {view.entries} entries - {view.activeExecutions} active -{" "}
+                  {view.failedExecutions} failed
                 </span>
-                <span>{journey.journey.description ?? "No journey description provided."}</span>
+                <span>{view.journey.description ?? "No journey description provided."}</span>
+
+                {view.journey.status === "draft" ? (
+                  <span>
+                    <Link href={`/app/journeys/${view.journey.id}` as Route}>Open draft to edit and approve</Link>
+                  </span>
+                ) : null}
+
+                {canActivate && view.journey.status === "approved" ? (
+                  <form action={activateJourneyAction.bind(null, context, view.journey.id)}>
+                    <button type="submit">Activate</button>
+                  </form>
+                ) : null}
+
+                {canPause && (view.journey.status === "active" || view.journey.status === "approved") ? (
+                  <form action={pauseJourneyAction.bind(null, context, view.journey.id)}>
+                    <button type="submit">Pause</button>
+                  </form>
+                ) : null}
               </div>
             ))
           )}
@@ -81,13 +126,24 @@ async function loadJourneys(request: Awaited<ReturnType<typeof requestFromSearch
       module: "marketing.journey",
       action: "view"
     });
-    const journeys = await readJourneyOverview({
+    const context: MarketingActorContext = {
       userId: shell.userId,
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
-    });
+    };
+    const overview = await readJourneyOverview(context);
+    const territoryOptions = context.territoryId
+      ? listNetworkTerritories().filter((territory) => territory.id === context.territoryId)
+      : listNetworkTerritories();
 
-    return journeys;
+    return {
+      context,
+      overview,
+      territoryOptions,
+      canCreate: hasMarketingCapability(context, "journeyCreate"),
+      canActivate: hasMarketingCapability(context, "journeyActivate"),
+      canPause: hasMarketingCapability(context, "journeyPause")
+    };
   } catch (error) {
     return { error };
   }

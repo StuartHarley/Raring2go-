@@ -35,7 +35,7 @@ function looksLikeGroup(value: unknown): value is SegmentRuleGroup {
   );
 }
 
-function looksLikeCondition(value: unknown): value is SegmentRuleCondition {
+export function looksLikeCondition(value: unknown): value is SegmentRuleCondition {
   return (
     isRecord(value) &&
     value.kind === "condition" &&

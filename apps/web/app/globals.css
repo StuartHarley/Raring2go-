@@ -1297,6 +1297,22 @@ p {
   padding: 6px 10px;
 }
 
+.journey-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.journey-builder-trigger-note,
+.journey-builder-step-note {
+  color: var(--r2-text-muted);
+  font-size: 0.9em;
+}
+
+.journey-builder-steps-title {
+  margin: 8px 0 0;
+}
+
 .segment-builder-preview {
   font-weight: 800;
 }

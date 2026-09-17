@@ -161,6 +161,7 @@ export const auditActions = {
   integrationCredentialsRotated: "integration.credentials_rotated",
   integrationTested: "integration.tested",
   marketingJourneyCreate: "marketing.journey.create",
+  marketingJourneyEdit: "marketing.journey.edit",
   marketingJourneyApprove: "marketing.journey.approve",
   marketingJourneyActivate: "marketing.journey.activate",
   marketingJourneyPause: "marketing.journey.pause",

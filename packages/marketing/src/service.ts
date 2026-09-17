@@ -23,6 +23,8 @@ import type {
   EmailRecipientSnapshot,
   EmailSendJob,
   EmailTemplate,
+  JourneyCondition,
+  JourneyStep,
   JourneyStepSendEmail,
   JourneyTrigger,
   MarketingJourney,
@@ -465,6 +467,19 @@ export function listJourneys(
       failedExecutions: journeys.reduce((total, view) => total + view.failedExecutions, 0)
     }
   };
+}
+
+export function getJourneyDetail(context: MarketingActorContext, permissions: PermissionData, data: MarketingData, journeyId: string) {
+  requireMarketingPermission(context, permissions, "journeyView");
+  const journey = requireJourney(data, journeyId);
+  if (journey.territoryId) ensureContextCanAccessTerritory(context, journey.territoryId);
+  const latestVersion = data.journeyVersions
+    .filter((version) => version.journeyId === journey.id && !version.deletedAt)
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+  const entries = data.journeyAudienceEntries.filter((entry) => entry.journeyId === journey.id).length;
+  const activeExecutions = data.journeyExecutions.filter((execution) => execution.journeyId === journey.id && execution.status === "queued").length;
+  const failedExecutions = data.journeyExecutions.filter((execution) => execution.journeyId === journey.id && execution.status === "failed").length;
+  return { journey, latestVersion, entries, activeExecutions, failedExecutions };
 }
 
 export async function upsertAudienceContact(
@@ -1797,6 +1812,54 @@ export async function pauseJourney(
   journey.pausedAt = pausedAt;
   await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyPause, "marketing_journey", journey.id, {}, journey.territoryId));
   return journey;
+}
+
+/**
+ * Editing is only ever allowed before a journey's first approval - once a
+ * version is approved, audience entries may already reference it by id, and
+ * mutating trigger/conditions/steps out from under a running instance would
+ * be unsafe. Revising an already-active journey is out of scope for v1.
+ */
+export async function updateJourneyDraft(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  journeyId: string,
+  patch: {
+    name?: string;
+    description?: string | null;
+    purpose?: string;
+    trigger?: JourneyTrigger;
+    conditions?: JourneyCondition[];
+    steps?: JourneyStep[];
+  }
+) {
+  requireMarketingPermission(context, permissions, "journeyEdit");
+  const journey = requireJourney(data, journeyId);
+  if (journey.territoryId) ensureContextCanAccessTerritory(context, journey.territoryId);
+  if (journey.status !== "draft") {
+    throw new Error("Only a draft journey can be edited.");
+  }
+  const version = data.journeyVersions
+    .filter((candidate) => candidate.journeyId === journey.id && !candidate.deletedAt)
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+  if (!version || version.status !== "draft") {
+    throw new Error("Draft journey has no editable draft version.");
+  }
+  if (patch.steps !== undefined && patch.steps.length === 0) {
+    throw new Error("A journey needs at least one step.");
+  }
+  if (patch.name !== undefined) journey.name = patch.name;
+  if (patch.description !== undefined) journey.description = patch.description;
+  if (patch.purpose !== undefined) journey.purpose = patch.purpose;
+  if (patch.trigger !== undefined) version.trigger = patch.trigger;
+  if (patch.conditions !== undefined) version.conditions = patch.conditions;
+  if (patch.steps !== undefined) version.steps = patch.steps;
+  await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyEdit, "marketing_journey", journey.id, {
+    stepCount: version.steps.length
+  }, journey.territoryId));
+  return { journey, version };
 }
 
 export async function enterJourneyFromEvent(
