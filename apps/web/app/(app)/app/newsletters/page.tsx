@@ -10,6 +10,7 @@ import {
   approveCampaignAction,
   composeEmailCampaignAction,
   declareWinnerAction,
+  generateCampaignDraftAction,
   generateSnapshotAction,
   generateWinnerRemainderSnapshotAction,
   scheduleCampaignAction,
@@ -123,6 +124,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                 suggestSubjectLinesAction={suggestSubjectLinesAction.bind(null, context)}
                 suggestBlockCopyAction={suggestBlockCopyAction.bind(null, context)}
                 acceptAiSuggestionAction={acceptAiSuggestionAction.bind(null, context)}
+                generateCampaignDraftAction={generateCampaignDraftAction.bind(null, context)}
               />
             </div>
             <button type="submit">Create draft campaign</button>

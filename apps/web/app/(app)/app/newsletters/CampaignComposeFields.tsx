@@ -108,6 +108,7 @@ function readStoredDraft(): StoredDraft | null {
 export type SuggestSubjectLines = (input: { draftId: string; campaignTitle: string; bodyPreviewText: string }) => Promise<string[]>;
 export type SuggestBlockCopy = (input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }) => Promise<string>;
 export type AcceptAiSuggestion = (input: { draftId: string; task: "subject_lines" | "block_copy"; blockId?: string; accepted: string }) => Promise<void>;
+export type GenerateCampaignDraft = (input: { draftId: string; prompt: string }) => Promise<{ subject: string; blocks: Block[] }>;
 
 export type LastNewsletter = { title: string; subject: string; blocks: Block[] };
 
@@ -117,7 +118,8 @@ export function CampaignComposeFields({
   segments,
   suggestSubjectLinesAction,
   suggestBlockCopyAction,
-  acceptAiSuggestionAction
+  acceptAiSuggestionAction,
+  generateCampaignDraftAction
 }: {
   aiAssistAvailable: boolean;
   lastNewsletter?: LastNewsletter;
@@ -125,6 +127,7 @@ export function CampaignComposeFields({
   suggestSubjectLinesAction: SuggestSubjectLines;
   suggestBlockCopyAction: SuggestBlockCopy;
   acceptAiSuggestionAction: AcceptAiSuggestion;
+  generateCampaignDraftAction: GenerateCampaignDraft;
 }) {
   const [draftId] = useState(() => crypto.randomUUID());
   const [title, setTitle] = useState("");
@@ -137,6 +140,9 @@ export function CampaignComposeFields({
   const [subjectSuggestions, setSubjectSuggestions] = useState<string[] | null>(null);
   const [subjectSuggestState, setSubjectSuggestState] = useState<"idle" | "loading" | "error">("idle");
   const [subjectSuggestError, setSubjectSuggestError] = useState<string | null>(null);
+  const [campaignPrompt, setCampaignPrompt] = useState("");
+  const [campaignDraftState, setCampaignDraftState] = useState<"idle" | "loading" | "error">("idle");
+  const [campaignDraftError, setCampaignDraftError] = useState<string | null>(null);
   const [restoreBanner, setRestoreBanner] = useState<StoredDraft | null>(() => readStoredDraft());
   const [past, setPast] = useState<Block[][]>([]);
   const [future, setFuture] = useState<Block[][]>([]);
@@ -234,6 +240,20 @@ export function CampaignComposeFields({
 
   function startFromTemplate(entry: TemplateGalleryEntry) {
     applyStartingPoint(entry);
+  }
+
+  async function handleGenerateCampaignDraft() {
+    if (!campaignPrompt.trim()) return;
+    setCampaignDraftState("loading");
+    setCampaignDraftError(null);
+    try {
+      const draft = await generateCampaignDraftAction({ draftId, prompt: campaignPrompt });
+      applyStartingPoint({ title: title || campaignPrompt.trim(), subject: draft.subject, blocks: draft.blocks });
+      setCampaignDraftState("idle");
+    } catch (error) {
+      setCampaignDraftState("error");
+      setCampaignDraftError(error instanceof Error ? error.message : "Generating a draft failed.");
+    }
   }
 
   const canOfferStartingPoint = !restoreBanner && !draftHasContent({ title, subject, blocks });
@@ -423,6 +443,32 @@ export function CampaignComposeFields({
               {entry.name}
             </button>
           ))}
+        </div>
+      ) : null}
+
+      {aiAssistAvailable && canOfferStartingPoint ? (
+        <div className="block-editor-draft-banner block-editor-ai-generate" role="status">
+          <label>
+            Or describe the campaign and generate a draft
+            <textarea
+              value={campaignPrompt}
+              onChange={(event) => setCampaignPrompt(event.target.value)}
+              rows={2}
+              placeholder="e.g. A reminder about this Saturday's half-term craft morning at the community hall"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={handleGenerateCampaignDraft}
+            disabled={campaignDraftState === "loading" || !campaignPrompt.trim()}
+          >
+            {campaignDraftState === "loading" ? "Generating…" : "✨ Generate a campaign"}
+          </button>
+          {campaignDraftError ? <span className="block-editor-error">{campaignDraftError}</span> : null}
+          <p className="block-editor-ai-generate-note">
+            Generates a subject and a few text blocks for you to review and edit — no images, links or facts are
+            invented; nothing is sent until you compose and approve it yourself.
+          </p>
         </div>
       ) : null}
 
