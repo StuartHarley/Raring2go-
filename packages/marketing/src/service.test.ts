@@ -22,6 +22,7 @@ import {
   generateUnsubscribeToken,
   enterJourneyFromEvent,
   executeJourneyStep,
+  findActiveJourneysForTrigger,
   generateTerritoryNewsletterEditions,
   getPreferenceCentre,
   listEmailCampaigns,
@@ -1987,6 +1988,213 @@ describe("marketing audience foundation", () => {
       failedExecutions: 0
     });
     expect(recorder.events.map((event) => event.action)).toContain(auditActions.marketingJourneyStepExecute);
+  });
+
+  it("advances a multi-step journey through delays instead of completing after one step", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    const version: MarketingJourneyVersion = {
+      ...journeyVersion(),
+      steps: [
+        { key: "welcome-email", actionType: "send_email", delayMinutes: 0, email: { subject: "Welcome", blocks: [{ id: "b1", type: "text", html: "<p>Hi</p>" }] } },
+        { key: "follow-up-email", actionType: "send_email", delayMinutes: 60, email: { subject: "Follow up", blocks: [{ id: "b2", type: "text", html: "<p>Still there?</p>" }] } },
+        { key: "final-email", actionType: "send_email", delayMinutes: 120, email: { subject: "Last call", blocks: [{ id: "b3", type: "text", html: "<p>Last call</p>" }] } }
+      ]
+    };
+
+    await createJourney(hqContext(), permissions, recorder, data, journey(), version);
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_welcome", "journey_welcome_v1", "2026-08-11T09:00:00.000Z");
+    await activateJourney(hqContext(), permissions, recorder, data, "journey_welcome", "2026-08-11T09:05:00.000Z");
+    const entry = await enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: "journey_welcome",
+      contactId: ids.contact,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: "event_seq",
+      enteredAt: "2026-08-11T09:10:00.000Z",
+      idempotencyKey: "audience.subscribed:event_seq"
+    });
+    const executionId = data.journeyExecutions.find((execution) => execution.entryId === entry.id)!.id;
+
+    const afterFirstStep = await executeJourneyStep(localContext(), permissions, recorder, data, executionId, "welcome-email", "2026-08-11T09:11:00.000Z");
+    expect(afterFirstStep.status).toBe("queued");
+    expect(afterFirstStep.currentStepKey).toBe("follow-up-email");
+    expect(afterFirstStep.runAfter).toBe("2026-08-11T10:11:00.000Z");
+    expect(data.journeyAudienceEntries.find((candidate) => candidate.id === entry.id)!.status).toBe("active");
+
+    await expect(
+      executeJourneyStep(localContext(), permissions, recorder, data, executionId, "welcome-email", "2026-08-11T09:15:00.000Z")
+    ).resolves.toMatchObject({ currentStepKey: "follow-up-email" });
+
+    await expect(
+      executeJourneyStep(localContext(), permissions, recorder, data, executionId, "final-email", "2026-08-11T09:15:00.000Z")
+    ).rejects.toThrow("does not match the execution's current step");
+
+    const afterSecondStep = await executeJourneyStep(localContext(), permissions, recorder, data, executionId, "follow-up-email", "2026-08-11T10:12:00.000Z");
+    expect(afterSecondStep.status).toBe("queued");
+    expect(afterSecondStep.currentStepKey).toBe("final-email");
+    expect(data.journeyAudienceEntries.find((candidate) => candidate.id === entry.id)!.status).toBe("active");
+
+    const afterThirdStep = await executeJourneyStep(localContext(), permissions, recorder, data, executionId, "final-email", "2026-08-11T12:13:00.000Z");
+    expect(afterThirdStep.status).toBe("completed");
+    expect(afterThirdStep.currentStepKey).toBeNull();
+    expect(data.journeyAudienceEntries.find((candidate) => candidate.id === entry.id)!.status).toBe("completed");
+    expect(data.journeyStepExecutions.filter((candidate) => candidate.executionId === executionId)).toHaveLength(3);
+  });
+
+  it("creates a recipient snapshot for a specific contact with no segment when restrictToContactIds is given", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createEmailCampaign(hqContext(), permissions, recorder, data, {
+      id: "no_segment_campaign",
+      territoryId: null,
+      templateId: null,
+      segmentId: null,
+      campaignType: "journey",
+      status: "draft",
+      title: "No segment",
+      subject: "No segment",
+      preheader: null,
+      sendProvider: "postmark",
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: {}
+    }, {
+      id: "no_segment_campaign_v1",
+      campaignId: "no_segment_campaign",
+      versionNumber: 1,
+      status: "draft",
+      subject: "No segment",
+      preheader: null,
+      contentSnapshot: { version: 1, blocks: [] },
+      createdByUserId: ids.users.hq,
+      approvedByUserId: null,
+      approvedAt: null
+    });
+    await approveEmailCampaignVersion(hqContext(), permissions, recorder, data, "no_segment_campaign", "no_segment_campaign_v1", "2026-08-11T09:00:00.000Z");
+
+    const snapshot = await createRecipientSnapshot(hqContext(), permissions, recorder, data, {
+      id: "no_segment_snapshot",
+      campaignId: "no_segment_campaign",
+      campaignVersionId: "no_segment_campaign_v1",
+      status: "created",
+      generatedAt: "2026-08-11T09:05:00.000Z",
+      idempotencyKey: "no_segment:snapshot",
+      restrictToContactIds: [ids.contact]
+    });
+
+    expect(snapshot.segmentId).toBeNull();
+    expect(snapshot.recipientCount).toBe(1);
+    expect(snapshot.recipients[0]).toMatchObject({ contactId: ids.contact });
+
+    await expect(
+      createRecipientSnapshot(hqContext(), permissions, recorder, data, {
+        id: "no_segment_snapshot_2",
+        campaignId: "no_segment_campaign",
+        campaignVersionId: "no_segment_campaign_v1",
+        status: "created",
+        generatedAt: "2026-08-11T09:06:00.000Z",
+        idempotencyKey: "no_segment:snapshot:missing"
+      })
+    ).rejects.toThrow("Campaign requires an audience segment");
+  });
+
+  it("enrolls a newly-subscribed contact into a matching active journey", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createJourney(hqContext(), permissions, recorder, data, journey(), journeyVersion());
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_welcome", "journey_welcome_v1", "2026-08-11T09:00:00.000Z");
+    await activateJourney(hqContext(), permissions, recorder, data, "journey_welcome", "2026-08-11T09:05:00.000Z");
+
+    const newContactId = "contact_new_subscriber";
+    data.contacts.push({ ...contact("new@example.test"), id: newContactId });
+
+    const newSubscription = await subscribeContactToTerritory(localContext(), permissions, recorder, data, {
+      id: "sub_new",
+      contactId: newContactId,
+      territoryId: ids.territories.own,
+      status: "subscribed",
+      source: "test",
+      preferences: {},
+      subscribedAt: "2026-08-11T09:10:00.000Z",
+      unsubscribedAt: null
+    });
+
+    const matches = findActiveJourneysForTrigger(data, { type: "contact_subscribed_to_territory" });
+    expect(matches).toHaveLength(1);
+
+    const entry = await enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: matches[0]!.journey.id,
+      contactId: newContactId,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: newSubscription.id,
+      enteredAt: "2026-08-11T09:10:00.000Z",
+      idempotencyKey: `audience.subscribed:${newSubscription.id}:${matches[0]!.journey.id}`
+    });
+
+    expect(entry.contactId).toBe(newContactId);
+    const execution = data.journeyExecutions.find((candidate) => candidate.entryId === entry.id);
+    expect(execution?.status).toBe("queued");
+  });
+
+  it("shares one ad hoc campaign per journey step across entries, with distinct snapshots and jobs per contact", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    await createJourney(hqContext(), permissions, recorder, data, journey(), journeyVersion());
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_welcome", "journey_welcome_v1", "2026-08-11T09:00:00.000Z");
+    await activateJourney(hqContext(), permissions, recorder, data, "journey_welcome", "2026-08-11T09:05:00.000Z");
+
+    const secondContactId = "contact_second_entrant";
+    data.contacts.push({ ...contact("second@example.test"), id: secondContactId });
+    data.subscriptions.push(subscription("sub_second", secondContactId, ids.territories.own));
+
+    const entryOne = await enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: "journey_welcome",
+      contactId: ids.contact,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: "event_a",
+      enteredAt: "2026-08-11T09:10:00.000Z",
+      idempotencyKey: "audience.subscribed:event_a"
+    });
+    const entryTwo = await enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: "journey_welcome",
+      contactId: secondContactId,
+      territoryId: ids.territories.own,
+      sourceEventType: "audience.subscribed",
+      sourceEventId: "event_b",
+      enteredAt: "2026-08-11T09:10:00.000Z",
+      idempotencyKey: "audience.subscribed:event_b"
+    });
+
+    const executionOneId = data.journeyExecutions.find((execution) => execution.entryId === entryOne.id)!.id;
+    const executionTwoId = data.journeyExecutions.find((execution) => execution.entryId === entryTwo.id)!.id;
+
+    await executeJourneyStep(localContext(), permissions, recorder, data, executionOneId, "welcome-email", "2026-08-11T09:11:00.000Z");
+    await executeJourneyStep(localContext(), permissions, recorder, data, executionTwoId, "welcome-email", "2026-08-11T09:12:00.000Z");
+
+    const stepOutputOne = data.journeyStepExecutions.find((candidate) => candidate.executionId === executionOneId)!.output as {
+      campaignId: string;
+      snapshotId: string;
+      jobId: string;
+    };
+    const stepOutputTwo = data.journeyStepExecutions.find((candidate) => candidate.executionId === executionTwoId)!.output as {
+      campaignId: string;
+      snapshotId: string;
+      jobId: string;
+    };
+
+    expect(stepOutputOne.campaignId).toBe(stepOutputTwo.campaignId);
+    expect(stepOutputOne.snapshotId).not.toBe(stepOutputTwo.snapshotId);
+    expect(stepOutputOne.jobId).not.toBe(stepOutputTwo.jobId);
+    expect(data.emailCampaigns.filter((campaign) => campaign.id === stepOutputOne.campaignId)).toHaveLength(1);
+    expect(data.emailSendJobs).toHaveLength(2);
   });
 
   it("prevents journeys from sending to suppressed contacts and can pause automation", async () => {

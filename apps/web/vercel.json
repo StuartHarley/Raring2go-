@@ -3,6 +3,10 @@
     {
       "path": "/api/jobs/email-send",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/jobs/journey-execute",
+      "schedule": "* * * * *"
     }
   ]
 }

@@ -30,6 +30,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type {
   AudienceSegment,
   AudienceSuppression,
+  AudienceTerritorySubscription,
   EmailCampaign,
   EmailCampaignVersion,
   EmailDeliveryRecord,
@@ -37,6 +38,9 @@ import type {
   EmailSendJob,
   MarketingData,
   MarketingJourney,
+  MarketingJourneyAudienceEntry,
+  MarketingJourneyExecution,
+  MarketingJourneyStepExecution,
   MarketingJourneyVersion,
   NetworkNewsletterMaster,
   NewsletterFactoryRun,
@@ -256,6 +260,181 @@ export async function updateJourneyVersionRecord(db: MarketingDb, version: Marke
       approvedAt: version.approvedAt ? new Date(version.approvedAt) : null
     })
     .where(eq(marketingJourneyVersions.id, version.id));
+}
+
+export async function insertJourneyAudienceEntryRecord(db: MarketingDb, entry: MarketingJourneyAudienceEntry) {
+  await db
+    .insert(marketingJourneyAudienceEntries)
+    .values({
+      ...entry,
+      enteredAt: new Date(entry.enteredAt),
+      exitedAt: entry.exitedAt ? new Date(entry.exitedAt) : null
+    })
+    .onConflictDoNothing();
+}
+
+export async function updateJourneyAudienceEntryRecord(db: MarketingDb, entry: MarketingJourneyAudienceEntry) {
+  await db
+    .update(marketingJourneyAudienceEntries)
+    .set({
+      status: entry.status,
+      exitedAt: entry.exitedAt ? new Date(entry.exitedAt) : null,
+      exitReason: entry.exitReason ?? null
+    })
+    .where(eq(marketingJourneyAudienceEntries.id, entry.id));
+}
+
+export async function insertJourneyExecutionRecord(db: MarketingDb, execution: MarketingJourneyExecution) {
+  await db
+    .insert(marketingJourneyExecutions)
+    .values({
+      ...execution,
+      runAfter: new Date(execution.runAfter),
+      completedAt: execution.completedAt ? new Date(execution.completedAt) : null
+    })
+    .onConflictDoNothing();
+}
+
+export async function advanceJourneyExecution(
+  db: MarketingDb,
+  executionId: string,
+  patch: { status?: string; currentStepKey?: string | null; runAfter?: string; failureReason?: string | null; completedAt?: string | null }
+) {
+  await db
+    .update(marketingJourneyExecutions)
+    .set({
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
+      ...(patch.currentStepKey !== undefined ? { currentStepKey: patch.currentStepKey } : {}),
+      ...(patch.runAfter !== undefined ? { runAfter: new Date(patch.runAfter) } : {}),
+      ...(patch.failureReason !== undefined ? { failureReason: patch.failureReason } : {}),
+      ...(patch.completedAt !== undefined ? { completedAt: patch.completedAt ? new Date(patch.completedAt) : null } : {})
+    })
+    .where(eq(marketingJourneyExecutions.id, executionId));
+}
+
+export async function insertJourneyStepExecutionRecord(db: MarketingDb, stepExecution: MarketingJourneyStepExecution) {
+  await db
+    .insert(marketingJourneyStepExecutions)
+    .values({
+      ...stepExecution,
+      scheduledFor: stepExecution.scheduledFor ? new Date(stepExecution.scheduledFor) : null,
+      completedAt: stepExecution.completedAt ? new Date(stepExecution.completedAt) : null
+    })
+    .onConflictDoNothing();
+}
+
+export async function claimNextJourneyExecution(db: MarketingDb): Promise<MarketingJourneyExecution | undefined> {
+  const claimed = await db.execute(sql`
+    UPDATE marketing_journey_executions
+    SET status = 'processing', attempts = attempts + 1, updated_at = now()
+    WHERE id = (
+      SELECT id FROM marketing_journey_executions
+      WHERE (status = 'queued' AND run_after <= now())
+         OR (status = 'processing' AND updated_at < now() - interval '5 minutes')
+      ORDER BY run_after ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id
+  `);
+  const claimedId = (Array.isArray(claimed) ? claimed[0] : claimed.rows?.[0])?.id as string | undefined;
+
+  if (!claimedId) {
+    return undefined;
+  }
+
+  const [row] = await db.select().from(marketingJourneyExecutions).where(eq(marketingJourneyExecutions.id, claimedId));
+  return row ? (dateRows(["runAfter", "completedAt"])(row) as MarketingJourneyExecution) : undefined;
+}
+
+export async function loadJourneyExecutionBundle(db: MarketingDb, executionId: string) {
+  const [execution] = await db.select().from(marketingJourneyExecutions).where(eq(marketingJourneyExecutions.id, executionId));
+
+  if (!execution) {
+    return undefined;
+  }
+
+  const [entry] = await db.select().from(marketingJourneyAudienceEntries).where(eq(marketingJourneyAudienceEntries.id, execution.entryId));
+
+  if (!entry) {
+    return undefined;
+  }
+
+  const [journey] = await db.select().from(marketingJourneys).where(eq(marketingJourneys.id, entry.journeyId));
+  const [version] = await db.select().from(marketingJourneyVersions).where(eq(marketingJourneyVersions.id, entry.journeyVersionId));
+
+  if (!journey || !version) {
+    return undefined;
+  }
+
+  return {
+    execution: dateRows(["runAfter", "completedAt"])(execution) as MarketingJourneyExecution,
+    entry: dateRows(["enteredAt", "exitedAt"])(entry) as MarketingJourneyAudienceEntry,
+    journey: dateRows(["approvedAt", "activatedAt", "pausedAt"])(journey) as MarketingJourney,
+    version: dateRows(["approvedAt"])(version) as MarketingJourneyVersion
+  };
+}
+
+// Journey-step ad hoc campaigns are keyed by a deterministic id (see
+// deterministicJourneyId in service.ts) so concurrent/retried step
+// executions converge on one row safely.
+export async function insertJourneyStepCampaignGraph(db: MarketingDb, input: { campaign: EmailCampaign; version: EmailCampaignVersion }) {
+  await db
+    .insert(emailCampaigns)
+    .values({
+      ...input.campaign,
+      scheduledAt: null,
+      approvedAt: input.campaign.approvedAt ? new Date(input.campaign.approvedAt) : null,
+      sentAt: null
+    })
+    .onConflictDoNothing();
+  await db
+    .insert(emailCampaignVersions)
+    .values({
+      ...input.version,
+      approvedAt: input.version.approvedAt ? new Date(input.version.approvedAt) : null
+    })
+    .onConflictDoNothing();
+}
+
+// email_send_jobs has no idempotency-key column, unlike the journey tables -
+// this is the safe retry mechanism given a deterministic job id.
+export async function insertEmailSendJobRecordIfMissing(db: MarketingDb, job: EmailSendJob) {
+  await db
+    .insert(emailSendJobs)
+    .values({
+      ...job,
+      nextAttemptAt: new Date(job.nextAttemptAt)
+    })
+    .onConflictDoNothing();
+}
+
+// No persistence for subscriptions existed anywhere before this - upserts on
+// (contactId, territoryId), matching both the real unique index and
+// subscribeContactToTerritory's own existing-vs-new in-memory logic.
+export async function upsertAudienceTerritorySubscriptionRecord(db: MarketingDb, subscription: AudienceTerritorySubscription) {
+  await db
+    .insert(audienceTerritorySubscriptions)
+    .values({
+      id: subscription.id,
+      contactId: subscription.contactId,
+      territoryId: subscription.territoryId,
+      status: subscription.status,
+      source: subscription.source,
+      preferences: subscription.preferences,
+      subscribedAt: subscription.subscribedAt ? new Date(subscription.subscribedAt) : null,
+      unsubscribedAt: subscription.unsubscribedAt ? new Date(subscription.unsubscribedAt) : null
+    })
+    .onConflictDoUpdate({
+      target: [audienceTerritorySubscriptions.contactId, audienceTerritorySubscriptions.territoryId],
+      set: {
+        status: subscription.status,
+        source: subscription.source,
+        preferences: subscription.preferences,
+        subscribedAt: subscription.subscribedAt ? new Date(subscription.subscribedAt) : null,
+        unsubscribedAt: subscription.unsubscribedAt ? new Date(subscription.unsubscribedAt) : null
+      }
+    });
 }
 
 export async function insertEmailRecipientSnapshotRecord(db: MarketingDb, snapshot: EmailRecipientSnapshot) {

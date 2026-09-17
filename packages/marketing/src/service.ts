@@ -23,6 +23,8 @@ import type {
   EmailRecipientSnapshot,
   EmailSendJob,
   EmailTemplate,
+  JourneyStepSendEmail,
+  JourneyTrigger,
   MarketingJourney,
   MarketingJourneyAudienceEntry,
   MarketingJourneyExecution,
@@ -856,12 +858,19 @@ export async function createRecipientSnapshot(
   if (version.status !== "approved" && version.status !== "testing") {
     throw new Error("Only approved or in-test campaign versions can create recipient snapshots.");
   }
-  const segmentId = snapshot.segmentId ?? campaign.segmentId;
-  if (!segmentId) {
+  const { restrictToContactIds, heldOutExclusionReason, ...snapshotInput } = snapshot;
+  const segmentId = snapshot.segmentId ?? campaign.segmentId ?? null;
+  if (!segmentId && !restrictToContactIds) {
     throw new Error("Campaign requires an audience segment before scheduling.");
   }
-  const segmentContacts = previewSegment(context, permissions, data, segmentId);
-  const { restrictToContactIds, heldOutExclusionReason, ...snapshotInput } = snapshot;
+  // A journey step has no segment of its own to snapshot against - when the
+  // caller already knows exactly who should receive this (restrictToContactIds)
+  // and no segment is available, resolve those contacts directly instead of
+  // requiring a persisted segment. contactMatchesSegment's only non-rule-tree
+  // behaviour is excluding active suppressions, so replicate that here too.
+  const segmentContacts = segmentId
+    ? previewSegment(context, permissions, data, segmentId)
+    : listAudienceContacts(context, permissions, data).contacts.filter((view) => !view.suppressions.some((suppression) => suppression.active));
   const allowlist = restrictToContactIds ? new Set(restrictToContactIds) : null;
   const eligibleContacts = allowlist ? segmentContacts.filter((view) => allowlist.has(view.contact.id)) : segmentContacts;
   const hiddenBlockIdsByContactId = resolveHiddenBlockIdsByContact(context, data, campaign, version, eligibleContacts);
@@ -1875,10 +1884,23 @@ export async function executeJourneyStep(
   if (!entry) throw new Error("Journey audience entry was not found.");
   if (entry.territoryId) ensureContextCanAccessTerritory(context, entry.territoryId);
   const version = requireJourneyVersion(data, entry.journeyVersionId);
-  const step = version.steps.find((candidate) => candidate.key === stepKey);
-  if (!step) throw new Error("Journey step was not found.");
-  const actionType = typeof step.actionType === "string" ? step.actionType : "unknown";
-  if (["send_email", "add_to_email_campaign", "create_social_queue_suggestion"].includes(actionType)) {
+  const stepIndex = version.steps.findIndex((candidate) => candidate.key === stepKey);
+  if (stepIndex === -1) throw new Error("Journey step was not found.");
+  const step = version.steps[stepIndex]!;
+
+  // Idempotency: a re-attempted execution replays the same stepKey. Short-circuit
+  // before doing anything else so retries after a partial persistence failure are safe.
+  const stepIdempotencyKey = `journey:step:${execution.id}:${stepKey}`;
+  if (data.journeyStepExecutions.some((candidate) => candidate.idempotencyKey === stepIdempotencyKey)) {
+    return execution;
+  }
+  if (execution.currentStepKey !== stepKey) {
+    throw new Error("Journey step does not match the execution's current step.");
+  }
+
+  // JourneyStep is a single-member union today (send_email) - extend this
+  // guard when a second actionType is introduced.
+  if (step.actionType === "send_email") {
     const contact = requireContact(data, entry.contactId);
     if (contact.emailStatus === "suppressed" || data.suppressions.some((suppression) => suppression.contactId === contact.id && suppression.active)) {
       execution.status = "failed";
@@ -1889,29 +1911,145 @@ export async function executeJourneyStep(
       throw new Error("Suppressed contacts cannot receive outbound journey actions.");
     }
   }
+
+  const output = await sendJourneyStepEmail(context, permissions, audit, data, entry, version, step);
+
   data.journeyStepExecutions.push({
     id: crypto.randomUUID(),
     executionId: execution.id,
     stepKey,
-    actionType,
+    actionType: step.actionType,
     status: "completed",
     scheduledFor: null,
     completedAt,
     failureReason: null,
-    output: { providerNeutral: true },
-    idempotencyKey: `journey:step:${execution.id}:${stepKey}`
+    output,
+    idempotencyKey: stepIdempotencyKey
   });
-  execution.currentStepKey = null;
-  execution.status = "completed";
-  execution.completedAt = completedAt;
-  entry.status = "completed";
-  entry.exitedAt = completedAt;
-  entry.exitReason = "completed";
+
+  const nextStep = version.steps[stepIndex + 1];
+  if (nextStep) {
+    execution.status = "queued";
+    execution.currentStepKey = nextStep.key;
+    execution.runAfter = new Date(new Date(completedAt).getTime() + nextStep.delayMinutes * 60_000).toISOString();
+  } else {
+    execution.status = "completed";
+    execution.currentStepKey = null;
+    execution.completedAt = completedAt;
+    entry.status = "completed";
+    entry.exitedAt = completedAt;
+    entry.exitReason = "completed";
+  }
+
   await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyStepExecute, "marketing_journey_execution", execution.id, {
     stepKey,
-    actionType
+    actionType: step.actionType,
+    hasNextStep: Boolean(nextStep)
   }, entry.territoryId));
+
   return execution;
+}
+
+/**
+ * Journeys have no segment reference of their own, so a "send email" step
+ * reuses the existing campaign/snapshot/send-job pipeline for exactly one
+ * contact via createRecipientSnapshot's segment-optional path. One ad hoc
+ * campaign+version is shared per (journeyVersionId, stepKey) - keyed by a
+ * deterministic id - so a popular journey doesn't flood the campaign list
+ * with a near-duplicate row per contact; the per-entry snapshot and send job
+ * are unique per contact.
+ */
+async function sendJourneyStepEmail(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  audit: MarketingAuditRecorder,
+  data: MarketingData,
+  entry: MarketingJourneyAudienceEntry,
+  version: MarketingJourneyVersion,
+  step: JourneyStepSendEmail
+): Promise<Record<string, unknown>> {
+  const campaignId = deterministicJourneyId("journey-step-campaign", version.id, step.key);
+  const campaignVersionId = deterministicJourneyId("journey-step-campaign-version", version.id, step.key);
+
+  let campaign = data.emailCampaigns.find((candidate) => candidate.id === campaignId);
+  if (!campaign) {
+    campaign = {
+      id: campaignId,
+      territoryId: entry.territoryId ?? null,
+      templateId: null,
+      segmentId: null,
+      campaignType: "journey",
+      status: "draft",
+      title: `Journey step: ${step.key}`,
+      subject: step.email.subject,
+      preheader: null,
+      sendProvider: "postmark",
+      sendConnectionId: null,
+      scheduledAt: null,
+      approvedAt: null,
+      sentAt: null,
+      metadata: { journeyVersionId: version.id, journeyStepKey: step.key }
+    };
+    const campaignVersion: EmailCampaignVersion = {
+      id: campaignVersionId,
+      campaignId,
+      versionNumber: 1,
+      status: "draft",
+      subject: step.email.subject,
+      preheader: null,
+      contentSnapshot: { version: 1, blocks: step.email.blocks },
+      variantKey: null,
+      // Not context.userId: the journey worker's actor id is a synthetic
+      // system identity, never a real row in the users table, and this
+      // column is a real FK to it.
+      createdByUserId: null
+    };
+    await createEmailCampaign(context, permissions, audit, data, campaign, campaignVersion);
+    await approveEmailCampaignVersion(context, permissions, audit, data, campaignId, campaignVersionId, new Date().toISOString());
+    campaignVersion.approvedByUserId = null;
+  }
+
+  const snapshot = await createRecipientSnapshot(context, permissions, audit, data, {
+    id: randomUUID(),
+    campaignId,
+    campaignVersionId,
+    status: "created",
+    generatedAt: new Date().toISOString(),
+    idempotencyKey: `journey:step:${entry.id}:${step.key}:snapshot`,
+    restrictToContactIds: [entry.contactId],
+    heldOutExclusionReason: "not_targeted_by_journey_step"
+  });
+
+  const job = enqueueEmailSend(context, permissions, data, {
+    id: deterministicJourneyId("journey-step-send-job", entry.id, step.key),
+    campaignId,
+    campaignVersionId,
+    recipientSnapshotId: snapshot.id,
+    batchSize: 1,
+    nextAttemptAt: new Date().toISOString()
+  });
+
+  return { campaignId, campaignVersionId, snapshotId: snapshot.id, jobId: job.id };
+}
+
+/** A deterministic, UUID-shaped id derived from its parts, for artifacts that
+ * must converge across concurrent or retried journey-step executions. */
+function deterministicJourneyId(...parts: string[]): string {
+  const hex = createHash("sha256").update(parts.join(":")).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+export function findActiveJourneysForTrigger(data: MarketingData, trigger: JourneyTrigger) {
+  return data.journeys
+    .filter((journey) => journey.status === "active" && !journey.deletedAt)
+    .map((journey) => {
+      const version = data.journeyVersions
+        .filter((candidate) => candidate.journeyId === journey.id && candidate.status === "approved" && !candidate.deletedAt)
+        .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+      return version ? { journey, version } : null;
+    })
+    .filter((candidate): candidate is { journey: MarketingJourney; version: MarketingJourneyVersion } => candidate !== null)
+    .filter((candidate) => candidate.version.trigger.type === trigger.type);
 }
 
 function contactMatchesSegment(view: AudienceContactView, segment: AudienceSegment) {
