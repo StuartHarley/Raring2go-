@@ -1,12 +1,13 @@
 import { auditActions, recordAuditEvent } from "@raring2go/audit";
 import { createAiGatewayFromEnv } from "@raring2go/ai";
-import type { AiGateway } from "@raring2go/ai";
+import type { AiGateway, AiUsage } from "@raring2go/ai";
 import { createDevelopmentMemoryRateLimiter } from "@raring2go/auth";
 import type { RateLimiter } from "@raring2go/auth";
-import { createDb } from "@raring2go/db";
+import { aiUsageEvents, createDb } from "@raring2go/db";
 import { evaluatePermission, requirePermission } from "@raring2go/permissions";
 import { marketingCapabilities } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
+import { sql } from "drizzle-orm";
 import { marketingPermissionData } from "./marketing-runtime";
 
 const rateLimiterKey = Symbol.for("raring2go.ai-assist-rate-limiter");
@@ -67,6 +68,102 @@ export function hasAiAssistCapability(context: MarketingActorContext): boolean {
   ).allowed;
 }
 
+// USD cents per million tokens. NOT verified against Anthropic's current
+// published pricing (anthropic.com/pricing) - confirm before relying on this
+// for real budget decisions. DEFAULT_PRICING is deliberately on the higher
+// side so an unrecognised model under-permits spend rather than over-permits it.
+const MODEL_PRICING_CENTS_PER_MILLION_TOKENS: Record<string, { input: number; output: number }> = {
+  "claude-haiku-4-5-20251001": { input: 100, output: 500 },
+  "claude-sonnet-5": { input: 300, output: 1500 },
+  "claude-opus-5": { input: 1500, output: 7500 }
+};
+const DEFAULT_PRICING = { input: 1500, output: 7500 };
+
+const DEFAULT_AI_SPEND_CAP_NETWORK_MINOR = 5000; // $50.00/month
+const DEFAULT_AI_SPEND_CAP_TERRITORY_MINOR = 1000; // $10.00/month
+
+/** Exported for direct unit testing - pure pricing arithmetic, no DB. */
+export function estimateCostMinor(modelReference: string, usage: AiUsage): number {
+  const pricing = MODEL_PRICING_CENTS_PER_MILLION_TOKENS[modelReference] ?? DEFAULT_PRICING;
+  const costCents = (usage.inputTokens * pricing.input + usage.outputTokens * pricing.output) / 1_000_000;
+  return Math.ceil(costCents);
+}
+
+async function recordAiUsageEvent(
+  context: MarketingActorContext,
+  input: { feature: string; providerKey: string; modelReference: string; usage: AiUsage }
+) {
+  if (!context.organisationId) {
+    return;
+  }
+
+  const { db, sql: closeSql } = createDb();
+
+  try {
+    await db.insert(aiUsageEvents).values({
+      organisationId: context.organisationId,
+      territoryId: context.territoryId ?? null,
+      actorUserId: context.userId,
+      feature: input.feature,
+      providerKey: input.providerKey,
+      modelReference: input.modelReference,
+      inputTokens: input.usage.inputTokens,
+      outputTokens: input.usage.outputTokens,
+      estimatedCostMinor: estimateCostMinor(input.modelReference, input.usage)
+    });
+  } finally {
+    await closeSql.end();
+  }
+}
+
+/** Exported for reuse by a future read-only usage display, and for direct testing. */
+export async function sumAiSpendForPeriod(context: MarketingActorContext, input: { since: Date }): Promise<number> {
+  if (!context.organisationId) {
+    return 0;
+  }
+
+  const { db, sql: closeSql } = createDb();
+
+  try {
+    const scopeCondition = context.territoryId
+      ? sql`territory_id = ${context.territoryId}`
+      : sql`organisation_id = ${context.organisationId} AND territory_id IS NULL`;
+    const rows = await db.execute(sql`
+      SELECT COALESCE(SUM(estimated_cost_minor), 0) AS total
+      FROM ai_usage_events
+      WHERE ${scopeCondition} AND created_at >= ${input.since.toISOString()}
+    `);
+    const row = rows[0] as { total: string | number } | undefined;
+    return Number(row?.total ?? 0);
+  } finally {
+    await closeSql.end();
+  }
+}
+
+function startOfCurrentMonthUtc(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+/**
+ * A persisted, spend-based cap - distinct from enforceAiAssistRateLimit's
+ * in-memory call-count limiter above. The rate limiter guards against a
+ * runaway burst cheaply (no DB round-trip); this guards actual monthly
+ * budget and survives process restarts. Both checks run on every call.
+ */
+export async function enforceAiSpendCap(context: MarketingActorContext) {
+  const capMinor = context.territoryId
+    ? Number(process.env.AI_SPEND_CAP_TERRITORY_MINOR ?? DEFAULT_AI_SPEND_CAP_TERRITORY_MINOR)
+    : Number(process.env.AI_SPEND_CAP_NETWORK_MINOR ?? DEFAULT_AI_SPEND_CAP_NETWORK_MINOR);
+  const spentMinor = await sumAiSpendForPeriod(context, { since: startOfCurrentMonthUtc() });
+
+  if (spentMinor >= capMinor) {
+    throw new Error(
+      `AI spend limit reached for this ${context.territoryId ? "territory" : "organisation"} this month ($${(capMinor / 100).toFixed(2)}). Try again next month.`
+    );
+  }
+}
+
 function requireGateway(): AiGateway {
   const gateway = createAiGatewayFromEnv();
 
@@ -83,10 +180,18 @@ export async function suggestSubjectLines(
 ): Promise<string[]> {
   requireAiAssistPermission(context);
   await enforceAiAssistRateLimit(context);
+  await enforceAiSpendCap(context);
   const gateway = requireGateway();
   const result = await gateway.generateSubjectLines({
     campaignTitle: input.campaignTitle,
     bodyPreviewText: input.bodyPreviewText
+  });
+
+  await recordAiUsageEvent(context, {
+    feature: "subject_lines",
+    providerKey: result.providerKey,
+    modelReference: result.modelReference,
+    usage: result.usage
   });
 
   await recordSuggestionEvent(context, auditActions.marketingAiSuggestionGenerate, {
@@ -107,10 +212,18 @@ export async function suggestBlockCopy(
 ): Promise<string> {
   requireAiAssistPermission(context);
   await enforceAiAssistRateLimit(context);
+  await enforceAiSpendCap(context);
   const gateway = requireGateway();
   const result = await gateway.generateContentSuggestion({
     campaignTitle: input.campaignTitle,
     existingText: input.existingText
+  });
+
+  await recordAiUsageEvent(context, {
+    feature: "block_copy",
+    providerKey: result.providerKey,
+    modelReference: result.modelReference,
+    usage: result.usage
   });
 
   await recordSuggestionEvent(context, auditActions.marketingAiSuggestionGenerate, {
