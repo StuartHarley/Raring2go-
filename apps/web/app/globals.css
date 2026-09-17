@@ -170,7 +170,14 @@ p {
   text-transform: uppercase;
 }
 
-.app-sidebar a,
+.app-sidebar a {
+  border-radius: var(--r2-radius-sm);
+  color: var(--r2-text-primary);
+  font-weight: 500;
+  padding: 6px 10px;
+  text-decoration: none;
+}
+
 .context-list a {
   border: 1px solid var(--r2-border-default);
   border-radius: var(--r2-radius-sm);
@@ -180,7 +187,11 @@ p {
   text-decoration: none;
 }
 
-.app-sidebar a:hover,
+.app-sidebar a:hover {
+  background: var(--r2-surface-tint);
+  color: var(--r2-brand-purple);
+}
+
 .context-list a:hover {
   border-color: var(--r2-brand-purple);
   color: var(--r2-brand-purple);
@@ -188,9 +199,9 @@ p {
 
 .app-sidebar a[aria-current="page"] {
   background: var(--r2-surface-tint);
-  border-color: var(--r2-brand-purple);
   box-shadow: inset 3px 0 0 var(--r2-brand-purple);
   color: var(--r2-brand-purple);
+  font-weight: 700;
 }
 
 .status-badge {

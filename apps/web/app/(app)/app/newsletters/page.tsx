@@ -22,7 +22,7 @@ import {
   suggestSubjectLinesAction
 } from "./actions";
 import { normalizeContentSnapshot } from "@raring2go/marketing";
-import type { AudienceSegment, EmailCampaignOverview } from "@raring2go/marketing";
+import type { AudienceSegment, EmailCampaignOverview, EmailSendJob } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
 
 type PageProps = {
@@ -268,7 +268,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                       <ul>
                         {view.sendJobs.map((entry) => (
                           <li key={entry.job.id}>
-                            {new Date(entry.job.nextAttemptAt).toLocaleString()} — {entry.job.status} ({entry.job.cursor}/{entry.snapshot?.recipientCount ?? 0})
+                            {describeSendWindow(entry.job, entry.snapshot?.recipientCount ?? 0)}
                           </li>
                         ))}
                       </ul>
@@ -287,6 +287,22 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
       </section>
     </AppShell>
   );
+}
+
+function describeSendWindow(job: EmailSendJob, recipientCount: number): string {
+  const time = new Date(job.nextAttemptAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+  switch (job.status) {
+    case "completed":
+      return `${time} window — sent to ${job.cursor} of ${recipientCount}`;
+    case "processing":
+      return `${time} window — sending now (${job.cursor} of ${recipientCount})`;
+    case "failed":
+      return `${time} window — failed after ${job.cursor} of ${recipientCount}`;
+    case "queued":
+    default:
+      return `${time} window — waiting to start`;
+  }
 }
 
 async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
