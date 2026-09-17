@@ -111,7 +111,8 @@ describe("enforceAiSpendCap", () => {
 
     await expect(enforceAiSpendCap(networkContext)).rejects.toThrow("AI spend limit reached");
 
-    process.env.AI_SPEND_CAP_NETWORK_MINOR = originalNetworkCap;
+    if (originalNetworkCap === undefined) delete process.env.AI_SPEND_CAP_NETWORK_MINOR;
+    else process.env.AI_SPEND_CAP_NETWORK_MINOR = originalNetworkCap;
   });
 
   it("enforces the territory cap independently of the network cap", async () => {
@@ -129,6 +130,7 @@ describe("enforceAiSpendCap", () => {
 
     await expect(enforceAiSpendCap(territoryContext)).rejects.toThrow("AI spend limit reached for this territory");
 
-    process.env.AI_SPEND_CAP_TERRITORY_MINOR = originalTerritoryCap;
+    if (originalTerritoryCap === undefined) delete process.env.AI_SPEND_CAP_TERRITORY_MINOR;
+    else process.env.AI_SPEND_CAP_TERRITORY_MINOR = originalTerritoryCap;
   });
 });
