@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { navigationGroups, resolveShell } from "../../lib/app-shell";
 import { safeReturnTo } from "../../lib/auth-runtime";
 import type { RequestedShellContext } from "../../lib/app-shell";
+import { SidebarNav } from "./SidebarNav";
+import { MobileSidebarToggle } from "./MobileSidebarToggle";
 
 type AppLayoutProps = {
   children: React.ReactNode;
@@ -44,25 +46,12 @@ export async function AppShell({
           <p className="eyebrow">Raring2go!</p>
           <h1>Business-in-a-Box</h1>
         </div>
-        <nav>
-          {navigationGroups.map((group) => {
-            const items = shell.navigation.filter((item) => item.group === group.id);
-            if (items.length === 0) {
-              return null;
-            }
-
-            return (
-              <section key={group.id} className="app-nav-group" aria-labelledby={`nav-${group.id}`}>
-                <h3 id={`nav-${group.id}`}>{group.label}</h3>
-                {items.map((item) => (
-                  <Link key={item.id} href={withContext(item.href, request)}>
-                    {item.label}
-                  </Link>
-                ))}
-              </section>
-            );
-          })}
-        </nav>
+        <MobileSidebarToggle>
+          <SidebarNav
+            groups={navigationGroups}
+            items={shell.navigation.map((item) => ({ ...item, href: withContext(item.href, request) }))}
+          />
+        </MobileSidebarToggle>
       </aside>
       <section className="app-workspace">
         <header className="app-topbar">

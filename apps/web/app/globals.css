@@ -186,6 +186,56 @@ p {
   color: var(--r2-brand-purple);
 }
 
+.app-sidebar a[aria-current="page"] {
+  background: var(--r2-surface-tint);
+  border-color: var(--r2-brand-purple);
+  box-shadow: inset 3px 0 0 var(--r2-brand-purple);
+  color: var(--r2-brand-purple);
+}
+
+.status-badge {
+  display: inline-block;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 9px;
+  text-transform: uppercase;
+}
+
+/*
+ * Compound selectors (.status-badge.status-badge--X) deliberately, not just
+ * .status-badge--X: a plain single-class rule loses a specificity tie to
+ * container-scoped text-colour rules like ".franchise-list span" wherever
+ * this badge is used inside one - confirmed this actually happened (a
+ * "sent" badge rendered in the muted grey the list's own span rule sets,
+ * not its own green) before switching to this form.
+ */
+.status-badge.status-badge--neutral {
+  background: var(--r2-surface-tint);
+  color: var(--r2-text-muted);
+}
+
+.status-badge.status-badge--success {
+  background: color-mix(in srgb, var(--r2-status-success) 15%, white);
+  color: var(--r2-status-success);
+}
+
+.status-badge.status-badge--warning {
+  background: color-mix(in srgb, var(--r2-status-warning) 15%, white);
+  color: var(--r2-status-warning);
+}
+
+.status-badge.status-badge--danger {
+  background: color-mix(in srgb, var(--r2-status-danger) 15%, white);
+  color: var(--r2-status-danger);
+}
+
+.status-badge.status-badge--info {
+  background: color-mix(in srgb, var(--r2-status-info) 15%, white);
+  color: var(--r2-status-info);
+}
+
 .app-workspace {
   display: grid;
   align-content: start;
@@ -966,6 +1016,10 @@ p {
   margin: 10px 0;
 }
 
+.app-nav-toggle {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -974,6 +1028,28 @@ p {
   .app-sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--r2-border-default);
+  }
+
+  .app-nav-toggle {
+    background: var(--r2-surface);
+    border: 1px solid var(--r2-border-default);
+    border-radius: var(--r2-radius-sm);
+    color: var(--r2-brand-purple);
+    display: block;
+    font-weight: 700;
+    padding: 10px 12px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .app-sidebar-content {
+    display: none;
+  }
+
+  .app-sidebar-content[data-open="true"] {
+    display: grid;
+    gap: 18px;
+    margin-top: 12px;
   }
 
   .today-grid {

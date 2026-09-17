@@ -4,6 +4,7 @@ import { listConnectionCards } from "../../../../lib/integrations-runtime";
 import { readEmailCampaignOverview, readSegments, readSubjectLineComparison } from "../../../../lib/marketing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { StatusBadge } from "../../../../lib/workflow-ui";
 import { CampaignComposeFields } from "./CampaignComposeFields";
 import {
   acceptAiSuggestionAction,
@@ -157,7 +158,9 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                   <strong>
                     {view.campaign.title} {view.campaign.territoryId ? "" : "(national)"}
                   </strong>
-                  <span>{view.campaign.status} - {view.latestSnapshot?.recipientCount ?? 0} recipients</span>
+                  <span>
+                    <StatusBadge status={view.campaign.status} /> · {view.latestSnapshot?.recipientCount ?? 0} recipients
+                  </span>
                   <span>{view.deliveryCount} delivery events</span>
                   {view.campaign.sendProvider === "microsoft" ? (
                     <span>Sent via Outlook - delivery, bounce and open tracking is not available for this campaign</span>

@@ -1,6 +1,6 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { hasMarketingCapability, listNetworkTerritories, readJourneyDetail } from "../../../../../lib/marketing-runtime";
-import { Breadcrumbs } from "../../../../../lib/workflow-ui";
+import { Breadcrumbs, StatusBadge } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { JourneyBuilderFields } from "../JourneyBuilderFields";
@@ -36,7 +36,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
         <div className="franchise-metrics">
           <article>
             <span>Status</span>
-            <strong>{journey.status}</strong>
+            <strong><StatusBadge status={journey.status} /></strong>
           </article>
           <article>
             <span>Version</span>

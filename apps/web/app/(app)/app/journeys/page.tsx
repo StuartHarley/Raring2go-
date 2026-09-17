@@ -6,6 +6,7 @@ import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { JourneyBuilderFields } from "./JourneyBuilderFields";
 import { activateJourneyAction, createJourneyAction, pauseJourneyAction } from "./actions";
+import { StatusBadge } from "../../../../lib/workflow-ui";
 import type { MarketingActorContext } from "@raring2go/marketing";
 
 type PageProps = {
@@ -85,7 +86,7 @@ export default async function JourneysPage({ searchParams }: PageProps) {
               <div key={view.journey.id}>
                 <strong>{view.journey.name}</strong>
                 <span>
-                  {view.journey.status} - version{" "}
+                  <StatusBadge status={view.journey.status} /> · version{" "}
                   {view.activeVersion?.versionNumber ?? "not approved"}
                 </span>
                 <span>
