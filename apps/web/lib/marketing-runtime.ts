@@ -16,11 +16,15 @@ import {
   declareSubjectLineWinner,
   enqueueEmailSend,
   enqueueSendTimeOptimizedSend,
+  enterJourneyFromEvent,
+  findActiveJourneysForTrigger,
   generateTerritoryNewsletterEditions,
   insertEmailCampaignGraph,
   insertEmailCampaignVersionRecord,
   insertEmailRecipientSnapshotRecord,
   insertEmailSendJobRecord,
+  insertJourneyAudienceEntryRecord,
+  insertJourneyExecutionRecord,
   insertJourneyGraph,
   insertNetworkNewsletterMasterRecord,
   insertNewsletterFactoryRunRecord,
@@ -40,6 +44,7 @@ import {
   recordTerritoryNewsletterOverride,
   scheduleEmailCampaign,
   startSubjectLineTest,
+  subscribeContactToTerritory,
   updateEmailCampaignRecord,
   updateEmailCampaignVersionRecord,
   updateJourneyRecord,
@@ -47,6 +52,7 @@ import {
   updateNetworkNewsletterMasterRecord,
   updateSegment,
   updateSegmentRecord,
+  upsertAudienceTerritorySubscriptionRecord,
   upsertTerritoryNewsletterEditionRecord
 } from "@raring2go/marketing";
 import { recordAuditEvent } from "@raring2go/audit";
@@ -82,6 +88,7 @@ export const marketingPermissionData: PermissionData = {
   ],
   rolePermissions: [
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.audienceView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.audienceManage, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.segmentView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.segmentManage, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailView, "network"),
@@ -100,6 +107,7 @@ export const marketingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyApprove, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyActivate, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyPause, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyExecute, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.marketingAnalyticsView, "network"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.audienceView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.segmentView, "own_territory"),
@@ -348,6 +356,59 @@ export async function pauseMarketingJourney(context: MarketingActorContext, jour
       const journey = await pauseJourney(context, marketingPermissionData, auditFor(tx), data, journeyId, new Date().toISOString());
       await updateJourneyRecord(tx, journey);
       return journey;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * No admin/public UI calls this yet - subscribing a contact isn't a real
+ * feature anywhere in the app today. This exists so the journey trigger
+ * (contact_subscribed_to_territory) has a real, persisted event to fire on,
+ * verified live via a script rather than a UI for now.
+ */
+export async function subscribeContactAndTriggerJourneys(
+  context: MarketingActorContext,
+  input: { contactId: string; territoryId: string; source: string; preferences?: Record<string, unknown> }
+) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadMarketingData(tx);
+      const subscription = await subscribeContactToTerritory(context, marketingPermissionData, auditFor(tx), data, {
+        id: randomUUID(),
+        contactId: input.contactId,
+        territoryId: input.territoryId,
+        status: "subscribed",
+        source: input.source,
+        preferences: input.preferences ?? {},
+        subscribedAt: new Date().toISOString(),
+        unsubscribedAt: null
+      });
+      await upsertAudienceTerritorySubscriptionRecord(tx, subscription);
+
+      const matches = findActiveJourneysForTrigger(data, { type: "contact_subscribed_to_territory" });
+      const entries = [];
+      for (const { journey } of matches) {
+        const entry = await enterJourneyFromEvent(context, marketingPermissionData, auditFor(tx), data, {
+          journeyId: journey.id,
+          contactId: input.contactId,
+          territoryId: input.territoryId,
+          sourceEventType: "audience.subscribed",
+          sourceEventId: subscription.id,
+          enteredAt: new Date().toISOString(),
+          idempotencyKey: `audience.subscribed:${subscription.id}:${journey.id}`
+        });
+        await insertJourneyAudienceEntryRecord(tx, entry);
+        const execution = data.journeyExecutions.find((candidate) => candidate.entryId === entry.id);
+        if (execution) {
+          await insertJourneyExecutionRecord(tx, execution);
+        }
+        entries.push(entry);
+      }
+      return { subscription, entries };
     });
   } finally {
     await sql.end();
