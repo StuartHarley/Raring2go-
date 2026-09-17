@@ -33,6 +33,17 @@ describe("createDeterministicAiGateway", () => {
     expect(result.providerKey).toBe("deterministic");
     expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
   });
+
+  it("returns a template campaign draft using the prompt, with only heading/text/divider blocks", async () => {
+    const gateway = createDeterministicAiGateway();
+    const result = await gateway.generateCampaignDraft({ prompt: "Half term ideas" });
+
+    expect(result.output.subject).toContain("Half term ideas");
+    expect(result.output.blocks.length).toBeGreaterThanOrEqual(3);
+    expect(result.output.blocks.every((block) => ["heading", "text", "divider"].includes(block.type))).toBe(true);
+    expect(result.providerKey).toBe("deterministic");
+    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
 });
 
 describe("createAnthropicAiGateway", () => {
@@ -84,6 +95,65 @@ describe("createAnthropicAiGateway", () => {
 
     expect(result.output).toBe("Come and join us this weekend for family fun.");
     expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 40 });
+  });
+
+  it("parses a clean campaign-draft JSON response into subject + blocks", async () => {
+    const client = fakeClient(
+      JSON.stringify({
+        subject: "Half term is here!",
+        blocks: [
+          { type: "heading", text: "Half term ideas", level: 1 },
+          { type: "text", html: "<p>Come and join us this week.</p>" },
+          { type: "divider" }
+        ]
+      }),
+      { input_tokens: 200, output_tokens: 90 }
+    );
+    const gateway = createAnthropicAiGateway({ apiKey: "test-key", client });
+
+    const result = await gateway.generateCampaignDraft({ prompt: "Half term ideas at the local park" });
+
+    expect(result.output).toEqual({
+      subject: "Half term is here!",
+      blocks: [
+        { type: "heading", text: "Half term ideas", level: 1 },
+        { type: "text", html: "<p>Come and join us this week.</p>" },
+        { type: "divider" }
+      ]
+    });
+    expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 90 });
+  });
+
+  it("drops an unrecognised or malformed block rather than throwing", async () => {
+    const client = fakeClient(
+      JSON.stringify({
+        subject: "Test",
+        blocks: [
+          { type: "heading", text: "Fine", level: 1 },
+          { type: "image", src: "https://example.test/x.png" },
+          { type: "heading", text: "Missing level" },
+          "not even an object",
+          { type: "divider" }
+        ]
+      })
+    );
+    const gateway = createAnthropicAiGateway({ apiKey: "test-key", client });
+
+    const result = await gateway.generateCampaignDraft({ prompt: "Test" });
+
+    expect(result.output.blocks).toEqual([
+      { type: "heading", text: "Fine", level: 1 },
+      { type: "divider" }
+    ]);
+  });
+
+  it("returns an empty draft rather than throwing when the model's response isn't valid JSON", async () => {
+    const client = fakeClient("not json at all");
+    const gateway = createAnthropicAiGateway({ apiKey: "test-key", client });
+
+    const result = await gateway.generateCampaignDraft({ prompt: "Test" });
+
+    expect(result.output).toEqual({ subject: "", blocks: [] });
   });
 });
 

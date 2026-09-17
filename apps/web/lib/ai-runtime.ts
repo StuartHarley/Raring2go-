@@ -1,6 +1,6 @@
 import { auditActions, recordAuditEvent } from "@raring2go/audit";
 import { createAiGatewayFromEnv } from "@raring2go/ai";
-import type { AiGateway, AiUsage } from "@raring2go/ai";
+import type { AiGateway, AiUsage, CampaignDraft } from "@raring2go/ai";
 import { createDevelopmentMemoryRateLimiter } from "@raring2go/auth";
 import type { RateLimiter } from "@raring2go/auth";
 import { aiUsageEvents, createDb } from "@raring2go/db";
@@ -234,6 +234,46 @@ export async function suggestBlockCopy(
     modelReference: result.modelReference,
     promptTemplateVersion: result.promptTemplateVersion,
     output: result.output
+  });
+
+  return result.output;
+}
+
+/**
+ * Populates a whole draft (subject + a few blocks) from a one-line prompt.
+ * Returns the raw model output unvalidated - the caller (the newsletters
+ * server action) must run it through validateBlocks + sanitizeRichTextHtml,
+ * the exact same trust boundary every user-submitted block already goes
+ * through. AI-generated content gets zero special trust.
+ */
+export async function generateCampaignDraft(
+  context: MarketingActorContext,
+  input: { draftId: string; prompt: string; audienceDescription?: string | null }
+): Promise<CampaignDraft> {
+  requireAiAssistPermission(context);
+  await enforceAiAssistRateLimit(context);
+  await enforceAiSpendCap(context);
+  const gateway = requireGateway();
+  const result = await gateway.generateCampaignDraft({
+    prompt: input.prompt,
+    audienceDescription: input.audienceDescription
+  });
+
+  await recordAiUsageEvent(context, {
+    feature: "campaign_draft",
+    providerKey: result.providerKey,
+    modelReference: result.modelReference,
+    usage: result.usage
+  });
+
+  await recordSuggestionEvent(context, auditActions.marketingAiSuggestionGenerate, {
+    task: "campaign_draft",
+    draftId: input.draftId,
+    providerKey: result.providerKey,
+    modelReference: result.modelReference,
+    promptTemplateVersion: result.promptTemplateVersion,
+    prompt: input.prompt,
+    blockCount: result.output.blocks.length
   });
 
   return result.output;

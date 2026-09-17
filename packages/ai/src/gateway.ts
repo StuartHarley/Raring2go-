@@ -12,6 +12,27 @@ export type ContentSuggestionInput = {
   instructions?: string | null;
 };
 
+export type CampaignDraftInput = {
+  prompt: string;
+  audienceDescription?: string | null;
+};
+
+/**
+ * Deliberately narrow: no id (the caller assigns fresh ids, same as every
+ * other "populate a whole draft" path in this app), no image/button blocks
+ * (the model can't produce a real image, and has no way to know a real link
+ * target for a button without hallucinating one).
+ */
+export type CampaignDraftBlock =
+  | { type: "heading"; text: string; level: 1 | 2 }
+  | { type: "text"; html: string }
+  | { type: "divider" };
+
+export type CampaignDraft = {
+  subject: string;
+  blocks: CampaignDraftBlock[];
+};
+
 export type AiUsage = {
   inputTokens: number;
   outputTokens: number;
@@ -35,10 +56,12 @@ export type AiGateway = {
   key: string;
   generateSubjectLines(input: SubjectLineSuggestionInput): Promise<AiSuggestionResult<string[]>>;
   generateContentSuggestion(input: ContentSuggestionInput): Promise<AiSuggestionResult<string>>;
+  generateCampaignDraft(input: CampaignDraftInput): Promise<AiSuggestionResult<CampaignDraft>>;
 };
 
 const SUBJECT_LINES_PROMPT_VERSION = "mkt-ai-subject.v1";
 const CONTENT_SUGGESTION_PROMPT_VERSION = "mkt-ai-content.v1";
+const CAMPAIGN_DRAFT_PROMPT_VERSION = "mkt-ai-campaign-draft.v1";
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 
 export function createAnthropicAiGateway(input: { apiKey: string; model?: string; client?: Anthropic }): AiGateway {
@@ -103,6 +126,34 @@ export function createAnthropicAiGateway(input: { apiKey: string; model?: string
         promptTemplateVersion: CONTENT_SUGGESTION_PROMPT_VERSION,
         usage: usageFromMessage(message)
       };
+    },
+    async generateCampaignDraft(draftInput) {
+      const message = await client.messages.create({
+        model,
+        max_tokens: 1500,
+        system:
+          "You draft short, warm, concrete newsletter campaigns for a UK local-family-events audience, from a one-line brief. " +
+          "Respond with ONLY a JSON object of the exact shape {\"subject\": string, \"blocks\": Array<Block>} (no markdown, no preamble, no explanation). " +
+          "Block is one of: {\"type\":\"heading\",\"text\":string,\"level\":1|2}, {\"type\":\"text\",\"html\":string}, {\"type\":\"divider\"}. " +
+          "Use 3 to 6 blocks. Each text block's html should be one or two short <p> paragraphs, plain HTML only (no scripts, no styles, no classes). " +
+          "Never invent a link, a button, an image, a price, a date or a fact not present in the brief.",
+        messages: [
+          {
+            role: "user",
+            content: `Brief: ${draftInput.prompt}\n${
+              draftInput.audienceDescription ? `Audience: ${draftInput.audienceDescription}\n` : ""
+            }`
+          }
+        ]
+      });
+
+      return {
+        output: parseCampaignDraft(textFromMessage(message)),
+        providerKey: "anthropic",
+        modelReference: model,
+        promptTemplateVersion: CAMPAIGN_DRAFT_PROMPT_VERSION,
+        usage: usageFromMessage(message)
+      };
     }
   };
 }
@@ -132,6 +183,24 @@ export function createDeterministicAiGateway(): AiGateway {
         providerKey: "deterministic",
         modelReference: "deterministic-content-template",
         promptTemplateVersion: CONTENT_SUGGESTION_PROMPT_VERSION,
+        usage: { inputTokens: 0, outputTokens: 0 }
+      };
+    },
+    async generateCampaignDraft(input) {
+      const base = input.prompt.trim() || "This week's newsletter";
+      return {
+        output: {
+          subject: `${base} — inside this week`,
+          blocks: [
+            { type: "heading", text: base, level: 1 },
+            { type: "text", html: `<p>Here's what's happening: ${base.toLowerCase()}.</p>` },
+            { type: "divider" },
+            { type: "text", html: "<p>Come and join us — see you there!</p>" }
+          ]
+        },
+        providerKey: "deterministic",
+        modelReference: "deterministic-campaign-draft-template",
+        promptTemplateVersion: CAMPAIGN_DRAFT_PROMPT_VERSION,
         usage: { inputTokens: 0, outputTokens: 0 }
       };
     }
@@ -172,6 +241,48 @@ function usageFromMessage(message: Anthropic.Messages.Message): AiUsage {
     inputTokens: message.usage.input_tokens,
     outputTokens: message.usage.output_tokens
   };
+}
+
+/**
+ * Best-effort parse of the model's {"subject","blocks"} JSON. Deliberately
+ * strict about block shape (falls back to dropping an unrecognised block
+ * rather than guessing its fields) - the real, unforgiving validation still
+ * happens downstream via validateBlocks; this is just enough shape-checking
+ * to avoid handing a caller garbage before that boundary.
+ */
+function parseCampaignDraft(text: string): CampaignDraft {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.trim());
+  } catch {
+    return { subject: "", blocks: [] };
+  }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    return { subject: "", blocks: [] };
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const subject = typeof record.subject === "string" ? record.subject : "";
+  const rawBlocks = Array.isArray(record.blocks) ? record.blocks : [];
+
+  const blocks: CampaignDraftBlock[] = rawBlocks.flatMap((entry): CampaignDraftBlock[] => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const block = entry as Record<string, unknown>;
+
+    if (block.type === "heading" && typeof block.text === "string" && (block.level === 1 || block.level === 2)) {
+      return [{ type: "heading", text: block.text, level: block.level }];
+    }
+    if (block.type === "text" && typeof block.html === "string") {
+      return [{ type: "text", html: block.html }];
+    }
+    if (block.type === "divider") {
+      return [{ type: "divider" }];
+    }
+    return [];
+  });
+
+  return { subject, blocks };
 }
 
 function parseJsonStringArray(text: string): string[] {

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { renderBlocksToText, sanitizeImportedHtml, sanitizeRichTextHtml, validateBlocks } from "@raring2go/marketing";
 import type { Block } from "@raring2go/marketing";
 import { assertFileIsAttachable } from "../../../../lib/files-runtime";
-import { recordAiSuggestionAccepted, suggestBlockCopy, suggestSubjectLines } from "../../../../lib/ai-runtime";
+import { generateCampaignDraft, recordAiSuggestionAccepted, suggestBlockCopy, suggestSubjectLines } from "../../../../lib/ai-runtime";
 import {
   addNewsletterEditionOverride,
   approveCampaignVersion,
@@ -101,6 +101,29 @@ export async function suggestBlockCopyAction(
   input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }
 ): Promise<string> {
   return suggestBlockCopy(context, input);
+}
+
+export async function generateCampaignDraftAction(
+  context: MarketingActorContext,
+  input: { draftId: string; prompt: string }
+): Promise<{ subject: string; blocks: Block[] }> {
+  if (!input.prompt.trim()) {
+    throw new Error("Describe the campaign before generating a draft.");
+  }
+
+  const draft = await generateCampaignDraft(context, { draftId: input.draftId, prompt: input.prompt });
+
+  // Same trust boundary as composeEmailCampaignAction above: AI-generated
+  // content gets no special trust over client-submitted content - it's
+  // validated and sanitized exactly the same way before it ever reaches the
+  // compose form's state.
+  const blocksWithIds = draft.blocks.map((block) => ({ ...block, id: randomUUID() }));
+  const blocks: Block[] = validateBlocks(blocksWithIds).map((block) => {
+    if (block.type === "text") return { ...block, html: sanitizeRichTextHtml(block.html) };
+    return block;
+  });
+
+  return { subject: draft.subject, blocks };
 }
 
 export async function acceptAiSuggestionAction(
