@@ -107,6 +107,11 @@ const permissions: PermissionData = {
     grant(ids.roles.local, "marketing.newsletter_factory", "view", "own_territory"),
     grant(ids.roles.local, "marketing.newsletter_factory", "contribute", "own_territory"),
     grant(ids.roles.local, "marketing.journey", "view", "own_territory"),
+    grant(ids.roles.local, "marketing.journey", "create", "own_territory"),
+    grant(ids.roles.local, "marketing.journey", "edit", "own_territory"),
+    grant(ids.roles.local, "marketing.journey", "approve", "own_territory"),
+    grant(ids.roles.local, "marketing.journey", "activate", "own_territory"),
+    grant(ids.roles.local, "marketing.journey", "pause", "own_territory"),
     grant(ids.roles.local, "marketing.journey", "execute", "own_territory"),
     grant(ids.roles.local, "marketing.analytics", "view", "own_territory")
   ],
@@ -2258,6 +2263,67 @@ describe("marketing audience foundation", () => {
     expect(activeDetail.latestVersion?.status).toBe("approved");
     expect(activeDetail.entries).toBe(1);
     expect(activeDetail.activeExecutions).toBe(1);
+  });
+
+  it("lets a franchisee create, edit, approve, activate and pause a journey scoped to their own territory", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    const ownJourney = { ...journey(), id: "journey_own", territoryId: ids.territories.own };
+    const ownVersion = { ...journeyVersion(), id: "journey_own_v1", journeyId: "journey_own" };
+
+    await createJourney(localContext(), permissions, recorder, data, ownJourney, ownVersion);
+    const { journey: edited } = await updateJourneyDraft(localContext(), permissions, recorder, data, "journey_own", { name: "Renamed by franchisee" });
+    expect(edited.name).toBe("Renamed by franchisee");
+
+    await approveJourneyVersion(localContext(), permissions, recorder, data, "journey_own", "journey_own_v1", "2026-08-11T09:00:00.000Z");
+    await activateJourney(localContext(), permissions, recorder, data, "journey_own", "2026-08-11T09:05:00.000Z");
+    expect(data.journeys.find((candidate) => candidate.id === "journey_own")!.status).toBe("active");
+
+    await pauseJourney(localContext(), permissions, recorder, data, "journey_own", "2026-08-11T09:10:00.000Z");
+    expect(data.journeys.find((candidate) => candidate.id === "journey_own")!.status).toBe("paused");
+  });
+
+  it("blocks a territory-scoped actor from creating, editing or approving a network-wide journey", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    const networkJourney = { ...journey(), id: "journey_network", territoryId: null };
+    const networkVersion = { ...journeyVersion(), id: "journey_network_v1", journeyId: "journey_network" };
+
+    await expect(
+      createJourney(localContext(), permissions, recorder, data, networkJourney, networkVersion)
+    ).rejects.toThrow("cannot act on a network-wide journey");
+
+    await createJourney(hqContext(), permissions, recorder, data, networkJourney, networkVersion);
+
+    await expect(
+      updateJourneyDraft(localContext(), permissions, recorder, data, "journey_network", { name: "Hijacked" })
+    ).rejects.toThrow("cannot act on a network-wide journey");
+    await expect(
+      approveJourneyVersion(localContext(), permissions, recorder, data, "journey_network", "journey_network_v1", "2026-08-11T09:00:00.000Z")
+    ).rejects.toThrow("cannot act on a network-wide journey");
+  });
+
+  it("blocks a franchisee from activating or pausing a journey outside their own territory", async () => {
+    const data = seededData();
+    const recorder = audit();
+
+    const otherJourney = { ...journey(), id: "journey_other", territoryId: ids.territories.other };
+    const otherVersion = { ...journeyVersion(), id: "journey_other_v1", journeyId: "journey_other" };
+
+    await createJourney(hqContext(), permissions, recorder, data, otherJourney, otherVersion);
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_other", "journey_other_v1", "2026-08-11T09:00:00.000Z");
+
+    await expect(
+      activateJourney(localContext(), permissions, recorder, data, "journey_other", "2026-08-11T09:05:00.000Z")
+    ).rejects.toThrow("outside the active territory");
+
+    await activateJourney(hqContext(), permissions, recorder, data, "journey_other", "2026-08-11T09:05:00.000Z");
+
+    await expect(
+      pauseJourney(localContext(), permissions, recorder, data, "journey_other", "2026-08-11T09:10:00.000Z")
+    ).rejects.toThrow("outside the active territory");
   });
 
   it("prevents journeys from sending to suppressed contacts and can pause automation", async () => {

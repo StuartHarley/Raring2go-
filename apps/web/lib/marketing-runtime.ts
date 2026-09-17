@@ -124,6 +124,11 @@ export const marketingPermissionData: PermissionData = {
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryContribute, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyCreate, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyEdit, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyApprove, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyActivate, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyPause, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.marketingAnalyticsView, "own_territory")
   ],
   territories: foundationSeed.territories.map((territory) => ({
