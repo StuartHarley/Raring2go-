@@ -97,34 +97,61 @@ export async function seedUatDatabase(databaseUrl?: string, source = process.env
       }
     });
 
-    await db.insert(permissions).values([
+    // Permissions are unique on (module, action), not id - a database that
+    // already has the foundation seed applied (the normal case: db:seed then
+    // db:seed:uat) will already own rows for these three. Upsert on the real
+    // unique constraint and read back whichever id actually won, rather than
+    // assuming our own minted id landed.
+    const uatPermissionDefs = [
       {
+        key: "systemAdminister" as const,
         id: uatIds.permissions.systemAdminister,
         module: "system",
         action: "administer",
         description: "Administer system settings for UAT."
       },
       {
+        key: "rolesView" as const,
         id: uatIds.permissions.rolesView,
         module: "roles",
         action: "view",
         description: "View role and permission assignments for UAT."
       },
       {
+        key: "integrationsView" as const,
         id: uatIds.permissions.integrationsView,
         module: "integrations",
         action: "view",
         description: "View provider connections during UAT."
       }
-    ]).onConflictDoUpdate({
-      target: permissions.id,
-      set: {
-        module: sql`excluded.module`,
-        action: sql`excluded.action`,
-        description: sql`excluded.description`,
-        updatedAt: sql`now()`
+    ];
+
+    const resolvedPermissionIds: Record<(typeof uatPermissionDefs)[number]["key"], string> = {
+      systemAdminister: uatIds.permissions.systemAdminister,
+      rolesView: uatIds.permissions.rolesView,
+      integrationsView: uatIds.permissions.integrationsView
+    };
+
+    for (const def of uatPermissionDefs) {
+      const [row] = await db.insert(permissions).values({
+        id: def.id,
+        module: def.module,
+        action: def.action,
+        description: def.description
+      }).onConflictDoUpdate({
+        target: [permissions.module, permissions.action],
+        set: {
+          description: sql`excluded.description`,
+          updatedAt: sql`now()`
+        }
+      }).returning({ id: permissions.id });
+
+      if (!row) {
+        throw new Error(`Upsert of permission ${def.module}.${def.action} did not return a row.`);
       }
-    });
+
+      resolvedPermissionIds[def.key] = row.id;
+    }
 
     await db.insert(memberships).values({
       id: uatIds.membership,
@@ -136,19 +163,19 @@ export async function seedUatDatabase(databaseUrl?: string, source = process.env
     await db.insert(rolePermissions).values([
       {
         roleId: uatIds.role,
-        permissionId: uatIds.permissions.systemAdminister,
+        permissionId: resolvedPermissionIds.systemAdminister,
         scope: "system",
         constraints: {}
       },
       {
         roleId: uatIds.role,
-        permissionId: uatIds.permissions.rolesView,
+        permissionId: resolvedPermissionIds.rolesView,
         scope: "network",
         constraints: {}
       },
       {
         roleId: uatIds.role,
-        permissionId: uatIds.permissions.integrationsView,
+        permissionId: resolvedPermissionIds.integrationsView,
         scope: "network",
         constraints: {}
       }
