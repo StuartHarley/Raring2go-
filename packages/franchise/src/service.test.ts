@@ -743,7 +743,7 @@ describe("franchise service", () => {
         ...documentRecord("document_1", "version_1"),
         category: "insurance_certificate",
         documentType: "public_liability",
-        expiryDate: "2026-09-21"
+        expiryDate: daysFromNow(30)
       },
       version: documentVersion("version_1", "document_1", 1, "artifact_1"),
       artifact: documentArtifact("artifact_1", "document_1")
@@ -763,7 +763,9 @@ describe("franchise service", () => {
         requirementId: "requirement_insurance",
         evidenceDocumentId: "document_1",
         status: "missing",
-        expiresAt: "2026-09-21"
+        // requirement_insurance's expiryWarningDays is 60 - 30 days out stays
+        // inside the warning window indefinitely, unlike a hardcoded date.
+        expiresAt: daysFromNow(30)
       }
     );
     expect(getFranchise360(hqContext(), permissionData, franchiseData, ids.franchises.own).compliance.status).toBe("pending_review");
@@ -1735,4 +1737,10 @@ function audit() {
       this.events.push(event);
     }
   };
+}
+
+function daysFromNow(days: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
