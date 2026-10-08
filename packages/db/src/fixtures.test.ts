@@ -167,7 +167,8 @@ describe("foundation fixtures", () => {
       "ai.run",
       "content.event_suggestion",
       "content.event_suggestion",
-      "content.event_suggestion"
+      "content.event_suggestion",
+      "portal.advertiser"
     ]);
   });
 

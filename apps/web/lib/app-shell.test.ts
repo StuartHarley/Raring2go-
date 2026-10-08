@@ -282,6 +282,39 @@ describe("app shell context and capabilities", () => {
     });
   });
 
+  it("gives an advertiser's login only the portal, in their own organisation, and nothing staff-facing", async () => {
+    const advertiser = { sessionKey: "advertiser", organisationId: fixtureIds.organisations.advertiser };
+    const shell = await resolveShell(advertiser);
+    expect(shell.kind).toBe("authenticated");
+    if (shell.kind === "authenticated") {
+      expect(shell.navigation.map((item) => item.id)).toEqual(["portal"]);
+      expect(shell.activeContext.organisationId).toBe(fixtureIds.organisations.advertiser);
+    }
+    await expect(requireShellPermission(advertiser, { module: "portal.advertiser", action: "view" })).resolves.toMatchObject({ kind: "authenticated" });
+    for (const capability of [
+      { module: "advertiser", action: "view" },
+      { module: "content", action: "view" },
+      { module: "franchise", action: "view" },
+      { module: "system.jobs", action: "view" },
+      { module: "automation.task", action: "view" },
+      { module: "ai.run", action: "view" },
+      { module: "territory", action: "view" }
+    ]) {
+      await expect(requireShellPermission(advertiser, capability)).rejects.toMatchObject({ kind: "unauthorised" });
+    }
+  });
+
+  it("does not show the advertiser portal to staff, and keeps an advertiser out of other organisations", async () => {
+    const hq = await resolveShell({ sessionKey: "superadmin", organisationId: fixtureIds.organisations.hq });
+    const franchisee = await resolveShell({ sessionKey: "franchisee", organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield });
+    for (const shell of [hq, franchisee]) {
+      expect(shell.kind === "authenticated" && shell.navigation.some((item) => item.id === "portal")).toBe(false);
+    }
+    await expect(
+      resolveShell({ sessionKey: "advertiser", organisationId: fixtureIds.organisations.hq })
+    ).resolves.toMatchObject({ kind: "invalid_context" });
+  });
+
   it("requires a session for the job console", async () => {
     await expect(requireShellPermission({}, { module: "system.jobs", action: "view" })).rejects.toMatchObject({
       kind: "unauthenticated"

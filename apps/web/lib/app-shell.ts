@@ -37,7 +37,7 @@ export type NavigationDescriptor = {
   href: string;
   capability: ShellCapability;
   contextLevel: "territory" | "network" | "system";
-  group: "today" | "franchise" | "commercial" | "publishing" | "marketing" | "finance" | "administration";
+  group: "today" | "portal" | "franchise" | "commercial" | "publishing" | "marketing" | "finance" | "administration";
 };
 
 export type ResolvedShell = {
@@ -113,6 +113,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     },
     contextLevel: "territory",
     group: "today"
+  },
+  {
+    id: "portal",
+    label: "My Campaigns",
+    href: "/app/portal",
+    capability: {
+      module: "portal.advertiser",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "portal"
   },
   {
     id: "tasks",
@@ -370,6 +381,7 @@ export const shellNavigation: NavigationDescriptor[] = [
 ];
 
 export const navigationGroups: Array<{ id: NavigationDescriptor["group"]; label: string }> = [
+  { id: "portal", label: "Your account" },
   { id: "today", label: "Today" },
   { id: "franchise", label: "Franchise" },
   { id: "commercial", label: "Commercial" },
@@ -384,6 +396,13 @@ const sessionsByKey: Record<string, AuthSession> = {
     id: "session_superadmin",
     userId: fixtureIds.users.superAdmin,
     sessionTokenHash: "fixture_superadmin",
+    assuranceLevel: "standard",
+    expiresAt: new Date("2099-01-01T00:00:00.000Z")
+  },
+  advertiser: {
+    id: "session_advertiser",
+    userId: fixtureIds.users.advertiserUser,
+    sessionTokenHash: "fixture_advertiser",
     assuranceLevel: "standard",
     expiresAt: new Date("2099-01-01T00:00:00.000Z")
   },
@@ -416,9 +435,21 @@ const permissionData: PermissionData = {
       roleId: fixtureIds.roles.franchisee,
       organisationId: fixtureIds.organisations.franchise,
       territoryId: fixtureIds.territories.suttonColdfield
+    },
+    {
+      id: "fixture_assignment_advertiser",
+      userId: fixtureIds.users.advertiserUser,
+      roleId: fixtureIds.roles.advertiser,
+      organisationId: fixtureIds.organisations.advertiser
     }
   ],
   rolePermissions: [
+    {
+      roleId: fixtureIds.roles.advertiser,
+      permissionId: fixtureIds.permissions.portalView,
+      scope: "own_organisation",
+      constraints: {}
+    },
     {
       roleId: fixtureIds.roles.superAdmin,
       permissionId: fixtureIds.permissions.systemAdminister,
@@ -912,6 +943,12 @@ function defaultContextForUser(userId: string) {
     return {
       organisationId: fixtureIds.organisations.franchise,
       territoryId: fixtureIds.territories.suttonColdfield
+    };
+  }
+
+  if (userId === fixtureIds.users.advertiserUser) {
+    return {
+      organisationId: fixtureIds.organisations.advertiser
     };
   }
 

@@ -149,7 +149,7 @@ export function getAdvertiser360(
 ): Advertiser360 {
   requireAdvertisingPermission(context, permissions, "view");
   const advertiser = requireAdvertiser(data, advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   return assembleAdvertiser360(data, advertiser);
 }
 
@@ -161,7 +161,7 @@ export async function createAdvertiser(
   advertiser: AdvertiserRecord
 ) {
   requireAdvertisingPermission(context, permissions, "create");
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (data.advertisers.some((candidate) => candidate.advertiserOrganisationId === advertiser.advertiserOrganisationId && !candidate.deletedAt)) {
     throw new Error("Advertiser organisation already has an advertiser CRM record.");
   }
@@ -187,7 +187,7 @@ export async function updateAdvertiser(
 ) {
   requireAdvertisingPermission(context, permissions, "edit");
   const advertiser = requireAdvertiser(data, advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   Object.assign(advertiser, patch);
   await audit.record(auditEvent(context, auditActions.advertiserUpdate, advertiser, {
     patch: Object.keys(patch)
@@ -204,7 +204,7 @@ export async function addAdvertiserContact(
 ) {
   requireAdvertisingPermission(context, permissions, "contactManage");
   const advertiser = requireAdvertiser(data, contact.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (contact.userId && (contact.name || contact.email)) {
     throw new Error("Linked user contacts should not duplicate user identity fields.");
   }
@@ -226,7 +226,7 @@ export async function recordAdvertiserActivity(
 ) {
   requireAdvertisingPermission(context, permissions, "activityRecord");
   const advertiser = requireAdvertiser(data, event.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (event.territoryId !== advertiser.owningTerritoryId) {
     throw new Error("Advertiser activity must use the owning territory.");
   }
@@ -285,7 +285,7 @@ export async function createOpportunity(
 ) {
   requireAdvertisingPermission(context, permissions, "opportunityCreate");
   const advertiser = requireAdvertiser(data, opportunity.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (opportunity.territoryId !== advertiser.owningTerritoryId) {
     throw new Error("Opportunity territory must match the advertiser owning territory.");
   }
@@ -315,7 +315,7 @@ export async function updateOpportunity(
   requireAdvertisingPermission(context, permissions, "opportunityEdit");
   const opportunity = requireOpportunity(data, opportunityId);
   const advertiser = requireAdvertiser(data, opportunity.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   Object.assign(opportunity, patch);
   await audit.record(auditEvent(context, auditActions.advertiserOpportunityUpdate, advertiser, {
     opportunityId,
@@ -339,7 +339,7 @@ export async function changeOpportunityStage(
   requireAdvertisingPermission(context, permissions, "opportunityEdit");
   const opportunity = requireOpportunity(data, opportunityId);
   const advertiser = requireAdvertiser(data, opportunity.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   const stage = requirePipelineStage(data, input.stageId);
   opportunity.stageId = stage.id;
   opportunity.probability = stage.probabilityDefault;
@@ -389,7 +389,7 @@ export async function reserveInventorySlot(
     throw new Error("Inventory slot is outside the active territory.");
   }
   const advertiser = requireAdvertiser(data, reservation.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   const activeReservation = data.inventoryReservations.find(
     (candidate) => candidate.inventorySlotId === slot.id && candidate.status === "reserved" && !candidate.deletedAt
   );
@@ -418,7 +418,7 @@ export async function createProposal(
 ) {
   requireAdvertisingPermission(context, permissions, "proposalCreate");
   const advertiser = requireAdvertiser(data, proposal.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (proposal.territoryId !== advertiser.owningTerritoryId) {
     throw new Error("Proposal territory must match the advertiser owning territory.");
   }
@@ -472,12 +472,14 @@ export async function acceptProposalAsBooking(
     reservationIdPrefix: string;
     productionRequestIdPrefix: string;
     acceptedOn: string;
+    /** When set, child ids come from here (real persistence needs UUIDs); otherwise `${prefix}_${n}`. */
+    newId?: () => string;
   }
 ) {
   requireAdvertisingPermission(context, permissions, "bookingAccept");
   const proposal = requireProposal(data, input.proposalId);
   const advertiser = requireAdvertiser(data, proposal.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (!["draft", "sent"].includes(proposal.status)) {
     const existing = data.bookings.find((booking) => booking.proposalId === proposal.id && !booking.deletedAt);
     if (proposal.status === "accepted" && existing) {
@@ -522,7 +524,7 @@ export async function acceptProposalAsBooking(
       if (slot.exclusive && activeReservation) {
         throw new Error("Exclusive inventory slot is already reserved.");
       }
-      inventoryReservationId = `${input.reservationIdPrefix}_${index + 1}`;
+      inventoryReservationId = input.newId ? input.newId() : `${input.reservationIdPrefix}_${index + 1}`;
       slot.status = "reserved";
       reservations.push({
         id: inventoryReservationId,
@@ -539,7 +541,7 @@ export async function acceptProposalAsBooking(
       });
     }
 
-    const bookingItemId = `${input.bookingItemIdPrefix}_${index + 1}`;
+    const bookingItemId = input.newId ? input.newId() : `${input.bookingItemIdPrefix}_${index + 1}`;
     bookingItems.push({
       id: bookingItemId,
       bookingId: booking.id,
@@ -557,7 +559,7 @@ export async function acceptProposalAsBooking(
     const product = requireProduct(data, item.productId);
     if (product.requiresArtwork) {
       productionRequests.push({
-        id: `${input.productionRequestIdPrefix}_${index + 1}`,
+        id: input.newId ? input.newId() : `${input.productionRequestIdPrefix}_${index + 1}`,
         bookingId: booking.id,
         bookingItemId,
         advertiserId: proposal.advertiserId,
@@ -607,6 +609,7 @@ export async function acceptProposalCommercially(
     bookingItemIdPrefix: string;
     reservationIdPrefix: string;
     productionRequestIdPrefix: string;
+    newId?: () => string;
     method?: "simple" | "signature_required";
     providerMetadata?: Record<string, unknown>;
     domainEventId: string;
@@ -619,7 +622,7 @@ export async function acceptProposalCommercially(
   }
   const proposal = requireProposal(data, input.proposalId);
   const advertiser = requireAdvertiser(data, proposal.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   const terms = requireTerms(data, input.termsId);
   const contact = data.contacts.find((candidate) => candidate.id === input.acceptedByContactId && !candidate.deletedAt);
   if (!contact || contact.advertiserId !== advertiser.id) {
@@ -653,7 +656,8 @@ export async function acceptProposalCommercially(
       bookingItemIdPrefix: input.bookingItemIdPrefix,
       reservationIdPrefix: input.reservationIdPrefix,
       productionRequestIdPrefix: input.productionRequestIdPrefix,
-      acceptedOn: input.acceptedAt
+      acceptedOn: input.acceptedAt,
+      newId: input.newId
     });
     acceptance.bookingId = booking.id;
     emitAdvertiserEvent(data, {
@@ -671,7 +675,7 @@ export async function acceptProposalCommercially(
       idempotencyKey: `advertiser.proposal.accepted:${acceptance.id}`
     });
     emitAdvertiserEvent(data, {
-      id: `${input.domainEventId}_booking`,
+      id: input.newId ? input.newId() : `${input.domainEventId}_booking`,
       eventType: "advertiser.booking.confirmed",
       entityType: "commercial_booking",
       entityId: booking.id,
@@ -723,7 +727,7 @@ export async function respondToProposal(
   }
   const proposal = requireProposal(data, input.proposalId);
   const advertiser = requireAdvertiser(data, proposal.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   const terms = requireTerms(data, input.termsId);
   const contact = data.contacts.find((candidate) => candidate.id === input.acceptedByContactId && !candidate.deletedAt);
   if (!contact || contact.advertiserId !== advertiser.id) {
@@ -792,7 +796,7 @@ export async function createInvoiceFromBooking(
   requireAdvertisingPermission(context, permissions, "invoiceCreate");
   const booking = requireBooking(data, input.bookingId);
   const advertiser = requireAdvertiser(data, booking.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   const bookingItems = data.bookingItems.filter((item) => item.bookingId === booking.id && !item.deletedAt);
   if (bookingItems.length === 0) {
     throw new Error("Cannot invoice booking without items.");
@@ -853,7 +857,7 @@ export async function issueInvoice(
   requireAdvertisingPermission(context, permissions, "invoiceIssue");
   const invoice = requireInvoice(data, input.invoiceId);
   const advertiser = requireAdvertiser(data, invoice.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (invoice.status !== "draft") {
     throw new Error("Only draft invoices can be issued.");
   }
@@ -885,7 +889,7 @@ export async function editDraftInvoice(
   requireAdvertisingPermission(context, permissions, "invoiceEditDraft");
   const invoice = requireInvoice(data, invoiceId);
   const advertiser = requireAdvertiser(data, invoice.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (invoice.status !== "draft") {
     throw new Error("Issued invoices cannot be materially edited.");
   }
@@ -909,7 +913,7 @@ export async function recordPayment(
     return existing;
   }
   const advertiser = requireAdvertiser(data, payment.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   const storedPayment = { ...payment, allocatedMinor: 0, unallocatedMinor: payment.amountMinor };
   data.payments.push(storedPayment);
   emitAdvertiserEvent(data, event(domainEventId, "advertiser.payment.received", "advertiser_payment", payment.id, advertiser, {
@@ -935,7 +939,7 @@ export async function allocatePayment(
   const payment = requirePayment(data, allocation.paymentId);
   const invoice = requireInvoice(data, allocation.invoiceId);
   const advertiser = requireAdvertiser(data, invoice.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (payment.advertiserId !== invoice.advertiserId || payment.issuerOrganisationId !== invoice.issuerOrganisationId) {
     throw new Error("Payment and invoice must share advertiser and issuer.");
   }
@@ -981,7 +985,7 @@ export async function issueCreditNote(
   requireAdvertisingPermission(context, permissions, "creditCreate");
   const invoice = requireInvoice(data, input.creditNote.invoiceId);
   const advertiser = requireAdvertiser(data, invoice.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   const totalMinor = input.lines.reduce((sum, line) => sum + line.grossMinor, 0);
   if (totalMinor > invoice.balanceMinor) {
     throw new Error("Credit note cannot exceed invoice balance.");
@@ -1019,7 +1023,7 @@ export async function createArtworkRequirement(
 ) {
   requireAdvertisingPermission(context, permissions, "artworkManage");
   const advertiser = requireAdvertiser(data, requirement.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   const request = data.productionRequests.find((candidate) => candidate.id === requirement.productionRequestId && !candidate.deletedAt);
   if (!request || request.advertiserId !== advertiser.id || request.territoryId !== requirement.territoryId) {
     throw new Error("Artwork requirement must reference a matching production request.");
@@ -1051,7 +1055,7 @@ export async function submitArtworkVersion(
   requireAdvertisingPermission(context, permissions, "artworkSubmit");
   const requirement = requireArtworkRequirement(data, requirementId);
   const advertiser = requireAdvertiser(data, requirement.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (version.artworkRequirementId !== requirement.id) {
     throw new Error("Artwork version must reference the requirement.");
   }
@@ -1092,7 +1096,7 @@ export async function updateArtworkStatus(
   requireAdvertisingPermission(context, permissions, input.status === "production_ready" || input.status === "approved" ? "artworkApprove" : "artworkManage");
   const requirement = requireArtworkRequirement(data, requirementId);
   const advertiser = requireAdvertiser(data, requirement.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (input.approvedVersionId && !data.artworkVersions.some((version) => version.id === input.approvedVersionId && version.artworkRequirementId === requirement.id && !version.deletedAt)) {
     throw new Error("Approved artwork version must belong to the requirement.");
   }
@@ -1141,7 +1145,7 @@ export async function recordCampaignFulfilment(
   requireAdvertisingPermission(context, permissions, "fulfilmentManage");
   const booking = requireBooking(data, fulfilment.bookingId);
   const advertiser = requireAdvertiser(data, fulfilment.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (booking.advertiserId !== advertiser.id || booking.territoryId !== advertiser.owningTerritoryId) {
     throw new Error("Campaign fulfilment must match the advertiser booking.");
   }
@@ -1198,7 +1202,7 @@ export async function createProofPack(
   requireAdvertisingPermission(context, permissions, "proofCreate");
   const fulfilment = requireCampaignFulfilment(data, proofPack.fulfilmentId);
   const advertiser = requireAdvertiser(data, proofPack.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (fulfilment.advertiserId !== advertiser.id || fulfilment.territoryId !== advertiser.owningTerritoryId) {
     throw new Error("Proof pack must match the advertiser fulfilment.");
   }
@@ -1236,7 +1240,7 @@ export async function createRenewalPromptFromProofPack(
 ) {
   requireAdvertisingPermission(context, permissions, "renewalManage");
   const advertiser = requireAdvertiser(data, renewal.advertiserId);
-  ensureContextCanAccessAdvertiser(context, advertiser);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
   if (renewal.territoryId !== advertiser.owningTerritoryId) {
     throw new Error("Renewal prompt territory must match advertiser territory.");
   }
@@ -1350,9 +1354,15 @@ function visibleTerritories(context: AdvertisingActorContext, data: AdvertisingD
   return new Set([territory.id]);
 }
 
-function ensureContextCanAccessAdvertiser(context: AdvertisingActorContext, advertiser: AdvertiserRecord) {
+function ensureContextCanAccessAdvertiser(context: AdvertisingActorContext, advertiser: AdvertiserRecord, data: AdvertisingData) {
   if (context.territoryId && context.territoryId !== advertiser.owningTerritoryId) {
     throw new Error("Advertiser is outside the active territory.");
+  }
+  // A user acting from an advertiser organisation (the portal) can only ever reach their own
+  // advertiser: the territory check above cannot restrict them, because they have no territory.
+  const actingOrganisation = context.organisationId ? data.organisations.find((organisation) => organisation.id === context.organisationId) : undefined;
+  if (actingOrganisation?.kind === "advertiser" && actingOrganisation.id !== advertiser.advertiserOrganisationId) {
+    throw new Error("Advertiser is outside your organisation.");
   }
 }
 

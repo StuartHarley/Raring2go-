@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Advantage Platform Suite — Fujifilm Investor Briefing</title>
+<style>
+@page { size: 210mm 297mm; margin: 0; }
+:root{
+  --ink:#080D22; --ink2:#101842; --paper:#FFFFFF; --mist:#F3F5FB; --line:#E2E6F2;
+  --text:#1A2038; --muted:#5B6485;
+  --c:#00B4F0; --m:#E6007E; --y:#FFD400; --k:#0B0B12;
+  --grad:linear-gradient(100deg,#00B4F0 0%,#7A4DFF 50%,#E6007E 100%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#fff}
+body{font-family:"Avenir Next","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--text);-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:10pt;line-height:1.45}
+.page{width:210mm;height:297mm;position:relative;overflow:hidden;page-break-after:always;break-after:page;padding:16mm 16mm 20mm}
+.page:last-child{page-break-after:auto;break-after:auto}
+.dark{background:radial-gradient(1200px 700px at 85% -10%,#1B2A78 0%,transparent 60%),radial-gradient(900px 600px at -10% 110%,#4B124F 0%,transparent 55%),var(--ink);color:#fff}
+.dots{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.07) 1.2px,transparent 1.4px);background-size:9px 9px;pointer-events:none;-webkit-mask-image:linear-gradient(135deg,#000 0%,transparent 60%);mask-image:linear-gradient(135deg,#000 0%,transparent 60%)}
+.foot{position:absolute;left:16mm;right:16mm;bottom:8mm;display:flex;justify-content:space-between;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.dark .foot{color:rgba(255,255,255,.5)}
+.eyebrow{font-size:8pt;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:#7A4DFF;display:inline-block}
+h1,h2,h3{letter-spacing:-.02em;line-height:1.05}
+h2{font-size:27pt;font-weight:800;margin:3mm 0 4mm}
+h3{font-size:12.5pt;font-weight:800;margin-bottom:1.5mm}
+.lead{font-size:11.5pt;color:var(--muted);max-width:150mm;line-height:1.5}
+.dark .lead{color:rgba(255,255,255,.72)}
+.grad-t{color:#7A4DFF}.w{display:inline-block;white-space:nowrap}
+.tag{display:inline-block;font-size:6.5pt;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:1.2mm 2.4mm;border-radius:20mm;vertical-align:middle}
+.t-built{background:#DFF8EC;color:#067A46}
+.t-jan{background:#FFF1BF;color:#7A5A00}
+.t-road{background:#E9E4FF;color:#4B2FBF}
+.dark .t-built{background:rgba(40,220,140,.16);color:#5CF0B0}
+.dark .t-jan{background:rgba(255,212,0,.16);color:#FFE24D}
+.dark .t-road{background:rgba(150,120,255,.2);color:#C4B3FF}
+.cmyk{display:flex;gap:1.6mm}.cmyk i{width:4mm;height:4mm;border-radius:50%;display:block}
+.cmyk i:nth-child(1){background:var(--c)}.cmyk i:nth-child(2){background:var(--m)}.cmyk i:nth-child(3){background:var(--y)}.cmyk i:nth-child(4){background:#222}
+.card{background:#fff;border:1px solid var(--line);border-radius:4mm;padding:5.5mm;position:relative}
+.dark .card{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14)}
+.shadow{box-shadow:0 8px 24px rgba(20,30,80,.08)}
+ul.tick{list-style:none}
+ul.tick li{padding-left:5.5mm;position:relative;margin:1.3mm 0;font-size:9.2pt}
+ul.tick li:before{content:"";position:absolute;left:0;top:1.6mm;width:2.6mm;height:2.6mm;border-radius:50%;background:var(--grad)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:5mm}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:4.5mm}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm}
+.stat{font-size:34pt;font-weight:800;letter-spacing:-.03em;line-height:1}
+.statl{font-size:8.5pt;color:var(--muted);margin-top:1.5mm}
+.dark .statl{color:rgba(255,255,255,.65)}
+.small{font-size:7.5pt;color:var(--muted)}
+.dark .small{color:rgba(255,255,255,.55)}
+
+/* cover */
+.cover{padding:0}
+.cover .crop{position:absolute;width:10mm;height:10mm;border-color:rgba(255,255,255,.5);border-style:solid;border-width:0}
+.cover .crop.tl{top:7mm;left:7mm;border-right-width:.3mm;border-bottom-width:.3mm;width:6mm;height:6mm}
+.cover .crop.tr{top:7mm;right:7mm;border-left-width:.3mm;border-bottom-width:.3mm;width:6mm;height:6mm}
+.cover .crop.bl{bottom:7mm;left:7mm;border-right-width:.3mm;border-top-width:.3mm;width:6mm;height:6mm}
+.cover .crop.br{bottom:7mm;right:7mm;border-left-width:.3mm;border-top-width:.3mm;width:6mm;height:6mm}
+.orbit{position:absolute;right:-112mm;top:96mm;width:175mm;height:175mm;border-radius:50%;
+  background:conic-gradient(from 200deg,#00B4F0,#7A4DFF,#E6007E,#FFD400,#00B4F0);opacity:.9;filter:blur(.2px);
+  -webkit-mask:radial-gradient(circle,transparent 62%,#000 63%,#000 66%,transparent 67%);mask:radial-gradient(circle,transparent 62%,#000 63%,#000 66%,transparent 67%)}
+.orbit2{position:absolute;right:-92mm;top:116mm;width:135mm;height:135mm;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,rgba(0,180,240,.55),rgba(122,77,255,.35) 45%,rgba(230,0,126,.3) 75%,transparent 76%);filter:blur(14px)}
+.coverbody{position:absolute;left:18mm;top:50mm;right:18mm}
+.coverbody h1{font-size:50pt;font-weight:800;letter-spacing:-.035em;line-height:.98}
+.coverbody .sub{font-size:14pt;color:rgba(255,255,255,.78);margin-top:8mm;max-width:112mm;line-height:1.4}
+.covertop{position:absolute;left:18mm;right:18mm;top:15mm;display:flex;justify-content:space-between;align-items:center;font-size:8pt;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.75)}
+.coverbot{position:absolute;left:18mm;right:18mm;bottom:17mm;display:flex;justify-content:space-between;align-items:flex-end}
+.pillrow{display:flex;gap:2.5mm;flex-wrap:wrap;margin-top:9mm}
+.pill{border:1px solid rgba(255,255,255,.3);border-radius:20mm;padding:1.8mm 4mm;font-size:8pt;letter-spacing:.06em;background:rgba(255,255,255,.07)}
+
+/* platform cards */
+.pc{display:flex;gap:4mm;align-items:flex-start}
+.pc .ico{flex:0 0 12mm;height:12mm;border-radius:3.2mm;display:grid;place-items:center;color:#fff;font-weight:800;font-size:12pt}
+.pc p{font-size:8.8pt;color:var(--muted);margin-top:1mm}
+.pc .meta{font-size:7.5pt;font-weight:700;letter-spacing:.04em;margin-top:2.2mm;color:var(--text)}
+
+/* machine chips */
+.chip{display:inline-block;border:1px solid var(--line);background:#fff;border-radius:2.5mm;padding:2mm 3.2mm;margin:0 1.6mm 1.8mm 0;font-size:8.8pt;font-weight:700}
+.chip small{display:block;font-weight:500;font-size:6.8pt;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.chip.fj{border-color:#00B4F033;background:linear-gradient(180deg,#fff,#F0FAFF)}
+
+/* flow */
+.flow{display:flex;align-items:stretch;gap:0;margin-top:2mm}
+.step{flex:1;position:relative;padding:4mm 2.6mm 3mm;background:#fff;border:1px solid var(--line);border-radius:3mm;margin-right:3.4mm;font-size:7.8pt;line-height:1.3;text-align:center}
+.step:last-child{margin-right:0}
+.step:not(:last-child):after{content:"";position:absolute;right:-3.4mm;top:50%;width:3.4mm;height:.4mm;background:var(--grad)}
+.step b{display:block;font-size:8.6pt;margin-bottom:1mm}
+.step .n{position:absolute;top:-2.6mm;left:50%;transform:translateX(-50%);width:5.2mm;height:5.2mm;border-radius:50%;background:var(--ink);color:#fff;font-size:6.5pt;display:grid;place-items:center;font-weight:800}
+.stages{display:flex;flex-wrap:wrap;gap:1.4mm;margin-top:3mm}
+.stages span{font-size:6.6pt;font-weight:700;letter-spacing:.05em;padding:1.2mm 2.2mm;border-radius:20mm;background:var(--mist);color:var(--text)}
+
+/* AI matrix */
+.ai{border-radius:4mm;padding:7mm 6mm;color:#fff;position:relative;overflow:hidden}
+.ai h3{font-size:13pt;margin-bottom:1mm}
+.ai .who{font-size:7pt;letter-spacing:.16em;text-transform:uppercase;opacity:.8;margin-bottom:3mm}
+.ai li{list-style:none;font-size:9pt;margin:2mm 0;padding-left:4mm;position:relative;line-height:1.35}
+.ai li:before{content:"✦";position:absolute;left:0;font-size:6.5pt;top:.8mm;opacity:.85}
+.a1{background:linear-gradient(150deg,#0A6CC9,#00B4F0)}
+.a2{background:linear-gradient(150deg,#6A2BD8,#9B5BFF)}
+.a3{background:linear-gradient(150deg,#B0006A,#E6007E)}
+.a4{background:linear-gradient(150deg,#C98A00,#F2B600);color:#241A00}
+.a4 li:before{color:#241A00}
+
+/* trust meter */
+.gate{display:flex;align-items:center;gap:2mm;margin:3mm 0}
+.gate .node{flex:1;text-align:center;padding:3mm 1.5mm;border-radius:3mm;font-size:8pt;font-weight:700;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18)}
+.gate .arrow{color:var(--y);font-weight:800}
+.gate .node.hl{background:linear-gradient(135deg,rgba(0,180,240,.3),rgba(230,0,126,.3));border-color:rgba(255,255,255,.4)}
+
+table.t{width:100%;border-collapse:collapse;font-size:8.4pt}
+table.t th{text-align:left;font-size:7pt;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:2mm 2mm;border-bottom:1.5px solid var(--text)}
+table.t td{padding:1.5mm 2mm;border-bottom:1px solid var(--line);vertical-align:top}
+.road{position:relative;margin-top:6mm;padding-left:7mm}
+.road:before{content:"";position:absolute;left:2mm;top:2mm;bottom:2mm;width:.8mm;background:var(--grad);border-radius:1mm}
+.rm{position:relative;margin-bottom:5mm}
+.rm:before{content:"";position:absolute;left:-7.4mm;top:1.3mm;width:4.2mm;height:4.2mm;border-radius:50%;background:#fff;border:1mm solid var(--m)}
+.rm .when{font-size:7.5pt;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--m)}
+.rm h3{font-size:11.5pt;margin:.8mm 0 .8mm}
+.rm p{font-size:8.8pt;color:var(--muted)}
+.bar{height:2.4mm;border-radius:2mm;background:rgba(255,255,255,.14);overflow:hidden;margin-top:1.5mm}
+.bar i{display:block;height:100%;background:var(--grad)}
+.tbc{display:inline-block;border:1.5px dashed #E0A100;background:#FFF8DB;color:#7A5A00;border-radius:2mm;padding:.3mm 2mm;font-weight:800;font-size:.8em}
+.dark .tbc{background:rgba(255,212,0,.12);color:#FFE24D;border-color:#FFE24D}
+.shot{border-radius:3mm;border:1px solid var(--line);box-shadow:0 10px 28px rgba(15,25,70,.18);overflow:hidden;background:#fff;position:relative}
+.shot img{display:block;width:100%}
+.shot .cap{position:absolute;left:0;right:0;bottom:0;padding:2.2mm 3.5mm;background:linear-gradient(0deg,rgba(8,13,34,.88),rgba(8,13,34,.0));color:#fff;font-size:7.6pt;font-weight:700;letter-spacing:.02em}
+.dark .shot{border-color:rgba(255,255,255,.2);box-shadow:0 10px 28px rgba(0,0,0,.45)}
+</style>
+</head>
+<body>
+
+<!-- ============ 1 COVER ============ -->
+<section class="page dark cover">
+  <div class="dots"></div>
+  <div class="orbit"></div><div class="orbit2"></div>
+  <div class="crop tl"></div><div class="crop tr"></div><div class="crop bl"></div><div class="crop br"></div>
+  <div class="covertop"><span>Computer Xplorers Group</span><span>Investor briefing · 12 October 2026</span></div>
+  <div class="coverbody">
+    <div class="cmyk" style="margin-bottom:7mm"><i></i><i></i><i></i><i></i></div>
+    <div class="eyebrow">Prepared for Fujifilm</div>
+    <h1 style="margin-top:4mm">The operating<br>system for the<br><span class="grad-t">print network.</span></h1>
+    <p class="sub">Four AI-powered platforms, built in under seven months, that quote, produce, sell and market print — for franchise networks, independents and the vendors who equip them.</p>
+    <div class="pillrow"><span class="pill">Advantage MIS</span><span class="pill">Advantage&nbsp;AI</span><span class="pill">Raring2go!</span><span class="pill">DPS Sales Intelligence</span></div>
+  </div>
+  <div class="coverbot">
+    <div style="font-size:8pt;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.6)">Strictly private &amp; confidential</div>
+    <div style="font-size:8pt;text-align:right;color:rgba(255,255,255,.7)">Facts verified against source code<br>as at 8 October 2026</div>
+  </div>
+</section><section class="page">
+  <div class="eyebrow">The opportunity</div>
+  <h2>Every press is only as<br>productive as the <span class="grad-t">software around it.</span></h2>
+  <p class="lead">Print businesses run on quotes, artwork, imposition, scheduling, proofs and invoices, and most stitch that together by hand. We built the connected layer, and the AI on top of it, so every press sits inside a faster, more profitable business.</p>
+
+  <div style="margin-top:6mm;display:grid;gap:3.2mm">
+    <div class="card shadow pc" style="padding:3.6mm 5mm">
+      <div class="ico" style="background:linear-gradient(135deg,#00B4F0,#0A6CC9)">A</div>
+      <div style="flex:1"><h3>Advantage MIS <span class="tag t-built">In field pilot now</span> <span class="tag t-jan">Fujifilm Flow API · Jan 2027</span></h3>
+        <p>Being piloted in the field today: the management platform for print centres and independent print shops: instant multi-mode quoting, 14-stage job control, prepress, web-to-print, EPOS, CRM and finance. Ships with a verified Fujifilm Revoria &amp; ApeosPro press catalogue.</p>
+        <div class="meta">678 data models · 1,077 API endpoints · 344 screens</div></div>
+    </div>
+    <div class="card shadow pc" style="padding:3.6mm 5mm">
+      <div class="ico" style="background:linear-gradient(135deg,#6A2BD8,#9B5BFF)">✦</div>
+      <div style="flex:1"><h3>Advantage AI &amp; the Franchise Platform <span class="tag t-built">Built</span></h3>
+        <p>A multi-tenant franchise operating system with a streaming AI assistant, franchise coach, lead scoring, workflow builder and metered AI billing. Proven pattern for running hundreds of locations from one brain.</p>
+        <div class="meta">754 data models · 3,690 routes · 1,135 templates · 93 scheduled automations</div></div>
+    </div>
+    <div class="card shadow pc" style="padding:3.6mm 5mm">
+      <div class="ico" style="background:linear-gradient(135deg,#B0006A,#E6007E)">R</div>
+      <div style="flex:1"><h3>Raring2go! Business-in-a-Box <span class="tag t-road">In build · due Q2 2027</span></h3>
+        <p>The franchise and publishing OS for a network of 80+ territories: one login per franchisee, one territory edition driving print-ready PDF and digital magazine, advertiser sales, native email, royalties and AI agents in one system. Foundations, edition pipeline, newsletters and job engine are already built.</p>
+        <div class="meta">Today: 140 tables · 19 packages · in internal UAT</div></div>
+    </div>
+    <div class="card shadow pc" style="padding:3.6mm 5mm">
+      <div class="ico" style="background:linear-gradient(135deg,#C98A00,#F2B600)">D</div>
+      <div style="flex:1"><h3>DPS Sales Intelligence Cloud <span class="tag t-built">Built</span></h3>
+        <p>An AI CRM and field-sales engine for print-technology suppliers: UK-wide prospecting, equipment-lifecycle “buy windows”, lease and ROI quoting, call recording and coaching, and a customer deal room.</p>
+        <div class="meta">162 tables · 609 API routes · 116 test files</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:6mm;background:var(--ink);color:#fff;border:none;display:flex;align-items:center;gap:6mm;padding:4.5mm 6mm">
+    <div style="display:flex;align-items:baseline;gap:2.5mm;white-space:nowrap"><span class="stat" style="font-size:15pt;color:rgba(255,255,255,.5);text-decoration:line-through">5 days</span><span style="color:#FFE24D;font-size:15pt">→</span><span class="stat grad-t" style="font-size:30pt">15 min</span></div>
+    <div style="font-size:9pt;line-height:1.4;color:rgba(255,255,255,.85)"><b>In the field today:</b> 37 pilot centres have cut enquiry-to-quote from a 5-day average to 15 minutes. 95% of AI quotes are accepted unedited, and users rate Advantage <b>9 / 10</b>.</div>
+  </div>
+
+  <div class="card" style="margin-top:4mm;background:var(--mist);border:none">
+    <div class="small" style="letter-spacing:.14em;text-transform:uppercase;font-weight:700">Why it matters to Fujifilm — and to every press brand</div>
+    <p style="font-size:10pt;margin-top:1.5mm"><b>One integration surface, many customers.</b> Connect a Fujifilm device once to the platform and every centre on it — franchise or independent — can quote, schedule and sell against that device with real speeds, real click costs and real capacity.</p>
+  </div>
+  <div class="foot"><span>Advantage Platform Suite</span><span>02</span></div>
+</section><section class="page">
+  <div class="eyebrow">The market</div>
+  <h2>A very large industry,<br><span class="grad-t">getting leaner every year.</span></h2>
+  <p class="lead">Print is shrinking in the number of firms, not in importance. Fewer, leaner businesses must quote faster and waste less. That is exactly where an AI-driven platform earns its place — and it works for any press, not only Fujifilm's.</p>
+
+  <div class="grid3" style="margin-top:7mm">
+    <div class="card shadow"><div class="small">UK printing industry</div><div class="stat grad-t" style="font-size:28pt;margin-top:1.5mm">£13.75bn</div><div class="statl">annual turnover (2022), across about 7,200 companies and 98,000 employees</div></div>
+    <div class="card shadow"><div class="small">US commercial printing</div><div class="stat grad-t" style="font-size:28pt;margin-top:1.5mm">$67bn</div><div class="statl">revenue across roughly 18,000 companies</div></div>
+    <div class="card shadow"><div class="small">Global commercial printing</div><div class="stat grad-t" style="font-size:28pt;margin-top:1.5mm">~$510bn</div><div class="statl">mid-range 2025 estimate; published figures run from $320bn to $840bn by definition</div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:5mm">
+    <div class="card"><div class="small">Adjacent software market</div><div class="stat grad-t" style="font-size:24pt;margin-top:1.5mm">$2.5–4.3bn</div><div class="statl">global print-management software, 2025 (estimates differ); print-estimating software adds a further $0.6–0.85bn</div></div>
+    <div class="card" style="background:var(--ink);color:#fff;border:none"><div class="small" style="color:rgba(255,255,255,.65)">The pressure to modernise</div><div class="stat grad-t" style="font-size:24pt;margin-top:1.5mm">−15% / −20%</div><div class="statl" style="color:rgba(255,255,255,.75)">fewer UK print companies and employees over five years (BPIF-based summary): the same output from leaner teams</div></div>
+  </div>
+
+  <h3 style="margin-top:6mm;font-size:12.5pt">What a small share means</h3>
+  <table class="t" style="margin-top:2mm">
+    <tr><th style="width:30%">UK companies on the platform</th><th>Share of ~7,200 UK print companies</th><th>Annual subscription revenue at £399 a month</th></tr>
+    <tr><td><b>72</b></td><td>1%</td><td><b>£344,736</b></td></tr>
+    <tr><td><b>360</b></td><td>5%</td><td><b>£1,723,680</b></td></tr>
+    <tr><td><b>720</b></td><td>10%</td><td><b>£3,447,360</b></td></tr>
+  </table>
+  <p class="small" style="margin-top:2mm">Advantage MIS list price £399 per month (£4,788 a year). Subscription only, UK only, using BPIF's company count; excludes payments, AI usage, the franchise platform and Raring2go!.</p>
+
+  <div class="card" style="margin-top:5mm;background:var(--mist);border:none"><b>Fujifilm-first, not Fujifilm-only.</b> <span style="font-size:9.4pt;color:var(--muted)">Machine profiles are data, so any press brand can be added. Fujifilm gets first-class integration and the Flow API link in January 2027; every other centre on the platform still benefits from the quoting, job and AI engines.</span></div>
+
+  <p class="small" style="margin-top:3mm;font-size:6.6pt">Sources: BPIF “UK Printing Facts &amp; Figures” (2023 edition, 2022 data); First Research US commercial printing profile; Grand View Research, Straits Research, Precedence Research, IBISWorld (global commercial printing, 2025); Fortune Business Insights, The Business Research Company (print management software, 2025); Wiseguy Reports, Market Research Intellect (print estimating software). Market-research figures vary by definition and are third-party estimates.</p>
+  <div class="foot"><span>Advantage Platform Suite</span><span>03</span></div>
+</section><section class="page">
+  <div class="eyebrow">Field pilot</div>
+  <h2>Advantage in the field:<br><span class="grad-t">the scorecard.</span></h2>
+  <p class="lead">Advantage MIS is live in a field pilot today. Live in 37 centres since June 2026, with the platform recording the evidence as a by-product of normal work. <span class="tbc">Complete the remaining amber fields before printing</span></p>
+
+  <div class="grid2" style="margin-top:7mm;gap:5mm">
+    <div class="card shadow" style="padding:6mm;background:var(--ink);color:#fff;border:none"><div class="small" style="color:rgba(255,255,255,.65);letter-spacing:.14em;text-transform:uppercase;font-weight:700">Enquiry to quote</div><div style="display:flex;align-items:baseline;gap:3mm;margin-top:2mm"><span class="stat" style="font-size:20pt;color:rgba(255,255,255,.5);text-decoration:line-through;white-space:nowrap">5 days</span><span style="font-size:20pt;color:#FFE24D">→</span><span class="stat grad-t" style="font-size:36pt;white-space:nowrap">15 min</span></div><div class="statl" style="color:rgba(255,255,255,.75)">pilot centres' average enquiry-to-quote cycle, before and after Advantage</div></div>
+    <div class="card shadow" style="padding:6mm;background:var(--ink);color:#fff;border:none"><div class="small" style="color:rgba(255,255,255,.65);letter-spacing:.14em;text-transform:uppercase;font-weight:700">User rating</div><div class="stat grad-t" style="font-size:40pt;margin-top:2mm">9 / 10</div><div class="statl" style="color:rgba(255,255,255,.75)">average score from pilot users</div></div>
+  </div>
+
+  <div class="grid4" style="margin-top:4mm;gap:3mm">
+    <div class="card shadow" style="padding:3mm 3.5mm"><div class="small">Pilot started</div><div class="stat" style="font-size:15pt;margin-top:1mm"><span class="grad-t">June 2026</span></div></div>
+    <div class="card shadow" style="padding:3mm 3.5mm"><div class="small">Centres live</div><div class="stat" style="font-size:15pt;margin-top:1mm"><span class="grad-t">37</span></div></div>
+    <div class="card shadow" style="padding:3mm 3.5mm"><div class="small">Quotes generated</div><div class="stat" style="font-size:15pt;margin-top:1mm"><span class="tbc">TBC</span></div></div>
+    <div class="card shadow" style="padding:3mm 3.5mm"><div class="small">AI quotes accepted unedited</div><div class="stat" style="font-size:15pt;margin-top:1mm"><span class="grad-t">95%</span></div></div>
+    <div class="card shadow" style="padding:3mm 3.5mm"><div class="small">Jobs through the stage engine</div><div class="stat" style="font-size:15pt;margin-top:1mm"><span class="tbc">TBC</span></div></div>
+    <div class="card shadow" style="padding:3mm 3.5mm"><div class="small">Rework rate</div><div class="stat" style="font-size:15pt;margin-top:1mm"><span class="tbc">TBC</span></div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:4mm">
+    <div class="card" style="padding:4mm"><h3>Why these numbers can be trusted</h3>
+      <ul class="tick">
+        <li>Every quote is <b>snapshotted</b> and can be re-costed</li>
+        <li>Job stage changes are <b>timestamped</b> by the state machine</li>
+        <li>AI confidence is stored per quote, and low confidence routes to review</li>
+        <li>Rework post-mortems and trends are captured per job</li>
+      </ul></div>
+    <div class="card" style="background:var(--mist);border:none;padding:4mm"><h3>In the pilot customers' words</h3>
+      <p style="font-size:9.4pt;color:var(--muted);margin-top:1mm"><span class="tbc">Quote from a pilot centre — name, centre, role</span></p>
+      <p style="font-size:9.4pt;color:var(--muted);margin-top:3mm"><span class="tbc">What changed first</span></p>
+      <p style="font-size:9.4pt;color:var(--muted);margin-top:3mm"><span class="tbc">What they would not give back</span></p></div>
+  </div>
+
+  <div class="card" style="margin-top:4mm;padding:4mm 5mm;background:var(--ink);color:#fff;border:none">
+    <h3 style="margin:0">What the pilot is proving for Fujifilm</h3>
+    <div class="grid3" style="margin-top:3mm;font-size:8.8pt;color:rgba(255,255,255,.85)">
+      <div><b style="color:#5CF0B0">1 · Costing is right</b><br>95% of AI quotes are accepted without editing, on each centre's own click rates.</div>
+      <div><b style="color:#FFE24D">2 · Staff will use it</b><br>Quote-to-cash flows through one system with little re-keying.</div>
+      <div><b style="color:#FF86C0">3 · The data is rich</b><br>Utilisation and job mix are clean enough to feed Flow from January 2027.</div>
+    </div>
+  </div>
+  <div class="foot"><span>Advantage Platform Suite</span><span>04</span></div>
+</section><section class="page">
+  <div class="eyebrow">What Fujifilm gets</div>
+  <h2>Every quote is a forecast of<br><span class="grad-t">clicks and consumables.</span></h2>
+  <p class="lead">Advantage costs each job to the click on a named press. So before a job runs, the platform already knows the clicks, stock and finishing it will use. Aggregated and opt-in, that is a demand signal Fujifilm has never had at centre level.</p>
+
+  <div class="flow" style="margin-top:10mm">
+    <div class="step"><span class="n">1</span><b>Quote</b>Clicks, stock, size costed on the press profile<br><span class="tag t-built" style="margin-top:1.5mm">Built</span></div>
+    <div class="step"><span class="n">2</span><b>Job on press</b>Stage, schedule and capacity<br><span class="tag t-built" style="margin-top:1.5mm">Built</span></div>
+    <div class="step"><span class="n">3</span><b>Consumption</b>Sheets, clicks, waste, rework<br><span class="tag t-built" style="margin-top:1.5mm">Built</span></div>
+    <div class="step"><span class="n">4</span><b>Replenish</b>Inventory prediction and reorder<br><span class="tag t-built" style="margin-top:1.5mm">Built</span></div>
+    <div class="step"><span class="n">5</span><b>Signal</b>Opt-in usage feed via Flow API<br><span class="tag t-jan" style="margin-top:1.5mm">Jan 2027</span></div>
+  </div>
+
+  <div class="grid3" style="margin-top:8mm">
+    <div class="card shadow"><h3>A real usage signal</h3><p style="font-size:9pt;color:var(--muted)">Utilisation by press model, job mix by stock and size, click volumes and rework rates — by centre, by region, by month. Today that picture comes from sell-in; this adds sell-through.</p></div>
+    <div class="card shadow"><h3>Consumables pull-through</h3><p style="font-size:9pt;color:var(--muted)">The right consumables at the right time, with fewer stock-outs mid-job. Counters and usage can trigger reorder and service conversations automatically.</p></div>
+    <div class="card shadow"><h3>Smarter upgrades</h3><p style="font-size:9pt;color:var(--muted)">Capacity data shows which centres are outgrowing a press. Paired with the DPS refresh-window engine, that becomes a timed, targeted upgrade conversation.</p></div>
+  </div>
+
+  <div class="card" style="margin-top:6mm;background:var(--ink);color:#fff;border:none">
+    <div class="small" style="color:rgba(255,255,255,.6);letter-spacing:.14em;text-transform:uppercase;font-weight:700">The demand signal, in one line</div>
+    <div style="display:flex;align-items:center;gap:3mm;margin-top:3mm;flex-wrap:wrap;font-size:11pt;font-weight:800">
+      <span class="grad-t">Installed presses</span><span style="color:#FFE24D">×</span><span class="grad-t">utilisation</span><span style="color:#FFE24D">×</span><span class="grad-t">clicks per hour</span><span style="color:#FFE24D">=</span><span style="color:#fff">a live consumables forecast</span>
+    </div>
+    <p class="small" style="margin-top:3mm">Fujifilm supplies the installed base; the platform supplies utilisation and job mix from the centres on it.</p>
+  </div>
+
+  <div class="grid2" style="margin-top:5mm">
+    <div class="card"><h3 style="font-size:11pt">What centres get in return</h3><ul class="tick"><li>Quotes costed on their own click rates</li><li>No stock-outs halfway through a job</li><li>Capacity and rework insight they can act on</li></ul></div>
+    <div class="card"><h3 style="font-size:11pt">Privacy by design</h3><ul class="tick"><li>Centre-owned data; the feed is opt-in</li><li>Aggregated by default, never customer artwork or prices</li><li>Consent history and audit already in the platform</li></ul></div>
+  </div>
+  <p class="small" style="margin-top:3mm">Steps 1–4 are built today in Advantage MIS. The opt-in usage feed is proposed and depends on API access to Fujifilm's Flow software (due January 2027).</p>
+  <div class="foot"><span>Advantage Platform Suite</span><span>05</span></div>
+</section><section class="page dark">
+  <div class="dots"></div>
+  <div class="eyebrow">Roadmap &amp; partnership</div>
+  <h2>Where Fujifilm <span class="grad-t">accelerates it.</span></h2>
+  <p class="lead">The platforms exist. The next phase is putting them on real presses, in real centres, with real data — and Fujifilm is the partner who can make that happen at scale.</p>
+
+  <div class="road" style="color:#fff">
+    <div class="rm" style="margin-bottom:3.6mm"><div class="when">Now</div><h3>Advantage in the field</h3><p style="color:rgba(255,255,255,.7)">Live pilot of Advantage MIS, Fujifilm press catalogue seeded, Raring2go! in internal UAT, security audit remediated.</p></div>
+    <div class="rm" style="margin-bottom:3.6mm"><div class="when">January 2027</div><h3>Fujifilm Flow API access</h3><p style="color:rgba(255,255,255,.7)">The network integration: API access to Fujifilm's Flow software connects Advantage jobs and workflows to the press floor, with JDF/JMF connectors already in the codebase.</p></div>
+    <div class="rm" style="margin-bottom:3.6mm"><div class="when">Q1 2027</div><h3>Advantage Coworker</h3><p style="color:rgba(255,255,255,.7)">Six upgrades roll out: one coworker across platforms, governed autonomy, proactive briefings, print playbooks, enquiry-to-invoice in one chat.</p></div>
+    <div class="rm" style="margin-bottom:3.6mm"><div class="when">Q2 2027</div><h3>Raring2go! Business-in-a-Box launches</h3><p style="color:rgba(255,255,255,.7)">After its first real-territory proof point: Edition Factory, native email, finance and royalties, AI agents.</p></div>
+    <div class="rm" style="margin-bottom:3.6mm"><div class="when">With Fujifilm</div><h3>Print engine for Raring2go!</h3><p style="color:rgba(255,255,255,.7)">Rendered PDF/X output, colour management and imposition so territory editions flow straight to a Revoria press.</p></div>
+    <div class="rm" style="margin-bottom:3.6mm"><div class="when">With Fujifilm</div><h3>Dealer &amp; direct sales engine</h3><p style="color:rgba(255,255,255,.7)">DPS-style prospecting and refresh-window alerts configured for Fujifilm equipment, with AI call coaching and customer deal rooms.</p></div>
+  </div>
+
+  <div class="card" style="margin-top:4mm;border-color:rgba(255,255,255,.28);background:linear-gradient(135deg,rgba(0,180,240,.18),rgba(230,0,126,.18))">
+    <h3 style="font-size:13pt">The partnership in one line</h3>
+    <p style="font-size:10.5pt;color:rgba(255,255,255,.9)">Fujifilm brings the presses and the reach. We bring the software that makes every press-owner more productive — and a reason for them to stay on Fujifilm.</p>
+  </div>
+
+  <div style="position:absolute;left:16mm;right:16mm;bottom:20mm;display:flex;justify-content:space-between;align-items:flex-end">
+    <div><div class="cmyk" style="margin-bottom:3mm"><i></i><i></i><i></i><i></i></div>
+      <div style="font-size:14pt;font-weight:800">Stuart Harley</div>
+      <div style="font-size:9pt;color:rgba(255,255,255,.75)">Computer Xplorers Group<br>stuart@computerxplorers.co.uk</div></div>
+    <div class="small" style="max-width:78mm;text-align:right">Figures are counted from source code at 8 October 2026. Roadmap items are plans, not commitments. Third-party names and marks belong to their owners.</div>
+  </div>
+  <div class="foot"><span>Strictly private &amp; confidential</span><span>06</span></div>
+</section>
+</body>
+</html>
