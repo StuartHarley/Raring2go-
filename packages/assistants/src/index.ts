@@ -8,3 +8,6 @@ export * from "./finance/aged-debt";
 export * from "./finance/matching";
 export * from "./finance/royalty";
 export * from "./finance/tasks";
+export * from "./franchise/diff";
+export * from "./franchise/facts";
+export * from "./franchise/tasks";
