@@ -243,6 +243,11 @@ async function runStep(
     case "guard": {
       const guard = hooks.guards[step.check];
       if (!guard) throw new Error(`Unknown guard "${step.check}".`);
+      // A test run with no sample record has nothing to check, so assume the check passes
+      // to show the rest of the flow. Supplying a real record id makes the check genuine.
+      if (dry && !run.subjectId) {
+        return { kind: "done", detail: { dryRun: true, guard: step.check, assumedPass: true } };
+      }
       const passed = await guard(context, step.params ?? {});
       return passed
         ? { kind: "done", detail: { guard: step.check, passed: true } }

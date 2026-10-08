@@ -64,7 +64,7 @@ Retry from the console is deliberately narrow: only a **failed email send job** 
 - Unit: `pnpm --filter @raring2go/workflows test` (policy, runner, service tenancy; in-memory store).
 - Postgres integration (real SQL: SKIP LOCKED concurrency, lease reclaim, idempotent enqueue, retention): `docker compose up -d db && pnpm db:migrate && RUN_DB_TESTS=1 pnpm --filter @raring2go/workflows test`.
 
-# Workflow Engine (AUT-001)
+# Workflow Engine (AUT-001) and Builder (AUT-002)
 
 Lifecycle automation: when something happens, run configured steps, idempotently, visibly, with human approval where the definition says so.
 
@@ -111,3 +111,15 @@ Modules `automation.task` (view, complete), `automation.approval` (view, decide)
 ## Migration and seed impact
 
 Migration `0041_*` adds `workflow_definitions`, `workflow_versions` (partial unique index for one active version), `workflow_events`, `workflow_event_cursors`, `workflow_runs`, `workflow_run_steps`, `workflow_tasks`, `workflow_approvals`, `notifications` (additive; drop in reverse dependency order to roll back). Seed adds the automation user/role, permissions `…0545-0552` and grants. Re-run `pnpm db:seed`; built-in workflows install on the first worker tick.
+
+## Builder (AUT-002)
+
+`/app/system/workflows/[id]` lets an administrator with `automation.workflow.manage` change a workflow without a deploy, safely:
+
+- **Draft first.** *Create draft* copies the newest version. Only a draft is editable (the store refuses to update an active or retired version); a workflow can have one draft at a time. Live runs are unaffected until activation.
+- **Structured editor.** Trigger event, named thresholds, conditions and an ordered step list with per-type fields (up/down to reorder). A threshold is used in a step as `@name`, so tuning "escalate after N days" is a one-field change. Saving runs the same `validateWorkflowVersion` used by the engine and shows every problem at once; nothing invalid is ever saved.
+- **Test run.** *Save and test run* executes the draft against sample event JSON with no side effects (nothing is sent, no tasks/approvals/notifications are created, actions are not called, waits are skipped) and records the outcome as a test run you can open step by step. With no sample record id, guards are assumed to pass so the whole flow is visible; with one, they run for real. The synthetic event is pre-marked dispatched so it can never become a live run.
+- **Activate.** Re-validates against the hooks that exist *now*, retires the previous version and activates the draft in one transaction (the database also allows only one active version). Runs already in progress finish on the version they started with.
+- **Enable/disable** a whole workflow without touching versions.
+- **Permissions.** Edit (`manage`), test (`test`), and activate/enable (`activate`) are separate. Definitions are network-level configuration, so these require a network/system grant; a territory-scoped grant is not enough. Franchisees can only *view* workflows and runs for their territory.
+- **Audit.** `workflow.version.create|update|activate` (before/after summaries including thresholds), `workflow.run.test`, `workflow.definition.toggle`.

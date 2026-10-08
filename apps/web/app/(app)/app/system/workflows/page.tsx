@@ -67,7 +67,9 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
               {definitions.map(({ definition, activeVersion }) => (
                 <tr key={definition.id}>
                   <td>
-                    <strong>{definition.name}</strong>
+                    <Link href={`/app/system/workflows/${definition.id}${suffix}` as Route}>
+                      <strong>{definition.name}</strong>
+                    </Link>
                     <br />
                     <small>{definition.description}</small>
                   </td>

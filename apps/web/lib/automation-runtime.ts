@@ -3,19 +3,26 @@ import { createDb, fixtureIds } from "@raring2go/db";
 import { evaluatePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import {
+  activateDraftVersion,
   automationCapabilities,
   completeTaskForActor,
+  createDraftVersion,
   createDrizzleEngineStore,
   createDrizzleJobStore,
   createJobRunScheduler,
   decideApprovalForActor,
   getRunForActor,
+  getWorkflowDefinitionForActor,
   listApprovalsForActor,
   listNotificationsForActor,
   listRunsForActor,
-  listTasksForActor
+  listTasksForActor,
+  setWorkflowEnabled,
+  testDraftVersion,
+  updateDraftVersion
 } from "@raring2go/workflows";
 import type { AutomationCapability, JobActorContext, JobAuditRecorder, WorkflowsDb } from "@raring2go/workflows";
+import { engineHooks, knownHooks } from "./automation-hooks";
 import { appLogger } from "./logger";
 
 export type { JobActorContext as AutomationActorContext };
@@ -146,3 +153,39 @@ export async function readWorkflowRun(context: JobActorContext, runId: string) {
     await sql.end();
   }
 }
+
+export async function readWorkflowDefinition(context: JobActorContext, definitionId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await getWorkflowDefinitionForActor(context, automationPermissionData, createDrizzleEngineStore(db), definitionId);
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Runs `work` with an audited, transactional engine store. */
+async function inTransaction<T>(work: (store: ReturnType<typeof createDrizzleEngineStore>, audit: JobAuditRecorder) => Promise<T>) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => work(createDrizzleEngineStore(tx as unknown as WorkflowsDb), auditFor(tx)));
+  } finally {
+    await sql.end();
+  }
+}
+
+export const createWorkflowDraft = (context: JobActorContext, definitionId: string) =>
+  inTransaction((store, audit) => createDraftVersion(context, automationPermissionData, audit, store, definitionId));
+
+export const saveWorkflowDraft = (context: JobActorContext, versionId: string, definition: unknown, changeNote: string | null) =>
+  inTransaction((store, audit) => updateDraftVersion(context, automationPermissionData, audit, store, knownHooks, versionId, definition, changeNote));
+
+export const testWorkflowDraft = (context: JobActorContext, versionId: string, sample: { payload: Record<string, unknown>; territoryId?: string | null; subjectId?: string | null }) =>
+  inTransaction((store, audit) => testDraftVersion(context, automationPermissionData, audit, store, engineHooks, versionId, sample));
+
+export const activateWorkflowDraft = (context: JobActorContext, versionId: string) =>
+  inTransaction((store, audit) => activateDraftVersion(context, automationPermissionData, audit, store, knownHooks, versionId));
+
+export const setWorkflowDefinitionEnabled = (context: JobActorContext, definitionId: string, enabled: boolean) =>
+  inTransaction((store, audit) => setWorkflowEnabled(context, automationPermissionData, audit, store, definitionId, enabled));
