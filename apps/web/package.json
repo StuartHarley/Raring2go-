@@ -26,6 +26,7 @@
     "@raring2go/franchise": "workspace:*",
     "@raring2go/integrations": "workspace:*",
     "@raring2go/marketing": "workspace:*",
+    "@raring2go/observability": "workspace:*",
     "@raring2go/permissions": "workspace:*",
     "@raring2go/public": "workspace:*",
     "@raring2go/publishing": "workspace:*",

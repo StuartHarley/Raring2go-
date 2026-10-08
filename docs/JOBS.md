@@ -41,6 +41,19 @@ Permissions (module `system.jobs`): `view`, `retry`, `cancel`. Defaults: HQ netw
 - Only `dead`/`cancelled` jobs can be retried, only `queued` jobs cancelled, and retry is offered only when a handler is registered for the kind. Retry gives a fresh attempt budget on top of attempts already used.
 - Retry and cancel re-verify the session server-side, check the grant against the job's own scope, and write `ops.job.retry` / `ops.job.cancel` audit events.
 
+## Legacy job sources
+
+The console lists, alongside generic jobs, rows from `email_send_jobs`, `social_publish_jobs`, `content_website_publishing_jobs` and `publication_outputs` (failed/generating/generated; superseded excluded). Each is normalised to the console statuses (`failed` becomes dead-lettered; unknown statuses show as queued with the raw status preserved) and carries the territory of its owning record, so scoping is identical to generic jobs. Rows link to the record they belong to.
+
+Retry from the console is deliberately narrow: only a **failed email send job** can be re-queued (it resumes from its saved cursor, exactly as the automatic retry does). Social posts, website publishing and edition outputs are retried from their own workflows, because those carry domain rules (approval state, no-duplicate-post guarantees) that a status flip would bypass.
+
+## Observability
+
+- **Logging** (`@raring2go/observability`): `createLogger` writes one JSON object per line (`time`, `level`, `service`, `message`, fields). Secrets (`token`, `password`, `apiKey`, ...) are redacted in fields and child context, `Error` objects are serialised, and reserved keys cannot be spoofed. `LOG_LEVEL` selects the minimum level. `child({ correlationId, jobId })` stamps context onto every record.
+- **Correlation**: the cron route accepts or mints an `x-correlation-id` (malformed values are replaced), logs with it, and echoes it in the response.
+- **Health** (`GET /api/health`): `database` (critical) and `job_queue` checks. Queue health is `degraded` for any dead-lettered job, overdue job or expired lease, and `down` at 25 dead / 50 overdue (stalled worker). Anonymous callers get only the overall status (503 when down); the per-check detail needs `Authorization: Bearer $CRON_SECRET`. The console shows the detailed panel only to users with a network-wide `system.jobs.view` grant.
+- Point an uptime monitor at `/api/health` and alert on non-200 or `degraded`.
+
 ## Migration and seed impact
 
 - Migration `0040_*` adds `jobs` and `job_attempts` (additive; roll back with `DROP TABLE job_attempts, jobs`).

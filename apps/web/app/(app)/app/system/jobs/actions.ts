@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { JobAccessError, JobStateError } from "@raring2go/workflows";
+import { JobAccessError, JobStateError, jobSources } from "@raring2go/workflows";
+import type { JobSource } from "@raring2go/workflows";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import type { RequestedShellContext } from "../../../../../lib/app-shell";
 import { cancelJobAsActor, retryJobAsActor } from "../../../../../lib/jobs-runtime";
@@ -50,8 +51,12 @@ async function perform(request: RequestedShellContext, jobId: string, work: (use
   redirect(`/app/system/jobs?${query.toString()}` as Route);
 }
 
-export async function retryJobAction(request: RequestedShellContext, jobId: string) {
-  await perform(request, jobId, (actor) => retryJobAsActor(actor, jobId), "retried");
+export async function retryJobAction(request: RequestedShellContext, source: JobSource, jobId: string) {
+  // `source` arrives from the browser: accept only known values, never pass it through.
+  if (!jobSources.includes(source)) {
+    throw new Error("Unknown job source.");
+  }
+  await perform(request, jobId, (actor) => retryJobAsActor(actor, jobId, source), "retried");
 }
 
 export async function cancelJobAction(request: RequestedShellContext, jobId: string) {

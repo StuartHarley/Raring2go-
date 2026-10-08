@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { correlationHeader, correlationIdFrom } from "@raring2go/observability";
 import { runJobWorkerTick } from "../../../../lib/jobs-runtime";
 
 export const maxDuration = 60;
@@ -16,8 +17,9 @@ async function tick(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const summary = await runJobWorkerTick();
-  return NextResponse.json(summary);
+  const correlationId = correlationIdFrom(request.headers);
+  const summary = await runJobWorkerTick({ correlationId });
+  return NextResponse.json(summary, { headers: { [correlationHeader]: correlationId } });
 }
 
 function isAuthorizedCronRequest(request: Request) {

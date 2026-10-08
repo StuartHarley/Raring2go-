@@ -79,7 +79,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
         </dl>
         <div className="franchise-actions">
           {(job.status === "dead" || job.status === "cancelled") && registeredJobKinds.includes(job.kind) && hasJobCapability(context, "retry", job) ? (
-            <form action={retryJobAction.bind(null, request, job.id)}>
+            <form action={retryJobAction.bind(null, request, "jobs", job.id)}>
               <button type="submit">Retry job</button>
             </form>
           ) : null}

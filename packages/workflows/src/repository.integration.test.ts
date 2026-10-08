@@ -3,7 +3,7 @@ import { createDb, jobAttempts, jobs } from "@raring2go/db";
 import { inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createJobRegistry, defineJobHandler } from "./registry";
-import { createDrizzleJobStore, pruneFinishedJobs } from "./repository";
+import { createDrizzleJobStore, pruneFinishedJobs, readQueueStats } from "./repository";
 import { runDueJobs } from "./runner";
 import { enqueueJob } from "./service";
 
@@ -120,6 +120,21 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("drizzle job store (postgres)", () =>
     expect(await pruneFinishedJobs(db, new Date("2021-01-01T00:00:00Z"))).toBeGreaterThanOrEqual(1);
     expect(await store.get(finished.id)).toBeUndefined();
     expect((await store.get(stuck.id))?.status).toBe("dead");
+  });
+
+  it("reports queue stats: overdue jobs, expired leases and dead letters", async () => {
+    const before = await readQueueStats(db, new Date());
+    const past = new Date(Date.now() - 60 * 60_000);
+    await enqueue("stats-overdue", { runAfter: past });
+    await enqueue("stats-lease", { runAfter: past });
+    const claimed = await store.claim({ workerId: "w", now: past, leaseMs: () => 1_000, kinds: [kind] });
+    expect(claimed).toBeDefined();
+
+    const after = await readQueueStats(db, new Date());
+    // One queued overdue job (the other one is now running with a long-expired lease).
+    expect(after.overdueQueued).toBe(before.overdueQueued + 1);
+    expect(after.expiredLeases).toBe(before.expiredLeases + 1);
+    expect(after.queued).toBeGreaterThanOrEqual(before.queued + 1);
   });
 
   it("counts by status", async () => {

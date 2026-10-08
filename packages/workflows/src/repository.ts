@@ -309,3 +309,39 @@ export async function pruneFinishedJobs(db: WorkflowsDb, olderThan: Date): Promi
     return ids.length;
   });
 }
+
+export type QueueStats = {
+  queued: number;
+  overdueQueued: number;
+  expiredLeases: number;
+  dead: number;
+};
+
+/**
+ * Inputs for the queue health check across the generic queue and the email send
+ * queue (the only legacy queue with its own cron worker). A job is "overdue" when it
+ * was due more than `staleAfterMs` ago and still has not been picked up.
+ */
+export async function readQueueStats(db: WorkflowsDb, now: Date, staleAfterMs = 5 * 60_000): Promise<QueueStats> {
+  const nowIso = now.toISOString();
+  const staleIso = new Date(now.getTime() - staleAfterMs).toISOString();
+
+  const rows = (await db.execute(sql`
+    SELECT
+      (SELECT count(*) FROM jobs WHERE status = 'queued')
+        + (SELECT count(*) FROM email_send_jobs WHERE status = 'queued') AS queued,
+      (SELECT count(*) FROM jobs WHERE status = 'queued' AND run_after < ${staleIso}::timestamptz)
+        + (SELECT count(*) FROM email_send_jobs WHERE status = 'queued' AND next_attempt_at < ${staleIso}::timestamptz) AS overdue_queued,
+      (SELECT count(*) FROM jobs WHERE status = 'running' AND lease_expires_at < ${nowIso}::timestamptz) AS expired_leases,
+      (SELECT count(*) FROM jobs WHERE status = 'dead')
+        + (SELECT count(*) FROM email_send_jobs WHERE status = 'failed') AS dead
+  `)) as unknown as Array<Record<string, string | number>>;
+
+  const row = rows[0] ?? {};
+  return {
+    queued: Number(row.queued ?? 0),
+    overdueQueued: Number(row.overdue_queued ?? 0),
+    expiredLeases: Number(row.expired_leases ?? 0),
+    dead: Number(row.dead ?? 0)
+  };
+}
