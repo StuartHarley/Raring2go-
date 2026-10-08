@@ -151,7 +151,13 @@ export async function seedDatabase(databaseUrl?: string) {
         scope: "system",
         constraints: {}
       },
-      ...[fixtureIds.permissions.jobsView, fixtureIds.permissions.jobsRetry, fixtureIds.permissions.jobsCancel].map((permissionId) => ({
+      {
+        roleId: fixtureIds.roles.automation,
+        permissionId: fixtureIds.permissions.onboardingManage,
+        scope: "network" as const,
+        constraints: {}
+      },
+      ...[fixtureIds.permissions.jobsView, fixtureIds.permissions.jobsRetry, fixtureIds.permissions.jobsCancel, fixtureIds.permissions.workflowView, fixtureIds.permissions.workflowManage, fixtureIds.permissions.workflowActivate, fixtureIds.permissions.workflowTest].map((permissionId) => ({
         roleId: fixtureIds.roles.superAdmin,
         permissionId,
         scope: "system" as const,
@@ -372,13 +378,51 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.integrationsTest,
         fixtureIds.permissions.jobsView,
         fixtureIds.permissions.jobsRetry,
-        fixtureIds.permissions.jobsCancel
+        fixtureIds.permissions.jobsCancel,
+        fixtureIds.permissions.taskView,
+        fixtureIds.permissions.taskComplete,
+        fixtureIds.permissions.approvalView,
+        fixtureIds.permissions.approvalDecide,
+        fixtureIds.permissions.workflowView,
+        fixtureIds.permissions.workflowManage,
+        fixtureIds.permissions.workflowActivate,
+        fixtureIds.permissions.workflowTest
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
         scope: "network" as const,
         constraints: {}
       })),
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.taskView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.taskComplete,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.approvalView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.approvalDecide,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.workflowView,
+        scope: "own_territory",
+        constraints: {}
+      },
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.jobsView,
@@ -598,6 +642,12 @@ export async function seedDatabase(databaseUrl?: string) {
         id: "00000000-0000-4000-8000-000000000603",
         userId: fixtureIds.users.superAdmin,
         roleId: fixtureIds.roles.hqAdmin,
+        organisationId: fixtureIds.organisations.hq
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000604",
+        userId: fixtureIds.users.workflowAutomation,
+        roleId: fixtureIds.roles.automation,
         organisationId: fixtureIds.organisations.hq
       },
       {

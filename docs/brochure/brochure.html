@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Advantage Platform Suite — Fujifilm Investor Briefing</title>
+<style>
+@page { size: 210mm 297mm; margin: 0; }
+:root{
+  --ink:#080D22; --ink2:#101842; --paper:#FFFFFF; --mist:#F3F5FB; --line:#E2E6F2;
+  --text:#1A2038; --muted:#5B6485;
+  --c:#00B4F0; --m:#E6007E; --y:#FFD400; --k:#0B0B12;
+  --grad:linear-gradient(100deg,#00B4F0 0%,#7A4DFF 50%,#E6007E 100%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#fff}
+body{font-family:"Avenir Next","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--text);-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:10pt;line-height:1.45}
+.page{width:210mm;height:297mm;position:relative;overflow:hidden;page-break-after:always;break-after:page;padding:16mm 16mm 20mm}
+.page:last-child{page-break-after:auto;break-after:auto}
+.dark{background:radial-gradient(1200px 700px at 85% -10%,#1B2A78 0%,transparent 60%),radial-gradient(900px 600px at -10% 110%,#4B124F 0%,transparent 55%),var(--ink);color:#fff}
+.dots{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.07) 1.2px,transparent 1.4px);background-size:9px 9px;pointer-events:none;-webkit-mask-image:linear-gradient(135deg,#000 0%,transparent 60%);mask-image:linear-gradient(135deg,#000 0%,transparent 60%)}
+.foot{position:absolute;left:16mm;right:16mm;bottom:8mm;display:flex;justify-content:space-between;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.dark .foot{color:rgba(255,255,255,.5)}
+.eyebrow{font-size:8pt;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:#7A4DFF;display:inline-block}
+h1,h2,h3{letter-spacing:-.02em;line-height:1.05}
+h2{font-size:27pt;font-weight:800;margin:3mm 0 4mm}
+h3{font-size:12.5pt;font-weight:800;margin-bottom:1.5mm}
+.lead{font-size:11.5pt;color:var(--muted);max-width:150mm;line-height:1.5}
+.dark .lead{color:rgba(255,255,255,.72)}
+.grad-t{color:#7A4DFF}.w{display:inline-block;white-space:nowrap}
+.tag{display:inline-block;font-size:6.5pt;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:1.2mm 2.4mm;border-radius:20mm;vertical-align:middle}
+.t-built{background:#DFF8EC;color:#067A46}
+.t-jan{background:#FFF1BF;color:#7A5A00}
+.t-road{background:#E9E4FF;color:#4B2FBF}
+.dark .t-built{background:rgba(40,220,140,.16);color:#5CF0B0}
+.dark .t-jan{background:rgba(255,212,0,.16);color:#FFE24D}
+.dark .t-road{background:rgba(150,120,255,.2);color:#C4B3FF}
+.cmyk{display:flex;gap:1.6mm}.cmyk i{width:4mm;height:4mm;border-radius:50%;display:block}
+.cmyk i:nth-child(1){background:var(--c)}.cmyk i:nth-child(2){background:var(--m)}.cmyk i:nth-child(3){background:var(--y)}.cmyk i:nth-child(4){background:#222}
+.card{background:#fff;border:1px solid var(--line);border-radius:4mm;padding:5.5mm;position:relative}
+.dark .card{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14)}
+.shadow{box-shadow:0 8px 24px rgba(20,30,80,.08)}
+ul.tick{list-style:none}
+ul.tick li{padding-left:5.5mm;position:relative;margin:1.3mm 0;font-size:9.2pt}
+ul.tick li:before{content:"";position:absolute;left:0;top:1.6mm;width:2.6mm;height:2.6mm;border-radius:50%;background:var(--grad)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:5mm}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:4.5mm}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm}
+.stat{font-size:34pt;font-weight:800;letter-spacing:-.03em;line-height:1}
+.statl{font-size:8.5pt;color:var(--muted);margin-top:1.5mm}
+.dark .statl{color:rgba(255,255,255,.65)}
+.small{font-size:7.5pt;color:var(--muted)}
+.dark .small{color:rgba(255,255,255,.55)}
+
+/* cover */
+.cover{padding:0}
+.cover .crop{position:absolute;width:10mm;height:10mm;border-color:rgba(255,255,255,.5);border-style:solid;border-width:0}
+.cover .crop.tl{top:7mm;left:7mm;border-right-width:.3mm;border-bottom-width:.3mm;width:6mm;height:6mm}
+.cover .crop.tr{top:7mm;right:7mm;border-left-width:.3mm;border-bottom-width:.3mm;width:6mm;height:6mm}
+.cover .crop.bl{bottom:7mm;left:7mm;border-right-width:.3mm;border-top-width:.3mm;width:6mm;height:6mm}
+.cover .crop.br{bottom:7mm;right:7mm;border-left-width:.3mm;border-top-width:.3mm;width:6mm;height:6mm}
+.orbit{position:absolute;right:-112mm;top:96mm;width:175mm;height:175mm;border-radius:50%;
+  background:conic-gradient(from 200deg,#00B4F0,#7A4DFF,#E6007E,#FFD400,#00B4F0);opacity:.9;filter:blur(.2px);
+  -webkit-mask:radial-gradient(circle,transparent 62%,#000 63%,#000 66%,transparent 67%);mask:radial-gradient(circle,transparent 62%,#000 63%,#000 66%,transparent 67%)}
+.orbit2{position:absolute;right:-92mm;top:116mm;width:135mm;height:135mm;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,rgba(0,180,240,.55),rgba(122,77,255,.35) 45%,rgba(230,0,126,.3) 75%,transparent 76%);filter:blur(14px)}
+.coverbody{position:absolute;left:18mm;top:50mm;right:18mm}
+.coverbody h1{font-size:50pt;font-weight:800;letter-spacing:-.035em;line-height:.98}
+.coverbody .sub{font-size:14pt;color:rgba(255,255,255,.78);margin-top:8mm;max-width:112mm;line-height:1.4}
+.covertop{position:absolute;left:18mm;right:18mm;top:15mm;display:flex;justify-content:space-between;align-items:center;font-size:8pt;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.75)}
+.coverbot{position:absolute;left:18mm;right:18mm;bottom:17mm;display:flex;justify-content:space-between;align-items:flex-end}
+.pillrow{display:flex;gap:2.5mm;flex-wrap:wrap;margin-top:9mm}
+.pill{border:1px solid rgba(255,255,255,.3);border-radius:20mm;padding:1.8mm 4mm;font-size:8pt;letter-spacing:.06em;background:rgba(255,255,255,.07)}
+
+/* platform cards */
+.pc{display:flex;gap:4mm;align-items:flex-start}
+.pc .ico{flex:0 0 12mm;height:12mm;border-radius:3.2mm;display:grid;place-items:center;color:#fff;font-weight:800;font-size:12pt}
+.pc p{font-size:8.8pt;color:var(--muted);margin-top:1mm}
+.pc .meta{font-size:7.5pt;font-weight:700;letter-spacing:.04em;margin-top:2.2mm;color:var(--text)}
+
+/* machine chips */
+.chip{display:inline-block;border:1px solid var(--line);background:#fff;border-radius:2.5mm;padding:2mm 3.2mm;margin:0 1.6mm 1.8mm 0;font-size:8.8pt;font-weight:700}
+.chip small{display:block;font-weight:500;font-size:6.8pt;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.chip.fj{border-color:#00B4F033;background:linear-gradient(180deg,#fff,#F0FAFF)}
+
+/* flow */
+.flow{display:flex;align-items:stretch;gap:0;margin-top:2mm}
+.step{flex:1;position:relative;padding:4mm 2.6mm 3mm;background:#fff;border:1px solid var(--line);border-radius:3mm;margin-right:3.4mm;font-size:7.8pt;line-height:1.3;text-align:center}
+.step:last-child{margin-right:0}
+.step:not(:last-child):after{content:"";position:absolute;right:-3.4mm;top:50%;width:3.4mm;height:.4mm;background:var(--grad)}
+.step b{display:block;font-size:8.6pt;margin-bottom:1mm}
+.step .n{position:absolute;top:-2.6mm;left:50%;transform:translateX(-50%);width:5.2mm;height:5.2mm;border-radius:50%;background:var(--ink);color:#fff;font-size:6.5pt;display:grid;place-items:center;font-weight:800}
+.stages{display:flex;flex-wrap:wrap;gap:1.4mm;margin-top:3mm}
+.stages span{font-size:6.6pt;font-weight:700;letter-spacing:.05em;padding:1.2mm 2.2mm;border-radius:20mm;background:var(--mist);color:var(--text)}
+
+/* AI matrix */
+.ai{border-radius:4mm;padding:7mm 6mm;color:#fff;position:relative;overflow:hidden}
+.ai h3{font-size:13pt;margin-bottom:1mm}
+.ai .who{font-size:7pt;letter-spacing:.16em;text-transform:uppercase;opacity:.8;margin-bottom:3mm}
+.ai li{list-style:none;font-size:9pt;margin:2mm 0;padding-left:4mm;position:relative;line-height:1.35}
+.ai li:before{content:"✦";position:absolute;left:0;font-size:6.5pt;top:.8mm;opacity:.85}
+.a1{background:linear-gradient(150deg,#0A6CC9,#00B4F0)}
+.a2{background:linear-gradient(150deg,#6A2BD8,#9B5BFF)}
+.a3{background:linear-gradient(150deg,#B0006A,#E6007E)}
+.a4{background:linear-gradient(150deg,#C98A00,#F2B600);color:#241A00}
+.a4 li:before{color:#241A00}
+
+/* trust meter */
+.gate{display:flex;align-items:center;gap:2mm;margin:3mm 0}
+.gate .node{flex:1;text-align:center;padding:3mm 1.5mm;border-radius:3mm;font-size:8pt;font-weight:700;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18)}
+.gate .arrow{color:var(--y);font-weight:800}
+.gate .node.hl{background:linear-gradient(135deg,rgba(0,180,240,.3),rgba(230,0,126,.3));border-color:rgba(255,255,255,.4)}
+
+table.t{width:100%;border-collapse:collapse;font-size:8.4pt}
+table.t th{text-align:left;font-size:7pt;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:2mm 2mm;border-bottom:1.5px solid var(--text)}
+table.t td{padding:1.5mm 2mm;border-bottom:1px solid var(--line);vertical-align:top}
+.road{position:relative;margin-top:6mm;padding-left:7mm}
+.road:before{content:"";position:absolute;left:2mm;top:2mm;bottom:2mm;width:.8mm;background:var(--grad);border-radius:1mm}
+.rm{position:relative;margin-bottom:5mm}
+.rm:before{content:"";position:absolute;left:-7.4mm;top:1.3mm;width:4.2mm;height:4.2mm;border-radius:50%;background:#fff;border:1mm solid var(--m)}
+.rm .when{font-size:7.5pt;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--m)}
+.rm h3{font-size:11.5pt;margin:.8mm 0 .8mm}
+.rm p{font-size:8.8pt;color:var(--muted)}
+.bar{height:2.4mm;border-radius:2mm;background:rgba(255,255,255,.14);overflow:hidden;margin-top:1.5mm}
+.bar i{display:block;height:100%;background:var(--grad)}
+</style>
+</head>
+<body>
+
+<!-- ============ 1 COVER ============ -->
+<section class="page dark cover">
+  <div class="dots"></div>
+  <div class="orbit"></div><div class="orbit2"></div>
+  <div class="crop tl"></div><div class="crop tr"></div><div class="crop bl"></div><div class="crop br"></div>
+  <div class="covertop"><span>Computer Xplorers Group</span><span>Investor briefing · 12 October 2026</span></div>
+  <div class="coverbody">
+    <div class="cmyk" style="margin-bottom:7mm"><i></i><i></i><i></i><i></i></div>
+    <div class="eyebrow">Prepared for Fujifilm</div>
+    <h1 style="margin-top:4mm">The operating<br>system for the<br><span class="grad-t">print network.</span></h1>
+    <p class="sub">Four AI-powered platforms, built in under seven months, that quote, produce, sell and market print — for franchise networks, independents and the vendors who equip them.</p>
+    <div class="pillrow"><span class="pill">Advantage MIS</span><span class="pill">Advantage&nbsp;AI</span><span class="pill">Raring2go!</span><span class="pill">DPS Sales Intelligence</span></div>
+  </div>
+  <div class="coverbot">
+    <div style="font-size:8pt;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.6)">Strictly private &amp; confidential</div>
+    <div style="font-size:8pt;text-align:right;color:rgba(255,255,255,.7)">Facts verified against source code<br>as at 8 October 2026</div>
+  </div>
+</section>
+
+<!-- ============ 2 OPPORTUNITY ============ -->
+<section class="page">
+  <div class="eyebrow">The opportunity</div>
+  <h2>Every press is only as<br>productive as the <span class="grad-t">software around it.</span></h2>
+  <p class="lead">Print businesses run on quotes, artwork, imposition, scheduling, proofs, invoices and sales calls. Most still stitch that together by hand. We built the connected layer — and the AI on top of it — so that every Fujifilm device in the field sits inside a smarter, faster, more profitable business.</p>
+
+  <div style="margin-top:9mm;display:grid;gap:4.5mm">
+    <div class="card shadow pc">
+      <div class="ico" style="background:linear-gradient(135deg,#00B4F0,#0A6CC9)">A</div>
+      <div style="flex:1"><h3>Advantage MIS <span class="tag t-jan">Network integration · Jan 2027</span></h3>
+        <p>The management platform for Kall Kwik centres and independent print shops: instant multi-mode quoting, 14-stage job control, prepress, web-to-print, EPOS, CRM and finance. Ships with a verified Fujifilm Revoria &amp; ApeosPro press catalogue.</p>
+        <div class="meta">678 data models · 1,077 API endpoints · 344 screens</div></div>
+    </div>
+    <div class="card shadow pc">
+      <div class="ico" style="background:linear-gradient(135deg,#6A2BD8,#9B5BFF)">✦</div>
+      <div style="flex:1"><h3>Advantage AI &amp; the Franchise Platform <span class="tag t-built">Built</span></h3>
+        <p>A multi-tenant franchise operating system with a streaming AI assistant, franchise coach, lead scoring, workflow builder and metered AI billing. Proven pattern for running hundreds of locations from one brain.</p>
+        <div class="meta">754 data models · 3,690 routes · 1,135 templates · 93 scheduled automations</div></div>
+    </div>
+    <div class="card shadow pc">
+      <div class="ico" style="background:linear-gradient(135deg,#B0006A,#E6007E)">R</div>
+      <div style="flex:1"><h3>Raring2go! Business-in-a-Box <span class="tag t-built">Built · in UAT</span></h3>
+        <p>A publishing and franchise OS where one territory edition drives both print and digital output — gated by preflight and approvals, with advertiser booking, newsletters and royalties in the same system.</p>
+        <div class="meta">140 tables · 19 packages · durable job &amp; workflow engine</div></div>
+    </div>
+    <div class="card shadow pc">
+      <div class="ico" style="background:linear-gradient(135deg,#C98A00,#F2B600)">D</div>
+      <div style="flex:1"><h3>DPS Sales Intelligence Cloud <span class="tag t-built">Built</span></h3>
+        <p>An AI CRM and field-sales engine for print-technology suppliers: UK-wide prospecting, equipment-lifecycle “buy windows”, lease and ROI quoting, call recording and coaching, and a customer deal room.</p>
+        <div class="meta">162 tables · 609 API routes · 116 test files</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:7mm;background:var(--mist);border:none">
+    <div class="small" style="letter-spacing:.14em;text-transform:uppercase;font-weight:700">Why it matters to Fujifilm</div>
+    <p style="font-size:10pt;margin-top:1.5mm"><b>One integration surface, many customers.</b> Connect a Fujifilm device once to the platform and every centre on it — franchise or independent — can quote, schedule and sell against that device with real speeds, real click costs and real capacity.</p>
+  </div>
+  <div class="foot"><span>Advantage Platform Suite</span><span>02</span></div>
+</section>
+
+<!-- ============ 3 NUMBERS ============ -->
+<section class="page dark">
+  <div class="dots"></div>
+  <div class="eyebrow">Scale &amp; velocity</div>
+  <h2>Built like a company ten times<br>our size. <span class="grad-t">In seven months.</span></h2>
+  <p class="lead">Counted directly from the four code repositories on 8 October 2026 — no estimates, no projections.</p>
+
+  <div class="grid2" style="margin-top:10mm;gap:6mm">
+    <div class="card"><div class="stat grad-t">1.3M</div><div class="statl">lines of production &amp; test code across four platforms</div></div>
+    <div class="card"><div class="stat grad-t">1,734</div><div class="statl">data models &amp; tables powering quoting, jobs, CRM, finance, publishing and AI</div></div>
+    <div class="card"><div class="stat grad-t">5,000+</div><div class="statl">API endpoints and routes — every one with server-side authorisation rules</div></div>
+    <div class="card"><div class="stat grad-t">8,000+</div><div class="statl">automated tests written across the suite, plus CI guards that fail the build on unprotected routes</div></div>
+    <div class="card"><div class="stat grad-t">3,200+</div><div class="statl">commits since March 2026 — continuous, audited delivery</div></div>
+    <div class="card"><div class="stat grad-t">100+</div><div class="statl">automated background jobs &amp; scheduled workflows: 93 scheduled tasks in the franchise platform and 16 cron jobs in Advantage</div></div>
+  </div>
+
+  <div style="margin-top:9mm">
+    <div class="small" style="letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:3mm">Where the code lives</div>
+    <div style="display:grid;gap:3mm">
+      <div><div style="display:flex;justify-content:space-between;font-size:8.5pt"><span>Advantage MIS (Kall Kwik)</span><b>538k lines</b></div><div class="bar"><i style="width:100%"></i></div></div>
+      <div><div style="display:flex;justify-content:space-between;font-size:8.5pt"><span>Franchise Platform &amp; Advantage AI</span><b>425k lines</b></div><div class="bar"><i style="width:79%"></i></div></div>
+      <div><div style="display:flex;justify-content:space-between;font-size:8.5pt"><span>DPS Sales Intelligence</span><b>281k lines</b></div><div class="bar"><i style="width:52%"></i></div></div>
+      <div><div style="display:flex;justify-content:space-between;font-size:8.5pt"><span>Raring2go! Publishing OS</span><b>64k lines</b></div><div class="bar"><i style="width:12%"></i></div></div>
+    </div>
+  </div>
+  <p class="small" style="margin-top:7mm;max-width:160mm">Method: line counts exclude dependencies; DPS figure may include generated API-client code. Test figure is the sum of test functions and recorded passing tests per repository (Advantage: 2,435 passing at the 6 Oct 2026 audit). Commit span 17 March – 8 October 2026.</p>
+  <div class="foot"><span>Advantage Platform Suite</span><span>03</span></div>
+</section>
+
+<!-- ============ 4 FUJIFILM ============ -->
+<section class="page">
+  <div class="eyebrow">Advantage × Fujifilm</div>
+  <h2>Already speaking<br>your <span class="grad-t">press language.</span></h2>
+  <p class="lead">Advantage ships with a hand-verified machine catalogue transcribed from manufacturer specifications — and Fujifilm is the default manufacturer when a centre sets up its machine rates.</p>
+
+  <div class="grid2" style="margin-top:8mm;align-items:start">
+    <div>
+      <div class="small" style="letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:2.5mm">Seeded as network-default machine profiles</div>
+      <span class="chip fj">Revoria Press SC285S<small>Production press</small></span>
+      <span class="chip fj">Revoria Press EC2100S<small>Production press</small></span>
+      <span class="chip fj">Revoria Press SC180<small>Production press</small></span>
+      <span class="chip fj">Revoria Press SC170<small>Production press</small></span>
+      <span class="chip fj">ApeosPro C810<small>Production printer</small></span>
+      <span class="chip fj">ApeosPro C750<small>Production printer</small></span>
+      <span class="chip fj">ApeosPro C650<small>Production printer</small></span>
+      <div class="small" style="letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin:3mm 0 2.5mm">Plus finishing</div>
+      <span class="chip">Morgana SC7800 Pro-RS XL<small>Finishing</small></span>
+      <span class="chip">Morgana AutoCut Pro<small>Finishing</small></span>
+      <span class="chip">Morgana AeroCut X / X Pro<small>Finishing</small></span>
+    </div>
+    <div class="card shadow" style="background:var(--ink);color:#fff;border:none">
+      <div class="small" style="color:rgba(255,255,255,.6);letter-spacing:.14em;text-transform:uppercase;font-weight:700">Rated engine speeds</div>
+      <div class="stat grad-t" style="margin-top:2mm">3,900–6,000</div>
+      <div class="statl" style="color:rgba(255,255,255,.7)">pages per hour, per profile — drives live time-and-cost calculations</div>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,.15);margin:4mm 0">
+      <div class="small" style="color:rgba(255,255,255,.6);letter-spacing:.14em;text-transform:uppercase;font-weight:700">3-tier spec lookup</div>
+      <div style="font-size:8.6pt;margin-top:2mm;line-height:1.5">
+        <b style="color:#5CF0B0">1 · Verified catalogue</b> — 100% confidence<br>
+        <b style="color:#FFE24D">2 · Datasheet extraction</b> — PDF or URL, per-field confidence<br>
+        <b style="color:#FF86C0">3 · AI recall</b> — hard-capped at 60%
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:8mm;font-size:13pt">What happens when a Fujifilm press is on the network</h3>
+  <div class="grid3" style="margin-top:3mm;font-size:10pt">
+    <div class="card"><h3 style="font-size:11pt">Costed to the click</h3><p style="font-size:9.4pt;color:var(--muted)">Each centre enters its own click rate, setup and speed. Quotes use real machine economics — never a guess, never a client-supplied cost.</p></div>
+    <div class="card"><h3 style="font-size:10.5pt">Matched to the job</h3><p style="font-size:9.4pt;color:var(--muted)">Press-compatibility and capacity logic checks stock, size and finishing against machine capability before a job is promised.</p></div>
+    <div class="card"><h3 style="font-size:10.5pt">Imposed &amp; optimised</h3><p style="font-size:9.4pt;color:var(--muted)">A 1,000-line imposition engine, sheet optimiser, cut-and-stack and creep calculator keep waste down and sheets full.</p></div>
+  </div>
+  <p class="small" style="margin-top:5mm">Fujifilm, Revoria and ApeosPro are trademarks of their respective owners. Catalogue content is an independent transcription of published specifications; no commercial integration with Fujifilm exists today — that is the opportunity.</p>
+  <div class="foot"><span>Advantage Platform Suite</span><span>04</span></div>
+</section>
+
+<!-- ============ 5 ENQUIRY TO PRESS ============ -->
+<section class="page">
+  <div class="eyebrow">Advantage MIS · efficiency</div>
+  <h2>From enquiry to dispatched —<br><span class="grad-t">without re-keying a thing.</span></h2>
+  <p class="lead">One connected record follows the job from the first email to the final invoice. Every hand-off that used to be a phone call, spreadsheet or sticky note is a rule in the system.</p>
+
+  <div class="flow" style="margin-top:11mm">
+    <div class="step"><span class="n">1</span><b>Enquiry</b>Email, web-to-print or phone</div>
+    <div class="step"><span class="n">2</span><b>AI quote</b>Parsed, priced, confidence-scored</div>
+    <div class="step"><span class="n">3</span><b>Accept</b>Public link, Stripe checkout</div>
+    <div class="step"><span class="n">4</span><b>Preflight</b>Artwork checks &amp; auto-fix</div>
+    <div class="step"><span class="n">5</span><b>Proof</b>Customer approves online</div>
+    <div class="step"><span class="n">6</span><b>Press</b>Imposed, scheduled, produced</div>
+    <div class="step"><span class="n">7</span><b>Ship &amp; bill</b>Dispatch, invoice, Xero</div>
+  </div>
+  <div class="stages">
+    <span>QUOTE ACCEPTED</span><span>ARTWORK RECEIVED</span><span>DESIGNER REVIEW</span><span>PROOFING</span><span>PROOF APPROVED</span><span>IN PRODUCTION</span><span>REWORK</span><span>ON HOLD</span><span>QUALITY CHECK</span><span>FINISHED</span><span>DISPATCHED</span><span>INVOICED</span><span>PAID</span><span>CANCELLED</span>
+  </div>
+  <p class="small" style="margin-top:2mm">14-stage job state machine · transitions validated · overrides role-gated</p>
+
+  <div class="grid2" style="margin-top:8mm">
+    <div class="card shadow">
+      <h3>A pricing engine print people trust</h3>
+      <ul class="tick">
+        <li><b>Five production modes</b> costed server-side: digital sheet, large format, litho, signage, packaging</li>
+        <li>Paper &amp; parent-sheet utilisation, spoilage, click cost, setup, finishing, labour, delivery, turnaround, target margin and VAT</li>
+        <li>Litho plates, make-ready, ink and wash-up</li>
+        <li>Quantity ladders from 50 to 10,000 re-imposed live beside the price</li>
+        <li>Missing cost data <b>flags the quote for review</b> — it never silently prices at zero</li>
+        <li>Every price is snapshotted and can be re-costed</li>
+      </ul>
+    </div>
+    <div class="card shadow">
+      <h3>The whole print business, one login</h3>
+      <ul class="tick">
+        <li>Customer portal: orders, reorder, bulk order, approvals, invoices</li>
+        <li>Per-centre web-to-print storefronts with custom domains</li>
+        <li>EPOS till, inventory, suppliers, outsourcing marketplace</li>
+        <li>Prepress: preflight, ICC, print marks, JDF/JMF and Enfocus Switch connectors</li>
+        <li>Stripe Connect &amp; Terminal; Xero, Sage and QuickBooks sync</li>
+        <li>Shippo shipping, sustainability certificates, variable data</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:5mm;background:var(--ink);color:#fff;border:none;display:flex;gap:6mm;align-items:center">
+    <div class="stat grad-t" style="font-size:24pt">Jan 2027</div>
+    <div style="font-size:9.4pt;line-height:1.45"><b>Network integration scheduled.</b> Advantage is due to be integrated into the Kall Kwik network in January 2027 — putting this stack in front of an entire print franchise estate, with Fujifilm presses as first-class machine profiles from day one.</div>
+  </div>
+  <div class="foot"><span>Advantage Platform Suite</span><span>05</span></div>
+</section>
+
+<!-- ============ 6 AI TOOLKIT ============ -->
+<section class="page dark">
+  <div class="dots"></div>
+  <div class="eyebrow">The AI toolkit</div>
+  <h2>AI in every workflow.<br><span class="grad-t">Not bolted on — built in.</span></h2>
+  <p class="lead">Across the four platforms, AI prepares, predicts and drafts — so people spend their day deciding and selling instead of typing and chasing.</p>
+
+  <div class="grid2" style="margin-top:8mm;gap:5mm">
+    <div class="ai a1">
+      <div class="who">Advantage MIS · print operations</div>
+      <h3>Run the shop floor faster</h3>
+      <ul>
+        <li><b>Email-to-quote:</b> reads an enquiry, builds the spec, prices it and scores its own confidence</li>
+        <li><b>Copilot:</b> intent engine, action executor, proactive nudges, anomaly detection, forecasting and metric explainer</li>
+        <li><b>Artwork &amp; image-quality checks</b> and design critique</li>
+        <li><b>Machine-spec lookup</b> with confidence tiers</li>
+        <li>Upsell suggestions inside the quote, natural-language search, voice job intent, quote learning</li>
+      </ul>
+    </div>
+    <div class="ai a2">
+      <div class="who">Advantage AI · franchise platform</div>
+      <h3>Coach the whole network</h3>
+      <ul>
+        <li><b>AdvantageAi assistant:</b> streaming chat with memory, function calling and a notepad</li>
+        <li><b>Franchise Coach</b> and AI Intelligence Hub with lead scoring</li>
+        <li><b>Workflow Builder:</b> analyses data and proposes automations</li>
+        <li>Curriculum assistant, reports assistant, AI email and content drafting, multilingual translation</li>
+        <li><b>Metered AI:</b> every call logged, costed, with budget caps per organisation, franchise and user</li>
+      </ul>
+    </div>
+    <div class="ai a4">
+      <div class="who">DPS Sales Intelligence · equipment sales</div>
+      <h3>Sell more kit, smarter</h3>
+      <ul>
+        <li><b>Lead &amp; opportunity scoring</b>, next-best-action engine and predictive intelligence</li>
+        <li><b>Call recording → transcript → coaching</b> with whisper/barge/monitor</li>
+        <li><b>AI Deal Room</b> and assistant for customers</li>
+        <li>Outreach drafts, forecast digests and industry-news relevance</li>
+        <li>ML platform with vector embeddings for similarity and prediction</li>
+      </ul>
+    </div>
+    <div class="ai a3">
+      <div class="who">Raring2go! · publishing &amp; marketing</div>
+      <h3>Create, always with approval</h3>
+      <ul>
+        <li><b>AI gateway</b> with versioned prompts and usage tracking</li>
+        <li>Subject-line, content and full-campaign suggestions for newsletters</li>
+        <li>Suggest-only by design: public content follows configured approval policy</li>
+        <li>Roadmap: content creation, events finding and cross-channel repurposing through the same gateway</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:5mm;display:flex;gap:6mm;align-items:center">
+    <div class="stat grad-t" style="font-size:22pt;white-space:nowrap">Model-agnostic</div>
+    <div style="font-size:9pt;color:rgba(255,255,255,.8);line-height:1.45">OpenAI GPT, Whisper and embeddings in Advantage, the franchise platform and DPS; Anthropic Claude through the Raring2go! gateway. Providers sit behind adapters, and every AI feature falls back to a deterministic mode when no key is configured.</div>
+  </div>
+  <div class="foot"><span>Advantage Platform Suite</span><span>06</span></div>
+</section>
+
+<!-- ============ 7 TRUST + EFFICIENCY ============ -->
+<section class="page">
+  <div class="eyebrow">Responsible AI · real efficiency</div>
+  <h2>AI that proposes.<br><span class="grad-t">People who decide.</span></h2>
+  <p class="lead">The fastest way to lose a print customer is a wrong price or a wrong proof. The suite is designed so AI accelerates the work and a human — or a hard rule — owns the outcome.</p>
+
+  <div class="card" style="margin-top:5mm;background:var(--ink);color:#fff;border:none">
+    <div class="small" style="color:rgba(255,255,255,.6);letter-spacing:.14em;text-transform:uppercase;font-weight:700">The control loop</div>
+    <div class="gate">
+      <div class="node">AI prepares</div><div class="arrow">→</div>
+      <div class="node">Rules &amp; confidence check</div><div class="arrow">→</div>
+      <div class="node hl">Human approves</div><div class="arrow">→</div>
+      <div class="node">Audit trail written</div>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:4mm">
+    <div class="card" style="padding:4.5mm"><h3>Guardrails in the code</h3>
+      <ul class="tick">
+        <li>AI never sets persisted price, cost or VAT — the server pricing engine does</li>
+        <li>Low confidence or missing data routes the quote to review</li>
+        <li>Spec lookup capped at 60% confidence when it falls back to AI recall</li>
+        <li>Source artwork is never overwritten — fixes create a derived version</li>
+        <li>An unfixable low-resolution image is never declared print-safe</li>
+        <li>No silent AI decisions on legal, material finance or compliance</li>
+      </ul></div>
+    <div class="card" style="padding:4.5mm"><h3>Governed &amp; metered</h3>
+      <ul class="tick">
+        <li>Prompt-safety and output-safety modules; data-minimisation and tenant-isolation AI policies</li>
+        <li>AI actors recorded in the audit log alongside humans</li>
+        <li>Per-call cost logging with budget caps</li>
+        <li>Purpose, sources, output and approval state stored for consequential runs</li>
+      </ul></div>
+  </div>
+
+  <h3 style="margin-top:5mm;font-size:13pt">Where the efficiency comes from</h3>
+  <table class="t" style="margin-top:2mm">
+    <tr><th style="width:26%">Manual today</th><th style="width:38%">In the suite</th><th>Source in code</th></tr>
+    <tr><td>Re-typing enquiries into a quote</td><td>Email parsed and priced automatically, confidence-scored</td><td>ai-auto-quote, quote-parser</td></tr>
+    <tr><td>Calculating imposition &amp; waste by hand</td><td>Optimised sheets, cut-and-stack, creep, per-quantity re-imposition</td><td>imposition-engine, sheet-optimizer</td></tr>
+    <tr><td>Chasing proofs &amp; approvals</td><td>Online proof approval; job auto-advances on approval</td><td>14-stage job state machine</td></tr>
+    <tr><td>Month-end invoice &amp; royalty admin</td><td>Scheduled invoicing, dunning, reconciliation, royalty statements</td><td>93 scheduled jobs, Xero sync</td></tr>
+    <tr><td>Cold-calling blind</td><td>Scored leads, buy-window alerts, AI call coaching</td><td>DPS next-best-action</td></tr>
+  </table>
+  <p class="small" style="margin-top:3mm">We deliberately quote no “percent time saved” figures: pilot measurements begin with the first live centres.</p>
+  <div class="foot"><span>Advantage Platform Suite</span><span>07</span></div>
+</section>
+
+<!-- ============ 8 RARING + DPS ============ -->
+<section class="page dark">
+  <div class="dots"></div>
+  <div class="eyebrow">Two engines, one ecosystem</div>
+  <h2>Print production &amp; print sales —<br><span class="grad-t">both connected.</span></h2>
+
+  <div class="card" style="margin-top:8mm;padding:7mm">
+    <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:15pt;margin:0">Raring2go! — one edition, print <i>and</i> digital</h3><span class="tag t-built">Built · internal UAT</span></div>
+    <div style="margin-top:4mm;display:flex;align-items:center;gap:2.5mm">
+      <div class="gate" style="flex:1;margin:0">
+        <div class="node">Seasonal master edition</div><div class="arrow">→</div>
+        <div class="node">Territory edition</div><div class="arrow">→</div>
+        <div class="node hl">Preflight gate</div><div class="arrow">→</div>
+        <div class="node">Print + digital outputs</div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:4mm">
+      <ul class="tick" style="color:rgba(255,255,255,.88)">
+        <li>One authoritative record feeds both outputs from the same page snapshot</li>
+        <li>HQ template changes flow to territories without overwriting local overrides</li>
+        <li>Published template versions are immutable — change = new version</li>
+        <li>Templates carry trim, bleed, margins, grid and print rules (CMYK, 300 dpi, bleed required)</li>
+      </ul>
+      <ul class="tick" style="color:rgba(255,255,255,.88)">
+        <li>Print output blocked until every page passes preflight and approvals</li>
+        <li>Advertiser booking reserves real page slots — no overselling</li>
+        <li>Newsletters, social queue, royalties and finance in the same platform</li>
+        <li>Durable, idempotent job runtime with retries and a visible job console</li>
+      </ul>
+    </div>
+    <div class="small" style="margin-top:3mm;color:#FFE24D"><b>Fujifilm fit:</b> the preflight gate and print spec are in place; a rendered PDF/X engine and device connector are the natural joint build.</div>
+  </div>
+
+  <div class="card" style="margin-top:7mm;padding:7mm">
+    <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:15pt;margin:0">DPS Sales Intelligence — equipment sales on autopilot</h3><span class="tag t-built">Built</span></div>
+    <div class="grid3" style="margin-top:4mm">
+      <div><div class="stat grad-t" style="font-size:24pt">~5M</div><div class="statl">UK companies in the Companies House register for prospecting, with print-sector SIC targeting</div></div>
+      <div><div class="stat grad-t" style="font-size:24pt">52+12</div><div class="statl">screens across the sales app and the customer portal</div></div>
+      <div><div class="stat grad-t" style="font-size:24pt">162</div><div class="statl">tables incl. installations, lease presets, quote terms and “buy-window” tracking</div></div>
+    </div>
+    <ul class="tick" style="margin-top:3mm;color:rgba(255,255,255,.88)">
+      <li><b>Territory map &amp; digital twin</b> scenario modelling, route planner and geo check-in diary</li>
+      <li><b>Equipment lifecycle:</b> installations, lease/ROI/commission/margin quoting, refresh timing</li>
+      <li><b>Power dialler</b> with screen-pop, recording, transcription and live coaching</li>
+      <li><b>Integrations:</b> Microsoft 365, Google, Xero, Twilio, RingCentral, ERP and service-management adapters</li>
+    </ul>
+    <div class="small" style="margin-top:2mm;color:#FFE24D"><b>Fujifilm fit:</b> a ready-made dealer and direct-sales engine for equipment refresh cycles.</div>
+  </div>
+  <div class="foot"><span>Advantage Platform Suite</span><span>08</span></div>
+</section>
+
+
+<!-- ============ 9 RARING2GO FORECAST ============ -->
+<section class="page">
+  <div class="eyebrow">Raring2go! · scope, end state &amp; forecast</div>
+  <h2>From internal UAT to an<br><span class="grad-t">80-territory print engine.</span></h2>
+  <p class="lead">The end state: one login per franchisee, HQ running the network by exception, and every territory edition producing a press-ready PDF <i>and</i> a digital magazine from the same record — 80+ editions at a time.</p>
+
+  <div class="grid2" style="margin-top:6mm;align-items:start">
+    <div>
+      <div class="small" style="letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:2mm">The 8-phase build — status in the code today</div>
+      <table class="t" style="font-size:8pt">
+        <tr><td style="width:6mm"><b>0</b></td><td>Foundation: monorepo, design system, DB, audit, CI, jobs</td><td style="width:19mm"><span class="tag t-built">Built</span></td></tr>
+        <tr><td><b>1</b></td><td>Identity &amp; editable RBAC, role-aware shells</td><td><span class="tag t-built">Built</span></td></tr>
+        <tr><td><b>2</b></td><td>Franchise + advertiser core, pipeline, billing</td><td><span class="tag t-built">Built</span></td></tr>
+        <tr><td><b>3</b></td><td>Edition vertical slice: templates, flatplan, preflight, outputs</td><td><span class="tag t-built">Built</span></td></tr>
+        <tr><td><b>4</b></td><td>Edition Factory at scale: inheritance, control room, bulk ops</td><td><span class="tag t-jan">Proving</span></td></tr>
+        <tr><td><b>5</b></td><td>Audience, native email, Newsletter Studio</td><td><span class="tag t-built">Built</span></td></tr>
+        <tr><td><b>6</b></td><td>Finance, royalties, benchmarks, health score</td><td><span class="tag t-jan">Partial</span></td></tr>
+        <tr><td><b>7</b></td><td>AI: wire content &amp; events GPTs, copilots, automation builder</td><td><span class="tag t-road">Next</span></td></tr>
+      </table>
+      <p class="small" style="margin-top:2mm">Status from repository review, 8 Oct 2026. “Built” = implemented and under internal UAT; live-provider checks (email, payments, storage, malware scan) not yet executed.</p>
+    </div>
+    <div>
+      <div class="small" style="letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:1mm">Forecast path</div>
+      <div class="road" style="margin-top:3mm">
+        <div class="rm" style="margin-bottom:3.4mm"><div class="when">Oct – Nov 2026</div><h3 style="font-size:10pt">Internal UAT &amp; live-provider checks</h3><p style="font-size:8pt">8 scripted scenarios executed; email, payments, storage verified.</p></div>
+        <div class="rm" style="margin-bottom:3.4mm"><div class="when">Q1 2027</div><h3 style="font-size:10pt">First proof point</h3><p style="font-size:8pt">One real territory logs in, manages advertisers, builds an edition from HQ templates and exports a press-ready PDF plus digital edition.</p></div>
+        <div class="rm" style="margin-bottom:3.4mm"><div class="when">Q2 – Q3 2027</div><h3 style="font-size:10pt">Controlled scale-up</h3><p style="font-size:8pt">Edition Factory proven on a small group of territories; native email on controlled segments.</p></div>
+        <div class="rm" style="margin-bottom:0"><div class="when">Q4 2027</div><h3 style="font-size:10pt">Full network</h3><p style="font-size:8pt">80+ territory editions per season, benchmarks, health score and AI copilots live.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:6mm;background:var(--ink);color:#fff;border:none">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="margin:0;font-size:12pt">What the end state means for a digital press fleet</h3><span class="tag t-road">Illustrative model</span></div>
+    <table class="t" style="margin-top:3mm;color:#fff">
+      <tr><th style="color:rgba(255,255,255,.6);border-color:#fff">Scenario</th><th style="color:rgba(255,255,255,.6);border-color:#fff">Territories</th><th style="color:rgba(255,255,255,.6);border-color:#fff">Unique editions / yr</th><th style="color:rgba(255,255,255,.6);border-color:#fff">Copies / yr</th><th style="color:rgba(255,255,255,.6);border-color:#fff">Page-sides / yr</th></tr>
+      <tr><td style="border-color:rgba(255,255,255,.14)">Proof point</td><td style="border-color:rgba(255,255,255,.14)">3</td><td style="border-color:rgba(255,255,255,.14)">12</td><td style="border-color:rgba(255,255,255,.14)">24,000</td><td style="border-color:rgba(255,255,255,.14)">0.77M</td></tr>
+      <tr><td style="border-color:rgba(255,255,255,.14)">Scale-up</td><td style="border-color:rgba(255,255,255,.14)">25</td><td style="border-color:rgba(255,255,255,.14)">100</td><td style="border-color:rgba(255,255,255,.14)">200,000</td><td style="border-color:rgba(255,255,255,.14)">6.4M</td></tr>
+      <tr><td style="border-color:rgba(255,255,255,.14)"><b>Full network</b></td><td style="border-color:rgba(255,255,255,.14)"><b>80</b></td><td style="border-color:rgba(255,255,255,.14)"><b>320</b></td><td style="border-color:rgba(255,255,255,.14)"><b>640,000</b></td><td style="border-color:rgba(255,255,255,.14)"><b class="grad-t">20.5M</b></td></tr>
+    </table>
+    <p class="small" style="margin-top:2.5mm">Assumptions to be replaced with HQ actuals: 4 seasonal issues a year, 32 pages per edition, 2,000 copies per territory edition. Each territory edition is unique (local content, local advertisers) — 320 versioned short runs a year is exactly the variable, short-run work digital production presses are built for.</p>
+  </div>
+  <div class="foot"><span>Advantage Platform Suite</span><span>09</span></div>
+</section>
+
+<!-- ============ 10 FOUNDATIONS ============ -->
+<section class="page">
+  <div class="eyebrow">Enterprise-grade foundations</div>
+  <h2>Secure and auditable<br>by <span class="grad-t">design.</span></h2>
+  <p class="lead">Franchise networks hold customer, financial and child-related data. Security is built into the architecture, and we are transparent about what is done and what is next.</p>
+
+  <div class="grid3" style="margin-top:7mm">
+    <div class="card shadow"><h3>Tenant isolation</h3><p style="font-size:8.8pt;color:var(--muted)">Tenant → centre → user hierarchy. Data-driven permissions (module + action + scope). A CI guard fails the build if any API route lacks an auth or scoping marker. Cross-tenant tests required for sensitive endpoints.</p></div>
+    <div class="card shadow"><h3>Identity &amp; access</h3><p style="font-size:8.8pt;color:var(--muted)">Role-based MFA, account lockout, bcrypt, passkeys, session revalidation, rate limiting, CSRF and strict security headers at the edge.</p></div>
+    <div class="card shadow"><h3>Audit &amp; privacy</h3><p style="font-size:8.8pt;color:var(--muted)">Append-only audit events with redacted payloads, GDPR export and erasure, consent history, PII encryption, soft delete and retention rules.</p></div>
+    <div class="card shadow"><h3>Safe files &amp; webhooks</h3><p style="font-size:8.8pt;color:var(--muted)">Private storage with signed URLs, ClamAV malware scanning that fails closed in production, upload magic-byte checks, signature-verified Stripe and Twilio webhooks.</p></div>
+    <div class="card shadow"><h3>Resilient operations</h3><p style="font-size:8.8pt;color:var(--muted)">Idempotent financial, publication and email-send jobs; leases, retries and dead-letter handling; health endpoints; nightly backups in the franchise platform.</p></div>
+    <div class="card shadow"><h3>Modern stack</h3><p style="font-size:8.8pt;color:var(--muted)">Next.js, React 19, TypeScript, Python, PostgreSQL on Neon, Vercel, Railway and Cloudflare R2 — provider adapters keep vendors swappable.</p></div>
+  </div>
+
+  <div class="card" style="margin-top:5mm;background:var(--mist);border:none">
+    <h3>Independent review — and what comes next</h3>
+    <p style="font-size:9.2pt;color:var(--muted);margin-top:1mm">An internal security audit of Advantage on 6 October 2026 identified and remediated issues including cross-tenant access on a set of routes and unauthenticated endpoints; the franchise platform has code-level security and penetration-style reviews on file. We are candid that we hold <b>no third-party certification yet</b>, and our priorities with investment are:</p>
+    <div class="grid2" style="margin-top:3mm">
+      <ul class="tick"><li>Postgres row-level security as defence-in-depth behind application isolation</li><li>External penetration test and ISO 27001 / SOC 2 certification path</li></ul>
+      <ul class="tick"><li>Live-provider verification, backup-restore rehearsal and alerting</li><li>Browser end-to-end and accessibility suites across all four platforms</li></ul>
+    </div>
+  </div>
+
+  <h3 style="margin-top:5mm">Integration-ready</h3>
+  <div style="margin-top:2mm">
+    <span class="chip">Stripe</span><span class="chip">GoCardless</span><span class="chip">Xero</span><span class="chip">QuickBooks</span><span class="chip">Microsoft 365</span><span class="chip">Google Workspace</span><span class="chip">Twilio / WhatsApp</span><span class="chip">RingCentral</span><span class="chip">Shippo</span><span class="chip">Enfocus Switch</span><span class="chip">JDF / JMF</span>
+  </div>
+  <div class="foot"><span>Advantage Platform Suite</span><span>10</span></div>
+</section>
+
+<!-- ============ 10 ROADMAP / PARTNERSHIP ============ -->
+<section class="page dark">
+  <div class="dots"></div>
+  <div class="eyebrow">Roadmap &amp; partnership</div>
+  <h2>Where Fujifilm <span class="grad-t">accelerates it.</span></h2>
+  <p class="lead">The platforms exist. The next phase is putting them on real presses, in real centres, with real data — and Fujifilm is the partner who can make that happen at scale.</p>
+
+  <div class="road" style="color:#fff">
+    <div class="rm"><div class="when">Now</div><h3>Built &amp; proven in code</h3><p style="color:rgba(255,255,255,.7)">Four platforms, 1.3M lines, Fujifilm press catalogue seeded, internal UAT under way on Raring2go!, security audit remediated on Advantage.</p></div>
+    <div class="rm"><div class="when">January 2027</div><h3>Advantage joins the Kall Kwik network</h3><p style="color:rgba(255,255,255,.7)">First live franchise estate. Real click rates, real throughput, real quote-to-cash data from centres running Fujifilm devices.</p></div>
+    <div class="rm"><div class="when">With Fujifilm</div><h3>Device connectivity</h3><p style="color:rgba(255,255,255,.7)">Live press status, counters and job submission via JDF/JMF and workflow partners; consumables and service signals feeding capacity planning and replenishment.</p></div>
+    <div class="rm"><div class="when">With Fujifilm</div><h3>Print-engine for Raring2go!</h3><p style="color:rgba(255,255,255,.7)">Rendered PDF/X output, colour management and imposition so territory editions flow straight to a Revoria press.</p></div>
+    <div class="rm"><div class="when">With Fujifilm</div><h3>Dealer &amp; direct sales engine</h3><p style="color:rgba(255,255,255,.7)">DPS-style prospecting and refresh-window alerts configured for Fujifilm equipment, with AI call coaching and customer deal rooms.</p></div>
+  </div>
+
+  <div class="card" style="margin-top:4mm;border-color:rgba(255,255,255,.28);background:linear-gradient(135deg,rgba(0,180,240,.18),rgba(230,0,126,.18))">
+    <h3 style="font-size:13pt">The partnership in one line</h3>
+    <p style="font-size:10.5pt;color:rgba(255,255,255,.9)">Fujifilm brings the presses and the reach. We bring the software that makes every press-owner more productive — and a reason for them to stay on Fujifilm.</p>
+  </div>
+
+  <div style="position:absolute;left:16mm;right:16mm;bottom:20mm;display:flex;justify-content:space-between;align-items:flex-end">
+    <div><div class="cmyk" style="margin-bottom:3mm"><i></i><i></i><i></i><i></i></div>
+      <div style="font-size:14pt;font-weight:800">Stuart Harley</div>
+      <div style="font-size:9pt;color:rgba(255,255,255,.75)">Computer Xplorers Group<br>stuart@computerxplorers.co.uk</div></div>
+    <div class="small" style="max-width:78mm;text-align:right">Figures are counted from source code at 8 October 2026. Roadmap items are plans, not commitments. Third-party names and marks belong to their owners.</div>
+  </div>
+  <div class="foot"><span>Strictly private &amp; confidential</span><span>11</span></div>
+</section>
+
+<script>
+(function(){
+  var stops=[[0,180,240],[122,77,255],[230,0,126]];
+  function col(t){var seg=t<.5?0:1,u=t<.5?t*2:(t-.5)*2,a=stops[seg],b=stops[seg+1];
+    return 'rgb('+a.map(function(v,i){return Math.round(v+(b[i]-v)*u)}).join(',')+')';}
+  document.querySelectorAll('.grad-t,.eyebrow').forEach(function(el){
+    var txt=el.textContent,n=txt.replace(/\s/g,'').length,i=0;el.textContent='';
+    txt.split(/(\s+)/).forEach(function(tok){
+      if(/^\s+$/.test(tok)||tok===''){el.appendChild(document.createTextNode(' '));return;}
+      var w=document.createElement('span');w.className='w';
+      for(var k=0;k<tok.length;k++){var c=document.createElement('span');c.textContent=tok[k];c.style.color=col(n>1?i/(n-1):0);i++;w.appendChild(c);}
+      el.appendChild(w);});
+  });
+})();
+</script>
+</body>
+</html>

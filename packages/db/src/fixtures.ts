@@ -10,12 +10,14 @@ export const fixtureIds = {
   },
   users: {
     superAdmin: "00000000-0000-4000-8000-000000000201",
-    franchisee: "00000000-0000-4000-8000-000000000202"
+    franchisee: "00000000-0000-4000-8000-000000000202",
+    workflowAutomation: "00000000-0000-4000-8000-000000000203"
   },
   roles: {
     superAdmin: "00000000-0000-4000-8000-000000000301",
     hqAdmin: "00000000-0000-4000-8000-000000000302",
-    franchisee: "00000000-0000-4000-8000-000000000303"
+    franchisee: "00000000-0000-4000-8000-000000000303",
+    automation: "00000000-0000-4000-8000-000000000304"
   },
   permissions: {
     systemAdminister: "00000000-0000-4000-8000-000000000401",
@@ -161,7 +163,15 @@ export const fixtureIds = {
     emailAiAssist: "00000000-0000-4000-8000-000000000541",
     jobsView: "00000000-0000-4000-8000-000000000542",
     jobsRetry: "00000000-0000-4000-8000-000000000543",
-    jobsCancel: "00000000-0000-4000-8000-000000000544"
+    jobsCancel: "00000000-0000-4000-8000-000000000544",
+    taskView: "00000000-0000-4000-8000-000000000545",
+    taskComplete: "00000000-0000-4000-8000-000000000546",
+    approvalView: "00000000-0000-4000-8000-000000000547",
+    approvalDecide: "00000000-0000-4000-8000-000000000548",
+    workflowView: "00000000-0000-4000-8000-000000000549",
+    workflowManage: "00000000-0000-4000-8000-000000000550",
+    workflowActivate: "00000000-0000-4000-8000-000000000551",
+    workflowTest: "00000000-0000-4000-8000-000000000552"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -418,6 +428,11 @@ export const foundationSeed = {
       id: fixtureIds.users.franchisee,
       email: "franchisee@example.raring2go.test",
       displayName: "Franchisee Fixture"
+    },
+    {
+      id: fixtureIds.users.workflowAutomation,
+      email: "workflow-automation@system.raring2go.test",
+      displayName: "Workflow Automation"
     }
   ],
   roles: [
@@ -440,6 +455,13 @@ export const foundationSeed = {
       key: "franchisee",
       name: "Franchisee",
       description: "Own-territory franchise fixture role.",
+      isSystem: true
+    },
+    {
+      id: fixtureIds.roles.automation,
+      key: "workflow_automation",
+      name: "Workflow Automation",
+      description: "Service principal for workflow engine actions. Holds only the grants those actions need.",
       isSystem: true
     }
   ],
@@ -1307,6 +1329,54 @@ export const foundationSeed = {
       module: "system.jobs",
       action: "cancel",
       description: "Cancel queued background jobs."
+    },
+    {
+      id: fixtureIds.permissions.taskView,
+      module: "automation.task",
+      action: "view",
+      description: "View workflow-created tasks in scope."
+    },
+    {
+      id: fixtureIds.permissions.taskComplete,
+      module: "automation.task",
+      action: "complete",
+      description: "Complete workflow-created tasks in scope."
+    },
+    {
+      id: fixtureIds.permissions.approvalView,
+      module: "automation.approval",
+      action: "view",
+      description: "View workflow approval requests in scope."
+    },
+    {
+      id: fixtureIds.permissions.approvalDecide,
+      module: "automation.approval",
+      action: "decide",
+      description: "Approve or reject workflow approval requests in scope."
+    },
+    {
+      id: fixtureIds.permissions.workflowView,
+      module: "automation.workflow",
+      action: "view",
+      description: "View workflow definitions, runs and their steps."
+    },
+    {
+      id: fixtureIds.permissions.workflowManage,
+      module: "automation.workflow",
+      action: "manage",
+      description: "Create and edit draft workflow versions."
+    },
+    {
+      id: fixtureIds.permissions.workflowActivate,
+      module: "automation.workflow",
+      action: "activate",
+      description: "Activate workflow versions and enable or disable workflows."
+    },
+    {
+      id: fixtureIds.permissions.workflowTest,
+      module: "automation.workflow",
+      action: "test",
+      description: "Test-run a workflow without side effects."
     }
   ],
   advertisers: [

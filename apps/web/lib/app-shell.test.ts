@@ -204,6 +204,7 @@ describe("app shell context and capabilities", () => {
       expect(shell.navigation.map((item) => item.id)).toEqual([
         "search",
         "action-centre",
+        "tasks",
         "franchisees",
         "advertisers",
         "audience",
@@ -221,6 +222,7 @@ describe("app shell context and capabilities", () => {
         "roles",
         "connections",
         "system",
+        "workflows",
         "jobs",
         "activity"
       ]);
