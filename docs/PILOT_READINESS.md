@@ -86,7 +86,8 @@ Status: AMBER.
 - Audit/event foundations exist across sensitive actions.
 - Job states exist for email/social/publishing-style workflows and are visible in My Today/Command Centre patterns.
 - Provider errors are represented as recoverable operational state.
-- A dedicated operations console, alerting, dead-letter queue and support playbook remain future OPS work before broader rollout.
+- OPS-001 added a durable job runtime with dead-lettering, a Job Console (`/app/system/jobs`) that unifies background, email-send, social, website and edition-output jobs with scoped, audited retry, structured redacted logging with correlation ids, and `/api/health`. See `docs/JOBS.md`.
+- External alerting (paging on `/api/health` going degraded/down) and a support playbook remain before broader rollout.
 
 ## Remaining Provider/Stubs Classification
 

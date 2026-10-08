@@ -151,6 +151,12 @@ export async function seedDatabase(databaseUrl?: string) {
         scope: "system",
         constraints: {}
       },
+      ...[fixtureIds.permissions.jobsView, fixtureIds.permissions.jobsRetry, fixtureIds.permissions.jobsCancel].map((permissionId) => ({
+        roleId: fixtureIds.roles.superAdmin,
+        permissionId,
+        scope: "system" as const,
+        constraints: {}
+      })),
       {
         roleId: fixtureIds.roles.hqAdmin,
         permissionId: fixtureIds.permissions.rolesView,
@@ -363,13 +369,22 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.integrationsConnect,
         fixtureIds.permissions.integrationsReconnect,
         fixtureIds.permissions.integrationsRevoke,
-        fixtureIds.permissions.integrationsTest
+        fixtureIds.permissions.integrationsTest,
+        fixtureIds.permissions.jobsView,
+        fixtureIds.permissions.jobsRetry,
+        fixtureIds.permissions.jobsCancel
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
         scope: "network" as const,
         constraints: {}
       })),
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.jobsView,
+        scope: "own_territory",
+        constraints: {}
+      },
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.documentView,

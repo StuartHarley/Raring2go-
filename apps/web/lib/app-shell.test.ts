@@ -221,6 +221,7 @@ describe("app shell context and capabilities", () => {
         "roles",
         "connections",
         "system",
+        "jobs",
         "activity"
       ]);
     }
@@ -255,6 +256,31 @@ describe("app shell context and capabilities", () => {
       )
     ).rejects.toMatchObject({
       kind: "unauthorised"
+    });
+  });
+
+  it("lets a franchisee into the job console for their own territory only", async () => {
+    const franchisee = {
+      sessionKey: "franchisee",
+      organisationId: fixtureIds.organisations.franchise,
+      territoryId: fixtureIds.territories.suttonColdfield
+    };
+
+    await expect(requireShellPermission(franchisee, { module: "system.jobs", action: "view" })).resolves.toMatchObject({
+      kind: "authenticated"
+    });
+    // Retry/cancel are HQ powers: not granted to the franchisee role at all.
+    await expect(requireShellPermission(franchisee, { module: "system.jobs", action: "retry" })).rejects.toMatchObject({
+      kind: "unauthorised"
+    });
+    await expect(requireShellPermission(franchisee, { module: "system.jobs", action: "cancel" })).rejects.toMatchObject({
+      kind: "unauthorised"
+    });
+  });
+
+  it("requires a session for the job console", async () => {
+    await expect(requireShellPermission({}, { module: "system.jobs", action: "view" })).rejects.toMatchObject({
+      kind: "unauthenticated"
     });
   });
 

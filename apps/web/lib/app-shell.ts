@@ -302,6 +302,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "administration"
   },
   {
+    id: "jobs",
+    label: "Job Console",
+    href: "/app/system/jobs",
+    capability: {
+      module: "system.jobs",
+      action: "view"
+    },
+    contextLevel: "system",
+    group: "administration"
+  },
+  {
     id: "activity",
     label: "Audit Activity",
     href: "/app/activity",
@@ -374,6 +385,18 @@ const permissionData: PermissionData = {
       roleId: fixtureIds.roles.hqAdmin,
       permissionId: fixtureIds.permissions.rolesView,
       scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.jobsView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.jobsView,
+      scope: "own_territory",
       constraints: {}
     },
     {

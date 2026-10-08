@@ -151,7 +151,10 @@ describe("foundation fixtures", () => {
       "finance.royalty_statement",
       "finance.royalty_statement",
       "files",
-      "marketing.email"
+      "marketing.email",
+      "system.jobs",
+      "system.jobs",
+      "system.jobs"
     ]);
   });
 
