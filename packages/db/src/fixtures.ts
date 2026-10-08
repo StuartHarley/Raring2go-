@@ -186,7 +186,10 @@ export const fixtureIds = {
     privacyRequestView: "00000000-0000-4000-8000-000000000562",
     privacyRequestCreate: "00000000-0000-4000-8000-000000000563",
     privacyRequestDecide: "00000000-0000-4000-8000-000000000564",
-    privacyRequestExport: "00000000-0000-4000-8000-000000000565"
+    privacyRequestExport: "00000000-0000-4000-8000-000000000565",
+    rolesManage: "00000000-0000-4000-8000-000000000566",
+    rolesAssign: "00000000-0000-4000-8000-000000000567",
+    rolesInvite: "00000000-0000-4000-8000-000000000568"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1482,6 +1485,24 @@ export const foundationSeed = {
       module: "privacy.request",
       action: "export",
       description: "Generate and download a subscriber's data export."
+    },
+    {
+      id: fixtureIds.permissions.rolesManage,
+      module: "roles",
+      action: "manage",
+      description: "Create roles and change which permissions a role holds."
+    },
+    {
+      id: fixtureIds.permissions.rolesAssign,
+      module: "roles",
+      action: "assign",
+      description: "Give people roles, and end their roles, within the scope you hold."
+    },
+    {
+      id: fixtureIds.permissions.rolesInvite,
+      module: "roles",
+      action: "invite",
+      description: "Invite people to an organisation or territory with a role."
     }
   ],
   advertisers: [
@@ -3318,6 +3339,13 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     scope: "own_territory" as const,
     constraints: {}
   })),
+  // Access administration (IAM-002): Super Admin runs it; HQ admin may assign and invite, but the
+  // escalation guard stops anyone granting more than they hold.
+  { roleId: fixtureIds.roles.superAdmin, permissionId: fixtureIds.permissions.rolesManage, scope: "system", constraints: {} },
+  { roleId: fixtureIds.roles.superAdmin, permissionId: fixtureIds.permissions.rolesAssign, scope: "system", constraints: {} },
+  { roleId: fixtureIds.roles.superAdmin, permissionId: fixtureIds.permissions.rolesInvite, scope: "system", constraints: {} },
+  { roleId: fixtureIds.roles.hqAdmin, permissionId: fixtureIds.permissions.rolesAssign, scope: "network", constraints: {} },
+  { roleId: fixtureIds.roles.hqAdmin, permissionId: fixtureIds.permissions.rolesInvite, scope: "network", constraints: {} },
   // Grants the application enforced at runtime before access control moved to the database
   // (royalties, uploads, AI assist, journeys, franchisee content AI approval). They live here so the
   // database seed, and therefore the running app, keeps exactly the behaviour it had.

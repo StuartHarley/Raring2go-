@@ -8,6 +8,7 @@ import {
   createMicrosoftGraphEmailProvider,
   createPostmarkEmailProvider,
   sendEmailBatch,
+  sendInvitationEmail,
   sendPasswordlessSignInEmail,
   validateEmailMessage
 } from "./index";
@@ -450,5 +451,27 @@ describe("email delivery provider boundary", () => {
       secret: "webhook-secret",
       body: JSON.stringify({ RecordType: "Delivery", MessageID: "message_1" })
     })).rejects.toThrow("webhook secret");
+  });
+});
+
+describe("invitation email", () => {
+  it("names the organisation, role and inviter, links to accept, and escapes everything it renders", async () => {
+    const provider = createMemoryEmailProvider();
+    await sendInvitationEmail(provider, {
+      to: "new@example.com",
+      url: "https://app.example.com/invite/accept?token=a&email=b",
+      organisationName: "Sutton <Coldfield>",
+      roleName: "Franchisee",
+      invitedByName: "Head Office",
+      expiresAt: new Date("2026-10-15T12:00:00Z"),
+      idempotencyKey: "invite-1"
+    });
+    const sent = provider.sent[0]!.message;
+    expect(sent.to[0]!.email).toBe("new@example.com");
+    expect(sent.subject).toContain("Sutton <Coldfield>");
+    expect(sent.text).toContain("Head Office has invited you to join Sutton <Coldfield> on Raring2go as Franchisee.");
+    expect(sent.text).toContain("https://app.example.com/invite/accept?token=a&email=b");
+    expect(sent.html).toContain("Sutton &lt;Coldfield&gt;");
+    expect(sent.html).not.toContain("<Coldfield>");
   });
 });

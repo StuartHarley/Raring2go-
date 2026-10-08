@@ -317,6 +317,32 @@ describe("app shell context and capabilities", () => {
     ).resolves.toMatchObject({ kind: "invalid_context" });
   });
 
+  it("keeps role administration to Head Office, with franchisees and advertisers denied every roles capability", async () => {
+    const franchisee = { sessionKey: "franchisee", organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
+    const advertiser = { sessionKey: "advertiser", organisationId: fixtureIds.organisations.advertiser };
+    for (const action of ["view", "manage", "assign", "invite"]) {
+      await expect(requireShellPermission(franchisee, { module: "roles", action })).rejects.toMatchObject({ kind: "unauthorised" });
+      await expect(requireShellPermission(advertiser, { module: "roles", action })).rejects.toMatchObject({ kind: "unauthorised" });
+    }
+    const hq = { sessionKey: "superadmin", organisationId: fixtureIds.organisations.hq };
+    for (const action of ["view", "manage", "assign", "invite"]) {
+      await expect(requireShellPermission(hq, { module: "roles", action })).resolves.toMatchObject({ kind: "authenticated" });
+    }
+  });
+
+  it("gives a user with memberships a default context derived from them, and none without any", async () => {
+    const withMembership = await resolveShell({ sessionKey: "franchisee" });
+    expect(withMembership).toMatchObject({ kind: "authenticated", activeContext: { organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield } });
+
+    const repository = createMemoryAuthRepository({
+      users: [{ id: "u_new", email: "new@example.test", status: "active" }],
+      memberships: [],
+      territories: [],
+      sessions: [{ id: "s_new", userId: "u_new", sessionTokenHash: hashToken("new-token"), assuranceLevel: "standard", expiresAt: new Date("2099-01-01T00:00:00.000Z") }]
+    });
+    await expect(resolveShell({ sessionToken: "new-token" }, repository)).resolves.toMatchObject({ kind: "invalid_context" });
+  });
+
   it("requires a session for the job console", async () => {
     await expect(requireShellPermission({}, { module: "system.jobs", action: "view" })).rejects.toMatchObject({
       kind: "unauthenticated"

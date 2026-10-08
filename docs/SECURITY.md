@@ -83,11 +83,7 @@ with expiring links. The development disk backend is blocked outside local devel
 
 ## Known gaps (not hidden)
 
-1. **Runtime authorisation reads in-code fixture permission data, not the database (IAM-002 is incomplete).**
-   The permission evaluator is data-driven and the RBAC tables are seeded, but no loader feeds database role
-   assignments to the app, and `/app/roles` is a placeholder. Real users invited through `auth_invitations` therefore
-   hold no grants, and permissions cannot be edited without a deploy. The isolation matrix proves the seeded
-   data is safe; wiring it to the runtime is the next ticket and is a prerequisite for a real pilot.
+1. **Franchisees cannot yet administer their own staff's access.** Access is database-backed and administered at `/app/roles` (see `docs/PERMISSIONS.md`), but only Head Office can assign roles and invite people. The escalation guards already make delegation safe to enable once the Franchise Staff role exists.
 2. **CSP has no `script-src`.** A strict script policy needs per-request nonces with this Next.js version; the
    present CSP covers framing, base-tag and plugin injection only.
 3. **Email webhook de-duplication is an in-memory cache per instance.** Idempotency across instances depends on the

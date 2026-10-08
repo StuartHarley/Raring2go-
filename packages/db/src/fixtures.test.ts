@@ -175,7 +175,10 @@ describe("foundation fixtures", () => {
       "privacy.request",
       "privacy.request",
       "privacy.request",
-      "privacy.request"
+      "privacy.request",
+      "roles",
+      "roles",
+      "roles"
     ]);
   });
 

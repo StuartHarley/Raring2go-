@@ -573,6 +573,36 @@ export async function sendPasswordlessSignInEmail(
   });
 }
 
+export async function sendInvitationEmail(
+  provider: EmailDeliveryProvider,
+  input: {
+    to: string;
+    url: string;
+    organisationName: string;
+    roleName?: string | null;
+    invitedByName?: string | null;
+    expiresAt: Date;
+    from?: string;
+    idempotencyKey: string;
+  }
+) {
+  const role = input.roleName ? ` as ${input.roleName}` : "";
+  const intro = input.invitedByName
+    ? `${input.invitedByName} has invited you to join ${input.organisationName} on Raring2go${role}.`
+    : `You have been invited to join ${input.organisationName} on Raring2go${role}.`;
+
+  return provider.send({
+    idempotencyKey: input.idempotencyKey,
+    purpose: "transactional",
+    to: [{ email: input.to }],
+    from: { email: input.from ?? "no-reply@raring2go.local", name: "Raring2go" },
+    subject: `You're invited to ${input.organisationName} on Raring2go`,
+    text: [intro, "", "Accept the invitation:", input.url, "", `This invitation expires on ${input.expiresAt.toUTCString()}. If you were not expecting it, ignore this email.`].join("\n"),
+    html: `<p>${escapeHtml(intro)}</p><p><a href="${escapeHtml(input.url)}">Accept the invitation</a></p><p>This invitation expires on ${escapeHtml(input.expiresAt.toUTCString())}. If you were not expecting it, ignore this email.</p>`,
+    metadata: { purpose: "invitation" }
+  });
+}
+
 export function validateEmailMessage(message: EmailMessage) {
   if (!message.idempotencyKey) {
     throw new Error("Email messages require an idempotency key.");
