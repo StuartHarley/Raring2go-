@@ -158,7 +158,10 @@ export const fixtureIds = {
     royaltyStatementSubmit: "00000000-0000-4000-8000-000000000538",
     royaltyStatementApprove: "00000000-0000-4000-8000-000000000539",
     filesUpload: "00000000-0000-4000-8000-000000000540",
-    emailAiAssist: "00000000-0000-4000-8000-000000000541"
+    emailAiAssist: "00000000-0000-4000-8000-000000000541",
+    jobsView: "00000000-0000-4000-8000-000000000542",
+    jobsRetry: "00000000-0000-4000-8000-000000000543",
+    jobsCancel: "00000000-0000-4000-8000-000000000544"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1286,6 +1289,24 @@ export const foundationSeed = {
       module: "marketing.email",
       action: "ai_assist",
       description: "Request AI-generated subject line and content suggestions for a newsletter campaign."
+    },
+    {
+      id: fixtureIds.permissions.jobsView,
+      module: "system.jobs",
+      action: "view",
+      description: "View background jobs, their attempts and failures in scope."
+    },
+    {
+      id: fixtureIds.permissions.jobsRetry,
+      module: "system.jobs",
+      action: "retry",
+      description: "Retry dead-lettered or cancelled background jobs."
+    },
+    {
+      id: fixtureIds.permissions.jobsCancel,
+      module: "system.jobs",
+      action: "cancel",
+      description: "Cancel queued background jobs."
     }
   ],
   advertisers: [

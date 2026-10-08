@@ -1665,3 +1665,49 @@ p {
   margin-top: 10px;
   padding: 12px;
 }
+
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.filter-tabs a {
+  border: 1px solid var(--r2-border, #ddd7e6);
+  border-radius: 999px;
+  color: var(--r2-text-muted);
+  font-size: 0.85rem;
+  padding: 6px 14px;
+  text-decoration: none;
+  text-transform: capitalize;
+}
+
+.filter-tabs a:hover {
+  border-color: var(--r2-brand-purple);
+  color: var(--r2-brand-purple);
+}
+
+.filter-tabs a[aria-current="page"] {
+  background: var(--r2-surface-tint);
+  border-color: var(--r2-brand-purple);
+  color: var(--r2-brand-purple);
+  font-weight: 700;
+}
+
+.notice {
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin: 16px 0 0;
+  padding: 10px 14px;
+}
+
+.notice--success {
+  background: color-mix(in srgb, var(--r2-status-success) 12%, white);
+  color: var(--r2-status-success);
+}
+
+.notice--error {
+  background: color-mix(in srgb, var(--r2-status-danger) 12%, white);
+  color: var(--r2-status-danger);
+}

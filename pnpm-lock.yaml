@@ -89,6 +89,9 @@ importers:
       '@raring2go/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@raring2go/workflows':
+        specifier: workspace:*
+        version: link:../../packages/workflows
       '@tiptap/react':
         specifier: 3.31.3
         version: 3.31.3(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -360,7 +363,24 @@ importers:
 
   packages/ui: {}
 
-  packages/workflows: {}
+  packages/workflows:
+    dependencies:
+      '@raring2go/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
 
   services/clamav-scanner:
     dependencies:

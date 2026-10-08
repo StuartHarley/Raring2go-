@@ -30,6 +30,7 @@
     "@raring2go/public": "workspace:*",
     "@raring2go/publishing": "workspace:*",
     "@raring2go/storage": "workspace:*",
+    "@raring2go/workflows": "workspace:*",
     "@tiptap/react": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
     "drizzle-orm": "0.45.2",

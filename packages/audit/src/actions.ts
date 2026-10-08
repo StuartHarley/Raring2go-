@@ -175,7 +175,11 @@ export const auditActions = {
   financeRoyaltyStatementAdjust: "finance.royalty.statement.adjust",
   financeRoyaltyStatementSubmit: "finance.royalty.statement.submit",
   financeRoyaltyStatementApprove: "finance.royalty.statement.approve",
-  financeRoyaltyStatementVoid: "finance.royalty.statement.void"
+  financeRoyaltyStatementVoid: "finance.royalty.statement.void",
+  opsJobEnqueue: "ops.job.enqueue",
+  opsJobDeadLettered: "ops.job.dead_lettered",
+  opsJobRetry: "ops.job.retry",
+  opsJobCancel: "ops.job.cancel"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

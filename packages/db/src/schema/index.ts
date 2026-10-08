@@ -8,6 +8,7 @@ export * from "./finance";
 export * from "./franchise";
 export * from "./identity";
 export * from "./integrations";
+export * from "./jobs";
 export * from "./marketing";
 export * from "./publishing";
 export * from "./rbac";
