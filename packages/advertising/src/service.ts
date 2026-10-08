@@ -933,7 +933,9 @@ export async function allocatePayment(
   audit: AdvertisingAuditRecorder,
   data: AdvertisingData,
   allocation: AdvertiserPaymentAllocation,
-  domainEventId: string
+  domainEventId: string,
+  /** Real persistence needs UUIDs for the events this emits; without it ids are derived as `${domainEventId}_paid`. */
+  options: { newId?: () => string } = {}
 ) {
   requireAdvertisingPermission(context, permissions, "paymentAllocate");
   const payment = requirePayment(data, allocation.paymentId);
@@ -958,7 +960,7 @@ export async function allocatePayment(
     amountMinor: allocation.amountMinor
   }));
   if (invoice.status === "paid") {
-    emitAdvertiserEvent(data, event(`${domainEventId}_paid`, "advertiser.invoice.paid", "advertiser_invoice", invoice.id, advertiser, {
+    emitAdvertiserEvent(data, event(options.newId ? options.newId() : `${domainEventId}_paid`, "advertiser.invoice.paid", "advertiser_invoice", invoice.id, advertiser, {
       invoiceId: invoice.id
     }));
   }

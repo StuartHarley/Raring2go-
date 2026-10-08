@@ -6,6 +6,8 @@ import {
   readOwnFranchiseRoyaltyStatements
 } from "../../../../lib/finance-runtime";
 import { fixtureIds } from "@raring2go/db";
+import { readRoyaltyPanel } from "../../../../lib/assistants-finance";
+import { RoyaltyReviewPanel } from "./RoyaltyReviewPanel";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import {
@@ -22,7 +24,9 @@ type PageProps = {
 };
 
 export default async function FinancePage({ searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const search = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(search);
+  const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const result = await loadFinance(request);
 
   if ("error" in result) {
@@ -30,6 +34,7 @@ export default async function FinancePage({ searchParams }: PageProps) {
   }
 
   const { context, isNetworkView, franchises, rules, networkStatements, ownFranchise, ownStatements } = result;
+  const sessionQuery = request.sessionKey ? `?session=${encodeURIComponent(request.sessionKey)}` : "";
 
   return (
     <AppShell request={request}>
@@ -41,6 +46,8 @@ export default async function FinancePage({ searchParams }: PageProps) {
           underlying invoices and payments. Adjustments always carry a recorded reason.
         </p>
       </section>
+
+      {isNetworkView && result.royaltyReview ? <RoyaltyReviewPanel request={request} panel={result.royaltyReview} resultCode={resultCode} sessionQuery={sessionQuery} /> : null}
 
       {isNetworkView ? (
         <>
@@ -244,12 +251,16 @@ async function loadFinance(request: Awaited<ReturnType<typeof requestFromSearchP
         readNetworkRoyaltyStatements(context)
       ]);
 
+      // The assistant never stops the page loading.
+      const royaltyReview = await readRoyaltyPanel(context).catch(() => undefined);
+
       return {
         context,
         isNetworkView,
         franchises,
         rules,
         networkStatements,
+        royaltyReview,
         ownFranchise: undefined,
         ownStatements: [] as RoyaltyStatement[]
       };
@@ -261,6 +272,7 @@ async function loadFinance(request: Awaited<ReturnType<typeof requestFromSearchP
       context,
       isNetworkView,
       franchises,
+      royaltyReview: undefined,
       rules: [] as RoyaltyRule[],
       networkStatements: [] as RoyaltyStatement[],
       ownFranchise: own.franchise,

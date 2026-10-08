@@ -42,6 +42,10 @@ export function assistantErrorCode(error: unknown): AssistantResultCode | undefi
 
 export const assistantMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   ai_done: { tone: "success", text: "AI commentary prepared. It is a draft to check, not a decision." },
+  draft_reviewed: { tone: "success", text: "Draft marked as reviewed. It has not been sent: copy it into your email when you are ready." },
+  draft_discarded: { tone: "success", text: "Draft discarded." },
+  match_applied: { tone: "success", text: "Payment allocated. It is recorded as coming from a suggested match." },
+  match_stale: { tone: "error", text: "That suggestion is no longer valid: the payment or invoice has changed. Refresh and look again." },
   ai_not_configured: { tone: "error", text: "AI commentary is not switched on for this environment. The analysis above does not need it." },
   ai_limit: { tone: "error", text: "The AI usage limit has been reached for now. The analysis above is unaffected; try again later." },
   ai_failed: { tone: "error", text: "The AI service could not produce a usable result. The analysis above is unaffected; try again." },
