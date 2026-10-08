@@ -76,7 +76,7 @@ export function createDrizzleJobStore(db: WorkflowsDb): JobStore {
           UPDATE job_attempts
           SET outcome = 'timed_out', error = 'Worker lease expired.', error_code = 'lease_expired',
               finished_at = ${nowIso}::timestamptz,
-              duration_ms = GREATEST(0, (extract(epoch from (${nowIso}::timestamptz - started_at)) * 1000)::int)
+              duration_ms = LEAST(2147483647, GREATEST(0, extract(epoch from (${nowIso}::timestamptz - started_at)) * 1000))::int
           WHERE outcome = 'running'
             AND job_id IN (
               SELECT id FROM jobs
@@ -265,7 +265,7 @@ async function closeAttempt(
       error: patch.error ?? null,
       errorCode: patch.errorCode ?? null,
       finishedAt: now,
-      durationMs: sql`GREATEST(0, (extract(epoch from (${now.toISOString()}::timestamptz - ${jobAttempts.startedAt})) * 1000)::int)`
+      durationMs: sql`LEAST(2147483647, GREATEST(0, extract(epoch from (${now.toISOString()}::timestamptz - ${jobAttempts.startedAt})) * 1000))::int`
     })
     .where(eq(jobAttempts.id, attemptId));
 }

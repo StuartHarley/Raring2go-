@@ -13,3 +13,4 @@ export * from "./marketing";
 export * from "./publishing";
 export * from "./rbac";
 export * from "./tenancy";
+export * from "./workflows";
