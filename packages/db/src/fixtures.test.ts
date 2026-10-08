@@ -168,7 +168,10 @@ describe("foundation fixtures", () => {
       "content.event_suggestion",
       "content.event_suggestion",
       "content.event_suggestion",
-      "portal.advertiser"
+      "portal.advertiser",
+      "analytics.scorecard",
+      "analytics.health_config",
+      "analytics.snapshot"
     ]);
   });
 

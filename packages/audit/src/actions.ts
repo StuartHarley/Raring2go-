@@ -189,7 +189,11 @@ export const auditActions = {
   workflowVersionUpdate: "workflow.version.update",
   workflowVersionActivate: "workflow.version.activate",
   workflowDefinitionToggle: "workflow.definition.toggle",
-  workflowRunTest: "workflow.run.test"
+  workflowRunTest: "workflow.run.test",
+  analyticsHealthConfigCreate: "analytics.health_config.create",
+  analyticsHealthConfigUpdate: "analytics.health_config.update",
+  analyticsHealthConfigActivate: "analytics.health_config.activate",
+  analyticsSnapshotGenerate: "analytics.snapshot.generate"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

@@ -357,6 +357,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "administration"
   },
   {
+    id: "scorecard",
+    label: "Scorecard",
+    href: "/app/analytics",
+    capability: {
+      module: "analytics.scorecard",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "franchise"
+  },
+  {
     id: "jobs",
     label: "Job Console",
     href: "/app/system/jobs",
@@ -531,6 +542,18 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.jobsView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    ...[fixtureIds.permissions.scorecardView, fixtureIds.permissions.healthConfigManage, fixtureIds.permissions.snapshotGenerate].map((permissionId) => ({
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId,
+      scope: "network" as const,
+      constraints: {}
+    })),
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.scorecardView,
       scope: "own_territory",
       constraints: {}
     },

@@ -16,6 +16,7 @@
     "@dnd-kit/utilities": "3.2.2",
     "@raring2go/advertising": "workspace:*",
     "@raring2go/ai": "workspace:*",
+    "@raring2go/analytics": "workspace:*",
     "@raring2go/audit": "workspace:*",
     "@raring2go/auth": "workspace:*",
     "@raring2go/config": "workspace:*",
