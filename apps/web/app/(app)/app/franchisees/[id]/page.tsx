@@ -2,6 +2,8 @@ import { ShellAccessError, requireShellPermission } from "../../../../../lib/app
 import { canEditFranchise, readFranchise360 } from "../../../../../lib/franchise-runtime";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
+import { readFranchisePanel } from "../../../../../lib/assistants-franchise";
+import { FranchiseAssistantPanel } from "./FranchiseAssistantPanel";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import {
   approveAgreementAction,
@@ -44,7 +46,9 @@ type PageProps = {
 
 export default async function Franchisee360Page({ params, searchParams }: PageProps) {
   const { id } = await params;
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const search = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(search);
+  const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const result = await loadFranchise360(request, id);
 
   if ("error" in result) {
@@ -68,7 +72,8 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     canEdit,
     complianceActions,
     onboardingActions,
-    documentActions
+    documentActions,
+    assistant
   } = result;
 
   return (
@@ -130,6 +135,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
             }
           ]}
         />
+        {assistant ? <FranchiseAssistantPanel request={request} franchiseId={id} panel={assistant} resultCode={resultCode} /> : null}
         <section id="overview" className="app-panel">
           <p className="eyebrow">Overview</p>
           <dl className="franchise-facts">
@@ -659,6 +665,8 @@ async function loadFranchise360(
       territoryId: shell.activeContext.territoryId
     };
     const view = await readFranchise360(context, id);
+    // The assistant never stops the page loading.
+    const assistant = await readFranchisePanel(context, id).catch(() => undefined);
     const update = updateFranchiseAction.bind(null, context, id);
     const generate = generateAgreementAction.bind(null, context, id);
     const submit = submitAgreementAction.bind(null, context, id);
@@ -757,6 +765,7 @@ async function loadFranchise360(
       approve,
       cancelSignature,
       canEdit: canEditFranchise(await getPermissionData(), context),
+      assistant,
       completeNextSigner,
       completeSigning,
       declineSigning,

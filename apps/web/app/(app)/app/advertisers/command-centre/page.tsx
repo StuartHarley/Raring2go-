@@ -1,5 +1,7 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readCommercialCommandCentre } from "../../../../../lib/advertising-runtime";
+import { readDebtPanel } from "../../../../../lib/assistants-finance";
+import { DebtAssistantPanel } from "./DebtAssistantPanel";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 
@@ -8,14 +10,16 @@ type PageProps = {
 };
 
 export default async function CommercialCommandCentrePage({ searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const search = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(search);
+  const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const result = await loadCommandCentre(request);
 
   if ("error" in result) {
     return protectedOutcome(result.error);
   }
 
-  const { commandCentre } = result;
+  const { commandCentre, debt } = result;
 
   return (
     <AppShell request={request}>
@@ -102,6 +106,7 @@ export default async function CommercialCommandCentrePage({ searchParams }: Page
           </div>
         </div>
       </section>
+      {debt ? <DebtAssistantPanel request={request} panel={debt} resultCode={resultCode} /> : null}
     </AppShell>
   );
 }
@@ -118,7 +123,9 @@ async function loadCommandCentre(request: Awaited<ReturnType<typeof requestFromS
       territoryId: shell.activeContext.territoryId
     });
 
-    return { commandCentre };
+    // The finance assistant never stops the page loading.
+    const debt = await readDebtPanel({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId }).catch(() => undefined);
+    return { commandCentre, debt };
   } catch (error) {
     return { error };
   }

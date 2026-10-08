@@ -2,6 +2,11 @@ import Link from "next/link";
 import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readAdvertiser360 } from "../../../../../lib/advertising-runtime";
+import { readSalesPanel } from "../../../../../lib/assistants-sales";
+import { getPermissionData } from "../../../../../lib/permission-source";
+import { getDirectory } from "../../../../../lib/directory";
+import { evaluatePermission } from "@raring2go/permissions";
+import { SalesAssistantPanel } from "./SalesAssistantPanel";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -12,7 +17,9 @@ type PageProps = {
 };
 
 export default async function Advertiser360Page({ params, searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const search = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(search);
+  const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const { id } = await params;
   const result = await loadAdvertiser(request, id);
 
@@ -83,6 +90,10 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           </article>
         </div>
       </section>
+
+      {result.sales ? (
+        <SalesAssistantPanel request={request} advertiserId={result.advertiser.id} panel={result.sales.panel} canAssist={result.sales.canAssist} senderName={result.sales.senderName} resultCode={resultCode} />
+      ) : null}
 
       <RelatedRecords
         title="Advertiser workflow"
@@ -354,14 +365,21 @@ async function loadAdvertiser(
       module: "advertiser",
       action: "view"
     });
-    return await readAdvertiser360(
-      {
-        userId: shell.userId,
-        organisationId: shell.activeContext.organisationId,
-        territoryId: shell.activeContext.territoryId
-      },
-      advertiserId
+    const actor = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
+    const view = await readAdvertiser360(actor, advertiserId);
+
+    // The assistant never stops the page loading: if anything about it fails, the record is shown without it.
+    const permissions = await getPermissionData();
+    const canAssist = evaluatePermission(
+      { userId: actor.userId, module: "advertiser", action: "ai_assist", context: { organisationId: actor.organisationId, territoryId: actor.territoryId } },
+      permissions
+    ).allowed;
+    // The calculated analysis is shown to anyone who can see the record; only the AI parts need the permission.
+    const sales = await readSalesPanel(actor, advertiserId).then(
+      async (panel) => ({ panel, canAssist, senderName: (await getDirectory().userName(actor.userId)) ?? "" }),
+      () => undefined
     );
+    return { ...view, sales };
   } catch (error) {
     return { error };
   }

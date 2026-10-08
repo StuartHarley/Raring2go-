@@ -44,6 +44,9 @@ import type {
 import { evaluatePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import { runAiTaskAsActor } from "./ai-runtime";
+import { analysePreflight, preflightHelpTask } from "@raring2go/assistants";
+import type { PreflightHelpOutput } from "@raring2go/assistants";
+import { assistantsConfigured, latestAssistantOutput, runAssistant } from "./assistants-runtime";
 import { AiRunFailedError } from "@raring2go/ai";
 import { getDirectory } from "./directory";
 import { getPermissionData } from "./permission-source";
@@ -81,6 +84,52 @@ export async function readTerritoryEdition(
       (output) => output.territoryEditionId === territoryEditionId && !output.deletedAt
     )
   };
+}
+
+/**
+ * Preflight results for an edition's pages, each with its plain-English analysis (computed from the
+ * stored findings: no model involved) and, if someone has asked for it, the stored AI commentary.
+ */
+export async function readPreflightPanel(context: PublishingActorContext, territoryEditionId: string) {
+  const publishingPermissionData = await getPermissionData();
+  const { pages } = await readTerritoryEdition(context, territoryEditionId);
+  const data = await readPublishingData();
+  const pageById = new Map(pages.map((page) => [page.id, page]));
+
+  // Newest result per page: older ones are history.
+  const latest = new Map<string, (typeof data.preflightResults)[number]>();
+  for (const result of data.preflightResults) {
+    if (result.deletedAt || result.territoryEditionId !== territoryEditionId) continue;
+    latest.set(result.entityId, result);
+  }
+
+  const canAssist = evaluatePermission(
+    { userId: context.userId, module: "artwork", action: "ai_assist", context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } },
+    publishingPermissionData
+  ).allowed;
+
+  const results = await Promise.all(
+    [...latest.values()].map(async (result) => ({
+      id: result.id,
+      status: result.status,
+      pageNumber: pageById.get(result.entityId)?.pageNumber ?? null,
+      analysis: analysePreflight(result.checks),
+      ai: await latestAssistantOutput<PreflightHelpOutput>(context, preflightHelpTask, { type: "preflight_result", id: result.id }).catch(() => undefined)
+    }))
+  );
+
+  return { results: results.sort((a, b) => (a.pageNumber ?? 0) - (b.pageNumber ?? 0)), canAssist, aiConfigured: assistantsConfigured() };
+}
+
+/** Ask the artwork assistant to explain one preflight result. Only results inside the actor's edition scope. */
+export async function explainPreflightAsActor(context: PublishingActorContext, territoryEditionId: string, preflightResultId: string) {
+  const { pages } = await readTerritoryEdition(context, territoryEditionId); // throws if the edition is outside scope
+  const data = await readPublishingData();
+  const result = data.preflightResults.find((candidate) => candidate.id === preflightResultId && candidate.territoryEditionId === territoryEditionId && !candidate.deletedAt);
+  if (!result) throw new Error("Preflight result was not found for this edition.");
+  const page = pages.find((candidate) => candidate.id === result.entityId);
+  const label = page ? `Page ${page.pageNumber}` : "Edition artwork";
+  return runAssistant(context, preflightHelpTask, { label, checks: result.checks }, { type: "preflight_result", id: result.id });
 }
 
 export async function listContentLibraryItems(context: PublishingActorContext) {

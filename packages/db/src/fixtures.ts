@@ -189,7 +189,11 @@ export const fixtureIds = {
     privacyRequestExport: "00000000-0000-4000-8000-000000000565",
     rolesManage: "00000000-0000-4000-8000-000000000566",
     rolesAssign: "00000000-0000-4000-8000-000000000567",
-    rolesInvite: "00000000-0000-4000-8000-000000000568"
+    rolesInvite: "00000000-0000-4000-8000-000000000568",
+    artworkAiAssist: "00000000-0000-4000-8000-000000000569",
+    advertiserAiAssist: "00000000-0000-4000-8000-000000000570",
+    financeAiAssist: "00000000-0000-4000-8000-000000000571",
+    franchiseAiAssist: "00000000-0000-4000-8000-000000000572"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1503,6 +1507,30 @@ export const foundationSeed = {
       module: "roles",
       action: "invite",
       description: "Invite people to an organisation or territory with a role."
+    },
+    {
+      id: fixtureIds.permissions.artworkAiAssist,
+      module: "artwork",
+      action: "ai_assist",
+      description: "Ask the artwork assistant to explain preflight results and suggest safe fixes."
+    },
+    {
+      id: fixtureIds.permissions.advertiserAiAssist,
+      module: "advertiser",
+      action: "ai_assist",
+      description: "Ask the sales assistant for advertiser briefs, next actions and outreach drafts."
+    },
+    {
+      id: fixtureIds.permissions.financeAiAssist,
+      module: "finance",
+      action: "ai_assist",
+      description: "Ask the finance assistant for aged-debt priorities, payment matching and royalty anomaly notes."
+    },
+    {
+      id: fixtureIds.permissions.franchiseAiAssist,
+      module: "franchise",
+      action: "ai_assist",
+      description: "Ask the franchise assistant for onboarding guidance, compliance summaries and health insights."
     }
   ],
   advertisers: [
@@ -3346,6 +3374,15 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
   { roleId: fixtureIds.roles.superAdmin, permissionId: fixtureIds.permissions.rolesInvite, scope: "system", constraints: {} },
   { roleId: fixtureIds.roles.hqAdmin, permissionId: fixtureIds.permissions.rolesAssign, scope: "network", constraints: {} },
   { roleId: fixtureIds.roles.hqAdmin, permissionId: fixtureIds.permissions.rolesInvite, scope: "network", constraints: {} },
+  // AI assistants (section 9): each is informational or review-only and runs through the AI gateway.
+  { roleId: fixtureIds.roles.hqAdmin, permissionId: fixtureIds.permissions.artworkAiAssist, scope: "network", constraints: {} },
+  { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.artworkAiAssist, scope: "own_territory", constraints: {} },
+  { roleId: fixtureIds.roles.hqAdmin, permissionId: fixtureIds.permissions.advertiserAiAssist, scope: "network", constraints: {} },
+  { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.advertiserAiAssist, scope: "own_territory", constraints: {} },
+  { roleId: fixtureIds.roles.hqAdmin, permissionId: fixtureIds.permissions.financeAiAssist, scope: "network", constraints: {} },
+  { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.financeAiAssist, scope: "own_territory", constraints: {} },
+  { roleId: fixtureIds.roles.hqAdmin, permissionId: fixtureIds.permissions.franchiseAiAssist, scope: "network", constraints: {} },
+  { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.franchiseAiAssist, scope: "own_territory", constraints: {} },
   // Grants the application enforced at runtime before access control moved to the database
   // (royalties, uploads, AI assist, journeys, franchisee content AI approval). They live here so the
   // database seed, and therefore the running app, keeps exactly the behaviour it had.

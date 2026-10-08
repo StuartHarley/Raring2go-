@@ -175,3 +175,23 @@ export async function generateSnapshotAsActor(context: AnalyticsActorContext, no
     await sql.end();
   }
 }
+
+/**
+ * One territory's health score with its factor breakdown, for the franchise assistant. Needs the scorecard view for
+ * that territory (Head Office, or the franchisee for their own), so it cannot be used to read another territory.
+ */
+export async function readTerritoryHealth(context: AnalyticsActorContext, territoryId: string, now: Date = new Date()) {
+  const permissions = await getPermissionData();
+  const allowedForTerritory = evaluatePermission({ userId: context.userId, module: "analytics.scorecard", action: "view", resource: { territoryId } }, permissions).allowed;
+  if (!allowedForTerritory) throw new AnalyticsAccessError("Missing permission analytics.scorecard.view.");
+
+  const { db, sql } = createDb();
+  try {
+    const [collected, config] = await Promise.all([collectMetrics(db, now), getActiveHealthConfig(db, now)]);
+    const metrics = collected.territories[territoryId];
+    if (!metrics) return undefined;
+    return { result: computeHealth(config.config, metrics), configVersion: config.versionNumber };
+  } finally {
+    await sql.end();
+  }
+}
