@@ -138,6 +138,9 @@ importers:
       '@raring2go/permissions':
         specifier: workspace:*
         version: link:../permissions
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
     devDependencies:
       vitest:
         specifier: 4.1.10

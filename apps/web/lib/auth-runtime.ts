@@ -42,6 +42,12 @@ const memberships: AuthMembership[] = [
     status: "active"
   },
   {
+    id: "fixture_membership_advertiser",
+    userId: fixtureIds.users.advertiserUser,
+    organisationId: fixtureIds.organisations.advertiser,
+    status: "active"
+  },
+  {
     id: "fixture_membership_franchisee_advertiser",
     userId: fixtureIds.users.franchisee,
     organisationId: fixtureIds.organisations.advertiser,

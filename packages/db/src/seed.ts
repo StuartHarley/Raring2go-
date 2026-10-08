@@ -141,6 +141,11 @@ export async function seedDatabase(databaseUrl?: string) {
         id: "00000000-0000-4000-8000-000000000502",
         userId: fixtureIds.users.franchisee,
         organisationId: fixtureIds.organisations.franchise
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000503",
+        userId: fixtureIds.users.advertiserUser,
+        organisationId: fixtureIds.organisations.advertiser
       }
     ]).onConflictDoNothing();
 
@@ -149,6 +154,48 @@ export async function seedDatabase(databaseUrl?: string) {
         roleId: fixtureIds.roles.superAdmin,
         permissionId: fixtureIds.permissions.systemAdminister,
         scope: "system",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.advertiser,
+        permissionId: fixtureIds.permissions.portalView,
+        scope: "own_organisation" as const,
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.advertiser,
+        permissionId: fixtureIds.permissions.artworkSubmit,
+        scope: "own_organisation" as const,
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.advertiser,
+        permissionId: fixtureIds.permissions.artworkApprove,
+        scope: "own_organisation" as const,
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.advertiser,
+        permissionId: fixtureIds.permissions.artworkManage,
+        scope: "own_organisation" as const,
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.advertiser,
+        permissionId: fixtureIds.permissions.proposalAccept,
+        scope: "own_organisation" as const,
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.advertiser,
+        permissionId: fixtureIds.permissions.proposalRespond,
+        scope: "own_organisation" as const,
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.advertiser,
+        permissionId: fixtureIds.permissions.bookingAccept,
+        scope: "own_organisation" as const,
         constraints: {}
       },
       {
@@ -696,6 +743,12 @@ export async function seedDatabase(databaseUrl?: string) {
         userId: fixtureIds.users.workflowAutomation,
         roleId: fixtureIds.roles.automation,
         organisationId: fixtureIds.organisations.hq
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000605",
+        userId: fixtureIds.users.advertiserUser,
+        roleId: fixtureIds.roles.advertiser,
+        organisationId: fixtureIds.organisations.advertiser
       },
       {
         id: "00000000-0000-4000-8000-000000000602",

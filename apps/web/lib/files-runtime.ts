@@ -20,11 +20,18 @@ export const filesPermissionData: PermissionData = {
       roleId: fixtureIds.roles.franchisee,
       organisationId: fixtureIds.organisations.franchise,
       territoryId: fixtureIds.territories.suttonColdfield
+    },
+    {
+      id: "fixture_assignment_advertiser",
+      userId: fixtureIds.users.advertiserUser,
+      roleId: fixtureIds.roles.advertiser,
+      organisationId: fixtureIds.organisations.advertiser
     }
   ],
   rolePermissions: [
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.filesUpload, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.filesUpload, "own_territory")
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.filesUpload, "own_territory"),
+    grant(fixtureIds.roles.advertiser, fixtureIds.permissions.filesUpload, "own_organisation")
   ],
   territories: foundationSeed.territories.map((territory) => ({
     id: territory.id,
@@ -95,6 +102,60 @@ export async function uploadNewsletterImage(
         : "";
 
     return { fileId: reference.id, src, fileName: reference.fileName, virusScanStatus: reference.virusScanStatus };
+  } finally {
+    await sql.end();
+  }
+}
+
+// Serverless request bodies are capped (about 4.5MB), so uploads through the app stay under that.
+// Larger print files need the direct-to-storage flow once the real storage provider is configured.
+const MAX_ARTWORK_BYTES = 4 * 1024 * 1024;
+/** Print-ready and web artwork. PDFs are scanned like every other upload before they can be used. */
+const ALLOWED_ARTWORK_CONTENT_TYPES = new Set(["application/pdf", "image/png", "image/jpeg", "image/tiff"]);
+
+export type UploadedArtworkFile = {
+  fileId: string;
+  fileName: string;
+  contentType: string;
+  virusScanStatus: FileReference["virusScanStatus"];
+};
+
+/**
+ * Stores advertiser artwork through the same storage and malware-scanning pipeline as other
+ * uploads. The file is held against the advertiser's own organisation (never a territory),
+ * so only that organisation can read it back.
+ */
+export async function uploadAdvertiserArtwork(
+  context: FilesActorContext,
+  input: { fileName: string; contentType: string; bytes: Uint8Array }
+): Promise<UploadedArtworkFile> {
+  if (!ALLOWED_ARTWORK_CONTENT_TYPES.has(input.contentType)) {
+    throw new Error("Artwork must be a PDF, PNG, JPEG or TIFF file.");
+  }
+  if (input.bytes.byteLength === 0) {
+    throw new Error("The uploaded file is empty.");
+  }
+  if (input.bytes.byteLength > MAX_ARTWORK_BYTES) {
+    throw new Error("Artwork files must be 4MB or smaller. For larger print files, ask your account manager.");
+  }
+  if (!context.organisationId) {
+    throw new Error("Artwork can only be uploaded for an advertiser organisation.");
+  }
+
+  const { db, sql } = createDb();
+
+  try {
+    const id = randomUUID();
+    const safeFileName = input.fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_").slice(-120) || "artwork";
+    const reference = await completeFileUpload(
+      context,
+      filesPermissionData,
+      { storage: createStorageProviderFromEnv(), scanner: createScannerProviderFromEnv() },
+      { id, storageKey: `advertisers/${context.organisationId}/artwork/${id}-${safeFileName}`, fileName: input.fileName, contentType: input.contentType, bytes: input.bytes, accessScope: "organisation" }
+    );
+
+    await insertFileReferenceRecord(db, reference);
+    return { fileId: reference.id, fileName: reference.fileName, contentType: reference.contentType, virusScanStatus: reference.virusScanStatus };
   } finally {
     await sql.end();
   }

@@ -1,4 +1,6 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import type { Route } from "next";
 import { AppShell } from "../layout";
 import type { RequestedShellContext } from "../../../lib/app-shell";
 import { resolveShell } from "../../../lib/app-shell";
@@ -17,6 +19,14 @@ export default async function AppHome({ searchParams }: PageProps) {
 
   if (shell.kind !== "authenticated") {
     return <ProtectedOutcome outcome={shell} />;
+  }
+
+  // An advertiser's login only ever has the portal: send them straight to it.
+  if (shell.navigation.length > 0 && shell.navigation.every((item) => item.group === "portal")) {
+    const query = new URLSearchParams();
+    if (request.sessionKey) query.set("session", request.sessionKey);
+    if (request.organisationId) query.set("organisationId", request.organisationId);
+    redirect(`/app/portal${query.toString() ? `?${query.toString()}` : ""}` as Route);
   }
 
   const today = await buildMyToday(shell);

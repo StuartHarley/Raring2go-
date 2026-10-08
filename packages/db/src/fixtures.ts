@@ -11,13 +11,15 @@ export const fixtureIds = {
   users: {
     superAdmin: "00000000-0000-4000-8000-000000000201",
     franchisee: "00000000-0000-4000-8000-000000000202",
-    workflowAutomation: "00000000-0000-4000-8000-000000000203"
+    workflowAutomation: "00000000-0000-4000-8000-000000000203",
+    advertiserUser: "00000000-0000-4000-8000-000000000204"
   },
   roles: {
     superAdmin: "00000000-0000-4000-8000-000000000301",
     hqAdmin: "00000000-0000-4000-8000-000000000302",
     franchisee: "00000000-0000-4000-8000-000000000303",
-    automation: "00000000-0000-4000-8000-000000000304"
+    automation: "00000000-0000-4000-8000-000000000304",
+    advertiser: "00000000-0000-4000-8000-000000000305"
   },
   permissions: {
     systemAdminister: "00000000-0000-4000-8000-000000000401",
@@ -176,7 +178,8 @@ export const fixtureIds = {
     aiRunDecide: "00000000-0000-4000-8000-000000000554",
     eventSuggestionView: "00000000-0000-4000-8000-000000000555",
     eventSuggestionDiscover: "00000000-0000-4000-8000-000000000556",
-    eventSuggestionDecide: "00000000-0000-4000-8000-000000000557"
+    eventSuggestionDecide: "00000000-0000-4000-8000-000000000557",
+    portalView: "00000000-0000-4000-8000-000000000558"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -438,6 +441,11 @@ export const foundationSeed = {
       id: fixtureIds.users.workflowAutomation,
       email: "workflow-automation@system.raring2go.test",
       displayName: "Workflow Automation"
+    },
+    {
+      id: fixtureIds.users.advertiserUser,
+      email: "advertiser@example.raring2go.test",
+      displayName: "Alex Advertiser"
     }
   ],
   roles: [
@@ -467,6 +475,13 @@ export const foundationSeed = {
       key: "workflow_automation",
       name: "Workflow Automation",
       description: "Service principal for workflow engine actions. Holds only the grants those actions need.",
+      isSystem: true
+    },
+    {
+      id: fixtureIds.roles.advertiser,
+      key: "advertiser",
+      name: "Advertiser",
+      description: "An advertiser's own login: the advertiser portal for their own organisation only.",
       isSystem: true
     }
   ],
@@ -1412,6 +1427,12 @@ export const foundationSeed = {
       module: "content.event_suggestion",
       action: "decide",
       description: "Approve or reject AI event suggestions in scope."
+    },
+    {
+      id: fixtureIds.permissions.portalView,
+      module: "portal.advertiser",
+      action: "view",
+      description: "Use the advertiser portal for your own organisation."
     }
   ],
   advertisers: [
@@ -1440,7 +1461,7 @@ export const foundationSeed = {
     {
       id: fixtureIds.advertiserContacts.examplePrimary,
       advertiserId: fixtureIds.advertisers.example,
-      userId: null,
+      userId: fixtureIds.users.advertiserUser,
       label: "Primary contact",
       name: "Alex Advertiser",
       email: "alex@example-advertiser.test",
