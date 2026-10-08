@@ -1,12 +1,14 @@
 import { auditActions, recordAuditEvent } from "@raring2go/audit";
-import { createAiGatewayFromEnv } from "@raring2go/ai";
-import type { AiGateway, AiUsage, CampaignDraft } from "@raring2go/ai";
+import { aiRunCapabilities, createAiGatewayFromEnv, createDrizzleAiRunStore, decideAiRun, estimateCostMinor as estimateCost, getAiRunForActor, listAiRunsForActor } from "@raring2go/ai";
+import type { AiActorContext, AiApprovalState, AiGateway, AiSuggestionResult, AiUsage, CampaignDraft } from "@raring2go/ai";
 import { createDevelopmentMemoryRateLimiter } from "@raring2go/auth";
 import type { RateLimiter } from "@raring2go/auth";
-import { aiUsageEvents, createDb } from "@raring2go/db";
+import { aiUsageEvents, createDb, fixtureIds } from "@raring2go/db";
 import { evaluatePermission, requirePermission } from "@raring2go/permissions";
+import type { PermissionData } from "@raring2go/permissions";
 import { marketingCapabilities } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
+import { boundForStorage } from "@raring2go/ai";
 import { sql } from "drizzle-orm";
 import { marketingPermissionData } from "./marketing-runtime";
 
@@ -68,26 +70,11 @@ export function hasAiAssistCapability(context: MarketingActorContext): boolean {
   ).allowed;
 }
 
-// USD cents per million tokens. NOT verified against Anthropic's current
-// published pricing (anthropic.com/pricing) - confirm before relying on this
-// for real budget decisions. DEFAULT_PRICING is deliberately on the higher
-// side so an unrecognised model under-permits spend rather than over-permits it.
-const MODEL_PRICING_CENTS_PER_MILLION_TOKENS: Record<string, { input: number; output: number }> = {
-  "claude-haiku-4-5-20251001": { input: 100, output: 500 },
-  "claude-sonnet-5": { input: 300, output: 1500 },
-  "claude-opus-5": { input: 1500, output: 7500 }
-};
-const DEFAULT_PRICING = { input: 1500, output: 7500 };
-
 const DEFAULT_AI_SPEND_CAP_NETWORK_MINOR = 5000; // $50.00/month
 const DEFAULT_AI_SPEND_CAP_TERRITORY_MINOR = 1000; // $10.00/month
 
-/** Exported for direct unit testing - pure pricing arithmetic, no DB. */
-export function estimateCostMinor(modelReference: string, usage: AiUsage): number {
-  const pricing = MODEL_PRICING_CENTS_PER_MILLION_TOKENS[modelReference] ?? DEFAULT_PRICING;
-  const costCents = (usage.inputTokens * pricing.input + usage.outputTokens * pricing.output) / 1_000_000;
-  return Math.ceil(costCents);
-}
+/** Pricing lives in @raring2go/ai; re-exported here for the existing direct tests. */
+export const estimateCostMinor = estimateCost;
 
 async function recordAiUsageEvent(
   context: MarketingActorContext,
@@ -164,6 +151,109 @@ export async function enforceAiSpendCap(context: MarketingActorContext) {
   }
 }
 
+type NewsletterAiTask = { taskKey: string; purpose: string; feature: string };
+
+const NEWSLETTER_TASKS = {
+  subjectLines: { taskKey: "marketing.subject_lines", purpose: "Suggest newsletter subject lines", feature: "subject_lines" },
+  blockCopy: { taskKey: "marketing.block_copy", purpose: "Suggest newsletter paragraph copy", feature: "block_copy" },
+  campaignDraft: { taskKey: "marketing.campaign_draft", purpose: "Draft a whole newsletter campaign from a brief", feature: "campaign_draft" }
+} as const satisfies Record<string, NewsletterAiTask>;
+
+/**
+ * Runs a gateway call and leaves an ai_runs record whether it succeeds or fails, so every
+ * newsletter AI call has actor, purpose, source draft, input, output, model and approval
+ * state. Suggestions stay `pending` until the user accepts them in the editor.
+ */
+async function trackNewsletterRun<T extends Record<string, unknown> | string[] | string>(
+  context: MarketingActorContext,
+  task: NewsletterAiTask,
+  subject: { draftId: string },
+  input: Record<string, unknown>,
+  call: () => Promise<AiSuggestionResult<T>>
+): Promise<AiSuggestionResult<T>> {
+  const startedAt = Date.now();
+  const { db, sql: closeSql } = createDb();
+  const store = createDrizzleAiRunStore(db);
+  const base = {
+    taskKey: task.taskKey,
+    purpose: task.purpose,
+    risk: "low" as const,
+    actorType: "human" as const,
+    actorUserId: context.userId,
+    organisationId: context.organisationId ?? null,
+    territoryId: context.territoryId ?? null,
+    subjectType: "email_campaign_draft",
+    subjectId: subject.draftId,
+    sourceRefs: [{ type: "email_campaign_draft", id: subject.draftId }],
+    input: boundForStorage(input)
+  };
+
+  try {
+    let result: AiSuggestionResult<T>;
+    try {
+      result = await call();
+    } catch (error) {
+      await store.insert(
+        {
+          ...base,
+          promptVersion: "unknown",
+          providerKey: "unknown",
+          modelReference: "unknown",
+          status: "failed",
+          approvalState: "not_required",
+          output: {},
+          inputTokens: 0,
+          outputTokens: 0,
+          estimatedCostMinor: 0,
+          latencyMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message.slice(0, 500) : "Unknown error"
+        },
+        new Date()
+      );
+      throw error;
+    }
+
+    await store.insert(
+      {
+        ...base,
+        promptVersion: result.promptTemplateVersion,
+        providerKey: result.providerKey,
+        modelReference: result.modelReference,
+        status: "succeeded",
+        approvalState: "pending",
+        output: { result: result.output as unknown as Record<string, unknown> | string[] | string },
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        estimatedCostMinor: estimateCost(result.modelReference, result.usage),
+        latencyMs: Date.now() - startedAt,
+        error: null
+      },
+      new Date()
+    );
+    return result;
+  } finally {
+    await closeSql.end();
+  }
+}
+
+/** The user accepted a suggestion: approve their latest undecided run for that draft and task and mark it applied. */
+async function markLatestRunAccepted(context: MarketingActorContext, input: { draftId: string; taskKey: string }) {
+  const { db, sql: closeSql } = createDb();
+
+  try {
+    const store = createDrizzleAiRunStore(db);
+    const [latest] = await store.list({ taskKeys: [input.taskKey], approvalStates: ["pending"], subjectType: "email_campaign_draft", subjectId: input.draftId, limit: 20 }).then((runs) => runs.filter((run) => run.actorUserId === context.userId));
+
+    if (latest) {
+      const now = new Date();
+      await store.decide(latest.id, { state: "approved", userId: context.userId, note: "Accepted in the editor" }, now);
+      await store.markApplied(latest.id, now);
+    }
+  } finally {
+    await closeSql.end();
+  }
+}
+
 function requireGateway(): AiGateway {
   const gateway = createAiGatewayFromEnv();
 
@@ -182,10 +272,13 @@ export async function suggestSubjectLines(
   await enforceAiAssistRateLimit(context);
   await enforceAiSpendCap(context);
   const gateway = requireGateway();
-  const result = await gateway.generateSubjectLines({
-    campaignTitle: input.campaignTitle,
-    bodyPreviewText: input.bodyPreviewText
-  });
+  const result = await trackNewsletterRun(
+    context,
+    NEWSLETTER_TASKS.subjectLines,
+    input,
+    { campaignTitle: input.campaignTitle, bodyPreviewText: input.bodyPreviewText },
+    () => gateway.generateSubjectLines({ campaignTitle: input.campaignTitle, bodyPreviewText: input.bodyPreviewText })
+  );
 
   await recordAiUsageEvent(context, {
     feature: "subject_lines",
@@ -214,10 +307,13 @@ export async function suggestBlockCopy(
   await enforceAiAssistRateLimit(context);
   await enforceAiSpendCap(context);
   const gateway = requireGateway();
-  const result = await gateway.generateContentSuggestion({
-    campaignTitle: input.campaignTitle,
-    existingText: input.existingText
-  });
+  const result = await trackNewsletterRun(
+    context,
+    NEWSLETTER_TASKS.blockCopy,
+    input,
+    { campaignTitle: input.campaignTitle, existingText: input.existingText, blockId: input.blockId },
+    () => gateway.generateContentSuggestion({ campaignTitle: input.campaignTitle, existingText: input.existingText })
+  );
 
   await recordAiUsageEvent(context, {
     feature: "block_copy",
@@ -254,10 +350,13 @@ export async function generateCampaignDraft(
   await enforceAiAssistRateLimit(context);
   await enforceAiSpendCap(context);
   const gateway = requireGateway();
-  const result = await gateway.generateCampaignDraft({
-    prompt: input.prompt,
-    audienceDescription: input.audienceDescription
-  });
+  const result = await trackNewsletterRun(
+    context,
+    NEWSLETTER_TASKS.campaignDraft,
+    input,
+    { prompt: input.prompt, audienceDescription: input.audienceDescription },
+    () => gateway.generateCampaignDraft({ prompt: input.prompt, audienceDescription: input.audienceDescription })
+  );
 
   await recordAiUsageEvent(context, {
     feature: "campaign_draft",
@@ -290,6 +389,10 @@ export async function recordAiSuggestionAccepted(
     blockId: input.blockId ?? null,
     accepted: input.accepted
   });
+  await markLatestRunAccepted(context, {
+    draftId: input.draftId,
+    taskKey: input.task === "subject_lines" ? NEWSLETTER_TASKS.subjectLines.taskKey : NEWSLETTER_TASKS.blockCopy.taskKey
+  });
 }
 
 async function recordSuggestionEvent(context: MarketingActorContext, action: string, payload: Record<string, unknown>) {
@@ -305,5 +408,80 @@ async function recordSuggestionEvent(context: MarketingActorContext, action: str
     });
   } finally {
     await sql.end();
+  }
+}
+
+// ---- AI run console (AI-001) -------------------------------------------------------
+
+const runPermission = (key: keyof typeof aiRunCapabilities) => ({ id: `ai.run.${aiRunCapabilities[key].action}`, ...aiRunCapabilities[key] });
+const runGrant = (roleId: string, key: keyof typeof aiRunCapabilities, scope: string) => ({ roleId, permission: runPermission(key), scope, constraints: {} });
+
+export const aiRunPermissionData: PermissionData = {
+  roleAssignments: [
+    { id: "fixture_assignment_hq", userId: fixtureIds.users.superAdmin, roleId: fixtureIds.roles.hqAdmin, organisationId: fixtureIds.organisations.hq },
+    {
+      id: "fixture_assignment_franchisee",
+      userId: fixtureIds.users.franchisee,
+      roleId: fixtureIds.roles.franchisee,
+      organisationId: fixtureIds.organisations.franchise,
+      territoryId: fixtureIds.territories.suttonColdfield
+    }
+  ],
+  territories: [
+    { id: fixtureIds.territories.suttonColdfield, franchiseOrganisationId: fixtureIds.organisations.franchise },
+    { id: fixtureIds.territories.solihull, franchiseOrganisationId: null }
+  ],
+  rolePermissions: [
+    runGrant(fixtureIds.roles.hqAdmin, "view", "network"),
+    runGrant(fixtureIds.roles.hqAdmin, "decide", "network"),
+    runGrant(fixtureIds.roles.franchisee, "view", "own_territory"),
+    runGrant(fixtureIds.roles.franchisee, "decide", "own_territory")
+  ]
+};
+
+export function hasAiRunCapability(context: AiActorContext, capability: keyof typeof aiRunCapabilities) {
+  const { module, action } = aiRunCapabilities[capability];
+  return evaluatePermission(
+    { userId: context.userId, module, action, context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } },
+    aiRunPermissionData
+  ).allowed;
+}
+
+export async function readAiRuns(context: AiActorContext, filter: { approvalStates?: AiApprovalState[] } = {}) {
+  const { db, sql: closeSql } = createDb();
+
+  try {
+    return await listAiRunsForActor(context, aiRunPermissionData, createDrizzleAiRunStore(db), { limit: 200, ...filter });
+  } finally {
+    await closeSql.end();
+  }
+}
+
+export async function readAiRun(context: AiActorContext, runId: string) {
+  const { db, sql: closeSql } = createDb();
+
+  try {
+    return await getAiRunForActor(context, aiRunPermissionData, createDrizzleAiRunStore(db), runId);
+  } finally {
+    await closeSql.end();
+  }
+}
+
+export async function decideAiRunAsActor(context: AiActorContext, runId: string, decision: { state: "approved" | "rejected"; note?: string | null }) {
+  const { db, sql: closeSql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) =>
+      decideAiRun(
+        context,
+        aiRunPermissionData,
+        { record: (input) => recordAuditEvent(tx, input) },
+        createDrizzleAiRunStore(tx as unknown as Parameters<typeof createDrizzleAiRunStore>[0]),
+        runId,
+        decision
+      )
+    );
+  } finally {
+    await closeSql.end();
   }
 }
