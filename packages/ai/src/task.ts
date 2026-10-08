@@ -6,6 +6,14 @@ export type AiSourceRef = {
   label?: string;
 };
 
+/** The task cannot run in this environment (e.g. it needs an external workflow that is not configured). */
+export class AiNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiNotConfiguredError";
+  }
+}
+
 /** Raised by a task's `parse` when the model's reply is unusable; the run is recorded as failed. */
 export class AiOutputError extends Error {
   constructor(message: string) {
@@ -40,6 +48,12 @@ export type AiTask<Input, Output extends Record<string, unknown>> = {
   /** Permission needed to run it; checked by the caller's runtime against its permission data. */
   capability: { module: string; action: string };
   maxTokens: number;
+  /**
+   * For work a bare model cannot do honestly, such as finding CURRENT real-world events
+   * (it has no web access and would invent them). Such a task only runs through an
+   * external workflow, or the deterministic provider (development samples).
+   */
+  externalOnly?: boolean;
   system: string;
   buildUserPrompt(input: Input): string;
   parse(text: string, input: Input): Output;

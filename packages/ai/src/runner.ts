@@ -6,7 +6,7 @@ import type { AiProvider } from "./provider";
 import { ExternalWorkflowError } from "./workflow";
 import type { ExternalWorkflow } from "./workflow";
 import type { AiRunRecord, AiRunStore } from "./runs";
-import { AiOutputError, requiresReview } from "./task";
+import { AiNotConfiguredError, AiOutputError, requiresReview } from "./task";
 import type { AiSourceRef, AiTask } from "./task";
 
 export type AiRunActor =
@@ -65,6 +65,9 @@ export async function runAiTask<Input, Output extends Record<string, unknown>>(
   request: AiRunRequest<Input>
 ): Promise<{ run: AiRunRecord; output: Output }> {
   const now = deps.now ?? (() => new Date());
+  if (task.externalOnly && !deps.workflows?.[task.key] && !deps.provider.deterministic) {
+    throw new AiNotConfiguredError(`AI assist for "${task.purpose}" needs its workflow configured for this environment.`);
+  }
   await deps.guard?.();
 
   const startedAt = now();

@@ -758,6 +758,67 @@ export async function reviseDraftContentFromAi(
   return { item, version };
 }
 
+/**
+ * Creates a DRAFT event content item from an approved event suggestion. The suggestion's
+ * source URL and context travel with the item; nothing is published or approved here.
+ */
+export async function createDraftEventContentFromSuggestion(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  input: {
+    itemId: string;
+    versionId: string;
+    organisationId?: string | null;
+    suggestion: { id: string; territoryId: string; aiRunId: string | null; title: string; startsAt: Date; endsAt: Date | null; venue: string | null; summary: string | null; sourceUrl: string; sourceContext: string };
+  }
+) {
+  const { suggestion } = input;
+  const when = suggestion.endsAt ? `${suggestion.startsAt.toISOString()} to ${suggestion.endsAt.toISOString()}` : suggestion.startsAt.toISOString();
+  const item: ContentItem = {
+    id: input.itemId,
+    title: suggestion.title,
+    standfirst: suggestion.summary,
+    contentType: "event",
+    ownerLevel: "territory",
+    organisationId: input.organisationId ?? null,
+    territoryId: suggestion.territoryId,
+    status: "draft",
+    authorUserId: context.userId,
+    sourceType: "ai",
+    sourceReference: suggestion.sourceUrl,
+    heroArtifactReference: {},
+    categories: ["events"],
+    tags: [],
+    relevantDates: { startsAt: suggestion.startsAt.toISOString(), endsAt: suggestion.endsAt?.toISOString() ?? null },
+    provenance: { source: "ai_event_discovery", suggestionId: suggestion.id, aiRunId: suggestion.aiRunId, sourceUrl: suggestion.sourceUrl, approvedByUserId: context.userId },
+    advertiserId: null,
+    commercialBookingId: null,
+    editionContentItemId: null,
+    approvedByUserId: null,
+    approvedAt: null,
+    publishedAt: null
+  };
+  const version: ContentItemVersion = {
+    id: input.versionId,
+    contentItemId: item.id,
+    versionNumber: 1,
+    status: "draft",
+    snapshot: {
+      title: suggestion.title,
+      standfirst: suggestion.summary ?? "",
+      body: [suggestion.summary, `When: ${when}`, suggestion.venue ? `Where: ${suggestion.venue}` : null, `Source: ${suggestion.sourceUrl}`, "Confirm the details with the organiser before publishing."].filter(Boolean).join("\n\n"),
+      sourceContext: suggestion.sourceContext
+    },
+    changeSummary: "Created from an approved AI event suggestion",
+    provenance: { source: "ai_event_discovery", suggestionId: suggestion.id },
+    createdByUserId: context.userId
+  };
+  await createCanonicalContentItem(context, permissions, audit, data, item, version);
+  return { item, version };
+}
+
 function validateAiContentDraft(draft: AiContentDraft): AiContentDraft {
   if (!draft.title.trim() || !draft.body.trim()) {
     throw new Error("An AI content draft needs a title and body.");

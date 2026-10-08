@@ -215,6 +215,7 @@ describe("app shell context and capabilities", () => {
         "marketing-analytics",
         "marketing-command",
         "content",
+        "event-discovery",
         "social",
         "commercial-command",
         "editions",

@@ -12,6 +12,7 @@ import {
   createCentralContentItem,
   createCanonicalContentItem,
   createContentItemFromAiDraft,
+  createDraftEventContentFromSuggestion,
   reviseDraftContentFromAi,
   createEditionFlatplan,
   createNetworkSocialQueueSuggestions,
@@ -861,6 +862,24 @@ describe("AI content drafts (AI-002)", () => {
     (item as { status: string }).status = "approved";
     await expect(reviseDraftContentFromAi(hqContext(), permissions, recorder, publishingData, item.id, { versionId: "rev_v3", draft, aiRunId: "run-3" })).rejects.toThrow(/Only draft content/);
     expect(publishingData.contentItemVersions).toHaveLength(2);
+  });
+});
+
+describe("event suggestion approval (AI-003)", () => {
+  const suggestion = { id: "sug-1", territoryId: ids.territories.own, aiRunId: "run-9", title: "Story time", startsAt: new Date("2026-03-10T10:00:00Z"), endsAt: null, venue: "Sutton Library", summary: "Stories for under-fives.", sourceUrl: "https://library.example.org/story", sourceContext: "Listed on the events page." };
+
+  it("creates a DRAFT territory event item carrying its source, never approved or published", async () => {
+    const publishingData = emptyData();
+    const { item, version } = await createDraftEventContentFromSuggestion(hqContext(), permissions, audit(), publishingData, { itemId: "event_item_1", versionId: "event_item_1_v1", organisationId: ids.organisations.franchise, suggestion });
+    expect(item).toMatchObject({ contentType: "event", status: "draft", sourceType: "ai", ownerLevel: "territory", territoryId: ids.territories.own, sourceReference: "https://library.example.org/story", approvedAt: null, publishedAt: null });
+    expect(item.provenance).toMatchObject({ source: "ai_event_discovery", suggestionId: "sug-1", aiRunId: "run-9" });
+    expect(item.relevantDates).toMatchObject({ startsAt: "2026-03-10T10:00:00.000Z" });
+    expect(String(version.snapshot.body)).toContain("Source: https://library.example.org/story");
+    expect(String(version.snapshot.body)).toContain("Confirm the details");
+  });
+
+  it("denies a user without content.create", async () => {
+    await expect(createDraftEventContentFromSuggestion(localContext(), permissions, audit(), emptyData(), { itemId: "x", versionId: "x_v1", suggestion })).rejects.toThrow();
   });
 });
 

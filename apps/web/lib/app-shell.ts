@@ -236,6 +236,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "publishing"
   },
   {
+    id: "event-discovery",
+    label: "Event Discovery",
+    href: "/app/content/events",
+    capability: {
+      module: "content.event_suggestion",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "publishing"
+  },
+  {
     id: "social",
     label: "Social Queue",
     href: "/app/social",
@@ -465,6 +476,18 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.aiRunView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.eventSuggestionView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.eventSuggestionView,
       scope: "own_territory",
       constraints: {}
     },

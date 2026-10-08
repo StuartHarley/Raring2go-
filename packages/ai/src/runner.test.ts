@@ -5,7 +5,7 @@ import { createDeterministicProvider } from "./provider";
 import type { AiProvider } from "./provider";
 import { AiRunFailedError, runAiTask } from "./runner";
 import { createInMemoryAiRunStore } from "./runs";
-import { AiOutputError, defineAiTask, requiresReview } from "./task";
+import { AiNotConfiguredError, AiOutputError, defineAiTask, requiresReview } from "./task";
 
 type Input = { title: string; apiKey?: string; notes?: string };
 type Output = { text: string };
@@ -124,6 +124,27 @@ describe("runAiTask", () => {
     const store = createInMemoryAiRunStore();
     const { run } = await runAiTask({ provider: createDeterministicProvider(), store, now: fixedNow }, task, { input: { title: "x" }, actor: { type: "automation", automationId: "workflow-engine" }, scope });
     expect(run).toMatchObject({ actorType: "automation", actorUserId: null });
+  });
+});
+
+describe("externalOnly tasks", () => {
+  const ext = defineAiTask<Input, Output>({ ...task, key: "events.discover", externalOnly: true, fromStructured: (raw) => ({ text: String((raw as { text?: unknown }).text ?? "") }), structuredInput: (input) => ({ title: input.title }) });
+
+  it("refuse a real model without the external workflow, before the guard or any provider call", async () => {
+    const store = createInMemoryAiRunStore();
+    const provider = modelProvider("made up events");
+    const guard = vi.fn(async () => undefined);
+    await expect(runAiTask({ provider, store, guard, now: fixedNow }, ext, { input: { title: "x" }, actor, scope })).rejects.toBeInstanceOf(AiNotConfiguredError);
+    expect(provider.complete).not.toHaveBeenCalled();
+    expect(guard).not.toHaveBeenCalled();
+    expect(store.runs.size).toBe(0);
+  });
+
+  it("run through the external workflow when configured, and via the deterministic provider in development", async () => {
+    const store = createInMemoryAiRunStore();
+    const workflows = { "events.discover": { taskKey: "events.discover", run: async () => ({ output: { text: "found" }, modelReference: "wf", usage: { inputTokens: 1, outputTokens: 1 } }) } };
+    expect((await runAiTask({ provider: modelProvider("x"), workflows, store, now: fixedNow }, ext, { input: { title: "x" }, actor, scope })).output).toEqual({ text: "found" });
+    expect((await runAiTask({ provider: createDeterministicProvider(), store, now: fixedNow }, ext, { input: { title: "x" }, actor, scope })).run.providerKey).toBe("deterministic");
   });
 });
 
