@@ -6,3 +6,4 @@ export type * from "./types";
 export * from "./ai-tasks";
 export * from "./events";
 export * from "./events-store";
+export * from "./repurpose-ai";

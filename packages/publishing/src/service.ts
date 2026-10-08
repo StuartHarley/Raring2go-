@@ -544,15 +544,23 @@ export async function repurposeContentVariant(
     promptTemplateVersion: string;
     providerKey?: string | null;
     modelReference?: string | null;
+    /** Output already produced (and validated) by an AI run; replaces the deterministic placeholder. */
+    generated?: { output: Record<string, unknown>; aiRunId: string; unsupportedFacts?: string[] };
   }
 ) {
   requirePublishingPermission(context, permissions, "contentAiGenerate");
   const item = requireCanonicalContent(data, contentItemId);
   if (item.territoryId) {
     ensureContextCanAccessTerritory(context, item.territoryId);
+  } else {
+    ensureNetworkContentActor(context);
+  }
+  if (input.generated && item.status !== "approved" && item.status !== "published") {
+    throw new Error(`Only approved content can be repurposed with AI; this item is ${item.status}.`);
   }
   const sourceVersion = latestContentVersion(data, item.id);
-  const output = deterministicChannelOutput(item, sourceVersion, channel);
+  const output = input.generated?.output ?? deterministicChannelOutput(item, sourceVersion, channel);
+  const aiProvenance = input.generated ? { aiRunId: input.generated.aiRunId, unsupportedFacts: input.generated.unsupportedFacts ?? [] } : {};
   const task: ContentAiTask = {
     id: input.taskId,
     task: `content.repurpose.${channel}`,
@@ -568,7 +576,7 @@ export async function repurposeContentVariant(
     humanDecision: null,
     decidedByUserId: null,
     decidedAt: null,
-    provenance: { generatedBy: "ai", source: "provider_neutral_task" }
+    provenance: { generatedBy: "ai", source: input.generated ? "ai_run" : "provider_neutral_task", ...aiProvenance }
   };
   data.contentAiTasks.push(task);
   const variant = upsertVariant(data, item.id, channel, item.territoryId ?? null);
@@ -580,7 +588,7 @@ export async function repurposeContentVariant(
     status: "ai_draft",
     snapshot: output,
     generatedByTaskId: task.id,
-    provenance: { generatedBy: "ai", taskId: task.id },
+    provenance: { generatedBy: "ai", taskId: task.id, sourceContentItemId: item.id, sourceVersionId: sourceVersion?.id ?? null, ...aiProvenance },
     createdByUserId: context.userId,
     approvedByUserId: null,
     approvedAt: null
@@ -626,6 +634,8 @@ export async function approveContentVariant(
   const item = requireCanonicalContent(data, variant.contentItemId);
   if (item.territoryId) {
     ensureContextCanAccessTerritory(context, item.territoryId);
+  } else {
+    ensureNetworkContentActor(context);
   }
   const version = variant.currentVersionId
     ? data.contentChannelVariantVersions.find((candidate) => candidate.id === variant.currentVersionId && !candidate.deletedAt)
@@ -1934,6 +1944,13 @@ function deterministicChannelOutput(item: ContentItem, version: ContentItemVersi
     cta: "Read more",
     alternateVersions: [item.title]
   };
+}
+
+/** Network-level (HQ-owned) content is only changed from a network context, never a territory's. */
+function ensureNetworkContentActor(context: PublishingActorContext) {
+  if (context.territoryId) {
+    throw new Error("Network content can only be changed by Head Office.");
+  }
 }
 
 function ensureContextCanAccessTerritory(context: PublishingActorContext, territoryId: string) {

@@ -45,6 +45,7 @@ import {
 } from "./service";
 import type { PublishingData } from "./types";
 import { contentDraftTask, normaliseContentDraft } from "./ai-tasks";
+import { contentRepurposeTask, findUnsupportedFacts, normaliseChannelOutput, slugify } from "./repurpose-ai";
 import { AiOutputError } from "@raring2go/ai";
 import type { PermissionData } from "@raring2go/permissions";
 
@@ -880,6 +881,112 @@ describe("event suggestion approval (AI-003)", () => {
 
   it("denies a user without content.create", async () => {
     await expect(createDraftEventContentFromSuggestion(localContext(), permissions, audit(), emptyData(), { itemId: "x", versionId: "x_v1", suggestion })).rejects.toThrow();
+  });
+});
+
+describe("AI repurposing (AI-004)", () => {
+  const generated = { output: { webHeadline: "Half term adventures", body: "Body text.", slug: "half-term-adventures" }, aiRunId: "run-7", unsupportedFacts: ["£5"] };
+
+  async function approvedItem() {
+    const publishingData = emptyData();
+    const recorder = audit();
+    const item = canonicalContent();
+    await createCanonicalContentItem(hqContext(), permissions, recorder, publishingData, item, canonicalVersion(item, 1));
+    return { publishingData, recorder, item };
+  }
+
+  it("refuses to repurpose unapproved content with AI, so variants cannot bypass the source's approval", async () => {
+    const { publishingData, recorder, item } = await approvedItem();
+    await expect(repurposeContentVariant(hqContext(), permissions, recorder, publishingData, item.id, "website", { taskId: "t1", promptTemplateVersion: "v1", generated })).rejects.toThrow(/Only approved content/);
+    expect(publishingData.contentChannelVariants).toHaveLength(0);
+  });
+
+  it("a territory user cannot repurpose or approve network-level content", async () => {
+    const { publishingData, recorder, item } = await approvedItem();
+    (item as { status: string }).status = "approved";
+    await expect(repurposeContentVariant(localContext(), permissions, recorder, publishingData, item.id, "website", { taskId: "t1", promptTemplateVersion: "v1", generated })).rejects.toThrow(/Head Office/);
+    const { variant } = await repurposeContentVariant(hqContext(), permissions, recorder, publishingData, item.id, "website", { taskId: "t2", promptTemplateVersion: "v1", generated });
+    await expect(approveContentVariant(localContext(), permissions, recorder, publishingData, variant.id)).rejects.toThrow();
+    expect(variant.status).toBe("ai_draft");
+  });
+
+  it("links the variant to its source and AI run, flags unsupported facts, and starts as ai_draft awaiting approval", async () => {
+    const { publishingData, recorder, item } = await approvedItem();
+    (item as { status: string }).status = "approved";
+    const { task, variant, version } = await repurposeContentVariant(hqContext(), permissions, recorder, publishingData, item.id, "website", {
+      taskId: "t1", promptTemplateVersion: "content-repurpose.v1", providerKey: "anthropic", modelReference: "claude-x", generated
+    });
+    expect(version.snapshot).toEqual(generated.output);
+    expect(version.provenance).toMatchObject({ generatedBy: "ai", sourceContentItemId: item.id, aiRunId: "run-7", unsupportedFacts: ["£5"] });
+    expect(task).toMatchObject({ providerKey: "anthropic", modelReference: "claude-x", humanDecision: null });
+    expect(task.provenance).toMatchObject({ source: "ai_run", aiRunId: "run-7" });
+    expect(variant).toMatchObject({ status: "ai_draft", contentItemId: item.id });
+
+    await approveContentVariant(hqContext(), permissions, recorder, publishingData, variant.id);
+    expect(variant.status).toBe("approved");
+    expect(task.humanDecision).toBe("accepted");
+    // Regenerating an approved variant never overwrites it: it needs review again.
+    await repurposeContentVariant(hqContext(), permissions, recorder, publishingData, item.id, "website", { taskId: "t2", promptTemplateVersion: "v1", generated });
+    expect(variant.status).toBe("needs_review");
+    expect(publishingData.contentChannelVariantVersions.filter((entry) => entry.variantId === variant.id)).toHaveLength(2);
+  });
+});
+
+describe("content repurpose task", () => {
+  const source = { contentItemId: "item-1" };
+  const input = { channel: "website" as const, contentItemId: "item-1", title: "Half term adventures", standfirst: "Ideas for families.", body: "Free story time on 12 March at 10:30. Entry is £3.", tags: ["families"] };
+
+  it("normalises each channel to the shape the platform already consumes, setting derived fields itself", () => {
+    expect(normaliseChannelOutput("website", { webHeadline: "Half Term: Fun!", body: "b", slug: "evil-slug", seoTitle: "" }, source)).toMatchObject({ slug: "half-term-fun", seoTitle: "Half Term: Fun! | Raring2go", cta: "Find more local family ideas" });
+    expect(normaliseChannelOutput("newsletter", { newsletterHeadline: "H", summary: "s", block: { type: "evil", contentItemId: "other" } }, source)).toMatchObject({ block: { type: "article", contentItemId: "item-1" }, cta: "Read more" });
+    expect(normaliseChannelOutput("magazine", { editorialHeadline: "H", printBody: "one two three four", wordCountTarget: 9999 }, source)).toMatchObject({ wordCountTarget: 4 });
+    expect(normaliseChannelOutput("instagram", { caption: "c", topics: ["#half term", "fun!", 5, "a".repeat(50)] }, source).topics).toEqual(["halfterm", "fun", "a".repeat(30)]);
+    expect(normaliseChannelOutput("facebook", { postCopy: "p", alternateVersions: ["a", "b", "c", 4] }, source).alternateVersions).toEqual(["a", "b"]);
+    expect(normaliseChannelOutput("linkedin", { postCopy: "<i>p</i>" }, source)).toMatchObject({ postCopy: "p", cta: "View the full update" });
+  });
+
+  it("rejects missing required fields and non-objects", () => {
+    expect(() => normaliseChannelOutput("website", { webHeadline: "H" }, source)).toThrow(/body/);
+    expect(() => normaliseChannelOutput("instagram", { caption: 5 }, source)).toThrow(/caption/);
+    expect(() => normaliseChannelOutput("facebook", [], source)).toThrow();
+    expect(slugify("  A & B!! ")).toBe("a-b");
+  });
+
+  it("parses fenced JSON replies per channel and reports unusable ones", () => {
+    const reply = "```json\n" + JSON.stringify({ newsletterHeadline: "Half term", summary: "Free story time." }) + "\n```";
+    expect(contentRepurposeTask.parse(reply, { ...input, channel: "newsletter" })).toMatchObject({ newsletterHeadline: "Half term" });
+    expect(() => contentRepurposeTask.parse("nope", input)).toThrow(/usable variant/);
+  });
+
+  it("builds a channel-specific prompt from the source only and forbids invention", () => {
+    const prompt = contentRepurposeTask.buildUserPrompt({ ...input, channel: "instagram" });
+    expect(prompt).toContain("Channel: instagram");
+    expect(prompt).toContain("SOURCE BODY");
+    expect(contentRepurposeTask.system).toMatch(/ONLY facts present in the source/);
+    expect(contentRepurposeTask.sources!(input)).toEqual([{ type: "content_item", id: "item-1", label: "Half term adventures" }]);
+  });
+
+  it("deterministic output validates for every channel", () => {
+    for (const channel of ["magazine", "website", "newsletter", "facebook", "instagram", "linkedin"] as const) {
+      expect(() => contentRepurposeTask.deterministic({ ...input, channel })).not.toThrow();
+    }
+  });
+});
+
+describe("findUnsupportedFacts", () => {
+  const sourceText = "Free story time on 12 March at 10:30. Entry is £3. Visit https://library.example.org/story.";
+
+  it("accepts facts that are in the source, regardless of spacing and commas", () => {
+    expect(findUnsupportedFacts(sourceText, { caption: "Join us 12 March at 10:30 for £3! https://library.example.org/story" })).toEqual([]);
+  });
+
+  it("flags specific claims the source never made", () => {
+    const flagged = findUnsupportedFacts(sourceText, { caption: "Only £5, doors at 9:00, call 01234567, https://evil.example/x" });
+    expect(flagged).toEqual(expect.arrayContaining(["£5", "9:00", "https://evil.example/x"]));
+  });
+
+  it("ignores derived fields and stays quiet on ordinary copy", () => {
+    expect(findUnsupportedFacts(sourceText, { postCopy: "Story time for little ones", slug: "story-time-2026", wordCountTarget: 450, block: { type: "article", contentItemId: "00000000-1111" } })).toEqual([]);
   });
 });
 

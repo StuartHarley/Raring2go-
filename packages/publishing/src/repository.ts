@@ -284,3 +284,81 @@ export async function insertContentDomainEventRecords(db: WriteDb, events: Publi
     });
   }
 }
+
+// ---- Variant writes (AI-004) --------------------------------------------------------
+
+type Variant = PublishingData["contentChannelVariants"][number];
+type VariantVersion = PublishingData["contentChannelVariantVersions"][number];
+type AiTask = PublishingData["contentAiTasks"][number];
+
+const asDate = (value: string | null | undefined) => (value ? new Date(value) : null);
+
+export async function insertContentAiTaskRecord(db: WriteDb, task: AiTask) {
+  await db.insert(contentAiTasks).values({
+    id: task.id,
+    task: task.task,
+    contentItemId: task.contentItemId,
+    sourceVersionId: task.sourceVersionId ?? null,
+    targetChannel: task.targetChannel ?? null,
+    status: task.status,
+    providerKey: task.providerKey ?? null,
+    modelReference: task.modelReference ?? null,
+    promptTemplateVersion: task.promptTemplateVersion,
+    generatedOutput: task.generatedOutput,
+    generatedAt: new Date(task.generatedAt),
+    humanDecision: task.humanDecision ?? null,
+    decidedByUserId: task.decidedByUserId ?? null,
+    decidedAt: asDate(task.decidedAt),
+    provenance: task.provenance
+  });
+}
+
+export async function insertContentChannelVariantRecord(db: WriteDb, variant: Variant) {
+  await db.insert(contentChannelVariants).values({
+    id: variant.id,
+    contentItemId: variant.contentItemId,
+    channel: variant.channel,
+    status: variant.status,
+    currentVersionId: variant.currentVersionId ?? null,
+    territoryId: variant.territoryId ?? null,
+    scheduledAt: asDate(variant.scheduledAt),
+    publishedAt: asDate(variant.publishedAt),
+    provenance: variant.provenance
+  });
+}
+
+export async function updateContentChannelVariantRecord(db: WriteDb, variant: Variant) {
+  await db
+    .update(contentChannelVariants)
+    .set({ status: variant.status, currentVersionId: variant.currentVersionId ?? null, provenance: variant.provenance, updatedAt: new Date() })
+    .where(eq(contentChannelVariants.id, variant.id));
+}
+
+export async function insertContentChannelVariantVersionRecord(db: WriteDb, version: VariantVersion) {
+  await db.insert(contentChannelVariantVersions).values({
+    id: version.id,
+    variantId: version.variantId,
+    versionNumber: version.versionNumber,
+    status: version.status,
+    snapshot: version.snapshot,
+    generatedByTaskId: version.generatedByTaskId ?? null,
+    provenance: version.provenance,
+    createdByUserId: version.createdByUserId ?? null,
+    approvedByUserId: version.approvedByUserId ?? null,
+    approvedAt: asDate(version.approvedAt)
+  });
+}
+
+export async function updateContentChannelVariantVersionApproval(db: WriteDb, version: VariantVersion) {
+  await db
+    .update(contentChannelVariantVersions)
+    .set({ status: version.status, approvedByUserId: version.approvedByUserId ?? null, approvedAt: asDate(version.approvedAt), updatedAt: new Date() })
+    .where(eq(contentChannelVariantVersions.id, version.id));
+}
+
+export async function updateContentAiTaskDecision(db: WriteDb, task: AiTask) {
+  await db
+    .update(contentAiTasks)
+    .set({ humanDecision: task.humanDecision ?? null, decidedByUserId: task.decidedByUserId ?? null, decidedAt: asDate(task.decidedAt), updatedAt: new Date() })
+    .where(eq(contentAiTasks.id, task.id));
+}
