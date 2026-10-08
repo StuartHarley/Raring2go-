@@ -1,14 +1,18 @@
 import { auditActions } from "@raring2go/audit";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
-  appAuditRecorder,
+  createFixtureIdentity,
   requestSignIn,
+  setIdentityForTests,
   safeReturnTo,
   signOut,
   verifySignIn
 } from "./auth-runtime";
 
 describe("auth runtime", () => {
+  const identity = createFixtureIdentity();
+  beforeEach(() => setIdentityForTests(identity));
+
   it("allows only safe internal application and public area return paths", () => {
     expect(safeReturnTo("/app/territory?x=1")).toBe("/app/territory?x=1");
     expect(safeReturnTo("/areas/sutton-coldfield/saved")).toBe("/areas/sutton-coldfield/saved");
@@ -20,7 +24,7 @@ describe("auth runtime", () => {
   it("runs sign-in request, session creation and sign-out audit events", async () => {
     const token = `runtime-token-${crypto.randomUUID()}`;
     const sessionToken = `runtime-session-${crypto.randomUUID()}`;
-    const startCount = appAuditRecorder.events.length;
+    const startCount = identity.audit.events.length;
 
     await requestSignIn({
       email: "superadmin@example.raring2go.test",
@@ -37,7 +41,7 @@ describe("auth runtime", () => {
       sessionToken
     });
 
-    const actions = appAuditRecorder.events
+    const actions = identity.audit.events
       .slice(startCount)
       .map((event: { action: string }) => event.action);
 

@@ -123,7 +123,7 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
     const actor = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     const permissions = await getPermissionData();
     const suggestions = await readEventSuggestions(actor, status);
-    return { suggestions, canDiscover: hasEventCapability(permissions, actor, "discover"), canDecide: hasEventCapability(permissions, actor, "decide"), territories: listDiscoverableTerritories(actor) };
+    return { suggestions, canDiscover: hasEventCapability(permissions, actor, "discover"), canDecide: hasEventCapability(permissions, actor, "decide"), territories: await listDiscoverableTerritories(actor) };
   } catch (error) {
     return { error };
   }

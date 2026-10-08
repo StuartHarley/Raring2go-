@@ -31,7 +31,7 @@ describe("passwordless sign-in", () => {
   });
 
   it("consumes a valid token once and creates a real session", async () => {
-    const repository = createMemoryAuthRepository();
+    const repository = createMemoryAuthRepository({ users: [{ id: "user_1", email: "user@example.com", status: "active" }] });
     const audit = createMemoryAuditRecorder();
 
     await requestPasswordlessSignIn(repository, audit, {
@@ -82,5 +82,37 @@ describe("passwordless sign-in", () => {
         now: new Date("2026-08-10T12:01:00.000Z")
       })
     ).rejects.toThrow("expired");
+  });
+
+  it("creates an account on first sign-in (parents self-register); it holds no access until granted", async () => {
+    const repository = createMemoryAuthRepository();
+    const audit = createMemoryAuditRecorder();
+    await requestPasswordlessSignIn(repository, audit, { email: "newparent@example.com", token: "tok", now: new Date("2026-08-10T12:00:00.000Z") });
+
+    const result = await consumePasswordlessSignIn(repository, audit, { token: "tok", sessionToken: "s", now: new Date("2026-08-10T12:01:00.000Z") });
+    expect(result.user.email).toBe("newparent@example.com");
+    expect(repository.memberships).toHaveLength(0);
+  });
+
+  it("refuses a disabled account even with a valid link", async () => {
+    const repository = createMemoryAuthRepository({ users: [{ id: "user_1", email: "user@example.com", status: "disabled" }] });
+    const audit = createMemoryAuditRecorder();
+    await requestPasswordlessSignIn(repository, audit, { email: "user@example.com", token: "tok", now: new Date("2026-08-10T12:00:00.000Z") });
+
+    await expect(consumePasswordlessSignIn(repository, audit, { token: "tok", sessionToken: "s", now: new Date("2026-08-10T12:01:00.000Z") })).rejects.toThrow(/not available/);
+    expect(repository.sessions).toHaveLength(0);
+  });
+
+  it("lets only one of two simultaneous uses of a link create a session", async () => {
+    const repository = createMemoryAuthRepository({ users: [{ id: "user_1", email: "user@example.com", status: "active" }] });
+    const audit = createMemoryAuditRecorder();
+    await requestPasswordlessSignIn(repository, audit, { email: "user@example.com", token: "tok", now: new Date("2026-08-10T12:00:00.000Z") });
+
+    const attempts = await Promise.allSettled([
+      consumePasswordlessSignIn(repository, audit, { token: "tok", sessionToken: "a", now: new Date("2026-08-10T12:01:00.000Z") }),
+      consumePasswordlessSignIn(repository, audit, { token: "tok", sessionToken: "b", now: new Date("2026-08-10T12:01:00.000Z") })
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
+    expect(repository.sessions).toHaveLength(1);
   });
 });

@@ -135,8 +135,8 @@ async function loadJourneys(request: Awaited<ReturnType<typeof requestFromSearch
     };
     const overview = await readJourneyOverview(context);
     const territoryOptions = context.territoryId
-      ? listNetworkTerritories().filter((territory) => territory.id === context.territoryId)
-      : listNetworkTerritories();
+      ? (await listNetworkTerritories()).filter((territory) => territory.id === context.territoryId)
+      : await listNetworkTerritories();
 
     const permissions = await getPermissionData();
 

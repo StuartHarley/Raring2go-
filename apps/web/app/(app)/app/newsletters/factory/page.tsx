@@ -203,7 +203,7 @@ async function loadFactory(request: Awaited<ReturnType<typeof requestFromSearchP
       factory,
       segments,
       isNetworkView: !context.territoryId,
-      territories: listNetworkTerritories()
+      territories: await listNetworkTerritories()
     };
   } catch (error) {
     return { error };

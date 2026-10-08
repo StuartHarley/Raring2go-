@@ -4,11 +4,9 @@ import { randomUUID } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
-import { createSession, findOrCreateUserByEmail } from "@raring2go/auth";
 import { rateLimitRules } from "@raring2go/security";
 import {
-  appAuditRecorder,
-  appAuthRepository,
+  createDevelopmentSession,
   requestSignIn,
   safeReturnTo,
   sessionCookieName,
@@ -30,13 +28,8 @@ export async function requestSignInAction(formData: FormData) {
     // as a real navigation), and a one-time token doesn't tolerate being
     // consumed twice, which is exactly what caused this to intermittently
     // fail. Creating a session has no such single-use constraint.
-    const user = await findOrCreateUserByEmail(appAuthRepository, { email });
     const sessionToken = randomUUID();
-    await createSession(appAuthRepository, appAuditRecorder, {
-      userId: user.id,
-      token: sessionToken,
-      expiresAt: new Date(Date.now() + devSessionTtlMs)
-    });
+    await createDevelopmentSession({ email, sessionToken, ttlMs: devSessionTtlMs });
 
     const cookieStore = await cookies();
     cookieStore.set(sessionCookieName, sessionToken, {

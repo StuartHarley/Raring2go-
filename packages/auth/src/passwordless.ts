@@ -95,14 +95,25 @@ export async function consumePasswordlessSignIn(
     throw new Error("Sign-in token has expired.");
   }
 
+  // Anyone can sign in by email (parents self-register); an account holds no access until it is
+  // given a membership and roles. A disabled account's outstanding links stop working.
   const user = await findOrCreateUserByEmail(repository, {
     email: verification.identifier
   });
 
-  await repository.markVerificationTokenUsed({
+  if (user.status !== "active") {
+    throw new Error("Sign-in is not available for this account.");
+  }
+
+  // Claim before creating the session: of two simultaneous uses of one link, exactly one gets in.
+  const claimed = await repository.markVerificationTokenUsed({
     tokenId: verification.id,
     usedAt: now
   });
+
+  if (!claimed) {
+    throw new Error("Sign-in token has already been used.");
+  }
 
   const session = await createSession(repository, audit, {
     userId: user.id,

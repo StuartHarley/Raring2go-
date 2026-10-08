@@ -58,7 +58,7 @@ import {
 } from "@raring2go/franchise";
 import { recordAuditEvent } from "@raring2go/audit";
 import { evaluatePermission } from "@raring2go/permissions";
-import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
+import { createDb, fixtureIds } from "@raring2go/db";
 import { createFileReference } from "@raring2go/storage";
 import type {
   AgreementSigner,
@@ -391,6 +391,7 @@ export async function uploadDocumentForFranchise(
       const artifact: FranchiseArtifactReference = documentArtifact(
         input.artifactId,
         franchiseId,
+        territoryIdForFranchise(data, franchiseId),
         input.documentId,
         input.title
       );
@@ -434,7 +435,7 @@ export async function addDocumentVersionForFranchise(
         uploadedByUserId: context.userId,
         uploadedAt: today()
       };
-      const artifact = documentArtifact(artifactId, franchiseId, documentId, "Document version");
+      const artifact = documentArtifact(artifactId, franchiseId, territoryIdForFranchise(data, franchiseId), documentId, "Document version");
       const document = await addFranchiseDocumentVersion(
         context,
         franchisePermissionData,
@@ -878,9 +879,9 @@ async function recordCurrentSignatureEvent(
         requestId,
         eventType,
         signedAgreementArtifact:
-          eventType === "completed" ? signedArtifact(franchiseId, eventId) : undefined,
+          eventType === "completed" ? signedArtifact(franchiseId, territoryIdForFranchise(data, franchiseId), eventId) : undefined,
         completionCertificateArtifact:
-          eventType === "completed" ? certificateArtifact(franchiseId, eventId) : undefined,
+          eventType === "completed" ? certificateArtifact(franchiseId, territoryIdForFranchise(data, franchiseId), eventId) : undefined,
         payload: {
           source: "development_esign_provider"
         }
@@ -1007,14 +1008,14 @@ function defaultSigners(
   ];
 }
 
-function signedArtifact(franchiseId: string, eventId: string) {
+function signedArtifact(franchiseId: string, territoryId: string | null, eventId: string) {
   const file = createFileReference({
     id: `${eventId}-signed-file`,
     storageKey: `development/franchise-agreements/${eventId}/signed.pdf`,
     fileName: "signed-franchise-agreement.pdf",
     contentType: "application/pdf",
     accessScope: "territory",
-    territoryId: territoryIdForFranchise(franchiseId),
+    territoryId,
     lockedAt: today()
   });
 
@@ -1034,14 +1035,14 @@ function signedArtifact(franchiseId: string, eventId: string) {
   };
 }
 
-function certificateArtifact(franchiseId: string, eventId: string) {
+function certificateArtifact(franchiseId: string, territoryId: string | null, eventId: string) {
   const file = createFileReference({
     id: `${eventId}-certificate-file`,
     storageKey: `development/franchise-agreements/${eventId}/certificate.pdf`,
     fileName: "completion-certificate.pdf",
     contentType: "application/pdf",
     accessScope: "territory",
-    territoryId: territoryIdForFranchise(franchiseId),
+    territoryId,
     lockedAt: today()
   });
 
@@ -1064,6 +1065,7 @@ function certificateArtifact(franchiseId: string, eventId: string) {
 function documentArtifact(
   artifactId: string,
   franchiseId: string,
+  territoryId: string | null,
   documentId: string,
   title: string
 ): FranchiseArtifactReference {
@@ -1073,7 +1075,7 @@ function documentArtifact(
     fileName: `${title.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "document"}.pdf`,
     contentType: "application/pdf",
     accessScope: "territory",
-    territoryId: territoryIdForFranchise(franchiseId),
+    territoryId,
     ownerUserId: fixtureIds.users.superAdmin
   });
 
@@ -1093,8 +1095,9 @@ function documentArtifact(
   };
 }
 
-function territoryIdForFranchise(franchiseId: string) {
-  return foundationSeed.franchises.find((franchise) => franchise.id === franchiseId)?.primaryTerritoryId ?? null;
+/** A franchise's home territory, from the franchise data already loaded for the operation. */
+function territoryIdForFranchise(data: { franchises: Array<{ id: string; primaryTerritoryId: string }> }, franchiseId: string) {
+  return data.franchises.find((franchise) => franchise.id === franchiseId)?.primaryTerritoryId ?? null;
 }
 
 function today() {

@@ -1,6 +1,6 @@
 import { auditActions } from "@raring2go/audit";
 import { resolveWorkingContext, hashToken } from "@raring2go/auth";
-import { fixtureIds, foundationSeed } from "@raring2go/db";
+import { fixtureIds } from "@raring2go/db";
 import {
   evaluatePermission,
   requirePermission,
@@ -11,6 +11,10 @@ import type {
   PermissionDecision,
   PermissionRequest
 } from "@raring2go/permissions";
+import { isFixtureSessionAllowed, withIdentity } from "./auth-runtime";
+import { getDirectory } from "./directory";
+import type { Directory } from "./directory";
+import { getPermissionData } from "./permission-source";
 
 export type ShellOutcomeKind =
   | "authenticated"
@@ -438,9 +442,16 @@ const sessionsByKey: Record<string, AuthSession> = {
 
 export async function resolveShell(
   request: RequestedShellContext,
-  repository: AuthRepository = appAuthRepository
+  repository?: AuthRepository
 ): Promise<ShellOutcome> {
+  // Without an explicit repository (tests pass one) identity is read from Postgres.
+  if (repository) return resolveShellWith(request, repository);
+  return withIdentity(({ repository: identity }) => resolveShellWith(request, identity));
+}
+
+async function resolveShellWith(request: RequestedShellContext, repository: AuthRepository): Promise<ShellOutcome> {
   const permissionData = await getPermissionData();
+  const directory = getDirectory();
   const session = await resolveRequestedSession(request, repository);
 
   if (!session) {
@@ -451,7 +462,7 @@ export async function resolveShell(
     };
   }
 
-  const defaultContext = defaultContextForUser(session.userId);
+  const defaultContext = await defaultContextForUser(repository, directory, session.userId);
   const organisationId = request.organisationId ?? defaultContext?.organisationId;
   const territoryId = request.territoryId ?? defaultContext?.territoryId;
 
@@ -476,16 +487,14 @@ export async function resolveShell(
     return {
       kind: "authenticated",
       userId: session.userId,
-      displayName: displayNameForUser(session.userId),
+      displayName: (await directory.userName(session.userId)) ?? "Raring2go user",
       activeContext: {
         organisationId: context.organisationId,
-        organisationName: organisationName(context.organisationId),
+        organisationName: (await directory.organisationName(context.organisationId)) ?? "Unknown organisation",
         territoryId: context.territoryId,
-        territoryName: context.territoryId
-          ? territoryName(context.territoryId)
-          : undefined
+        territoryName: context.territoryId ? ((await directory.territoryName(context.territoryId)) ?? "Unknown territory") : undefined
       },
-      availableContexts: await contextsForUser(repository, session.userId),
+      availableContexts: await contextsForUser(repository, directory, session.userId),
       navigation: shellNavigation.filter((item) => decisions[item.id]?.allowed),
       decisions
     };
@@ -583,76 +592,44 @@ function invalidContext(message: string): ShellOutcome {
   };
 }
 
-function defaultContextForUser(userId: string) {
-  if (userId === fixtureIds.users.superAdmin) {
-    return {
-      organisationId: fixtureIds.organisations.hq
-    };
+/**
+ * Where a user lands when they have not chosen a context: their first active organisation (oldest
+ * membership), and for a franchise organisation its first territory. Derived from the user's own
+ * memberships, never from a fixed list, so any invited user gets a working default.
+ */
+async function defaultContextForUser(repository: AuthRepository, directory: Directory, userId: string) {
+  const memberships = (await repository.findMembershipsForUser(userId)).filter((membership) => membership.status === "active");
+  const first = memberships[0];
+
+  if (!first) {
+    return undefined;
   }
 
-  if (userId === fixtureIds.users.franchisee) {
-    return {
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    };
-  }
-
-  if (userId === fixtureIds.users.advertiserUser) {
-    return {
-      organisationId: fixtureIds.organisations.advertiser
-    };
-  }
-
-  return undefined;
+  const [territory] = await directory.territoriesOwnedBy(first.organisationId);
+  return territory ? { organisationId: first.organisationId, territoryId: territory.id } : { organisationId: first.organisationId };
 }
 
-async function contextsForUser(repository: AuthRepository, userId: string) {
+async function contextsForUser(repository: AuthRepository, directory: Directory, userId: string) {
   const memberships = await repository.findMembershipsForUser(userId);
+  const active = memberships.filter((membership) => membership.userId === userId && membership.status === "active");
 
-  return memberships
-    .filter((membership) => membership.userId === userId && membership.status === "active")
-    .flatMap((membership) => {
-      const ownedTerritories = foundationSeed.territories.filter(
-        (territory) => territory.franchiseOrganisationId === membership.organisationId
-      );
+  const contexts = await Promise.all(
+    active.map(async (membership) => {
+      const organisationName = (await directory.organisationName(membership.organisationId)) ?? "Unknown organisation";
+      const owned = await directory.territoriesOwnedBy(membership.organisationId);
 
-      if (ownedTerritories.length === 0) {
-        return [
-          {
-            organisationId: membership.organisationId,
-            organisationName: organisationName(membership.organisationId)
-          }
-        ];
+      if (owned.length === 0) {
+        return [{ organisationId: membership.organisationId, organisationName }];
       }
 
-      return ownedTerritories.map((territory) => ({
+      return owned.map((territory) => ({
         organisationId: membership.organisationId,
-        organisationName: organisationName(membership.organisationId),
+        organisationName,
         territoryId: territory.id,
         territoryName: territory.name
       }));
-    });
-}
-
-function displayNameForUser(userId: string) {
-  return (
-    foundationSeed.users.find((user) => user.id === userId)?.displayName ??
-    "Raring2go user"
+    })
   );
-}
 
-function organisationName(organisationId: string) {
-  return (
-    foundationSeed.organisations.find((organisation) => organisation.id === organisationId)
-      ?.name ?? "Unknown organisation"
-  );
+  return contexts.flat();
 }
-
-function territoryName(territoryId: string) {
-  return (
-    foundationSeed.territories.find((territory) => territory.id === territoryId)?.name ??
-    "Unknown territory"
-  );
-}
-import { appAuthRepository, isFixtureSessionAllowed } from "./auth-runtime";
-import { getPermissionData } from "./permission-source";

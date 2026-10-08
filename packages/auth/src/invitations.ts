@@ -40,17 +40,35 @@ export async function acceptInvitation(
     displayName: input.displayName
   });
 
+  if (user.status !== "active") {
+    throw new Error("This account cannot accept invitations.");
+  }
+
+  // Claim first: the conditional update means two simultaneous accepts cannot both go on to grant access.
+  const claimed = await repository.markInvitationAccepted({
+    invitationId: invitation.id,
+    userId: user.id,
+    acceptedAt: now
+  });
+
+  if (!claimed) {
+    throw new Error("Invitation has already been used.");
+  }
+
   const membership = await repository.ensureMembership({
     userId: user.id,
     organisationId: invitation.organisationId,
     status: "active"
   });
 
-  await repository.markInvitationAccepted({
-    invitationId: invitation.id,
-    userId: user.id,
-    acceptedAt: now
-  });
+  if (invitation.roleId) {
+    await repository.grantRole({
+      userId: user.id,
+      roleId: invitation.roleId,
+      organisationId: invitation.organisationId,
+      territoryId: invitation.territoryId ?? null
+    });
+  }
 
   await audit.record({
     action: auditActions.authInviteAccept,
@@ -68,7 +86,8 @@ export async function acceptInvitation(
     },
     metadata: {
       email,
-      membershipId: membership.id
+      membershipId: membership.id,
+      roleId: invitation.roleId ?? null
     }
   });
 

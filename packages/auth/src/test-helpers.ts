@@ -22,6 +22,7 @@ export function createMemoryAuthRepository(input?: {
   memberships: AuthMembership[];
   sessions: AuthSession[];
   verificationTokens: AuthVerificationToken[];
+  roleGrants: Array<{ userId: string; roleId: string; organisationId: string; territoryId?: string | null }>;
 } & AuthTokenRepository {
   const users = [...(input?.users ?? [])];
   const memberships = [...(input?.memberships ?? [])];
@@ -29,14 +30,19 @@ export function createMemoryAuthRepository(input?: {
   const invitations = [...(input?.invitations ?? [])];
   const sessions = [...(input?.sessions ?? [])];
   const verificationTokens = [...(input?.verificationTokens ?? [])];
+  const roleGrants: Array<{ userId: string; roleId: string; organisationId: string; territoryId?: string | null }> = [];
 
   return {
     users,
     memberships,
     sessions,
     verificationTokens,
+    roleGrants,
     async findUserByEmail(email) {
       return users.find((user) => user.email === email) ?? null;
+    },
+    async findUserById(userId) {
+      return users.find((user) => user.id === userId) ?? null;
     },
     async createUser(userInput) {
       const user: AuthUser = {
@@ -66,9 +72,27 @@ export function createMemoryAuthRepository(input?: {
         throw new Error("Invitation was not found.");
       }
 
+      if (invitation.status !== "pending") {
+        return false;
+      }
+
       invitation.status = "accepted";
       invitation.acceptedAt = markInput.acceptedAt;
       invitation.acceptedByUserId = markInput.userId;
+      return true;
+    },
+    async grantRole(grantInput) {
+      const exists = roleGrants.some(
+        (grant) =>
+          grant.userId === grantInput.userId &&
+          grant.roleId === grantInput.roleId &&
+          grant.organisationId === grantInput.organisationId &&
+          (grant.territoryId ?? null) === (grantInput.territoryId ?? null)
+      );
+
+      if (!exists) {
+        roleGrants.push({ ...grantInput });
+      }
     },
     async ensureMembership(membershipInput) {
       const existing = memberships.find(
@@ -135,7 +159,12 @@ export function createMemoryAuthRepository(input?: {
         throw new Error("Verification token was not found.");
       }
 
+      if (token.usedAt) {
+        return false;
+      }
+
       token.usedAt = markInput.usedAt;
+      return true;
     }
   };
 }

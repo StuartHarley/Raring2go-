@@ -58,7 +58,7 @@ import {
   upsertTerritoryNewsletterEditionRecord
 } from "@raring2go/marketing";
 import { recordAuditEvent } from "@raring2go/audit";
-import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
+import { createDb, fixtureIds } from "@raring2go/db";
 import { createDrizzleProviderConnectionRepository } from "@raring2go/integrations";
 import type {
   Block,
@@ -72,6 +72,7 @@ import type {
 } from "@raring2go/marketing";
 import { evaluatePermission, type PermissionData } from "@raring2go/permissions";
 import { marketingCapabilities, type MarketingCapability } from "@raring2go/marketing";
+import { getDirectory } from "./directory";
 import { getPermissionData } from "./permission-source";
 
 export function hasMarketingCapability(permissions: PermissionData, context: MarketingActorContext, capability: MarketingCapability): boolean {
@@ -112,8 +113,8 @@ export async function readEmailCampaignOverview(context: MarketingActorContext) 
   }
 }
 
-export function listNetworkTerritories() {
-  return foundationSeed.territories.map((territory) => ({ id: territory.id, name: territory.name }));
+export async function listNetworkTerritories() {
+  return getDirectory().listTerritories();
 }
 
 export async function readSegments(context: MarketingActorContext) {

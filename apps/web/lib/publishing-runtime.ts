@@ -1,6 +1,6 @@
 import { recordAuditEvent } from "@raring2go/audit";
 import { createDrizzleAiRunStore, decideAiRun, getAiRunForActor, markAiRunApplied } from "@raring2go/ai";
-import { createDb, foundationSeed } from "@raring2go/db";
+import { createDb } from "@raring2go/db";
 import {
   approveContentVariant,
   contentRepurposeTask,
@@ -45,6 +45,7 @@ import { evaluatePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import { runAiTaskAsActor } from "./ai-runtime";
 import { AiRunFailedError } from "@raring2go/ai";
+import { getDirectory } from "./directory";
 import { getPermissionData } from "./permission-source";
 
 export async function listEditionFactoryRows(
@@ -285,10 +286,8 @@ export function hasEventCapability(permissions: PermissionData, context: Publish
   ).allowed;
 }
 
-export function listDiscoverableTerritories(context: PublishingActorContext) {
-  return foundationSeed.territories
-    .filter((territory) => !context.territoryId || territory.id === context.territoryId)
-    .map((territory) => ({ id: territory.id, name: territory.name }));
+export async function listDiscoverableTerritories(context: PublishingActorContext) {
+  return (await getDirectory().listTerritories()).filter((territory) => !context.territoryId || territory.id === context.territoryId);
 }
 
 /**
@@ -303,7 +302,7 @@ export async function discoverEvents(context: PublishingActorContext, request: E
   if (days > MAX_RANGE_DAYS) throw new Error(`Choose a range of at most ${MAX_RANGE_DAYS} days.`);
   const maxResults = Math.min(Math.max(Math.floor(request.maxResults ?? 10), 1), 20);
 
-  const territory = foundationSeed.territories.find((candidate) => candidate.id === request.territoryId);
+  const territory = (await getDirectory().listTerritories()).find((candidate) => candidate.id === request.territoryId);
   if (!territory) throw new EventAccessError("Territory not found.");
   // Scope is verified by the domain (ingest) as well, but fail early before any model spend.
   if (!evaluatePermission({ userId: context.userId, module: "content.event_suggestion", action: "discover", resource: { territoryId: territory.id } }, publishingPermissionData).allowed) {
