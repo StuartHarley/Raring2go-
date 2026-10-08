@@ -178,7 +178,11 @@ describe("foundation fixtures", () => {
       "privacy.request",
       "roles",
       "roles",
-      "roles"
+      "roles",
+      "artwork",
+      "advertiser",
+      "finance",
+      "franchise"
     ]);
   });
 

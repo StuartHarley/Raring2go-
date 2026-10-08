@@ -16,6 +16,14 @@ import { getPermissionData } from "./permission-source";
  * Counters live in Postgres (shared by every serverless instance), keyed by territory so one
  * franchise cannot burn the whole network's allowance. Limit and window keep their old env overrides.
  */
+/** A usage cap was reached (call rate or monthly spend): safe to show to the user as "try later". */
+export class AiLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiLimitError";
+  }
+}
+
 async function enforceAiAssistRateLimit(context: MarketingActorContext) {
   const rule = {
     ...rateLimitRules.aiAssistUser,
@@ -25,7 +33,7 @@ async function enforceAiAssistRateLimit(context: MarketingActorContext) {
   const refusal = await firstRateLimitRefusal([{ rule, identifier: context.territoryId ?? context.userId }]);
 
   if (refusal) {
-    throw new Error(`AI assist limit reached for this territory. Try again after ${refusal.resetAt.toLocaleTimeString()}.`);
+    throw new AiLimitError(`AI assist limit reached for this territory. Try again after ${refusal.resetAt.toLocaleTimeString()}.`);
   }
 }
 
@@ -137,7 +145,7 @@ export async function enforceAiSpendCap(context: MarketingActorContext) {
   const spentMinor = await sumAiSpendForPeriod(context, { since: startOfCurrentMonthUtc() });
 
   if (spentMinor >= capMinor) {
-    throw new Error(
+    throw new AiLimitError(
       `AI spend limit reached for this ${context.territoryId ? "territory" : "organisation"} this month ($${(capMinor / 100).toFixed(2)}). Try again next month.`
     );
   }
@@ -528,5 +536,26 @@ export async function runAiTaskAsActor<Input, Output extends Record<string, unkn
     return result;
   } finally {
     await closeSql.end();
+  }
+}
+
+/** The newest AI run of one task for one record, if the actor may see it. */
+export async function readLatestAiRunForSubject(context: AiActorContext, input: { taskKey: string; subjectType: string; subjectId: string }) {
+  const aiRunPermissionData = await getPermissionData();
+  const { db, sql: closeSql } = createDb();
+
+  try {
+    const runs = await listAiRunsForActor(context, aiRunPermissionData, createDrizzleAiRunStore(db), { taskKeys: [input.taskKey], subjectType: input.subjectType, subjectId: input.subjectId, limit: 1 });
+    return runs[0];
+  } finally {
+    await closeSql.end();
+  }
+}
+
+export function aiAssistConfigured(): boolean {
+  try {
+    return createAiProviderFromEnv() !== undefined;
+  } catch {
+    return false;
   }
 }

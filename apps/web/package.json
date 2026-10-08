@@ -18,6 +18,7 @@
     "@raring2go/access": "workspace:*",
     "@raring2go/ai": "workspace:*",
     "@raring2go/analytics": "workspace:*",
+    "@raring2go/assistants": "workspace:*",
     "@raring2go/audit": "workspace:*",
     "@raring2go/auth": "workspace:*",
     "@raring2go/config": "workspace:*",

@@ -1,5 +1,7 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
-import { readTerritoryEdition } from "../../../../../lib/publishing-runtime";
+import { readPreflightPanel, readTerritoryEdition } from "../../../../../lib/publishing-runtime";
+import { AiPreparedNote, AssistantBanner, fixabilityLabels } from "../../../../../lib/assistant-ui";
+import { explainPreflightAction } from "./actions";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -10,9 +12,11 @@ type PageProps = {
 };
 
 export default async function EditionStudioPage({ params, searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const search = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(search);
   const { id } = await params;
   const result = await loadEdition(request, id);
+  const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
 
   if ("error" in result) {
     return protectedOutcome(result.error);
@@ -96,6 +100,62 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
         </div>
       </section>
 
+      <section id="preflight" className="app-panel franchise-panel" aria-label="Preflight">
+        <p className="eyebrow">Preflight</p>
+        <h2>Print readiness</h2>
+        <p>
+          What the print checks found, in plain English. The findings and the fix verdicts come straight from the preflight, and a failing file is never described as print-ready. An optional AI explanation can reword
+          them for the person preparing the artwork.
+        </p>
+        <AssistantBanner code={resultCode} />
+        {result.preflight.results.length === 0 ? (
+          <p>No preflight has been run on this edition yet.</p>
+        ) : (
+          result.preflight.results.map((entry) => (
+            <article key={entry.id} className="franchise-list" aria-label={`Preflight for page ${entry.pageNumber ?? ""}`}>
+              <div>
+                <strong>
+                  {entry.pageNumber ? `Page ${entry.pageNumber}` : "Edition artwork"}: {entry.analysis.readyForPrint ? "ready for print" : "not ready for print"}
+                </strong>
+                <span>{entry.ai ? entry.ai.output.summary : entry.analysis.summary}</span>
+                {entry.ai ? <AiPreparedNote run={entry.ai.run} /> : null}
+              </div>
+              {entry.analysis.items.map((item) => {
+                const said = entry.ai?.output.items.find((candidate) => candidate.code === item.code);
+                const steps = said?.steps?.length ? said.steps : item.steps;
+                return (
+                  <div key={item.code}>
+                    <strong>
+                      {item.title} <span className="muted">({item.severity})</span>
+                    </strong>
+                    <span>{said?.explanation ?? item.explanation}</span>
+                    <span className="muted">{fixabilityLabels[item.fixability]}</span>
+                    <details>
+                      <summary>What to do</summary>
+                      <ol>
+                        {steps.map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ol>
+                      <p className="muted">Preflight said: {item.engineMessage}</p>
+                    </details>
+                  </div>
+                );
+              })}
+              {entry.analysis.items.length > 0 && result.preflight.canAssist ? (
+                result.preflight.aiConfigured ? (
+                  <form action={explainPreflightAction.bind(null, request, id, entry.id)}>
+                    <button type="submit">{entry.ai ? "Refresh AI explanation" : "Add AI explanation"}</button>
+                  </form>
+                ) : (
+                  <p className="muted">AI explanations are not switched on for this environment.</p>
+                )
+              ) : null}
+            </article>
+          ))
+        )}
+      </section>
+
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Outputs</p>
         <h2>Print and digital artefacts</h2>
@@ -128,14 +188,9 @@ async function loadEdition(
       module: "edition",
       action: "view"
     });
-    return await readTerritoryEdition(
-      {
-        userId: shell.userId,
-        organisationId: shell.activeContext.organisationId,
-        territoryId: shell.activeContext.territoryId
-      },
-      territoryEditionId
-    );
+    const actor = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
+    const edition = await readTerritoryEdition(actor, territoryEditionId);
+    return { ...edition, preflight: await readPreflightPanel(actor, territoryEditionId) };
   } catch (error) {
     return { error };
   }
