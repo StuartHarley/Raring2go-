@@ -1,3 +1,4 @@
+import { isAuthorizedCronRequest } from "@raring2go/security";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import {
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
 }
 
 async function processNextEmailSendJob(request: Request) {
-  if (!isAuthorizedCronRequest(request)) {
+  if (!isAuthorizedCronRequest(request.headers)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -268,12 +269,3 @@ function listUnsubscribeHeaders(contactId: string, campaignId: string) {
   };
 }
 
-function isAuthorizedCronRequest(request: Request) {
-  const secret = process.env.CRON_SECRET;
-
-  if (!secret) {
-    return process.env.APP_ENV !== "production";
-  }
-
-  return request.headers.get("authorization") === `Bearer ${secret}`;
-}

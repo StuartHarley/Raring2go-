@@ -204,7 +204,7 @@ export async function seedDatabase(databaseUrl?: string) {
         scope: "network" as const,
         constraints: {}
       },
-      ...[fixtureIds.permissions.jobsView, fixtureIds.permissions.jobsRetry, fixtureIds.permissions.jobsCancel, fixtureIds.permissions.workflowView, fixtureIds.permissions.workflowManage, fixtureIds.permissions.workflowActivate, fixtureIds.permissions.workflowTest, fixtureIds.permissions.aiRunView, fixtureIds.permissions.aiRunDecide, fixtureIds.permissions.scorecardView, fixtureIds.permissions.healthConfigManage, fixtureIds.permissions.snapshotGenerate].map((permissionId) => ({
+      ...[fixtureIds.permissions.jobsView, fixtureIds.permissions.jobsRetry, fixtureIds.permissions.jobsCancel, fixtureIds.permissions.workflowView, fixtureIds.permissions.workflowManage, fixtureIds.permissions.workflowActivate, fixtureIds.permissions.workflowTest, fixtureIds.permissions.aiRunView, fixtureIds.permissions.aiRunDecide, fixtureIds.permissions.scorecardView, fixtureIds.permissions.healthConfigManage, fixtureIds.permissions.snapshotGenerate, fixtureIds.permissions.privacyRequestView, fixtureIds.permissions.privacyRequestCreate, fixtureIds.permissions.privacyRequestDecide, fixtureIds.permissions.privacyRequestExport].map((permissionId) => ({
         roleId: fixtureIds.roles.superAdmin,
         permissionId,
         scope: "system" as const,
@@ -441,7 +441,11 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.eventSuggestionDecide,
         fixtureIds.permissions.scorecardView,
         fixtureIds.permissions.healthConfigManage,
-        fixtureIds.permissions.snapshotGenerate
+        fixtureIds.permissions.snapshotGenerate,
+        fixtureIds.permissions.privacyRequestView,
+        fixtureIds.permissions.privacyRequestCreate,
+        fixtureIds.permissions.privacyRequestDecide,
+        fixtureIds.permissions.privacyRequestExport
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,

@@ -182,7 +182,11 @@ export const fixtureIds = {
     portalView: "00000000-0000-4000-8000-000000000558",
     scorecardView: "00000000-0000-4000-8000-000000000559",
     healthConfigManage: "00000000-0000-4000-8000-000000000560",
-    snapshotGenerate: "00000000-0000-4000-8000-000000000561"
+    snapshotGenerate: "00000000-0000-4000-8000-000000000561",
+    privacyRequestView: "00000000-0000-4000-8000-000000000562",
+    privacyRequestCreate: "00000000-0000-4000-8000-000000000563",
+    privacyRequestDecide: "00000000-0000-4000-8000-000000000564",
+    privacyRequestExport: "00000000-0000-4000-8000-000000000565"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1454,6 +1458,30 @@ export const foundationSeed = {
       module: "analytics.snapshot",
       action: "generate",
       description: "Generate metric and health snapshots on demand."
+    },
+    {
+      id: fixtureIds.permissions.privacyRequestView,
+      module: "privacy.request",
+      action: "view",
+      description: "View data-subject requests (access and erasure) and their deadlines."
+    },
+    {
+      id: fixtureIds.permissions.privacyRequestCreate,
+      module: "privacy.request",
+      action: "create",
+      description: "Open a data-subject access or erasure request for a subscriber."
+    },
+    {
+      id: fixtureIds.permissions.privacyRequestDecide,
+      module: "privacy.request",
+      action: "decide",
+      description: "Approve or reject an erasure request raised by someone else."
+    },
+    {
+      id: fixtureIds.permissions.privacyRequestExport,
+      module: "privacy.request",
+      action: "export",
+      description: "Generate and download a subscriber's data export."
     }
   ],
   advertisers: [

@@ -9,6 +9,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const returnTo = safeReturnTo(first(params.returnTo));
   const sent = first(params.sent) === "1";
+  const error = first(params.error);
 
   return (
     <main className="auth-page">
@@ -24,6 +25,16 @@ export default async function SignInPage({ searchParams }: PageProps) {
           </label>
           <button type="submit">Send sign-in link</button>
         </form>
+        {error === "rate-limited" ? (
+          <div className="auth-note" role="alert">
+            <p>Too many sign-in attempts. Please wait a while and try again.</p>
+          </div>
+        ) : null}
+        {error === "invalid-link" ? (
+          <div className="auth-note" role="alert">
+            <p>That sign-in link is invalid or has expired. Request a new one.</p>
+          </div>
+        ) : null}
         {sent ? (
           <div className="auth-note" role="status">
             <p>Sign-in link requested.</p>

@@ -12,5 +12,6 @@ export * from "./jobs";
 export * from "./marketing";
 export * from "./publishing";
 export * from "./rbac";
+export * from "./security";
 export * from "./tenancy";
 export * from "./workflows";

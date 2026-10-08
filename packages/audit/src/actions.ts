@@ -193,7 +193,12 @@ export const auditActions = {
   analyticsHealthConfigCreate: "analytics.health_config.create",
   analyticsHealthConfigUpdate: "analytics.health_config.update",
   analyticsHealthConfigActivate: "analytics.health_config.activate",
-  analyticsSnapshotGenerate: "analytics.snapshot.generate"
+  analyticsSnapshotGenerate: "analytics.snapshot.generate",
+  privacyRequestCreate: "privacy.request.create",
+  privacyExportGenerate: "privacy.export.generate",
+  privacyErasureApprove: "privacy.erasure.approve",
+  privacyErasureReject: "privacy.erasure.reject",
+  securityRetentionEnforce: "security.retention.enforce"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

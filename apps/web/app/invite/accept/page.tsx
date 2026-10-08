@@ -1,4 +1,7 @@
+import { headers } from "next/headers";
+import { rateLimitRules } from "@raring2go/security";
 import { acceptInvite, safeReturnTo } from "../../../lib/auth-runtime";
+import { clientIp, firstRateLimitRefusal } from "../../../lib/rate-limit-runtime";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -12,7 +15,9 @@ export default async function InviteAcceptPage({ searchParams }: PageProps) {
   let accepted = false;
   let errorMessage: string | undefined;
 
-  if (token && email) {
+  if (token && email && (await firstRateLimitRefusal([{ rule: rateLimitRules.inviteAcceptIp, identifier: clientIp(await headers()) }]))) {
+    errorMessage = "Too many attempts. Please wait a few minutes and try again.";
+  } else if (token && email) {
     try {
       await acceptInvite({
         token,

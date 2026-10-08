@@ -21,7 +21,11 @@
     "uat:db:setup": "pnpm --filter @raring2go/db uat:db:setup",
     "uat:scan": "pnpm --filter @raring2go/db uat:scan",
     "uat:smoke": "pnpm --filter @raring2go/db uat:smoke",
-    "uat:storage": "pnpm --filter @raring2go/db uat:storage"
+    "uat:storage": "pnpm --filter @raring2go/db uat:storage",
+    "security:scan": "pnpm --filter @raring2go/security scan:secrets",
+    "security:config": "pnpm --filter @raring2go/security security:config",
+    "security:gate": "pnpm security:scan && pnpm --filter @raring2go/security test && pnpm --filter @raring2go/web exec vitest run lib/route-security",
+    "drill:backup": "scripts/backup-drill.sh"
   },
   "devDependencies": {
     "@types/node": "26.2.0",

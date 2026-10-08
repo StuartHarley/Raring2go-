@@ -1,6 +1,8 @@
 import { createDb } from "@raring2go/db";
 import { createPublicAnalyticsEventForDb, type PublicAnalyticsEventType } from "@raring2go/public";
+import { rateLimitRules } from "@raring2go/security";
 import { NextResponse } from "next/server";
+import { clientIp, firstRateLimitRefusal, tooManyRequestsResponse } from "../../../../lib/rate-limit-runtime";
 
 const allowedEventTypes = new Set<PublicAnalyticsEventType>([
   "territory_viewed",
@@ -16,6 +18,9 @@ const allowedEventTypes = new Set<PublicAnalyticsEventType>([
 ]);
 
 export async function POST(request: Request) {
+  const refusal = await firstRateLimitRefusal([{ rule: rateLimitRules.publicAnalyticsIp, identifier: clientIp(request.headers) }]);
+  if (refusal) return tooManyRequestsResponse(refusal);
+
   const body = await request.json().catch(() => null);
 
   if (!isAnalyticsBody(body)) {

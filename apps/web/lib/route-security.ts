@@ -1,0 +1,53 @@
+/**
+ * Every route handler in the app, and how it is protected. The accompanying test fails if a
+ * route.ts exists that is not listed here (so a new endpoint cannot ship without a decision
+ * about who may call it), or if a listed route's source no longer shows the protection it claims.
+ * Paths are relative to `apps/web/app`.
+ */
+export type RouteProtection =
+  /** Requires a signed-in session and a permission check before doing anything. */
+  | "session"
+  /** Scheduled work: needs the CRON_SECRET bearer token. */
+  | "cron_secret"
+  /** Third-party callback authenticated by verifying the provider's signature. */
+  | "signed_webhook"
+  /** Public, unauthenticated by design, with a per-caller rate limit. */
+  | "public_rate_limited"
+  /** Public, unauthenticated by design and exposes nothing and touches no data. */
+  | "public_static"
+  /** Local-development helper that must answer 404 in any deployed build. */
+  | "dev_only";
+
+export type RouteEntry = { protection: RouteProtection; reason: string; extraMarkers?: RegExp[] };
+
+export const routeManifest: Record<string, RouteEntry> = {
+  "api/files/development/[...path]/route.ts": { protection: "dev_only", reason: "Local disk storage backend: unauthenticated, so disabled in production builds." },
+  "api/files/list/route.ts": { protection: "session", reason: "Lists the caller's own uploaded images." },
+  "api/files/upload/route.ts": { protection: "session", reason: "Newsletter image upload, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
+  "api/health/route.ts": { protection: "public_static", reason: "Uptime status only; per-check detail needs the cron secret.", extraMarkers: [/isAuthorizedCronRequest\(/] },
+  "api/integrations/email/webhook/route.ts": { protection: "signed_webhook", reason: "Email provider delivery events, verified by signature." },
+  "api/integrations/meta/callback/route.ts": { protection: "session", reason: "OAuth callback: needs the session and the issued state." },
+  "api/integrations/meta/revoke/route.ts": { protection: "session", reason: "Disconnects a Meta connection." },
+  "api/integrations/meta/start/route.ts": { protection: "session", reason: "Begins the Meta OAuth flow." },
+  "api/integrations/microsoft/callback/route.ts": { protection: "session", reason: "OAuth callback: needs the session and the issued state." },
+  "api/integrations/microsoft/revoke/route.ts": { protection: "session", reason: "Disconnects a Microsoft connection." },
+  "api/integrations/microsoft/start/route.ts": { protection: "session", reason: "Begins the Microsoft OAuth flow." },
+  "api/jobs/email-send/route.ts": { protection: "cron_secret", reason: "Newsletter send worker." },
+  "api/jobs/journey-execute/route.ts": { protection: "cron_secret", reason: "Journey execution worker." },
+  "api/jobs/run/route.ts": { protection: "cron_secret", reason: "General job worker tick." },
+  "api/portal/artwork/route.ts": { protection: "session", reason: "Advertiser artwork upload, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
+  "api/public/analytics/route.ts": { protection: "public_rate_limited", reason: "Anonymous website analytics events; fails open so telemetry never blocks pages." },
+  "api/public/unsubscribe/route.ts": { protection: "public_rate_limited", reason: "One-click unsubscribe, authorised by a signed link token.", extraMarkers: [/verifyUnsubscribeToken\(/] },
+  "auth/[...nextauth]/route.ts": { protection: "public_static", reason: "Lists sign-in provider names; the POST handler is rejected." },
+  "sign-in/verify/route.ts": { protection: "public_rate_limited", reason: "Consumes a one-time sign-in link.", extraMarkers: [/verifySignIn\(/] },
+  "(app)/app/privacy/[id]/export/route.ts": { protection: "session", reason: "Subscriber data export: needs the privacy.request.export permission.", extraMarkers: [/privacy\.request/, /no-store/] }
+};
+
+export const protectionMarkers: Record<RouteProtection, RegExp[]> = {
+  session: [/sessionToken:\s*cookieStore\.get\(sessionCookieName\)/],
+  cron_secret: [/isAuthorizedCronRequest\(/],
+  signed_webhook: [/verifyWebhook/],
+  public_rate_limited: [/firstRateLimitRefusal\(/],
+  public_static: [],
+  dev_only: [/NODE_ENV === "production"/]
+};
