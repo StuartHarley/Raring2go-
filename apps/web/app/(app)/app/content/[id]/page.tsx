@@ -1,9 +1,12 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { hasContentAiCapability, readContentWorkspaceView } from "../../../../../lib/publishing-runtime";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
-import { generateContentDraftAction } from "../actions";
+import { approveVariantAction, generateContentDraftAction, repurposeContentAction } from "../actions";
+import { RepurposeForm } from "../RepurposeForm";
 import { ContentDraftForm } from "../ContentDraftForm";
 
 const channels = ["magazine", "website", "newsletter", "facebook", "instagram", "linkedin"];
@@ -63,6 +66,51 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
           <ContentDraftForm action={generateContentDraftAction.bind(null, request, libraryItem.item.id)} revising defaultType={libraryItem.item.contentType} />
         </section>
       ) : null}
+
+      {["approved", "published"].includes(libraryItem.item.status) && result.canUseAi ? (
+        <section className="app-panel franchise-panel" aria-label="Repurpose with AI">
+          <p className="eyebrow">AI</p>
+          <h2>Repurpose this article</h2>
+          <RepurposeForm action={repurposeContentAction.bind(null, request, libraryItem.item.id)} />
+        </section>
+      ) : null}
+
+      <section className="app-panel franchise-panel" aria-label="Variants">
+        <p className="eyebrow">Channel variants</p>
+        <h2>Variants and approval</h2>
+        <div className="franchise-list">
+          {libraryItem.variants.length === 0 ? (
+            <div>
+              <strong>No variants yet.</strong>
+            </div>
+          ) : (
+            libraryItem.variants.map((variant) => {
+              const current = variantVersions.find((version) => version.id === variant.currentVersionId);
+              const unsupported = Array.isArray(current?.provenance.unsupportedFacts) ? (current!.provenance.unsupportedFacts as string[]) : [];
+              // JSONB does not keep key order, so preview the longest text field rather than the first.
+              const preview = current ? Object.values(current.snapshot).filter((value): value is string => typeof value === "string").sort((a, b) => b.length - a.length)[0] : undefined;
+              return (
+                <div key={variant.id}>
+                  <strong>{variant.channel} · {variant.status.replace("_", " ")}</strong>
+                  {typeof preview === "string" ? <span>{preview.slice(0, 220)}{preview.length > 220 ? "…" : ""}</span> : null}
+                  <span>
+                    {current?.provenance.generatedBy === "ai" ? `AI draft from "${libraryItem.item.title}"` : "Source: this article"}
+                    {current?.provenance.aiRunId ? <> · <Link href={`/app/system/ai/${String(current.provenance.aiRunId)}` as Route}>AI run</Link></> : null}
+                  </span>
+                  {unsupported.length > 0 ? (
+                    <span role="note" className="notice notice--error">Check before approving: not found in the source — {unsupported.join(", ")}</span>
+                  ) : null}
+                  {["ai_draft", "needs_review"].includes(variant.status) && result.canUseAi ? (
+                    <form action={approveVariantAction.bind(null, request, libraryItem.item.id, variant.id)}>
+                      <button type="submit">Approve this variant</button>
+                    </form>
+                  ) : null}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
 
       <RelatedRecords
         title="Editorial distribution"

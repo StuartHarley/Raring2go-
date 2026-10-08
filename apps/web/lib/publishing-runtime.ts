@@ -2,6 +2,17 @@ import { recordAuditEvent } from "@raring2go/audit";
 import { createDrizzleAiRunStore, decideAiRun, getAiRunForActor, markAiRunApplied } from "@raring2go/ai";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import {
+  approveContentVariant,
+  contentRepurposeTask,
+  findUnsupportedFacts,
+  insertContentAiTaskRecord,
+  insertContentChannelVariantRecord,
+  insertContentChannelVariantVersionRecord,
+  repurposeChannels,
+  repurposeContentVariant,
+  updateContentAiTaskDecision,
+  updateContentChannelVariantRecord,
+  updateContentChannelVariantVersionApproval,
   createDraftEventContentFromSuggestion,
   createDrizzleEventSuggestionStore,
   EventAccessError,
@@ -33,6 +44,7 @@ import type {
 import { evaluatePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import { aiRunPermissionData, runAiTaskAsActor } from "./ai-runtime";
+import { AiRunFailedError } from "@raring2go/ai";
 
 export const publishingPermissionData: PermissionData = {
   roleAssignments: [
@@ -67,6 +79,7 @@ export const publishingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionDiscover, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionDecide, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentAiApprove, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentCreate, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentEdit, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.socialView, "network"),
@@ -77,6 +90,7 @@ export const publishingPermissionData: PermissionData = {
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionDiscover, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionDecide, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentAiApprove, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentCreate, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentEdit, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.socialView, "own_territory")
@@ -439,6 +453,128 @@ export async function rejectEventSuggestionAsActor(context: PublishingActorConte
     return await db.transaction(async (tx) =>
       rejectEventSuggestion(context, publishingPermissionData, { record: (input) => recordAuditEvent(tx, input) }, createDrizzleEventSuggestionStore(tx as never), suggestionId, note)
     );
+  } finally {
+    await sql.end();
+  }
+}
+
+
+// ---- AI repurposing (AI-004) -------------------------------------------------------
+
+export type RepurposeResult = {
+  created: Array<{ channel: string; variantId: string; unsupportedFacts: string[] }>;
+  failed: Array<{ channel: string; message: string }>;
+};
+
+/**
+ * Generates a variant per channel from APPROVED source content. Each channel is its own AI
+ * run (recorded in AI Runs); all successful variants are then written in one transaction.
+ * Variants land as `ai_draft` with a link to the source version and run, and need approval
+ * before use. One channel failing never discards the others.
+ */
+export async function repurposeContentWithAi(context: PublishingActorContext, contentItemId: string, channels: string[]): Promise<RepurposeResult> {
+  const wanted = [...new Set(channels)].filter((channel): channel is (typeof repurposeChannels)[number] => (repurposeChannels as readonly string[]).includes(channel));
+  if (wanted.length === 0) throw new Error("Choose at least one channel.");
+
+  const data = await readPublishingData();
+  // Enforces content.view and territory scope for this actor.
+  const workspace = readContentWorkspace(context, publishingPermissionData, data, contentItemId);
+  const item = workspace.libraryItem.item;
+  if (item.status !== "approved" && item.status !== "published") throw new Error(`Only approved content can be repurposed with AI; this item is ${item.status}.`);
+
+  const latest = [...workspace.versions].sort((a, b) => b.versionNumber - a.versionNumber)[0];
+  const body = typeof latest?.snapshot.body === "string" ? latest.snapshot.body : item.standfirst ?? item.title;
+  const sourceText = [item.title, item.standfirst ?? "", body, ...item.tags].join("\n");
+  const territoryName = context.territoryId ? data.territories.find((territory) => territory.id === context.territoryId)?.name ?? null : null;
+
+  const generated: Array<{ channel: string; run: Awaited<ReturnType<typeof runAiTaskAsActor>>["run"]; output: Record<string, unknown>; unsupportedFacts: string[] }> = [];
+  const failed: RepurposeResult["failed"] = [];
+
+  for (const channel of wanted) {
+    try {
+      const { run, output } = await runAiTaskAsActor(
+        context,
+        publishingPermissionData,
+        contentRepurposeTask,
+        { input: { channel, contentItemId: item.id, title: item.title, standfirst: item.standfirst ?? null, body, tags: item.tags, territoryName }, subject: { type: "content_item", id: item.id } }
+      );
+      generated.push({ channel, run, output, unsupportedFacts: findUnsupportedFacts(sourceText, output) });
+    } catch (error) {
+      // Config, permission and rate/spend problems affect every channel: stop and report them.
+      if (!(error instanceof AiRunFailedError)) throw error;
+      failed.push({ channel, message: error.message });
+    }
+  }
+
+  const created: RepurposeResult["created"] = [];
+
+  if (generated.length > 0) {
+    const { db, sql } = createDb();
+
+    try {
+      await db.transaction(async (tx) => {
+        const fresh = await loadPublishingData(tx);
+        const eventsBefore = fresh.contentDomainEvents.length;
+        const audit = publishingAuditFor(tx);
+
+        for (const entry of generated) {
+          const knownVariantIds = new Set(fresh.contentChannelVariants.map((variant) => variant.id));
+          const { task, variant, version } = await repurposeContentVariant(context, publishingPermissionData, audit, fresh, item.id, entry.channel, {
+            taskId: crypto.randomUUID(),
+            promptTemplateVersion: entry.run.promptVersion,
+            providerKey: entry.run.providerKey,
+            modelReference: entry.run.modelReference,
+            generated: { output: entry.output, aiRunId: entry.run.id, unsupportedFacts: entry.unsupportedFacts }
+          });
+
+          // The variant must exist before its version and task rows can reference it.
+          if (knownVariantIds.has(variant.id)) await updateContentChannelVariantRecord(tx, variant);
+          else await insertContentChannelVariantRecord(tx, { ...variant, currentVersionId: null });
+          await insertContentAiTaskRecord(tx, task);
+          await insertContentChannelVariantVersionRecord(tx, version);
+          await updateContentChannelVariantRecord(tx, variant);
+          created.push({ channel: entry.channel, variantId: variant.id, unsupportedFacts: entry.unsupportedFacts });
+        }
+        await insertContentDomainEventRecords(tx, fresh.contentDomainEvents.slice(eventsBefore));
+      });
+    } finally {
+      await sql.end();
+    }
+  }
+
+  return { created, failed };
+}
+
+/** Approves a variant's current version; also approves and applies the AI run that produced it. */
+export async function approveContentVariantAsActor(context: PublishingActorContext, variantId: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadPublishingData(tx);
+      const eventsBefore = data.contentDomainEvents.length;
+      const variant = await approveContentVariant(context, publishingPermissionData, publishingAuditFor(tx), data, variantId);
+      const version = data.contentChannelVariantVersions.find((candidate) => candidate.id === variant.currentVersionId)!;
+      const task = version.generatedByTaskId ? data.contentAiTasks.find((candidate) => candidate.id === version.generatedByTaskId) : undefined;
+
+      await updateContentChannelVariantRecord(tx, variant);
+      await updateContentChannelVariantVersionApproval(tx, version);
+      if (task) await updateContentAiTaskDecision(tx, task);
+      await insertContentDomainEventRecords(tx, data.contentDomainEvents.slice(eventsBefore));
+
+      const aiRunId = typeof version.provenance.aiRunId === "string" ? version.provenance.aiRunId : null;
+      if (aiRunId) {
+        const store = createDrizzleAiRunStore(tx as unknown as Parameters<typeof createDrizzleAiRunStore>[0]);
+        const audit = { record: (input: Parameters<typeof recordAuditEvent>[1]) => recordAuditEvent(tx, input) };
+        const run = await store.get(aiRunId);
+        // Best effort: the run may already have been decided from the AI Runs console.
+        if (run?.approvalState === "pending") {
+          await decideAiRun(context, aiRunPermissionData, audit, store, aiRunId, { state: "approved", note: "Variant approved in Content Studio" });
+          await markAiRunApplied(context, aiRunPermissionData, audit, store, aiRunId);
+        }
+      }
+      return variant;
+    });
   } finally {
     await sql.end();
   }

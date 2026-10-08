@@ -7,7 +7,7 @@ import { AiRunAccessError, AiRunFailedError, AiRunStateError } from "@raring2go/
 import { PermissionDeniedError } from "@raring2go/permissions";
 import { requireShellPermission } from "../../../../lib/app-shell";
 import type { RequestedShellContext } from "../../../../lib/app-shell";
-import { acceptContentDraft, rejectContentDraft, requestContentDraft } from "../../../../lib/publishing-runtime";
+import { acceptContentDraft, approveContentVariantAsActor, rejectContentDraft, repurposeContentWithAi, requestContentDraft } from "../../../../lib/publishing-runtime";
 import { appLogger } from "../../../../lib/logger";
 
 export type DraftFormState = { error?: string } | undefined;
@@ -82,4 +82,41 @@ export async function rejectContentDraftAction(request: RequestedShellContext, r
   }
   revalidatePath("/app/system/ai");
   redirect(withSession("/app/content", request));
+}
+
+export type RepurposeFormState = { error?: string; summary?: string } | undefined;
+
+const REPURPOSE_FRIENDLY = ["Choose at least", "Only approved content", "Network content"];
+
+/** Generates one AI variant per chosen channel from approved content. */
+export async function repurposeContentAction(request: RequestedShellContext, contentItemId: string, _previous: RepurposeFormState, formData: FormData): Promise<RepurposeFormState> {
+  try {
+    const result = await repurposeContentWithAi(await actorFor(request), contentItemId, formData.getAll("channels").map(String));
+    revalidatePath(`/app/content/${contentItemId}`);
+    revalidatePath("/app/system/ai");
+    const flagged = result.created.filter((entry) => entry.unsupportedFacts.length > 0).length;
+    return {
+      summary:
+        `Created ${result.created.length} variant${result.created.length === 1 ? "" : "s"} for review.` +
+        `${flagged ? ` ${flagged} contain specifics not found in the source: check them before approving.` : ""}` +
+        `${result.failed.length ? ` Could not create: ${result.failed.map((entry) => `${entry.channel} (${entry.message})`).join("; ")}` : ""}`
+    };
+  } catch (error) {
+    const message = friendly(error) ?? (error instanceof Error && REPURPOSE_FRIENDLY.some((prefix) => error.message.startsWith(prefix)) ? error.message : undefined);
+    if (message) return { error: message };
+    appLogger.error("content repurposing failed", { error });
+    throw error;
+  }
+}
+
+export async function approveVariantAction(request: RequestedShellContext, contentItemId: string, variantId: string) {
+  try {
+    await approveContentVariantAsActor(await actorFor(request), variantId);
+  } catch (error) {
+    // The domain throws plain errors for permission and state problems; they are not shown raw.
+    if (!(error instanceof Error)) throw error;
+  }
+  revalidatePath(`/app/content/${contentItemId}`);
+  revalidatePath("/app/system/ai");
+  redirect(withSession(`/app/content/${contentItemId}`, request));
 }
