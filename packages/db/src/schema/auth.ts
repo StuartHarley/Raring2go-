@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { id, timestamps } from "./common";
 import { users } from "./identity";
+import { roles } from "./rbac";
 import { organisations, territories } from "./tenancy";
 
 export const authAccounts = pgTable(
@@ -80,6 +81,8 @@ export const authInvitations = pgTable(
       .notNull()
       .references(() => organisations.id),
     territoryId: uuid("territory_id").references(() => territories.id),
+    /** The role granted on acceptance, scoped to this organisation and territory. Null for a plain membership. */
+    roleId: uuid("role_id").references(() => roles.id),
     tokenHash: text("token_hash").notNull(),
     status: text("status").notNull().default("pending"),
     invitedByUserId: uuid("invited_by_user_id").references(() => users.id),

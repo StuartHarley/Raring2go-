@@ -32,6 +32,13 @@ export async function resolveWorkingContext(
     throw new Error("Higher authentication assurance is required.");
   }
 
+  // A disabled account loses access immediately, even with an unexpired session.
+  const user = await repository.findUserById(input.session.userId);
+
+  if (!user || user.status !== "active") {
+    throw new Error("This account is not active.");
+  }
+
   const memberships = await repository.findMembershipsForUser(input.session.userId);
   const membership = memberships.find(
     (candidate) =>

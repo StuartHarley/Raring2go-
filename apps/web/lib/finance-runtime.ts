@@ -18,56 +18,12 @@ import {
   upsertStatementSequenceRecord
 } from "@raring2go/finance";
 import { recordAuditEvent } from "@raring2go/audit";
-import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
+import { createDb } from "@raring2go/db";
 import type { FinanceActorContext } from "@raring2go/finance";
-import type { PermissionData } from "@raring2go/permissions";
-
-export const financePermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_superadmin",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.superAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  rolePermissions: [
-    grant(fixtureIds.roles.superAdmin, fixtureIds.permissions.royaltyRuleView, "network"),
-    grant(fixtureIds.roles.superAdmin, fixtureIds.permissions.royaltyRuleManage, "network"),
-    grant(fixtureIds.roles.superAdmin, fixtureIds.permissions.royaltyStatementView, "network"),
-    grant(fixtureIds.roles.superAdmin, fixtureIds.permissions.royaltyStatementGenerate, "network"),
-    grant(fixtureIds.roles.superAdmin, fixtureIds.permissions.royaltyStatementAdjust, "network"),
-    grant(fixtureIds.roles.superAdmin, fixtureIds.permissions.royaltyStatementSubmit, "network"),
-    grant(fixtureIds.roles.superAdmin, fixtureIds.permissions.royaltyStatementApprove, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.royaltyRuleView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.royaltyRuleManage, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.royaltyStatementView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.royaltyStatementGenerate, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.royaltyStatementAdjust, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.royaltyStatementSubmit, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.royaltyStatementApprove, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.royaltyStatementView, "own_territory")
-  ],
-  territories: foundationSeed.territories.map((territory) => ({
-    id: territory.id,
-    franchiseOrganisationId: territory.franchiseOrganisationId
-  }))
-};
+import { getPermissionData } from "./permission-source";
 
 export async function readActiveRoyaltyRules(context: FinanceActorContext) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -78,6 +34,7 @@ export async function readActiveRoyaltyRules(context: FinanceActorContext) {
 }
 
 export async function readNetworkRoyaltyStatements(context: FinanceActorContext) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -88,6 +45,7 @@ export async function readNetworkRoyaltyStatements(context: FinanceActorContext)
 }
 
 export async function readFranchiseRoyaltyStatements(context: FinanceActorContext, franchiseId: string) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -98,6 +56,7 @@ export async function readFranchiseRoyaltyStatements(context: FinanceActorContex
 }
 
 export async function readOwnFranchiseRoyaltyStatements(context: FinanceActorContext) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -118,6 +77,7 @@ export async function readOwnFranchiseRoyaltyStatements(context: FinanceActorCon
 }
 
 export async function readRoyaltyStatementDetail(context: FinanceActorContext, statementId: string) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -131,6 +91,7 @@ export async function createRoyaltyRule(
   context: FinanceActorContext,
   input: Parameters<typeof upsertRoyaltyRule>[4]
 ) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -157,6 +118,7 @@ export async function generateStatement(
   context: FinanceActorContext,
   input: Parameters<typeof generateRoyaltyStatement>[4]
 ) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -197,6 +159,7 @@ export async function recordAdjustment(
   context: FinanceActorContext,
   input: Parameters<typeof addRoyaltyAdjustment>[4]
 ) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -214,6 +177,7 @@ export async function recordAdjustment(
 }
 
 export async function submitStatement(context: FinanceActorContext, statementId: string) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -235,6 +199,7 @@ export async function submitStatement(context: FinanceActorContext, statementId:
 }
 
 export async function approveStatement(context: FinanceActorContext, statementId: string) {
+  const financePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -255,20 +220,6 @@ export async function approveStatement(context: FinanceActorContext, statementId
   }
 }
 
-function grant(roleId: string, permissionId: string, scope: string) {
-  const permission = foundationSeed.permissions.find((candidate) => candidate.id === permissionId);
-
-  if (!permission) {
-    throw new Error("Finance permission fixture is inconsistent.");
-  }
-
-  return {
-    roleId,
-    permission,
-    scope,
-    constraints: {}
-  };
-}
 
 function auditFor(db: Parameters<typeof recordAuditEvent>[0]) {
   return {

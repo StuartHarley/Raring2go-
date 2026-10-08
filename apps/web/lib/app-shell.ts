@@ -1,6 +1,6 @@
 import { auditActions } from "@raring2go/audit";
 import { resolveWorkingContext, hashToken } from "@raring2go/auth";
-import { fixtureIds, foundationSeed } from "@raring2go/db";
+import { fixtureIds } from "@raring2go/db";
 import {
   evaluatePermission,
   requirePermission,
@@ -8,10 +8,13 @@ import {
 } from "@raring2go/permissions";
 import type { AuthRepository, AuthSession } from "@raring2go/auth";
 import type {
-  PermissionData,
   PermissionDecision,
   PermissionRequest
 } from "@raring2go/permissions";
+import { isFixtureSessionAllowed, withIdentity } from "./auth-runtime";
+import { getDirectory } from "./directory";
+import type { Directory } from "./directory";
+import { getPermissionData } from "./permission-source";
 
 export type ShellOutcomeKind =
   | "authenticated"
@@ -437,394 +440,18 @@ const sessionsByKey: Record<string, AuthSession> = {
   }
 };
 
-const permissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_superadmin",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.superAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    },
-    {
-      id: "fixture_assignment_advertiser",
-      userId: fixtureIds.users.advertiserUser,
-      roleId: fixtureIds.roles.advertiser,
-      organisationId: fixtureIds.organisations.advertiser
-    }
-  ],
-  rolePermissions: [
-    {
-      roleId: fixtureIds.roles.advertiser,
-      permissionId: fixtureIds.permissions.portalView,
-      scope: "own_organisation",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.superAdmin,
-      permissionId: fixtureIds.permissions.systemAdminister,
-      scope: "system",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.rolesView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.taskView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.taskView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.approvalView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.approvalView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.workflowView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.workflowView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.aiRunView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.aiRunView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.eventSuggestionView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.eventSuggestionView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.jobsView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.jobsView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    ...[fixtureIds.permissions.scorecardView, fixtureIds.permissions.healthConfigManage, fixtureIds.permissions.snapshotGenerate, fixtureIds.permissions.privacyRequestView, fixtureIds.permissions.privacyRequestCreate, fixtureIds.permissions.privacyRequestDecide, fixtureIds.permissions.privacyRequestExport].map((permissionId) => ({
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId,
-      scope: "network" as const,
-      constraints: {}
-    })),
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.scorecardView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.territoryView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.franchiseView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.franchiseCreate,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.franchiseEdit,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.franchiseView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.editionView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.editionView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.advertiserView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.advertiserView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.analyticsView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.analyticsView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.audienceView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.audienceView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.emailView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.segmentView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.newsletterFactoryView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.journeyView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.marketingAnalyticsView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.contentView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.socialView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.emailView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.segmentView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.newsletterFactoryView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.journeyView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.marketingAnalyticsView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.contentView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.socialView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.integrationsView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.integrationsConnect,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.integrationsReconnect,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.integrationsRevoke,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.integrationsTest,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.integrationsView,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.integrationsConnect,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.integrationsReconnect,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.integrationsRevoke,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.integrationsTest,
-      scope: "own_territory",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.royaltyStatementView,
-      scope: "network",
-      constraints: {}
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.royaltyStatementView,
-      scope: "own_territory",
-      constraints: {}
-    }
-  ].map((grant) => {
-    const permission = foundationSeed.permissions.find(
-      (candidate) => candidate.id === grant.permissionId
-    );
-
-    if (!permission) {
-      throw new Error("Fixture permission seed is inconsistent.");
-    }
-
-    return {
-      roleId: grant.roleId,
-      permission,
-      scope: grant.scope,
-      constraints: grant.constraints
-    };
-  }),
-  territories: [...foundationSeed.territories]
-};
-
 export async function resolveShell(
   request: RequestedShellContext,
-  repository: AuthRepository = appAuthRepository
+  repository?: AuthRepository
 ): Promise<ShellOutcome> {
+  // Without an explicit repository (tests pass one) identity is read from Postgres.
+  if (repository) return resolveShellWith(request, repository);
+  return withIdentity(({ repository: identity }) => resolveShellWith(request, identity));
+}
+
+async function resolveShellWith(request: RequestedShellContext, repository: AuthRepository): Promise<ShellOutcome> {
+  const permissionData = await getPermissionData();
+  const directory = getDirectory();
   const session = await resolveRequestedSession(request, repository);
 
   if (!session) {
@@ -835,7 +462,7 @@ export async function resolveShell(
     };
   }
 
-  const defaultContext = defaultContextForUser(session.userId);
+  const defaultContext = await defaultContextForUser(repository, directory, session.userId);
   const organisationId = request.organisationId ?? defaultContext?.organisationId;
   const territoryId = request.territoryId ?? defaultContext?.territoryId;
 
@@ -860,16 +487,14 @@ export async function resolveShell(
     return {
       kind: "authenticated",
       userId: session.userId,
-      displayName: displayNameForUser(session.userId),
+      displayName: (await directory.userName(session.userId)) ?? "Raring2go user",
       activeContext: {
         organisationId: context.organisationId,
-        organisationName: organisationName(context.organisationId),
+        organisationName: (await directory.organisationName(context.organisationId)) ?? "Unknown organisation",
         territoryId: context.territoryId,
-        territoryName: context.territoryId
-          ? territoryName(context.territoryId)
-          : undefined
+        territoryName: context.territoryId ? ((await directory.territoryName(context.territoryId)) ?? "Unknown territory") : undefined
       },
-      availableContexts: await contextsForUser(repository, session.userId),
+      availableContexts: await contextsForUser(repository, directory, session.userId),
       navigation: shellNavigation.filter((item) => decisions[item.id]?.allowed),
       decisions
     };
@@ -902,6 +527,7 @@ export async function requireShellPermission(
   request: RequestedShellContext,
   capability: ShellCapability
 ) {
+  const permissionData = await getPermissionData();
   const shell = await resolveShell(request);
 
   if (shell.kind !== "authenticated") {
@@ -966,75 +592,44 @@ function invalidContext(message: string): ShellOutcome {
   };
 }
 
-function defaultContextForUser(userId: string) {
-  if (userId === fixtureIds.users.superAdmin) {
-    return {
-      organisationId: fixtureIds.organisations.hq
-    };
+/**
+ * Where a user lands when they have not chosen a context: their first active organisation (oldest
+ * membership), and for a franchise organisation its first territory. Derived from the user's own
+ * memberships, never from a fixed list, so any invited user gets a working default.
+ */
+async function defaultContextForUser(repository: AuthRepository, directory: Directory, userId: string) {
+  const memberships = (await repository.findMembershipsForUser(userId)).filter((membership) => membership.status === "active");
+  const first = memberships[0];
+
+  if (!first) {
+    return undefined;
   }
 
-  if (userId === fixtureIds.users.franchisee) {
-    return {
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    };
-  }
-
-  if (userId === fixtureIds.users.advertiserUser) {
-    return {
-      organisationId: fixtureIds.organisations.advertiser
-    };
-  }
-
-  return undefined;
+  const [territory] = await directory.territoriesOwnedBy(first.organisationId);
+  return territory ? { organisationId: first.organisationId, territoryId: territory.id } : { organisationId: first.organisationId };
 }
 
-async function contextsForUser(repository: AuthRepository, userId: string) {
+async function contextsForUser(repository: AuthRepository, directory: Directory, userId: string) {
   const memberships = await repository.findMembershipsForUser(userId);
+  const active = memberships.filter((membership) => membership.userId === userId && membership.status === "active");
 
-  return memberships
-    .filter((membership) => membership.userId === userId && membership.status === "active")
-    .flatMap((membership) => {
-      const ownedTerritories = foundationSeed.territories.filter(
-        (territory) => territory.franchiseOrganisationId === membership.organisationId
-      );
+  const contexts = await Promise.all(
+    active.map(async (membership) => {
+      const organisationName = (await directory.organisationName(membership.organisationId)) ?? "Unknown organisation";
+      const owned = await directory.territoriesOwnedBy(membership.organisationId);
 
-      if (ownedTerritories.length === 0) {
-        return [
-          {
-            organisationId: membership.organisationId,
-            organisationName: organisationName(membership.organisationId)
-          }
-        ];
+      if (owned.length === 0) {
+        return [{ organisationId: membership.organisationId, organisationName }];
       }
 
-      return ownedTerritories.map((territory) => ({
+      return owned.map((territory) => ({
         organisationId: membership.organisationId,
-        organisationName: organisationName(membership.organisationId),
+        organisationName,
         territoryId: territory.id,
         territoryName: territory.name
       }));
-    });
-}
-
-function displayNameForUser(userId: string) {
-  return (
-    foundationSeed.users.find((user) => user.id === userId)?.displayName ??
-    "Raring2go user"
+    })
   );
-}
 
-function organisationName(organisationId: string) {
-  return (
-    foundationSeed.organisations.find((organisation) => organisation.id === organisationId)
-      ?.name ?? "Unknown organisation"
-  );
+  return contexts.flat();
 }
-
-function territoryName(territoryId: string) {
-  return (
-    foundationSeed.territories.find((territory) => territory.id === territoryId)?.name ??
-    "Unknown territory"
-  );
-}
-import { appAuthRepository, isFixtureSessionAllowed } from "./auth-runtime";

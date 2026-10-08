@@ -1,6 +1,6 @@
 import { recordAuditEvent } from "@raring2go/audit";
 import { createDrizzleAiRunStore, decideAiRun, getAiRunForActor, markAiRunApplied } from "@raring2go/ai";
-import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
+import { createDb } from "@raring2go/db";
 import {
   approveContentVariant,
   contentRepurposeTask,
@@ -43,67 +43,15 @@ import type {
 } from "@raring2go/publishing";
 import { evaluatePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
-import { aiRunPermissionData, runAiTaskAsActor } from "./ai-runtime";
+import { runAiTaskAsActor } from "./ai-runtime";
 import { AiRunFailedError } from "@raring2go/ai";
-
-export const publishingPermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_superadmin",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.superAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  rolePermissions: [
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionPageEdit, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionPreflightOverride, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionGeneratePrint, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionGenerateDigital, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentAiGenerate, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionDiscover, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionDecide, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentAiApprove, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentCreate, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentEdit, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.socialView, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.editionView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.editionPageEdit, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentAiGenerate, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionDiscover, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionDecide, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentAiApprove, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentCreate, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentEdit, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.socialView, "own_territory")
-  ],
-  territories: foundationSeed.territories.map((territory) => ({
-    id: territory.id,
-    franchiseOrganisationId: territory.franchiseOrganisationId
-  }))
-};
+import { getDirectory } from "./directory";
+import { getPermissionData } from "./permission-source";
 
 export async function listEditionFactoryRows(
   context: PublishingActorContext
 ): Promise<EditionControlRoomRow[]> {
+  const publishingPermissionData = await getPermissionData();
   const data = await readPublishingData();
   return listEditionControlRoom(context, publishingPermissionData, data);
 }
@@ -112,6 +60,7 @@ export async function readTerritoryEdition(
   context: PublishingActorContext,
   territoryEditionId: string
 ) {
+  const publishingPermissionData = await getPermissionData();
   const data = await readPublishingData();
   const rows = listEditionControlRoom(context, publishingPermissionData, data);
   const row = rows.find((candidate) => candidate.territoryEdition.id === territoryEditionId);
@@ -135,6 +84,7 @@ export async function readTerritoryEdition(
 }
 
 export async function listContentLibraryItems(context: PublishingActorContext) {
+  const publishingPermissionData = await getPermissionData();
   const data = await readPublishingData();
   return listContentLibrary(context, publishingPermissionData, data);
 }
@@ -143,11 +93,13 @@ export async function readContentWorkspaceView(
   context: PublishingActorContext,
   contentItemId: string
 ) {
+  const publishingPermissionData = await getPermissionData();
   const data = await readPublishingData();
   return readContentWorkspace(context, publishingPermissionData, data, contentItemId);
 }
 
 export async function readSocialQueue(context: PublishingActorContext) {
+  const publishingPermissionData = await getPermissionData();
   const data = await readPublishingData();
   return {
     queue: listSocialQueue(context, publishingPermissionData, data),
@@ -164,22 +116,6 @@ async function readPublishingData(): Promise<PublishingData> {
     await sql.end();
   }
 }
-
-function grant(roleId: string, permissionId: string, scope: string) {
-  const permission = foundationSeed.permissions.find((candidate) => candidate.id === permissionId);
-
-  if (!permission) {
-    throw new Error("Publishing permission fixture is inconsistent.");
-  }
-
-  return {
-    roleId,
-    permission,
-    scope,
-    constraints: {}
-  };
-}
-
 
 // ---- AI content drafts (AI-002) ----------------------------------------------------
 
@@ -198,12 +134,12 @@ function publishingAuditFor(db: Parameters<typeof recordAuditEvent>[0]) {
 }
 
 /** Non-throwing check for showing the AI affordances: AI generate plus the right to create/edit content. */
-export function hasContentAiCapability(context: PublishingActorContext): boolean {
+export function hasContentAiCapability(permissions: PermissionData, context: PublishingActorContext): boolean {
   return (["contentAiGenerate", "contentEdit"] as const).every((capability) => {
     const required = { contentAiGenerate: { module: "content.ai", action: "generate" }, contentEdit: { module: "content", action: "edit" } }[capability];
     return evaluatePermission(
       { userId: context.userId, module: required.module, action: required.action, context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } },
-      publishingPermissionData
+      permissions
     ).allowed;
   });
 }
@@ -214,6 +150,7 @@ const CONTENT_TYPES = ["article", "event", "offer", "guide", "announcement", "ev
 
 /** Runs the content-draft task. Returns the run to review; nothing is written to content yet. */
 export async function requestContentDraft(context: PublishingActorContext, request: ContentDraftRequest) {
+  const publishingPermissionData = await getPermissionData();
   const brief = request.brief.trim();
   if (brief.length < 10) throw new Error("Write a little more in the brief (at least a sentence).");
   if (brief.length > 3000) throw new Error("Keep the brief under 3,000 characters.");
@@ -245,10 +182,11 @@ export async function requestContentDraft(context: PublishingActorContext, reque
 }
 
 export async function readContentDraftRun(context: PublishingActorContext, runId: string) {
+  const publishingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
-    const run = await getAiRunForActor(context, aiRunPermissionData, createDrizzleAiRunStore(db), runId);
+    const run = await getAiRunForActor(context, publishingPermissionData, createDrizzleAiRunStore(db), runId);
     if (run.taskKey !== contentDraftTask.key) throw new Error("This AI run is not a content draft.");
     return run;
   } finally {
@@ -262,6 +200,7 @@ export async function readContentDraftRun(context: PublishingActorContext, runId
  * provenance or a run marked used that was not.
  */
 export async function acceptContentDraft(context: PublishingActorContext, runId: string) {
+  const publishingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -270,7 +209,7 @@ export async function acceptContentDraft(context: PublishingActorContext, runId:
       const store = createDrizzleAiRunStore(handle);
       const audit = { record: (input: Parameters<typeof recordAuditEvent>[1]) => recordAuditEvent(tx, input) };
       const publishingAudit = publishingAuditFor(tx);
-      const run = await getAiRunForActor(context, aiRunPermissionData, store, runId);
+      const run = await getAiRunForActor(context, publishingPermissionData, store, runId);
 
       if (run.taskKey !== contentDraftTask.key || run.status !== "succeeded") throw new Error("This AI run has no content draft to accept.");
       if (run.approvalState !== "pending") throw new Error(`This draft was already ${run.approvalState.replace("_", " ")}.`);
@@ -303,8 +242,8 @@ export async function acceptContentDraft(context: PublishingActorContext, runId:
       }
 
       await insertContentDomainEventRecords(tx, data.contentDomainEvents.slice(eventsBefore));
-      await decideAiRun(context, aiRunPermissionData, audit, store, runId, { state: "approved", note: "Accepted in Content Studio" });
-      await markAiRunApplied(context, aiRunPermissionData, audit, store, runId);
+      await decideAiRun(context, publishingPermissionData, audit, store, runId, { state: "approved", note: "Accepted in Content Studio" });
+      await markAiRunApplied(context, publishingPermissionData, audit, store, runId);
       return { contentItemId };
     });
   } finally {
@@ -313,13 +252,14 @@ export async function acceptContentDraft(context: PublishingActorContext, runId:
 }
 
 export async function rejectContentDraft(context: PublishingActorContext, runId: string) {
+  const publishingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
     return await db.transaction(async (tx) =>
       decideAiRun(
         context,
-        aiRunPermissionData,
+        publishingPermissionData,
         { record: (input) => recordAuditEvent(tx, input) },
         createDrizzleAiRunStore(tx as unknown as Parameters<typeof createDrizzleAiRunStore>[0]),
         runId,
@@ -339,17 +279,15 @@ export type EventDiscoveryRequest = { territoryId: string; from: string; to: str
 const MAX_RANGE_DAYS = 90;
 const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
 
-export function hasEventCapability(context: PublishingActorContext, action: "discover" | "decide") {
+export function hasEventCapability(permissions: PermissionData, context: PublishingActorContext, action: "discover" | "decide") {
   return evaluatePermission(
     { userId: context.userId, module: "content.event_suggestion", action, context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } },
-    publishingPermissionData
+    permissions
   ).allowed;
 }
 
-export function listDiscoverableTerritories(context: PublishingActorContext) {
-  return foundationSeed.territories
-    .filter((territory) => !context.territoryId || territory.id === context.territoryId)
-    .map((territory) => ({ id: territory.id, name: territory.name }));
+export async function listDiscoverableTerritories(context: PublishingActorContext) {
+  return (await getDirectory().listTerritories()).filter((territory) => !context.territoryId || territory.id === context.territoryId);
 }
 
 /**
@@ -357,13 +295,14 @@ export function listDiscoverableTerritories(context: PublishingActorContext) {
  * Nothing here creates or publishes content: that needs a person to approve each suggestion.
  */
 export async function discoverEvents(context: PublishingActorContext, request: EventDiscoveryRequest) {
+  const publishingPermissionData = await getPermissionData();
   if (!isDate(request.from) || !isDate(request.to)) throw new Error("Choose a valid date range.");
   const days = (new Date(`${request.to}T00:00:00Z`).getTime() - new Date(`${request.from}T00:00:00Z`).getTime()) / 86_400_000;
   if (days < 0) throw new Error("The end date must be after the start date.");
   if (days > MAX_RANGE_DAYS) throw new Error(`Choose a range of at most ${MAX_RANGE_DAYS} days.`);
   const maxResults = Math.min(Math.max(Math.floor(request.maxResults ?? 10), 1), 20);
 
-  const territory = foundationSeed.territories.find((candidate) => candidate.id === request.territoryId);
+  const territory = (await getDirectory().listTerritories()).find((candidate) => candidate.id === request.territoryId);
   if (!territory) throw new EventAccessError("Territory not found.");
   // Scope is verified by the domain (ingest) as well, but fail early before any model spend.
   if (!evaluatePermission({ userId: context.userId, module: "content.event_suggestion", action: "discover", resource: { territoryId: territory.id } }, publishingPermissionData).allowed) {
@@ -411,6 +350,7 @@ export async function discoverEvents(context: PublishingActorContext, request: E
 }
 
 export async function readEventSuggestions(context: PublishingActorContext, status?: "pending" | "approved" | "rejected") {
+  const publishingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -422,6 +362,7 @@ export async function readEventSuggestions(context: PublishingActorContext, stat
 
 /** Approving creates a DRAFT event content item and records the decision in one transaction. */
 export async function approveEventSuggestionAsActor(context: PublishingActorContext, suggestionId: string, note: string | null) {
+  const publishingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -447,6 +388,7 @@ export async function approveEventSuggestionAsActor(context: PublishingActorCont
 }
 
 export async function rejectEventSuggestionAsActor(context: PublishingActorContext, suggestionId: string, note: string | null) {
+  const publishingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -473,6 +415,7 @@ export type RepurposeResult = {
  * before use. One channel failing never discards the others.
  */
 export async function repurposeContentWithAi(context: PublishingActorContext, contentItemId: string, channels: string[]): Promise<RepurposeResult> {
+  const publishingPermissionData = await getPermissionData();
   const wanted = [...new Set(channels)].filter((channel): channel is (typeof repurposeChannels)[number] => (repurposeChannels as readonly string[]).includes(channel));
   if (wanted.length === 0) throw new Error("Choose at least one channel.");
 
@@ -547,6 +490,7 @@ export async function repurposeContentWithAi(context: PublishingActorContext, co
 
 /** Approves a variant's current version; also approves and applies the AI run that produced it. */
 export async function approveContentVariantAsActor(context: PublishingActorContext, variantId: string) {
+  const publishingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -569,8 +513,8 @@ export async function approveContentVariantAsActor(context: PublishingActorConte
         const run = await store.get(aiRunId);
         // Best effort: the run may already have been decided from the AI Runs console.
         if (run?.approvalState === "pending") {
-          await decideAiRun(context, aiRunPermissionData, audit, store, aiRunId, { state: "approved", note: "Variant approved in Content Studio" });
-          await markAiRunApplied(context, aiRunPermissionData, audit, store, aiRunId);
+          await decideAiRun(context, publishingPermissionData, audit, store, aiRunId, { state: "approved", note: "Variant approved in Content Studio" });
+          await markAiRunApplied(context, publishingPermissionData, audit, store, aiRunId);
         }
       }
       return variant;

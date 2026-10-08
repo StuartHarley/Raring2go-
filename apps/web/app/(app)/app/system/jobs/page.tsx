@@ -10,6 +10,7 @@ import type { JobSource, JobStatus, TrackedJob } from "@raring2go/workflows";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { cancelJobAction, retryJobAction } from "./actions";
+import { getPermissionData } from "../../../../../lib/permission-source";
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   retried: { tone: "success", text: "Job re-queued. It will run on the next worker tick." },
@@ -48,7 +49,7 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, jobs, counts, registeredKinds, health } = result;
+  const { context, permissions, jobs, counts, registeredKinds, health } = result;
   const resultParam = Array.isArray(params.result) ? params.result[0] : params.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
   const needsAttention = counts.dead;
@@ -151,12 +152,12 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
                     <td>{job.subjectType ? `${job.subjectType}:${job.subjectId ?? ""}` : "-"}</td>
                     <td>{job.lastError ?? "-"}</td>
                     <td>
-                      {isRetryable(job, registeredKinds) && hasJobCapability(context, "retry", job) ? (
+                      {isRetryable(job, registeredKinds) && hasJobCapability(permissions, context, "retry", job) ? (
                         <form action={retryJobAction.bind(null, request, job.source, job.id)}>
                           <button type="submit">Retry</button>
                         </form>
                       ) : null}
-                      {job.source === "jobs" && job.status === "queued" && hasJobCapability(context, "cancel", job) ? (
+                      {job.source === "jobs" && job.status === "queued" && hasJobCapability(permissions, context, "cancel", job) ? (
                         <form action={cancelJobAction.bind(null, request, job.id)}>
                           <button type="submit">Cancel</button>
                         </form>
@@ -183,8 +184,9 @@ async function loadConsole(request: Awaited<ReturnType<typeof requestFromSearchP
     };
     const console = await readJobConsole(context, status ? { statuses: [status] } : {});
     // Health aggregates the whole queue, so only viewers with a network-wide grant see it.
-    const health = hasNetworkJobAccess(context.userId) ? await readSystemHealth() : undefined;
-    return { context, ...console, health };
+    const permissions = await getPermissionData();
+    const health = hasNetworkJobAccess(permissions, context.userId) ? await readSystemHealth() : undefined;
+    return { context, permissions, ...console, health };
   } catch (error) {
     return { error };
   }

@@ -4,6 +4,7 @@ import { ShellAccessError, requireShellPermission } from "../../../../lib/app-sh
 import { hasContentAiCapability, listContentLibraryItems } from "../../../../lib/publishing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { getPermissionData } from "../../../../lib/permission-source";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -85,7 +86,7 @@ async function loadContent(request: Awaited<ReturnType<typeof requestFromSearchP
     };
     const items = await listContentLibraryItems(actor);
 
-    return { items, canUseAi: hasContentAiCapability(actor) };
+    return { items, canUseAi: hasContentAiCapability(await getPermissionData(), actor) };
   } catch (error) {
     return { error };
   }

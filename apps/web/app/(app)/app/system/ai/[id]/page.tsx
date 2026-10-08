@@ -6,6 +6,7 @@ import { Breadcrumbs, StatusBadge } from "../../../../../../lib/workflow-ui";
 import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { decideAiRunAction } from "../actions";
+import { getPermissionData } from "../../../../../../lib/permission-source";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -131,7 +132,7 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
     const shell = await requireShellPermission(request, { module: "ai.run", action: "view" });
     const context = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     const run = await readAiRun(context, id);
-    return { run, canDecide: hasAiRunCapability(context, "decide") };
+    return { run, canDecide: hasAiRunCapability(await getPermissionData(), context, "decide") };
   } catch (error) {
     return { error };
   }

@@ -35,6 +35,8 @@ export type AuthInvitation = {
   email: string;
   organisationId: string;
   territoryId?: string | null;
+  /** Role granted on acceptance, scoped to the organisation and territory above. */
+  roleId?: string | null;
   tokenHash: string;
   status: "pending" | "accepted" | "revoked" | string;
   acceptedByUserId?: string | null;
@@ -70,14 +72,23 @@ export type WorkingContext = {
 
 export type AuthRepository = {
   findUserByEmail(email: string): Promise<AuthUser | null>;
+  findUserById(userId: string): Promise<AuthUser | null>;
   createUser(input: { email: string; displayName?: string }): Promise<AuthUser>;
   findMembershipsForUser(userId: string): Promise<AuthMembership[]>;
   findTerritoryById(territoryId: string): Promise<AuthTerritory | null>;
   findInvitationByTokenHash(tokenHash: string): Promise<AuthInvitation | null>;
+  /** Claims the invitation. Returns false if it was no longer pending, so a double accept cannot succeed twice. */
   markInvitationAccepted(input: {
     invitationId: string;
     userId: string;
     acceptedAt: Date;
+  }): Promise<boolean>;
+  /** Idempotently gives the user a role in an organisation (and territory). */
+  grantRole(input: {
+    userId: string;
+    roleId: string;
+    organisationId: string;
+    territoryId?: string | null;
   }): Promise<void>;
   ensureMembership(input: {
     userId: string;
@@ -102,10 +113,11 @@ export type AuthTokenRepository = {
     expiresAt: Date;
   }): Promise<AuthVerificationToken>;
   findVerificationTokenByHash(tokenHash: string): Promise<AuthVerificationToken | null>;
+  /** Consumes the token. Returns false if it was already used, so a replayed link cannot sign in twice. */
   markVerificationTokenUsed(input: {
     tokenId: string;
     usedAt: Date;
-  }): Promise<void>;
+  }): Promise<boolean>;
 };
 
 export type AuditRecorder = {

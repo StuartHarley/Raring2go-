@@ -1,7 +1,8 @@
-import { fixtureIds } from "@raring2go/db";
+import { fixtureIds, fixturePermissionData } from "@raring2go/db";
 import { describe, expect, it } from "vitest";
-import { buildJobRegistry, hasJobCapability, jobsPermissionData, registeredJobKinds } from "./jobs-runtime";
+import { buildJobRegistry, hasJobCapability, registeredJobKinds } from "./jobs-runtime";
 
+const permissions = fixturePermissionData();
 const hq = { userId: fixtureIds.users.superAdmin };
 const sutton = {
   userId: fixtureIds.users.franchisee,
@@ -17,21 +18,20 @@ describe("job runtime permissions", () => {
 
   it("gives HQ network-wide view, retry and cancel", () => {
     for (const capability of ["view", "retry", "cancel"] as const) {
-      expect(hasJobCapability(hq, capability, { territoryId: fixtureIds.territories.solihull })).toBe(true);
-      expect(hasJobCapability(hq, capability, { territoryId: null })).toBe(true);
+      expect(hasJobCapability(permissions, hq, capability, { territoryId: fixtureIds.territories.solihull })).toBe(true);
+      expect(hasJobCapability(permissions, hq, capability, { territoryId: null })).toBe(true);
     }
   });
 
   it("limits a franchisee to viewing their own territory's jobs", () => {
-    expect(hasJobCapability(sutton, "view", { territoryId: fixtureIds.territories.suttonColdfield })).toBe(true);
-    expect(hasJobCapability(sutton, "view", { territoryId: fixtureIds.territories.solihull })).toBe(false);
-    expect(hasJobCapability(sutton, "view", { territoryId: null })).toBe(false);
-    expect(hasJobCapability(sutton, "retry", { territoryId: fixtureIds.territories.suttonColdfield })).toBe(false);
-    expect(hasJobCapability(sutton, "cancel", { territoryId: fixtureIds.territories.suttonColdfield })).toBe(false);
+    expect(hasJobCapability(permissions, sutton, "view", { territoryId: fixtureIds.territories.suttonColdfield })).toBe(true);
+    expect(hasJobCapability(permissions, sutton, "view", { territoryId: fixtureIds.territories.solihull })).toBe(false);
+    expect(hasJobCapability(permissions, sutton, "view", { territoryId: null })).toBe(false);
+    expect(hasJobCapability(permissions, sutton, "retry", { territoryId: fixtureIds.territories.suttonColdfield })).toBe(false);
+    expect(hasJobCapability(permissions, sutton, "cancel", { territoryId: fixtureIds.territories.suttonColdfield })).toBe(false);
   });
 
   it("denies unknown users everything", () => {
-    expect(hasJobCapability({ userId: "someone-else" }, "view", { territoryId: null })).toBe(false);
-    expect(jobsPermissionData.rolePermissions.every((grant) => grant.permission.module === "system.jobs")).toBe(true);
+    expect(hasJobCapability(permissions, { userId: "someone-else" }, "view", { territoryId: null })).toBe(false);
   });
 });

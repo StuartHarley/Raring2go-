@@ -4,6 +4,7 @@ import type { AutomationActorContext } from "../../../../lib/automation-runtime"
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { completeTaskAction, decideApprovalAction } from "./actions";
+import { getPermissionData } from "../../../../lib/permission-source";
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -26,7 +27,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, tasks, approvals, notifications } = result;
+  const { context, permissions, tasks, approvals, notifications } = result;
   const resultParam = Array.isArray(params.result) ? params.result[0] : params.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
   const today = new Date();
@@ -74,7 +75,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
                   {approval.description ?? "A workflow is paused until this is decided."}
                   {approval.expiresAt ? ` Expires ${formatDate(approval.expiresAt)}.` : ""}
                 </span>
-                {hasAutomationCapability(context, "approvalDecide") ? (
+                {hasAutomationCapability(permissions, context, "approvalDecide") ? (
                   <form className="franchise-form">
                     <label>
                       Note (optional)
@@ -113,7 +114,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
                   {task.dueDate && task.dueDate < today ? " · Overdue" : ""}
                 </span>
                 {task.link ? <a href={task.link}>Open related record</a> : null}
-                {hasAutomationCapability(context, "taskComplete") ? (
+                {hasAutomationCapability(permissions, context, "taskComplete") ? (
                   <form action={completeTaskAction.bind(null, request, task.id)}>
                     <button type="submit">Mark done</button>
                   </form>
@@ -153,7 +154,7 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   try {
     const shell = await requireShellPermission(request, { module: "automation.task", action: "view" });
     const context: AutomationActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
-    return { context, ...(await readTasksAndApprovals(context)) };
+    return { context, permissions: await getPermissionData(), ...(await readTasksAndApprovals(context)) };
   } catch (error) {
     return { error };
   }

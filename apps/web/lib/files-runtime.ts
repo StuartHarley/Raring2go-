@@ -1,51 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
+import { createDb } from "@raring2go/db";
 import { completeFileUpload, getFileReferenceRecord, insertFileReferenceRecord, listFileReferences, requireFilesPermission } from "@raring2go/files";
 import type { FilesActorContext } from "@raring2go/files";
 import { canAccessFile, assertFileIsDownloadable, createScannerProviderFromEnv, createStorageProviderFromEnv } from "@raring2go/storage";
 import type { FileReference } from "@raring2go/storage";
-import type { PermissionData } from "@raring2go/permissions";
+import { getPermissionData } from "./permission-source";
 
-export const filesPermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    },
-    {
-      id: "fixture_assignment_advertiser",
-      userId: fixtureIds.users.advertiserUser,
-      roleId: fixtureIds.roles.advertiser,
-      organisationId: fixtureIds.organisations.advertiser
-    }
-  ],
-  rolePermissions: [
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.filesUpload, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.filesUpload, "own_territory"),
-    grant(fixtureIds.roles.advertiser, fixtureIds.permissions.filesUpload, "own_organisation")
-  ],
-  territories: foundationSeed.territories.map((territory) => ({
-    id: territory.id,
-    franchiseOrganisationId: territory.franchiseOrganisationId
-  }))
-};
-
-function grant(roleId: string, permissionId: string, scope: string) {
-  const permission = foundationSeed.permissions.find((candidate) => candidate.id === permissionId);
-  if (!permission) {
-    throw new Error("Fixture permission seed is inconsistent.");
-  }
-  return { roleId, permission, scope, constraints: {} };
-}
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -61,6 +21,7 @@ export async function uploadNewsletterImage(
   context: FilesActorContext,
   input: { fileName: string; contentType: string; bytes: Uint8Array }
 ): Promise<UploadedNewsletterImage> {
+  const filesPermissionData = await getPermissionData();
   if (!ALLOWED_IMAGE_CONTENT_TYPES.has(input.contentType)) {
     throw new Error("Only PNG, JPEG, GIF or WebP images can be uploaded.");
   }
@@ -129,6 +90,7 @@ export async function uploadAdvertiserArtwork(
   context: FilesActorContext,
   input: { fileName: string; contentType: string; bytes: Uint8Array }
 ): Promise<UploadedArtworkFile> {
+  const filesPermissionData = await getPermissionData();
   if (!ALLOWED_ARTWORK_CONTENT_TYPES.has(input.contentType)) {
     throw new Error("Artwork must be a PDF, PNG, JPEG or TIFF file.");
   }
@@ -174,6 +136,7 @@ export type UploadedImageOption = {
  * boundary in this app.
  */
 export async function listMyUploadedImages(context: FilesActorContext): Promise<UploadedImageOption[]> {
+  const filesPermissionData = await getPermissionData();
   requireFilesPermission(context, filesPermissionData, "upload");
 
   const { db, sql } = createDb();
@@ -209,6 +172,7 @@ export async function listMyUploadedImages(context: FilesActorContext): Promise<
  * just because it parses as a UUID.
  */
 export async function assertFileIsAttachable(context: FilesActorContext, fileId: string): Promise<void> {
+  const filesPermissionData = await getPermissionData();
   requireFilesPermission(context, filesPermissionData, "upload");
 
   const { db, sql } = createDb();

@@ -24,6 +24,7 @@ import {
 import { normalizeContentSnapshot } from "@raring2go/marketing";
 import type { AudienceSegment, EmailCampaignOverview, EmailSendJob } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
+import { getPermissionData } from "../../../../lib/permission-source";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -342,7 +343,7 @@ async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSea
       email,
       composableSegments,
       outlookMailboxes,
-      aiAssistAvailable: hasAiAssistCapability(context),
+      aiAssistAvailable: hasAiAssistCapability(await getPermissionData(), context),
       lastNewsletter,
       comparisons
     };

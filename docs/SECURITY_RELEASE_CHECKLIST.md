@@ -38,4 +38,5 @@ APP_ENV=production pnpm security:config     # with the production environment lo
 - [ ] DPAs and sub-processor list current (database, email, storage, AI, e-sign, hosting)
 - [ ] Virus scanner reachable and scanning (`CLAMAV_SCANNER_URL`)
 - [ ] Independent penetration test before general availability; findings tracked to closure
-- [ ] **IAM-002 follow-up complete** before real franchisee/advertiser users are invited: database-backed permission loading and the role administration screen (see `docs/SECURITY.md`, known gap 1)
+- [x] Database-backed permission loading, role administration and persistent identity (IAM-002, IAM-004): see `docs/PERMISSIONS.md` and `docs/AUTH.md`
+- [ ] Before inviting real users: sign in as the intended first Super Admin and confirm `/app/roles` loads; keep at least two accounts holding Super Admin so the "an administrator always remains" guard is never the only protection

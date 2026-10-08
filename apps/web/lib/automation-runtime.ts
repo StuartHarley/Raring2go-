@@ -1,5 +1,5 @@
 import { recordAuditEvent } from "@raring2go/audit";
-import { createDb, fixtureIds } from "@raring2go/db";
+import { createDb } from "@raring2go/db";
 import { evaluatePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import {
@@ -24,41 +24,15 @@ import {
 import type { AutomationCapability, JobActorContext, JobAuditRecorder, WorkflowsDb } from "@raring2go/workflows";
 import { engineHooks, knownHooks } from "./automation-hooks";
 import { appLogger } from "./logger";
+import { getPermissionData } from "./permission-source";
 
 export type { JobActorContext as AutomationActorContext };
 
-const permission = (key: AutomationCapability) => ({ id: `${automationCapabilities[key].module}.${automationCapabilities[key].action}`, ...automationCapabilities[key] });
-const grant = (roleId: string, key: AutomationCapability, scope: string) => ({ roleId, permission: permission(key), scope, constraints: {} });
-
-const hqCapabilities: AutomationCapability[] = ["taskView", "taskComplete", "approvalView", "approvalDecide", "workflowView", "workflowManage", "workflowActivate", "workflowTest"];
-const territoryCapabilities: AutomationCapability[] = ["taskView", "taskComplete", "approvalView", "approvalDecide", "workflowView"];
-
-export const automationPermissionData: PermissionData = {
-  roleAssignments: [
-    { id: "fixture_assignment_hq", userId: fixtureIds.users.superAdmin, roleId: fixtureIds.roles.hqAdmin, organisationId: fixtureIds.organisations.hq },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  territories: [
-    { id: fixtureIds.territories.suttonColdfield, franchiseOrganisationId: fixtureIds.organisations.franchise },
-    { id: fixtureIds.territories.solihull, franchiseOrganisationId: null }
-  ],
-  rolePermissions: [
-    ...hqCapabilities.map((key) => grant(fixtureIds.roles.hqAdmin, key, "network")),
-    ...territoryCapabilities.map((key) => grant(fixtureIds.roles.franchisee, key, "own_territory"))
-  ]
-};
-
-export function hasAutomationCapability(context: JobActorContext, capability: AutomationCapability) {
+export function hasAutomationCapability(permissions: PermissionData, context: JobActorContext, capability: AutomationCapability) {
   const { module, action } = automationCapabilities[capability];
   return evaluatePermission(
     { userId: context.userId, module, action, context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } },
-    automationPermissionData
+    permissions
   ).allowed;
 }
 
@@ -67,6 +41,7 @@ function auditFor(db: Parameters<typeof recordAuditEvent>[0]): JobAuditRecorder 
 }
 
 export async function readTasksAndApprovals(context: JobActorContext) {
+  const automationPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -83,6 +58,7 @@ export async function readTasksAndApprovals(context: JobActorContext) {
 }
 
 export async function completeTaskAsActor(context: JobActorContext, taskId: string) {
+  const automationPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -97,6 +73,7 @@ export async function completeTaskAsActor(context: JobActorContext, taskId: stri
 }
 
 export async function decideApprovalAsActor(context: JobActorContext, approvalId: string, decision: { status: "approved" | "rejected"; note?: string | null }) {
+  const automationPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -121,6 +98,7 @@ export async function decideApprovalAsActor(context: JobActorContext, approvalId
 }
 
 export async function readWorkflowOverview(context: JobActorContext) {
+  const automationPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -142,6 +120,7 @@ export async function readWorkflowOverview(context: JobActorContext) {
 }
 
 export async function readWorkflowRun(context: JobActorContext, runId: string) {
+  const automationPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -155,6 +134,7 @@ export async function readWorkflowRun(context: JobActorContext, runId: string) {
 }
 
 export async function readWorkflowDefinition(context: JobActorContext, definitionId: string) {
+  const automationPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -175,17 +155,27 @@ async function inTransaction<T>(work: (store: ReturnType<typeof createDrizzleEng
   }
 }
 
-export const createWorkflowDraft = (context: JobActorContext, definitionId: string) =>
-  inTransaction((store, audit) => createDraftVersion(context, automationPermissionData, audit, store, definitionId));
+export async function createWorkflowDraft(context: JobActorContext, definitionId: string) {
+  const automationPermissionData = await getPermissionData();
+  return inTransaction((store, audit) => createDraftVersion(context, automationPermissionData, audit, store, definitionId));
+}
 
-export const saveWorkflowDraft = (context: JobActorContext, versionId: string, definition: unknown, changeNote: string | null) =>
-  inTransaction((store, audit) => updateDraftVersion(context, automationPermissionData, audit, store, knownHooks, versionId, definition, changeNote));
+export async function saveWorkflowDraft(context: JobActorContext, versionId: string, definition: unknown, changeNote: string | null) {
+  const automationPermissionData = await getPermissionData();
+  return inTransaction((store, audit) => updateDraftVersion(context, automationPermissionData, audit, store, knownHooks, versionId, definition, changeNote));
+}
 
-export const testWorkflowDraft = (context: JobActorContext, versionId: string, sample: { payload: Record<string, unknown>; territoryId?: string | null; subjectId?: string | null }) =>
-  inTransaction((store, audit) => testDraftVersion(context, automationPermissionData, audit, store, engineHooks, versionId, sample));
+export async function testWorkflowDraft(context: JobActorContext, versionId: string, sample: { payload: Record<string, unknown>; territoryId?: string | null; subjectId?: string | null }) {
+  const automationPermissionData = await getPermissionData();
+  return inTransaction((store, audit) => testDraftVersion(context, automationPermissionData, audit, store, engineHooks, versionId, sample));
+}
 
-export const activateWorkflowDraft = (context: JobActorContext, versionId: string) =>
-  inTransaction((store, audit) => activateDraftVersion(context, automationPermissionData, audit, store, knownHooks, versionId));
+export async function activateWorkflowDraft(context: JobActorContext, versionId: string) {
+  const automationPermissionData = await getPermissionData();
+  return inTransaction((store, audit) => activateDraftVersion(context, automationPermissionData, audit, store, knownHooks, versionId));
+}
 
-export const setWorkflowDefinitionEnabled = (context: JobActorContext, definitionId: string, enabled: boolean) =>
-  inTransaction((store, audit) => setWorkflowEnabled(context, automationPermissionData, audit, store, definitionId, enabled));
+export async function setWorkflowDefinitionEnabled(context: JobActorContext, definitionId: string, enabled: boolean) {
+  const automationPermissionData = await getPermissionData();
+  return inTransaction((store, audit) => setWorkflowEnabled(context, automationPermissionData, audit, store, definitionId, enabled));
+}

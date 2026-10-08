@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createDb } from "@raring2go/db";
 import { hashToken, normalizeEmail } from "@raring2go/auth";
-import { appAuthRepository } from "./auth-runtime";
+import { withIdentity } from "./auth-runtime";
 import {
   getPublicHomepage,
   getPublicParentHub,
@@ -26,15 +26,16 @@ export async function resolveParentSession(sessionToken?: string | null): Promis
     return { authenticated: false, reason: "missing_session" };
   }
 
-  const session = await appAuthRepository.findSessionByTokenHash(hashToken(sessionToken));
-  if (!session || session.revokedAt || session.expiresAt <= new Date()) {
+  const identity = await withIdentity(async ({ repository }) => {
+    const session = await repository.findSessionByTokenHash(hashToken(sessionToken));
+    if (!session || session.revokedAt || session.expiresAt <= new Date()) return undefined;
+    const found = await repository.findUserById(session.userId);
+    return found && found.status === "active" ? found : undefined;
+  });
+  if (!identity) {
     return { authenticated: false, reason: "invalid_session" };
   }
-
-  const user = appAuthRepository.users.find((candidate) => candidate.id === session.userId && candidate.status === "active");
-  if (!user) {
-    return { authenticated: false, reason: "invalid_session" };
-  }
+  const user = identity;
 
   const contact = await ensureAudienceContactForUser(user.email);
   return {
@@ -47,10 +48,14 @@ export async function resolveParentSession(sessionToken?: string | null): Promis
 
 export async function parentHasInternalAccess(sessionToken?: string | null) {
   if (!sessionToken) return false;
-  const session = await appAuthRepository.findSessionByTokenHash(hashToken(sessionToken));
-  if (!session || session.revokedAt || session.expiresAt <= new Date()) return false;
-  const memberships = await appAuthRepository.findMembershipsForUser(session.userId);
-  return memberships.some((membership) => membership.status === "active");
+  return withIdentity(async ({ repository }) => {
+    const session = await repository.findSessionByTokenHash(hashToken(sessionToken));
+    if (!session || session.revokedAt || session.expiresAt <= new Date()) return false;
+    const user = await repository.findUserById(session.userId);
+    if (!user || user.status !== "active") return false;
+    const memberships = await repository.findMembershipsForUser(session.userId);
+    return memberships.some((membership) => membership.status === "active");
+  });
 }
 
 export async function readSessionBackedParentHub(slug: string, sessionToken?: string | null) {

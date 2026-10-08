@@ -3,14 +3,14 @@ import { aiRunCapabilities, createAiGatewayFromEnv, createAiProviderFromEnv, cre
 import type { AiActorContext, AiApprovalState, AiGateway, AiRunRecord, AiSuggestionResult, AiTask, AiUsage, CampaignDraft } from "@raring2go/ai";
 import { rateLimitRules } from "@raring2go/security";
 import { firstRateLimitRefusal } from "./rate-limit-runtime";
-import { aiUsageEvents, createDb, fixtureIds } from "@raring2go/db";
+import { aiUsageEvents, createDb } from "@raring2go/db";
 import { evaluatePermission, requirePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import { marketingCapabilities } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { boundForStorage } from "@raring2go/ai";
 import { sql } from "drizzle-orm";
-import { marketingPermissionData } from "./marketing-runtime";
+import { getPermissionData } from "./permission-source";
 
 /**
  * Counters live in Postgres (shared by every serverless instance), keyed by territory so one
@@ -29,7 +29,7 @@ async function enforceAiAssistRateLimit(context: MarketingActorContext) {
   }
 }
 
-function requireAiAssistPermission(context: MarketingActorContext) {
+function requireAiAssistPermission(permissions: PermissionData, context: MarketingActorContext) {
   const capability = marketingCapabilities.emailAiAssist;
   requirePermission(
     {
@@ -41,12 +41,12 @@ function requireAiAssistPermission(context: MarketingActorContext) {
         territoryId: context.territoryId ?? undefined
       }
     },
-    marketingPermissionData
+    permissions
   );
 }
 
 /** Non-throwing check, for deciding whether to show the AI-assist affordances at all. */
-export function hasAiAssistCapability(context: MarketingActorContext): boolean {
+export function hasAiAssistCapability(permissions: PermissionData, context: MarketingActorContext): boolean {
   const capability = marketingCapabilities.emailAiAssist;
   return evaluatePermission(
     {
@@ -58,7 +58,7 @@ export function hasAiAssistCapability(context: MarketingActorContext): boolean {
         territoryId: context.territoryId ?? undefined
       }
     },
-    marketingPermissionData
+    permissions
   ).allowed;
 }
 
@@ -260,7 +260,7 @@ export async function suggestSubjectLines(
   context: MarketingActorContext,
   input: { draftId: string; campaignTitle: string; bodyPreviewText: string }
 ): Promise<string[]> {
-  requireAiAssistPermission(context);
+  requireAiAssistPermission(await getPermissionData(), context);
   await enforceAiAssistRateLimit(context);
   await enforceAiSpendCap(context);
   const gateway = requireGateway();
@@ -295,7 +295,7 @@ export async function suggestBlockCopy(
   context: MarketingActorContext,
   input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }
 ): Promise<string> {
-  requireAiAssistPermission(context);
+  requireAiAssistPermission(await getPermissionData(), context);
   await enforceAiAssistRateLimit(context);
   await enforceAiSpendCap(context);
   const gateway = requireGateway();
@@ -338,7 +338,7 @@ export async function generateCampaignDraft(
   context: MarketingActorContext,
   input: { draftId: string; prompt: string; audienceDescription?: string | null }
 ): Promise<CampaignDraft> {
-  requireAiAssistPermission(context);
+  requireAiAssistPermission(await getPermissionData(), context);
   await enforceAiAssistRateLimit(context);
   await enforceAiSpendCap(context);
   const gateway = requireGateway();
@@ -374,7 +374,7 @@ export async function recordAiSuggestionAccepted(
   context: MarketingActorContext,
   input: { draftId: string; task: "subject_lines" | "block_copy"; blockId?: string; accepted: string }
 ): Promise<void> {
-  requireAiAssistPermission(context);
+  requireAiAssistPermission(await getPermissionData(), context);
   await recordSuggestionEvent(context, auditActions.marketingAiSuggestionAccept, {
     task: input.task,
     draftId: input.draftId,
@@ -405,41 +405,16 @@ async function recordSuggestionEvent(context: MarketingActorContext, action: str
 
 // ---- AI run console (AI-001) -------------------------------------------------------
 
-const runPermission = (key: keyof typeof aiRunCapabilities) => ({ id: `ai.run.${aiRunCapabilities[key].action}`, ...aiRunCapabilities[key] });
-const runGrant = (roleId: string, key: keyof typeof aiRunCapabilities, scope: string) => ({ roleId, permission: runPermission(key), scope, constraints: {} });
-
-export const aiRunPermissionData: PermissionData = {
-  roleAssignments: [
-    { id: "fixture_assignment_hq", userId: fixtureIds.users.superAdmin, roleId: fixtureIds.roles.hqAdmin, organisationId: fixtureIds.organisations.hq },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  territories: [
-    { id: fixtureIds.territories.suttonColdfield, franchiseOrganisationId: fixtureIds.organisations.franchise },
-    { id: fixtureIds.territories.solihull, franchiseOrganisationId: null }
-  ],
-  rolePermissions: [
-    runGrant(fixtureIds.roles.hqAdmin, "view", "network"),
-    runGrant(fixtureIds.roles.hqAdmin, "decide", "network"),
-    runGrant(fixtureIds.roles.franchisee, "view", "own_territory"),
-    runGrant(fixtureIds.roles.franchisee, "decide", "own_territory")
-  ]
-};
-
-export function hasAiRunCapability(context: AiActorContext, capability: keyof typeof aiRunCapabilities) {
+export function hasAiRunCapability(permissions: PermissionData, context: AiActorContext, capability: keyof typeof aiRunCapabilities) {
   const { module, action } = aiRunCapabilities[capability];
   return evaluatePermission(
     { userId: context.userId, module, action, context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } },
-    aiRunPermissionData
+    permissions
   ).allowed;
 }
 
 export async function readAiRuns(context: AiActorContext, filter: { approvalStates?: AiApprovalState[] } = {}) {
+  const aiRunPermissionData = await getPermissionData();
   const { db, sql: closeSql } = createDb();
 
   try {
@@ -450,6 +425,7 @@ export async function readAiRuns(context: AiActorContext, filter: { approvalStat
 }
 
 export async function readAiRun(context: AiActorContext, runId: string) {
+  const aiRunPermissionData = await getPermissionData();
   const { db, sql: closeSql } = createDb();
 
   try {
@@ -460,6 +436,7 @@ export async function readAiRun(context: AiActorContext, runId: string) {
 }
 
 export async function decideAiRunAsActor(context: AiActorContext, runId: string, decision: { state: "approved" | "rejected"; note?: string | null }) {
+  const aiRunPermissionData = await getPermissionData();
   const { db, sql: closeSql } = createDb();
 
   try {

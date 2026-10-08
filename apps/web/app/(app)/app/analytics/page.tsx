@@ -9,6 +9,7 @@ import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { generateSnapshotAction } from "./actions";
 import { bandLabels, benchmarkLabels, formatChange, formatMetric } from "./format";
+import { getPermissionData } from "../../../../lib/permission-source";
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   snapshot_generated: { tone: "success", text: "Snapshot generated for today." },
@@ -41,8 +42,9 @@ export default async function ScorecardPage({ searchParams }: PageProps) {
   const { context, view, history } = loaded;
   const resultParam = Array.isArray(params.result) ? params.result[0] : params.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
-  const canGenerate = hasAnalyticsCapability(context, "snapshotGenerate");
-  const canConfigure = hasAnalyticsCapability(context, "healthConfigManage");
+  const permissions = await getPermissionData();
+  const canGenerate = hasAnalyticsCapability(permissions, context, "snapshotGenerate");
+  const canConfigure = hasAnalyticsCapability(permissions, context, "healthConfigManage");
   const query = withContext(request);
   const byDomain = Object.keys(domainLabels).map((domain) => ({ domain, metrics: view.metrics.filter((metric) => metric.definition.domain === domain) }));
 

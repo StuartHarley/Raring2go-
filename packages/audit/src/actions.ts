@@ -24,6 +24,7 @@ export const auditActions = {
   authSignOut: "auth.sign.out",
   authInviteSend: "auth.invite.send",
   authInviteAccept: "auth.invite.accept",
+  authInviteRevoke: "auth.invite.revoke",
   authEmailVerify: "auth.email.verify",
   authAccountRecover: "auth.account.recover",
   authSessionRevoke: "auth.session.revoke",

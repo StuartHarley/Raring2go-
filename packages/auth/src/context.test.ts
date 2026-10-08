@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { resolveWorkingContext } from "./context";
 import { createMemoryAuthRepository } from "./test-helpers";
 
+const activeUser = { id: "user_1", email: "user@example.com", status: "active" };
+
 const activeSession = {
   id: "session_1",
   userId: "user_1",
@@ -13,6 +15,7 @@ const activeSession = {
 describe("resolveWorkingContext", () => {
   it("resolves multiple organisation memberships without storing active context on the session", async () => {
     const repository = createMemoryAuthRepository({
+      users: [activeUser],
       memberships: [
         {
           id: "membership_1",
@@ -65,6 +68,7 @@ describe("resolveWorkingContext", () => {
 
   it("rejects cross-tenant organisation and territory context", async () => {
     const repository = createMemoryAuthRepository({
+      users: [activeUser],
       memberships: [
         {
           id: "membership_1",
@@ -104,6 +108,7 @@ describe("resolveWorkingContext", () => {
 
   it("requires elevated assurance for future MFA-sensitive actions", async () => {
     const repository = createMemoryAuthRepository({
+      users: [activeUser],
       memberships: [
         {
           id: "membership_1",
@@ -122,5 +127,13 @@ describe("resolveWorkingContext", () => {
         now: new Date("2026-08-10T00:00:00.000Z")
       })
     ).rejects.toThrow("Higher authentication assurance");
+  });
+
+  it("stops honouring a live session once the account is disabled or gone", async () => {
+    const memberships = [{ id: "membership_1", userId: "user_1", organisationId: "org_hq", status: "active" }];
+    const now = new Date("2026-08-10T00:00:00.000Z");
+
+    await expect(resolveWorkingContext(createMemoryAuthRepository({ users: [{ ...activeUser, status: "disabled" }], memberships }), { session: activeSession, organisationId: "org_hq", now })).rejects.toThrow(/not active/);
+    await expect(resolveWorkingContext(createMemoryAuthRepository({ memberships }), { session: activeSession, organisationId: "org_hq", now })).rejects.toThrow(/not active/);
   });
 });

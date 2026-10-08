@@ -126,8 +126,8 @@ async function loadSegments(request: Awaited<ReturnType<typeof requestFromSearch
     };
     const segments = await readSegmentsWithAudienceCounts(context);
     const territoryOptions = context.territoryId
-      ? listNetworkTerritories().filter((territory) => territory.id === context.territoryId)
-      : listNetworkTerritories();
+      ? (await listNetworkTerritories()).filter((territory) => territory.id === context.territoryId)
+      : await listNetworkTerritories();
 
     return { context, segments, territoryOptions };
   } catch (error) {

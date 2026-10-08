@@ -6,54 +6,12 @@ import {
   listPipeline,
   loadAdvertisingData
 } from "@raring2go/advertising";
-import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
+import { createDb } from "@raring2go/db";
 import type { AdvertisingActorContext } from "@raring2go/advertising";
-import type { PermissionData } from "@raring2go/permissions";
-
-export const advertisingPermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  rolePermissions: [
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.advertiserView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.opportunityView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.catalogueView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.proposalView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.financeView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.artworkView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.fulfilmentView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.proofView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.renewalView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.analyticsView, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.advertiserView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.opportunityView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.catalogueView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.proposalView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.financeView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.artworkView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.fulfilmentView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.proofView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.renewalView, "own_territory")
-  ],
-  territories: foundationSeed.territories.map((territory) => ({
-    id: territory.id,
-    franchiseOrganisationId: territory.franchiseOrganisationId
-  }))
-};
+import { getPermissionData } from "./permission-source";
 
 export async function listAdvertiser360Rows(context: AdvertisingActorContext) {
+  const advertisingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -64,6 +22,7 @@ export async function listAdvertiser360Rows(context: AdvertisingActorContext) {
 }
 
 export async function readPipeline(context: AdvertisingActorContext) {
+  const advertisingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -74,6 +33,7 @@ export async function readPipeline(context: AdvertisingActorContext) {
 }
 
 export async function readCatalogue(context: AdvertisingActorContext) {
+  const advertisingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -84,6 +44,7 @@ export async function readCatalogue(context: AdvertisingActorContext) {
 }
 
 export async function readCommercialCommandCentre(context: AdvertisingActorContext) {
+  const advertisingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -94,6 +55,7 @@ export async function readCommercialCommandCentre(context: AdvertisingActorConte
 }
 
 export async function readAdvertiser360(context: AdvertisingActorContext, advertiserId: string) {
+  const advertisingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -103,17 +65,3 @@ export async function readAdvertiser360(context: AdvertisingActorContext, advert
   }
 }
 
-function grant(roleId: string, permissionId: string, scope: string) {
-  const permission = foundationSeed.permissions.find((candidate) => candidate.id === permissionId);
-
-  if (!permission) {
-    throw new Error("Advertising permission fixture is inconsistent.");
-  }
-
-  return {
-    roleId,
-    permission,
-    scope,
-    constraints: {}
-  };
-}

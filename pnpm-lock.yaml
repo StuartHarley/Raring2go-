@@ -41,6 +41,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: 3.2.2
         version: 3.2.2(react@19.2.8)
+      '@raring2go/access':
+        specifier: workspace:*
+        version: link:../../packages/access
       '@raring2go/advertising':
         specifier: workspace:*
         version: link:../../packages/advertising
@@ -132,6 +135,28 @@ importers:
       jsdom:
         specifier: 30.0.1
         version: 30.0.1
+
+  packages/access:
+    dependencies:
+      '@raring2go/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@raring2go/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
 
   packages/advertising:
     dependencies:
@@ -363,6 +388,12 @@ importers:
       '@raring2go/audit':
         specifier: workspace:*
         version: link:../audit
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
     devDependencies:
       vitest:
         specifier: 4.1.10

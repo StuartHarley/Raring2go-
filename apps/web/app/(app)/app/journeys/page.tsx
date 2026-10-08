@@ -8,6 +8,7 @@ import { JourneyBuilderFields } from "./JourneyBuilderFields";
 import { activateJourneyAction, createJourneyAction, pauseJourneyAction } from "./actions";
 import { StatusBadge } from "../../../../lib/workflow-ui";
 import type { MarketingActorContext } from "@raring2go/marketing";
+import { getPermissionData } from "../../../../lib/permission-source";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -134,16 +135,18 @@ async function loadJourneys(request: Awaited<ReturnType<typeof requestFromSearch
     };
     const overview = await readJourneyOverview(context);
     const territoryOptions = context.territoryId
-      ? listNetworkTerritories().filter((territory) => territory.id === context.territoryId)
-      : listNetworkTerritories();
+      ? (await listNetworkTerritories()).filter((territory) => territory.id === context.territoryId)
+      : await listNetworkTerritories();
+
+    const permissions = await getPermissionData();
 
     return {
       context,
       overview,
       territoryOptions,
-      canCreate: hasMarketingCapability(context, "journeyCreate"),
-      canActivate: hasMarketingCapability(context, "journeyActivate"),
-      canPause: hasMarketingCapability(context, "journeyPause")
+      canCreate: hasMarketingCapability(permissions, context, "journeyCreate"),
+      canActivate: hasMarketingCapability(permissions, context, "journeyActivate"),
+      canPause: hasMarketingCapability(permissions, context, "journeyPause")
     };
   } catch (error) {
     return { error };

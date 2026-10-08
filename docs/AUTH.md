@@ -31,3 +31,14 @@ Invitations are token-hash based, expire, can be accepted once, and create activ
 ## Audit
 
 Auth-sensitive actions should use `@raring2go/audit`, including sign-in, sign-out, invitation lifecycle, email verification, recovery, session revocation and security changes.
+
+
+## Persistence and invitations (IAM-001/IAM-004 follow-up)
+
+- **Identity lives in Postgres.** Users, memberships, sessions, one-time sign-in links and invitations are stored via `createDrizzleAuthRepository`, and auth audit events go to the real audit table. The previous in-memory store meant a sign-in link issued by one serverless instance could not be verified by another and every session vanished on restart.
+- **At most once, by construction.** Using a sign-in link, accepting an invitation, creating a user and creating a membership are each a single conditional statement, so two simultaneous requests cannot both succeed. Using a link or accepting an invitation runs in one transaction with its audit event.
+- **Disabled accounts lose access immediately**, including live sessions: every request re-checks that the user is active.
+- **Parents self-register.** Anyone can sign in by email, which creates an account that holds no memberships and therefore no staff access. Staff and franchisees are *invited*.
+- **Invitations carry a role.** An invitation names an organisation, optionally a territory and optionally a role. Accepting it creates the membership and grants that role scoped exactly as invited. Links are single-use, expire after seven days, and only a hash is stored; inviting the same person again for the same place and role replaces the earlier link.
+- **Default context** is derived from the user's own memberships (oldest active organisation, and for a franchise its first territory). Names and territory lists come from the database through `apps/web/lib/directory.ts`.
+- **Development sign-in** (`NODE_ENV` not production) still creates a session directly for any email, now as a real database session.
