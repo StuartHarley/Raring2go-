@@ -79,7 +79,7 @@ Each ticket should be implemented as a focused branch/PR. Acceptance criteria ar
 | ROY-001 | Complete - Royalty rules and statements - Rules from agreement/fee schedule, calculation, exceptions, approvals and franchisee statement. | Finance | Statement reproducible from source transactions and auditable adjustments. |
 | ANL-001 | Business-in-a-Box scorecard - Commercial, audience, publishing, franchise, finance and operations metrics. | Analytics | Metric definitions documented and consistent across HQ/territory views. |
 | ANL-002 | Benchmarking and health score - Peer benchmarks and configurable Franchise Health Score. | Analytics | No confidential peer detail exposed; factors and snapshot version auditable. |
-| AUT-001 | Workflow engine MVP - Event, condition, action, approval and retry model for core lifecycle triggers. | Automation | Agreement signed, booking, overdue invoice and newsletter approval workflows run idempotently. |
+| AUT-001 | Complete - Workflow engine MVP - Event, condition, action, approval and retry model for core lifecycle triggers. | Automation | Agreement signed, booking, overdue invoice and newsletter approval workflows run idempotently. |
 | AUT-002 | Automation builder UI - Super Admin can view/edit enabled workflow definitions and thresholds. | Automation | Changes versioned; draft can be tested before activation. |
 | EXT-001 | Advertiser portal - Advertiser campaign booking, uploads, proofs, invoices/payment, reporting and renewals. | External | Advertiser sees own organisation only and complete current campaign state. |
 | EXT-002 | Parent account - Preferences, saved content, subscriptions and local engagement. | External | Consent updates immediately affect eligible email audience. |

@@ -115,6 +115,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "today"
   },
   {
+    id: "tasks",
+    label: "Tasks & Approvals",
+    href: "/app/tasks",
+    capability: {
+      module: "automation.task",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "today"
+  },
+  {
     id: "franchisees",
     label: "Franchisees",
     href: "/app/franchisees",
@@ -302,6 +313,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "administration"
   },
   {
+    id: "workflows",
+    label: "Workflows",
+    href: "/app/system/workflows",
+    capability: {
+      module: "automation.workflow",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "administration"
+  },
+  {
     id: "jobs",
     label: "Job Console",
     href: "/app/system/jobs",
@@ -385,6 +407,42 @@ const permissionData: PermissionData = {
       roleId: fixtureIds.roles.hqAdmin,
       permissionId: fixtureIds.permissions.rolesView,
       scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.taskView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.taskView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.approvalView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.approvalView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.workflowView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.workflowView,
+      scope: "own_territory",
       constraints: {}
     },
     {

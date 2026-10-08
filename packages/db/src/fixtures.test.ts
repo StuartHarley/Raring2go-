@@ -154,7 +154,15 @@ describe("foundation fixtures", () => {
       "marketing.email",
       "system.jobs",
       "system.jobs",
-      "system.jobs"
+      "system.jobs",
+      "automation.task",
+      "automation.task",
+      "automation.approval",
+      "automation.approval",
+      "automation.workflow",
+      "automation.workflow",
+      "automation.workflow",
+      "automation.workflow"
     ]);
   });
 

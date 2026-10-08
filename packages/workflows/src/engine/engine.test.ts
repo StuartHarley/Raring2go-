@@ -342,6 +342,21 @@ describe("guards and actions", () => {
     expect(runJob.subjectId).toBe(run.id);
   });
 
+  it("a permanent action error fails the run immediately instead of leaving it running", async () => {
+    const { PermanentJobError } = await import("../errors");
+    const s = await setup({
+      steps: [{ type: "run_action", action: "gone" }],
+      hooks: { actions: { gone: async () => { throw new PermanentJobError("agreement deleted", "agreement_not_found"); } } }
+    });
+    await ingestAuditEvents(s.store, T0);
+    s.store.auditEvents.push(auditRow());
+    const at = new Date(T0.getTime() + 60_000);
+    await s.tick(at);
+    await s.drain(at);
+    expect([...s.store.runs.values()][0]).toMatchObject({ status: "failed", outcome: "failed", lastError: "agreement deleted" });
+    expect([...s.jobs.jobs.values()].find((job) => job.kind === "workflows.execute_run")?.attempts).toBe(1);
+  });
+
   it("direct execution of a finished run is a no-op", async () => {
     const s = await setup({ steps: [notifyStep] });
     await ingestAuditEvents(s.store, T0);

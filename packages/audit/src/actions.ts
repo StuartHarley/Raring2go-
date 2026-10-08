@@ -179,7 +179,15 @@ export const auditActions = {
   opsJobEnqueue: "ops.job.enqueue",
   opsJobDeadLettered: "ops.job.dead_lettered",
   opsJobRetry: "ops.job.retry",
-  opsJobCancel: "ops.job.cancel"
+  opsJobCancel: "ops.job.cancel",
+  workflowTaskComplete: "workflow.task.complete",
+  workflowApprovalApprove: "workflow.approval.approve",
+  workflowApprovalReject: "workflow.approval.reject",
+  workflowVersionCreate: "workflow.version.create",
+  workflowVersionUpdate: "workflow.version.update",
+  workflowVersionActivate: "workflow.version.activate",
+  workflowDefinitionToggle: "workflow.definition.toggle",
+  workflowRunTest: "workflow.run.test"
 } as const;
 
 export type AuditAction = (typeof auditActions)[keyof typeof auditActions] | (string & {});

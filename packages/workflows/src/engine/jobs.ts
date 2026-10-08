@@ -36,8 +36,8 @@ export function createJobRunScheduler(jobs: JobStore, audit?: JobAuditRecorder):
 
 export const workflowTickIdempotencyKey = (now: Date) => `${WORKFLOW_TICK_KIND}:${now.toISOString().slice(0, 16)}`;
 
-export function createWorkflowJobHandlers(deps: { store: EngineStore; hooks: EngineHooks; jobs: JobStore }): JobHandler[] {
-  const { store, hooks, jobs } = deps;
+export function createWorkflowJobHandlers(deps: { store: EngineStore; hooks: EngineHooks; jobs: JobStore; cursorName?: string }): JobHandler[] {
+  const { store, hooks, jobs, cursorName } = deps;
   const schedule = createJobRunScheduler(jobs);
 
   return [
@@ -62,7 +62,7 @@ export function createWorkflowJobHandlers(deps: { store: EngineStore; hooks: Eng
       baseBackoffMs: 15_000,
       handle: async ({ now }) => {
         const at = now();
-        const ingest = await ingestAuditEvents(store, at);
+        const ingest = await ingestAuditEvents(store, at, { cursorName });
         const dispatch = await dispatchPendingEvents(store, schedule, at);
         const resumed = await resumeDueRuns(store, schedule, at);
         return { ...ingest, ...dispatch, ...resumed };

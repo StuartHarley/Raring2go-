@@ -1,6 +1,7 @@
 import type { Route } from "next";
 import type { ResolvedShell } from "./app-shell";
 import { listAdvertiser360Rows, readPipeline } from "./advertising-runtime";
+import { readTasksAndApprovals } from "./automation-runtime";
 import { listComplianceOverview, listOnboardingOverview } from "./franchise-runtime";
 import {
   readJourneyOverview,
@@ -220,6 +221,48 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
         detail: item.territoryId ? `Territory ${item.territoryId}` : "Network-wide",
         href: "/app/marketing-command" as Route
       });
+    }
+  }
+
+  if (visible.has("tasks")) {
+    const automation = await readTasksAndApprovals(context).catch(() => undefined);
+
+    if (automation) {
+      const now = new Date();
+      const overdue = automation.tasks.filter((task) => task.dueDate && task.dueDate < now);
+
+      metrics.push({
+        label: "Open tasks",
+        value: String(automation.tasks.length),
+        detail: `${overdue.length} overdue, ${automation.approvals.length} awaiting approval`
+      });
+      workflows.push({
+        label: "Tasks & Approvals",
+        href: "/app/tasks" as Route,
+        status: `${automation.tasks.length} open, ${automation.approvals.length} to approve`
+      });
+
+      for (const approval of automation.approvals.slice(0, 3)) {
+        attention.push({
+          id: `approval-${approval.id}`,
+          priority: "warning",
+          area: "Approval",
+          title: approval.title,
+          detail: approval.description ?? "A workflow is waiting for your decision.",
+          href: "/app/tasks" as Route
+        });
+      }
+
+      for (const task of overdue.slice(0, 3)) {
+        attention.push({
+          id: `task-${task.id}`,
+          priority: "critical",
+          area: "Overdue task",
+          title: task.title,
+          detail: `Was due ${task.dueDate!.toLocaleDateString("en-GB")}`,
+          href: "/app/tasks" as Route
+        });
+      }
     }
   }
 

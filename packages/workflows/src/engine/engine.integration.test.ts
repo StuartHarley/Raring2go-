@@ -67,7 +67,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("workflow engine (postgres)", () => {
   });
 
   async function drain(at: Date) {
-    const registry = createJobRegistry(createWorkflowJobHandlers({ store, hooks, jobs: jobStore }));
+    const registry = createJobRegistry(createWorkflowJobHandlers({ store, hooks, jobs: jobStore, cursorName }));
     return runDueJobs(jobStore, registry, { workerId: `itest-${tag}`, now: () => at, maxJobs: 20 });
   }
 

@@ -63,3 +63,51 @@ Retry from the console is deliberately narrow: only a **failed email send job** 
 
 - Unit: `pnpm --filter @raring2go/workflows test` (policy, runner, service tenancy; in-memory store).
 - Postgres integration (real SQL: SKIP LOCKED concurrency, lease reclaim, idempotent enqueue, retention): `docker compose up -d db && pnpm db:migrate && RUN_DB_TESTS=1 pnpm --filter @raring2go/workflows test`.
+
+# Workflow Engine (AUT-001)
+
+Lifecycle automation: when something happens, run configured steps, idempotently, visibly, with human approval where the definition says so.
+
+## Flow
+
+1. **Events.** Producers write to `workflow_events` (unique `event_key`): the *audit tailer* copies audit rows whose action some active workflow triggers on (`audit:<id>`), *scanners* emit time-based events (daily overdue-invoice scan, `scan:invoice-overdue:<invoiceId>:<dueDate>`), and manual producers can call `emitWorkflowEvent`. On first start the tailer sets a cursor and a permanent floor at "now": switching the engine on never replays history, and the trailing 10-minute overlap (for transactions that commit late) can never reach back past the floor.
+2. **Dispatch.** Each undispatched event is matched against *active versions of enabled definitions* (trigger + AND-ed conditions). One run per (definition, event) is enforced by a unique index, so replaying or double-dispatching cannot execute twice. A run is executed by a durable `workflows.execute_run` job keyed `workflow-run:<runId>`.
+3. **Execution.** Steps run in order. Completed steps are skipped on re-entry; every side effect carries the key `wf:<runId>:<stepIndex>` (tasks, notifications and approvals are unique on it, actions receive it). A failing step is recorded and the job retries with backoff; the run is marked `failed` on the final attempt or immediately for a `PermanentJobError`.
+4. **Waiting.** `wait` and `request_approval` park the run (`waiting`, `resume_at`). The tick re-schedules timer runs when due and expires unanswered approvals; deciding an approval schedules a resume keyed per approval.
+
+## Steps
+
+`create_task` (territory team or Head Office, optional due days), `notify`, `request_approval` (rejection or expiry cancels the run, so gated steps never happen), `wait` (days/hours), `guard` (read-only check; false ends the run early, e.g. invoice paid meanwhile) and `run_action` (a registered domain action). Text fields support `{{event.payload.x}}`, `{{scope.territoryId}}` and `{{settings.x}}` only; numbers can reference named `settings` thresholds. Definitions are validated structurally (`validateWorkflowVersion`) and only reference registered hooks.
+
+## Versions
+
+A definition's behaviour lives in versions: `draft` (editable) → `active` (immutable) → `retired`. The database allows one active version per definition. Each run stores the version it used. **Test runs** (`is_test`) record what each step would do without performing it (waits are skipped, approvals not created, actions not called; guards do run, being read-only).
+
+## Built-in workflows
+
+Installed once by `ensureBuiltinWorkflows` (never overwrites an existing definition's versions):
+
+| Key | Trigger | Does |
+| --- | --- | --- |
+| `franchise.agreement_signed` | `franchise.agreement.executed` | notify HQ, start onboarding (idempotent action), HQ kick-off task |
+| `advertising.booking_confirmed` | `advertiser.booking.confirm` | notify territory, artwork and invoice follow-up tasks |
+| `finance.invoice_overdue` | `finance.invoice.overdue` (scanner) | territory chase task → wait → still-unpaid guard → HQ notice → wait → guard → HQ credit-hold approval → follow-up task |
+| `marketing.newsletter_approved` | `marketing.email.campaign.approve` | notify HQ, pre-send review task (does **not** gate sending) |
+
+Thresholds (`firstReminderDays`, `escalateAfterDays`, ...) live in each version's `settings`.
+
+## Automation principal
+
+Actions run as the seeded service user *Workflow Automation* (`…0203`, role `workflow_automation`) holding only `franchise.onboarding.manage` network scope, so the audit trail shows exactly what automation changed. It is not a login identity.
+
+## Permissions and tenancy
+
+Modules `automation.task` (view, complete), `automation.approval` (view, decide), `automation.workflow` (view, manage, activate, test). HQ: network, all. Super Admin: system for workflow permissions. Franchisee: own territory for task/approval view+action and workflow view only. **Head Office-assigned tasks and approvals need a network grant even when they concern the franchisee's own territory.** Task completion and approval decisions re-verify the session, check scope on the item, are single-shot (`already decided/done` is a distinct outcome), and write `workflow.task.complete` / `workflow.approval.approve|reject` audit events.
+
+## UI
+
+`/app/tasks` (tasks, approvals, notifications; also feeds My Today / Action Centre), `/app/system/workflows` (definitions and recent runs), `/app/system/workflows/runs/[id]` (per-step status, results, errors).
+
+## Migration and seed impact
+
+Migration `0041_*` adds `workflow_definitions`, `workflow_versions` (partial unique index for one active version), `workflow_events`, `workflow_event_cursors`, `workflow_runs`, `workflow_run_steps`, `workflow_tasks`, `workflow_approvals`, `notifications` (additive; drop in reverse dependency order to roll back). Seed adds the automation user/role, permissions `…0545-0552` and grants. Re-run `pnpm db:seed`; built-in workflows install on the first worker tick.

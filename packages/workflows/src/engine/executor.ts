@@ -1,3 +1,4 @@
+import { PermanentJobError } from "../errors";
 import { sanitiseErrorMessage } from "../policy";
 import { renderTemplate, resolveNumber } from "./evaluate";
 import type { EngineStore } from "./store";
@@ -132,7 +133,7 @@ export async function executeRun(deps: ExecuteDeps, runId: string, options: { is
       });
       await store.updateRun(
         runId,
-        options.isFinalAttempt ? { status: "failed", lastError: message, outcome: "failed", completedAt: now() } : { status: "running", lastError: message },
+        options.isFinalAttempt || error instanceof PermanentJobError ? { status: "failed", lastError: message, outcome: "failed", completedAt: now() } : { status: "running", lastError: message },
         now()
       );
       throw error;
