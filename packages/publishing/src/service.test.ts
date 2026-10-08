@@ -11,6 +11,8 @@ import {
   createMagazineTemplate,
   createCentralContentItem,
   createCanonicalContentItem,
+  createContentItemFromAiDraft,
+  reviseDraftContentFromAi,
   createEditionFlatplan,
   createNetworkSocialQueueSuggestions,
   createTemplateRevision,
@@ -41,6 +43,8 @@ import {
   submitPageForReview
 } from "./service";
 import type { PublishingData } from "./types";
+import { contentDraftTask, normaliseContentDraft } from "./ai-tasks";
+import { AiOutputError } from "@raring2go/ai";
 import type { PermissionData } from "@raring2go/permissions";
 
 const ids = {
@@ -812,6 +816,84 @@ describe("publishing edition model", () => {
     const suggestions = await createNetworkSocialQueueSuggestions(hqContext(), permissions, recorder, publishingData, "variant_facebook", [ids.territories.own, ids.territories.other]);
     expect(suggestions.map((suggestion) => suggestion.territoryId)).toEqual([ids.territories.own, ids.territories.other]);
     expect(socialContentGaps(publishingData, "2026-08-11T00:00:00.000Z").some((gap) => gap.signals.includes("no_social_scheduled_next_7_days"))).toBe(true);
+  });
+});
+
+describe("AI content drafts (AI-002)", () => {
+  const draft = { title: "Half term fun", standfirst: "Ideas for the holidays.", body: "Paragraph one.\n\nParagraph two.", notes: "Confirm dates." };
+
+  it("creates a NEW draft content item with AI provenance, never published or approved", async () => {
+    const publishingData = emptyData();
+    const recorder = audit();
+    const { item, version } = await createContentItemFromAiDraft(hqContext(), permissions, recorder, publishingData, {
+      itemId: "ai_item_1", versionId: "ai_item_1_v1", contentType: "article", draft, aiRunId: "run-1", organisationId: ids.organisations.hq
+    });
+
+    expect(item).toMatchObject({ status: "draft", sourceType: "ai", ownerLevel: "network", approvedAt: null, publishedAt: null, approvedByUserId: null });
+    expect(item.provenance).toMatchObject({ generatedBy: "ai", aiRunId: "run-1", acceptedByUserId: ids.users.hq });
+    expect(version).toMatchObject({ versionNumber: 1, status: "draft", changeSummary: "AI draft accepted" });
+    expect(version.snapshot).toEqual({ title: "Half term fun", standfirst: "Ideas for the holidays.", body: "Paragraph one.\n\nParagraph two." });
+    expect(publishingData.contentItems).toHaveLength(1);
+    expect(recorder.events.map((event) => event.action)).toContain(auditActions.contentCreated);
+  });
+
+  it("denies users without content.ai.generate or content.create, and rejects empty drafts", async () => {
+    const publishingData = emptyData();
+    const common = { itemId: "x", versionId: "x_v1", contentType: "article", aiRunId: "run-1" };
+    // The local role may generate with AI but has no content.create grant in this fixture.
+    await expect(createContentItemFromAiDraft(localContext(), permissions, audit(), publishingData, { ...common, draft, territoryId: ids.territories.own })).rejects.toThrow();
+    await expect(createContentItemFromAiDraft(hqContext(), permissions, audit(), publishingData, { ...common, draft: { ...draft, body: "  " } })).rejects.toThrow(/title and body/);
+    expect(publishingData.contentItems).toHaveLength(0);
+  });
+
+  it("revises a draft item as a new draft version, but refuses approved or published content", async () => {
+    const publishingData = emptyData();
+    const recorder = audit();
+    const item = canonicalContent();
+    await createCanonicalContentItem(hqContext(), permissions, recorder, publishingData, item, canonicalVersion(item, 1));
+
+    const { version } = await reviseDraftContentFromAi(hqContext(), permissions, recorder, publishingData, item.id, { versionId: "rev_v2", draft, aiRunId: "run-2" });
+    expect(version).toMatchObject({ versionNumber: 2, changeSummary: "AI revision accepted" });
+    expect(item).toMatchObject({ title: "Half term fun", status: "draft" });
+    expect(item.provenance).toMatchObject({ lastAiRunId: "run-2" });
+    expect(publishingData.contentDomainEvents.map((event) => event.eventType)).toContain(auditActions.contentUpdated);
+
+    (item as { status: string }).status = "approved";
+    await expect(reviseDraftContentFromAi(hqContext(), permissions, recorder, publishingData, item.id, { versionId: "rev_v3", draft, aiRunId: "run-3" })).rejects.toThrow(/Only draft content/);
+    expect(publishingData.contentItemVersions).toHaveLength(2);
+  });
+});
+
+describe("content draft task", () => {
+  const input = { brief: "Half term ideas in Sutton", contentType: "article", territoryName: "Sutton Coldfield" };
+
+  it("parses a clean or fenced JSON draft and strips any markup", () => {
+    const raw = JSON.stringify({ title: "<b>Half term</b>", standfirst: "Ideas", body: "Para <script>x</script>one", notes: "" });
+    expect(contentDraftTask.parse(raw, input)).toEqual({ title: "Half term", standfirst: "Ideas", body: "Para xone", notes: "" });
+    expect(contentDraftTask.parse("```json\n" + raw + "\n```", input).title).toBe("Half term");
+  });
+
+  it("bounds lengths and rejects unusable output", () => {
+    const long = normaliseContentDraft({ title: "t".repeat(500), body: "b".repeat(20_000) });
+    expect(long.title.length).toBeLessThanOrEqual(140);
+    expect(long.body.length).toBeLessThanOrEqual(8_000);
+    expect(() => contentDraftTask.parse("not json", input)).toThrow(AiOutputError);
+    expect(() => normaliseContentDraft({ title: "x" })).toThrow(/body/);
+    expect(() => normaliseContentDraft({ title: 5, body: "b" })).toThrow(/title/);
+    expect(() => normaliseContentDraft([])).toThrow(AiOutputError);
+  });
+
+  it("validates external workflow output the same way and sends structured input, not a prompt", () => {
+    expect(contentDraftTask.fromStructured!({ title: "T", body: "B" }, input)).toMatchObject({ title: "T", body: "B", standfirst: "" });
+    expect(() => contentDraftTask.fromStructured!({ title: "T" }, input)).toThrow(AiOutputError);
+    expect(contentDraftTask.structuredInput!(input)).toEqual({ brief: "Half term ideas in Sutton", contentType: "article", territory: "Sutton Coldfield", existing: null });
+  });
+
+  it("tells the model not to invent facts and records revisions in the input summary", () => {
+    expect(contentDraftTask.system).toMatch(/Never invent facts/);
+    expect(contentDraftTask.summariseInput({ ...input, existing: { title: "x" } })).toMatchObject({ revising: true });
+    expect(contentDraftTask.risk).toBe("low");
+    expect(contentDraftTask.approval).toBe("review");
   });
 });
 

@@ -1,8 +1,10 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
-import { readContentWorkspaceView } from "../../../../../lib/publishing-runtime";
+import { hasContentAiCapability, readContentWorkspaceView } from "../../../../../lib/publishing-runtime";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
+import { generateContentDraftAction } from "../actions";
+import { ContentDraftForm } from "../ContentDraftForm";
 
 const channels = ["magazine", "website", "newsletter", "facebook", "instagram", "linkedin"];
 
@@ -52,6 +54,15 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
           </article>
         </div>
       </section>
+
+      {libraryItem.item.status === "draft" && result.canUseAi ? (
+        <section className="app-panel franchise-panel" aria-label="Revise with AI">
+          <p className="eyebrow">AI</p>
+          <h2>Revise this draft with AI</h2>
+          <p>Describe the change. You will review the result before it becomes a new draft version; approved and published content is never changed this way.</p>
+          <ContentDraftForm action={generateContentDraftAction.bind(null, request, libraryItem.item.id)} revising defaultType={libraryItem.item.contentType} />
+        </section>
+      ) : null}
 
       <RelatedRecords
         title="Editorial distribution"
@@ -161,13 +172,14 @@ async function loadWorkspace(
       module: "content",
       action: "view"
     });
-    const workspace = await readContentWorkspaceView({
+    const actor = {
       userId: shell.userId,
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
-    }, contentItemId);
+    };
+    const workspace = await readContentWorkspaceView(actor, contentItemId);
 
-    return { workspace };
+    return { workspace, canUseAi: hasContentAiCapability(actor) };
   } catch (error) {
     return { error };
   }

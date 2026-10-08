@@ -45,6 +45,13 @@ export type AiTask<Input, Output extends Record<string, unknown>> = {
   parse(text: string, input: Input): Output;
   /** Template output used when no model is configured (tests, development). */
   deterministic(input: Input): Output;
+  /**
+   * Validates structured output from an external workflow (see workflow.ts). Required for
+   * a task to be routable to one; must throw AiOutputError on anything unusable.
+   */
+  fromStructured?(raw: unknown, input: Input): Output;
+  /** Structured input sent to an external workflow in place of the built-in prompt. */
+  structuredInput?(input: Input): Record<string, unknown>;
   /** Bounded, secret-free summary of the input to store with the run. */
   summariseInput(input: Input): Record<string, unknown>;
   sources?(input: Input): AiSourceRef[];

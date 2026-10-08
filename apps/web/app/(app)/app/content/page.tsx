@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
-import { listContentLibraryItems } from "../../../../lib/publishing-runtime";
+import { hasContentAiCapability, listContentLibraryItems } from "../../../../lib/publishing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
@@ -29,6 +29,11 @@ export default async function ContentLibraryPage({ searchParams }: PageProps) {
           Create once, localise, repurpose and review channel variants while
           keeping source provenance intact.
         </p>
+        {result.canUseAi ? (
+          <div className="franchise-actions">
+            <Link href={"/app/content/new" as Route}>Draft new content with AI</Link>
+          </div>
+        ) : null}
         <div className="franchise-metrics">
           <article>
             <span>Items</span>
@@ -73,13 +78,14 @@ async function loadContent(request: Awaited<ReturnType<typeof requestFromSearchP
       module: "content",
       action: "view"
     });
-    const items = await listContentLibraryItems({
+    const actor = {
       userId: shell.userId,
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
-    });
+    };
+    const items = await listContentLibraryItems(actor);
 
-    return { items };
+    return { items, canUseAi: hasContentAiCapability(actor) };
   } catch (error) {
     return { error };
   }

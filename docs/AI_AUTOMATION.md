@@ -34,3 +34,27 @@ Every AI call that matters leaves an `ai_runs` row (migration `0042`): task key 
 - **AI Runs console** (`/app/system/ai`): filterable by decision, with per-run detail (sources, input, output, model, usage) and approve/reject. Permissions `ai.run.view` and `ai.run.decide`: HQ network scope, franchisee own territory only; another territory's run is indistinguishable from a missing one.
 - **Pricing** moved to `@raring2go/ai` (`estimateCostMinor`); the existing spend cap and rate limit are unchanged. Pricing figures remain unverified against the vendor's current price list.
 - **Seed/migration impact.** Migration `0042` is additive (`DROP TABLE ai_runs` to roll back). Seed adds permissions `…0553-0554` and HQ/franchisee grants; re-run `pnpm db:seed`.
+
+
+## Content drafts and external workflows (AI-002)
+
+**Content Studio → "Draft new content with AI"** (`/app/content/new`) and **"Revise this draft with AI"** on a draft content record. The brief goes through the `content.draft` task; the user then reviews the draft (`/app/content/drafts/[runId]`) and accepts or rejects it: no copy/paste.
+
+- **Nothing is written until accepted.** Generating only creates an `ai_runs` row (`pending`). *Accept* is one transaction: a NEW content item (or a new draft version of a draft item), the run's approval, the `applied_at` mark and the domain events commit together. *Reject* records the decision and creates nothing.
+- **AI content is always a draft.** New items are `status: draft`, `source_type: ai`, with `provenance.aiRunId`/`acceptedByUserId`, `approved_at`/`published_at` null; they enter the normal approval path. **Approved or published content cannot be revised by AI** (it would bypass the approval it already had).
+- **Output hygiene.** Output is validated (title and body required), length-bounded and stripped of HTML. The prompt forbids inventing dates, prices, venues, quotes or links and asks the model to list what to confirm in `notes`, which is shown prominently on the review page.
+- **Permissions.** Running needs `content.ai.generate`; accepting additionally needs `content.create` (new) or `content.edit` (revision) and territory access; deciding needs `ai.run.decide`. A territory user cannot see or accept another scope's run (indistinguishable from missing).
+- **Failure and limits.** Per-territory rate limit and monthly spend cap apply; usage is recorded for the cap. A failed or unusable response records a failed run and shows a safe message.
+
+### Wiring the existing GPT workflows (adapter, not copied prompts)
+
+The existing Raring2go content-creation and events-finding GPT workflows are not defined in this repository, so they are integrated through an adapter boundary rather than reproduced. If a workflow is exposed as an HTTPS service, set:
+
+```
+AI_WORKFLOW_CONTENT_DRAFT_URL=https://…      AI_WORKFLOW_CONTENT_DRAFT_TOKEN=…   # optional bearer
+AI_WORKFLOW_EVENTS_DISCOVER_URL=https://…    AI_WORKFLOW_EVENTS_DISCOVER_TOKEN=…
+```
+
+The runner then POSTs `{ "task": "content.draft", "input": { brief, contentType, territory, existing } }` and expects `{ "output": { title, standfirst, body, notes }, "model"?: string, "usage"?: { inputTokens, outputTokens } }`. The platform validates the output exactly as it does built-in output; the run is recorded with provider `external_workflow`. Only https is accepted (http for localhost), redirects are refused, responses are size- and time-limited, and error text shows the HTTP status only, never the response body. Without a URL the built-in prompt path (Anthropic, or the deterministic dev provider) is used. A custom GPT without an API cannot be called directly: it must be fronted by a small service that accepts this contract.
+
+**Seed/migration impact.** No migration. Seed grants franchisee `content.create`/`content.edit` for their own territory.
