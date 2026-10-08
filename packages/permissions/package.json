@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@raring2go/audit": "workspace:*"
+    "@raring2go/audit": "workspace:*",
+    "@raring2go/db": "workspace:*",
+    "drizzle-orm": "0.45.2"
   },
   "devDependencies": {
     "vitest": "4.1.10"

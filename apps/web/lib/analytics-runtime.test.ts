@@ -1,10 +1,11 @@
-import { createDb, auditEvents, fixtureIds, franchiseHealthSnapshots, metricSnapshots } from "@raring2go/db";
+import { createDb, auditEvents, fixtureIds, fixturePermissionData, franchiseHealthSnapshots, metricSnapshots } from "@raring2go/db";
 import { and, eq, gte } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildJobRegistry, registeredJobKinds } from "./jobs-runtime";
-import { analyticsPermissionData, generateSnapshotAsActor, hasAnalyticsCapability, hasNetworkAnalyticsAccess, readScorecardForActor, SNAPSHOT_METRICS_KIND } from "./analytics-runtime";
+import { generateSnapshotAsActor, hasAnalyticsCapability, hasNetworkAnalyticsAccess, readScorecardForActor, SNAPSHOT_METRICS_KIND } from "./analytics-runtime";
 
 const hq = { userId: fixtureIds.users.superAdmin, organisationId: fixtureIds.organisations.hq };
+const permissions = fixturePermissionData();
 const sutton = { userId: fixtureIds.users.franchisee, organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
 
 describe("analytics runtime permissions", () => {
@@ -14,16 +15,15 @@ describe("analytics runtime permissions", () => {
   });
 
   it("gives HQ network access to everything and a franchisee only their own scorecard", () => {
-    expect(hasNetworkAnalyticsAccess(hq.userId)).toBe(true);
-    expect(hasNetworkAnalyticsAccess(hq.userId, "healthConfigManage")).toBe(true);
-    expect(hasNetworkAnalyticsAccess(hq.userId, "snapshotGenerate")).toBe(true);
+    expect(hasNetworkAnalyticsAccess(permissions, hq.userId)).toBe(true);
+    expect(hasNetworkAnalyticsAccess(permissions, hq.userId, "healthConfigManage")).toBe(true);
+    expect(hasNetworkAnalyticsAccess(permissions, hq.userId, "snapshotGenerate")).toBe(true);
 
-    expect(hasAnalyticsCapability(sutton, "scorecardView")).toBe(true);
-    expect(hasNetworkAnalyticsAccess(sutton.userId)).toBe(false);
-    expect(hasAnalyticsCapability(sutton, "healthConfigManage")).toBe(false);
-    expect(hasAnalyticsCapability(sutton, "snapshotGenerate")).toBe(false);
-    expect(hasAnalyticsCapability({ userId: fixtureIds.users.advertiserUser }, "scorecardView")).toBe(false);
-    expect(analyticsPermissionData.rolePermissions.every((grant) => grant.permission.module.startsWith("analytics."))).toBe(true);
+    expect(hasAnalyticsCapability(permissions, sutton, "scorecardView")).toBe(true);
+    expect(hasNetworkAnalyticsAccess(permissions, sutton.userId)).toBe(false);
+    expect(hasAnalyticsCapability(permissions, sutton, "healthConfigManage")).toBe(false);
+    expect(hasAnalyticsCapability(permissions, sutton, "snapshotGenerate")).toBe(false);
+    expect(hasAnalyticsCapability(permissions, { userId: fixtureIds.users.advertiserUser }, "scorecardView")).toBe(false);
   });
 });
 

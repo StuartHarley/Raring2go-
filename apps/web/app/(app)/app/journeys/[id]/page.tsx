@@ -6,6 +6,7 @@ import { requestFromSearchParamsAndCookies } from "../../page";
 import { JourneyBuilderFields } from "../JourneyBuilderFields";
 import { activateJourneyAction, approveJourneyAction, pauseJourneyAction, updateJourneyDraftAction } from "../actions";
 import type { MarketingActorContext } from "@raring2go/marketing";
+import { getPermissionData } from "../../../../../lib/permission-source";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -135,14 +136,16 @@ async function loadJourney(request: Awaited<ReturnType<typeof requestFromSearchP
       ? listNetworkTerritories().filter((territory) => territory.id === context.territoryId)
       : listNetworkTerritories();
 
+    const permissions = await getPermissionData();
+
     return {
       context,
       detail,
       territoryOptions,
-      canEdit: hasMarketingCapability(context, "journeyEdit"),
-      canApprove: hasMarketingCapability(context, "journeyApprove"),
-      canActivate: hasMarketingCapability(context, "journeyActivate"),
-      canPause: hasMarketingCapability(context, "journeyPause")
+      canEdit: hasMarketingCapability(permissions, context, "journeyEdit"),
+      canApprove: hasMarketingCapability(permissions, context, "journeyApprove"),
+      canActivate: hasMarketingCapability(permissions, context, "journeyActivate"),
+      canPause: hasMarketingCapability(permissions, context, "journeyPause")
     };
   } catch (error) {
     return { error };

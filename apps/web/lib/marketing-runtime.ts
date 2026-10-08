@@ -72,72 +72,9 @@ import type {
 } from "@raring2go/marketing";
 import { evaluatePermission, type PermissionData } from "@raring2go/permissions";
 import { marketingCapabilities, type MarketingCapability } from "@raring2go/marketing";
+import { getPermissionData } from "./permission-source";
 
-export const marketingPermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  rolePermissions: [
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.audienceView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.audienceManage, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.segmentView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.segmentManage, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailCreate, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailApprove, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailSchedule, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailSend, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.emailAiAssist, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryManage, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryApprove, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.newsletterFactoryContribute, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyCreate, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyEdit, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyApprove, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyActivate, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyPause, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.journeyExecute, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.marketingAnalyticsView, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.audienceView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.segmentView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.segmentManage, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailCreate, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailApprove, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailSchedule, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailSend, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.emailAiAssist, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.newsletterFactoryContribute, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyView, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyCreate, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyEdit, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyApprove, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyActivate, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.journeyPause, "own_territory"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.marketingAnalyticsView, "own_territory")
-  ],
-  territories: foundationSeed.territories.map((territory) => ({
-    id: territory.id,
-    franchiseOrganisationId: territory.franchiseOrganisationId
-  }))
-};
-
-export function hasMarketingCapability(context: MarketingActorContext, capability: MarketingCapability): boolean {
+export function hasMarketingCapability(permissions: PermissionData, context: MarketingActorContext, capability: MarketingCapability): boolean {
   const required = marketingCapabilities[capability];
   return evaluatePermission(
     {
@@ -149,11 +86,12 @@ export function hasMarketingCapability(context: MarketingActorContext, capabilit
         territoryId: context.territoryId ?? undefined
       }
     },
-    marketingPermissionData
+    permissions
   ).allowed;
 }
 
 export async function readAudienceOverview(context: MarketingActorContext) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -164,6 +102,7 @@ export async function readAudienceOverview(context: MarketingActorContext) {
 }
 
 export async function readEmailCampaignOverview(context: MarketingActorContext) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -178,6 +117,7 @@ export function listNetworkTerritories() {
 }
 
 export async function readSegments(context: MarketingActorContext) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -188,6 +128,7 @@ export async function readSegments(context: MarketingActorContext) {
 }
 
 export async function readSegmentsWithAudienceCounts(context: MarketingActorContext) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -206,6 +147,7 @@ export async function previewSegmentAudience(
   context: MarketingActorContext,
   input: { territoryId?: string | null; definition: Record<string, unknown> }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -219,6 +161,7 @@ export async function createAudienceSegment(
   context: MarketingActorContext,
   input: { key: string; name: string; territoryId?: string | null; definition: unknown }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -238,6 +181,7 @@ export async function updateAudienceSegment(
   segmentId: string,
   input: { name?: string; definition?: unknown }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -253,6 +197,7 @@ export async function updateAudienceSegment(
 }
 
 export async function readNewsletterFactoryOverview(context: MarketingActorContext) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -263,6 +208,7 @@ export async function readNewsletterFactoryOverview(context: MarketingActorConte
 }
 
 export async function readJourneyOverview(context: MarketingActorContext) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -273,6 +219,7 @@ export async function readJourneyOverview(context: MarketingActorContext) {
 }
 
 export async function readJourneyDetail(context: MarketingActorContext, journeyId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -299,6 +246,7 @@ export async function createMarketingJourney(
     aiSuggestions?: Record<string, unknown>;
   }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -353,6 +301,7 @@ export async function updateMarketingJourneyDraft(
     steps?: JourneyStep[];
   }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -369,6 +318,7 @@ export async function updateMarketingJourneyDraft(
 }
 
 export async function approveMarketingJourneyVersion(context: MarketingActorContext, journeyId: string, versionId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -394,6 +344,7 @@ export async function approveMarketingJourneyVersion(context: MarketingActorCont
 }
 
 export async function activateMarketingJourney(context: MarketingActorContext, journeyId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -409,6 +360,7 @@ export async function activateMarketingJourney(context: MarketingActorContext, j
 }
 
 export async function pauseMarketingJourney(context: MarketingActorContext, journeyId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -433,6 +385,7 @@ export async function subscribeContactAndTriggerJourneys(
   context: MarketingActorContext,
   input: { contactId: string; territoryId: string; source: string; preferences?: Record<string, unknown> }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -477,6 +430,7 @@ export async function subscribeContactAndTriggerJourneys(
 }
 
 export async function readPreferenceCentre(context: MarketingActorContext, contactId = fixtureIds.audienceContacts.parentOne) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -487,6 +441,7 @@ export async function readPreferenceCentre(context: MarketingActorContext, conta
 }
 
 export async function readMarketingAnalytics(context: MarketingActorContext) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -497,6 +452,7 @@ export async function readMarketingAnalytics(context: MarketingActorContext) {
 }
 
 export async function readMarketingCommandCentre(context: MarketingActorContext) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -522,6 +478,7 @@ export async function composeEmailCampaign(
     variantBVersionId?: string;
   }
 ) {
+  const marketingPermissionData = await getPermissionData();
   if (input.blocks.length === 0) {
     throw new Error("Add at least one block before composing a campaign.");
   }
@@ -616,6 +573,7 @@ export async function composeEmailCampaign(
 }
 
 export async function approveCampaignVersion(context: MarketingActorContext, campaignId: string, versionId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -641,6 +599,7 @@ export async function approveCampaignVersion(context: MarketingActorContext, cam
 }
 
 export async function generateCampaignRecipientSnapshot(context: MarketingActorContext, campaignId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -678,6 +637,7 @@ export async function generateCampaignRecipientSnapshot(context: MarketingActorC
 }
 
 export async function scheduleCampaign(context: MarketingActorContext, campaignId: string, scheduledAt: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -706,6 +666,7 @@ export async function scheduleCampaignWithSendTimeOptimization(
   campaignId: string,
   input: { scheduledAt: string; defaultHour?: number }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -732,6 +693,7 @@ export async function scheduleCampaignWithSendTimeOptimization(
 }
 
 export async function startAbTest(context: MarketingActorContext, campaignId: string, sampleFraction?: number) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -761,6 +723,7 @@ export async function startAbTest(context: MarketingActorContext, campaignId: st
 }
 
 export async function readSubjectLineComparison(context: MarketingActorContext, campaignId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -771,6 +734,7 @@ export async function readSubjectLineComparison(context: MarketingActorContext, 
 }
 
 export async function declareWinner(context: MarketingActorContext, campaignId: string, winningVersionId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -792,6 +756,7 @@ export async function declareWinner(context: MarketingActorContext, campaignId: 
 }
 
 export async function generateWinnerRemainderSnapshot(context: MarketingActorContext, campaignId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -814,6 +779,7 @@ export async function createNewsletterMaster(
   context: MarketingActorContext,
   input: { masterId: string; title: string; seasonKey: string | null; requireLocalContent: boolean }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -843,6 +809,7 @@ export async function createNewsletterMaster(
 }
 
 export async function approveNewsletterMaster(context: MarketingActorContext, masterId: string) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -865,6 +832,7 @@ export async function approveNewsletterMaster(context: MarketingActorContext, ma
 }
 
 export async function generateNewsletterEditions(context: MarketingActorContext, masterId: string, territoryIds: string[]) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -901,6 +869,7 @@ export async function addNewsletterEditionOverride(
   editionId: string,
   overrides: Record<string, unknown>
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -919,6 +888,7 @@ export async function createCampaignFromEdition(
   context: MarketingActorContext,
   input: { editionId: string; campaignId: string; versionId: string; segmentId: string; subject: string; preheader: string | null }
 ) {
+  const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -954,18 +924,5 @@ function auditFor(db: Parameters<typeof recordAuditEvent>[0]) {
         scope: { organisationId: input.organisationId ?? undefined, territoryId: input.territoryId ?? undefined },
         after: input.payload
       }).then(() => undefined)
-  };
-}
-
-function grant(roleId: string, permissionId: string, scope: string) {
-  const permission = foundationSeed.permissions.find((candidate) => candidate.id === permissionId);
-  if (!permission) {
-    throw new Error("Fixture permission seed is inconsistent.");
-  }
-  return {
-    roleId,
-    permission,
-    scope,
-    constraints: {}
   };
 }

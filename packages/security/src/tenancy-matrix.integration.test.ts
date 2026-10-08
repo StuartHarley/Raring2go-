@@ -1,12 +1,12 @@
-import { createDb, fixtureIds, permissions, rolePermissions, roles, territories, userRoleAssignments } from "@raring2go/db";
-import { evaluatePermission } from "@raring2go/permissions";
+import { createDb, fixtureIds, permissions, rolePermissions, roles } from "@raring2go/db";
+import { evaluatePermission, loadPermissionData } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import { eq, isNull } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
- * Cross-tenant isolation, checked against the RBAC data actually seeded in Postgres rather than
- * a hand-written fixture, so a seed change that widens a role is caught here.
+ * Cross-tenant isolation, checked against the RBAC data in Postgres as loaded by the production
+ * loader (not a hand-written fixture), so a seed or admin change that widens a role is caught here.
  * `RUN_DB_TESTS=1 pnpm --filter @raring2go/security test`
  */
 describe.skipIf(!process.env.RUN_DB_TESTS)("tenant isolation matrix (seeded RBAC)", () => {
@@ -15,22 +15,15 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("tenant isolation matrix (seeded RBAC
   let grants: Array<{ roleId: string; roleKey: string; module: string; action: string; scope: string }> = [];
 
   beforeAll(async () => {
-    const [grantRows, assignmentRows, territoryRows] = await Promise.all([
-      db
-        .select({ roleId: roles.id, roleKey: roles.key, id: permissions.id, module: permissions.module, action: permissions.action, scope: rolePermissions.scope, constraints: rolePermissions.constraints })
-        .from(rolePermissions)
-        .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
-        .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-        .where(isNull(roles.deletedAt)),
-      db.select().from(userRoleAssignments),
-      db.select().from(territories).where(isNull(territories.deletedAt))
-    ]);
-    grants = grantRows.map((row) => ({ roleId: row.roleId, roleKey: row.roleKey, module: row.module, action: row.action, scope: row.scope }));
-    data = {
-      roleAssignments: assignmentRows.map((row) => ({ id: row.id, userId: row.userId, roleId: row.roleId, organisationId: row.organisationId, territoryId: row.territoryId, startsAt: row.startsAt, endsAt: row.endsAt })),
-      rolePermissions: grantRows.map((row) => ({ roleId: row.roleId, permission: { id: row.id, module: row.module, action: row.action }, scope: row.scope, constraints: row.constraints })),
-      territories: territoryRows.map((row) => ({ id: row.id, franchiseOrganisationId: row.franchiseOrganisationId, status: row.status }))
-    };
+    // The production loader, so the matrix tests exactly what the application enforces.
+    data = await loadPermissionData(db);
+    const grantRows = await db
+      .select({ roleId: roles.id, roleKey: roles.key, module: permissions.module, action: permissions.action, scope: rolePermissions.scope })
+      .from(rolePermissions)
+      .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(isNull(roles.deletedAt));
+    grants = grantRows;
   });
 
   afterAll(async () => {

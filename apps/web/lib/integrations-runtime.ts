@@ -1,4 +1,4 @@
-import { createDb, fixtureIds, foundationSeed, socialAccounts } from "@raring2go/db";
+import { createDb, socialAccounts } from "@raring2go/db";
 import {
   completeProviderConnection,
   createDrizzleProviderConnectionRepository,
@@ -11,7 +11,6 @@ import {
   getConnectionCredential,
   getMicrosoftMailboxIdentity,
   hashOAuthValue,
-  integrationCapabilities,
   listMetaFacebookPages,
   refreshMicrosoftAccessToken,
   revokeProviderConnection,
@@ -19,38 +18,10 @@ import {
 } from "@raring2go/integrations";
 import { recordAuditEvent } from "@raring2go/audit";
 import { eq } from "drizzle-orm";
-import type { PermissionData } from "@raring2go/permissions";
 import type { ProviderConnection } from "@raring2go/integrations";
 import type { RequestedShellContext } from "./app-shell";
 import { requireShellPermission, resolveShell } from "./app-shell";
-
-export const integrationsPermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  rolePermissions: [
-    ...Object.entries(integrationCapabilities).flatMap(([key, capability]) => [
-      grant(fixtureIds.roles.hqAdmin, capability, "network"),
-      grant(fixtureIds.roles.franchisee, capability, "own_territory", key)
-    ])
-  ],
-  territories: foundationSeed.territories.map((territory) => ({
-    id: territory.id,
-    franchiseOrganisationId: territory.franchiseOrganisationId
-  }))
-};
+import { getPermissionData } from "./permission-source";
 
 export async function listConnectionCards(
   request: RequestedShellContext,
@@ -89,6 +60,7 @@ export async function listConnectionCards(
 }
 
 export async function startMetaConnection(request: RequestedShellContext, returnTo?: string | null) {
+  const integrationsPermissionData = await getPermissionData();
   const shell = await requireShellPermission(request, { module: "integrations", action: "connect" });
   const { db, sql } = createDb();
 
@@ -123,6 +95,7 @@ export async function completeMetaConnection(input: {
   code: string;
   selectedPageId?: string | null;
 }) {
+  const integrationsPermissionData = await getPermissionData();
   const shell = await resolveShell(input.request);
   if (shell.kind !== "authenticated") {
     throw new Error("Meta OAuth callback requires an active session.");
@@ -211,6 +184,7 @@ export async function completeMetaConnection(input: {
 }
 
 export async function disconnectMetaConnection(request: RequestedShellContext, connectionId: string) {
+  const integrationsPermissionData = await getPermissionData();
   const shell = await requireShellPermission(request, { module: "integrations", action: "revoke" });
   const { db, sql } = createDb();
 
@@ -241,6 +215,7 @@ export async function disconnectMetaConnection(request: RequestedShellContext, c
 export const disconnectMicrosoftConnection = disconnectMetaConnection;
 
 export async function startMicrosoftConnection(request: RequestedShellContext, returnTo?: string | null) {
+  const integrationsPermissionData = await getPermissionData();
   const shell = await requireShellPermission(request, { module: "integrations", action: "connect" });
   const { db, sql } = createDb();
 
@@ -272,6 +247,7 @@ export async function completeMicrosoftConnection(input: {
   state: string;
   code: string;
 }) {
+  const integrationsPermissionData = await getPermissionData();
   const shell = await resolveShell(input.request);
   if (shell.kind !== "authenticated") {
     throw new Error("Microsoft OAuth callback requires an active session.");
@@ -477,15 +453,3 @@ async function upsertSocialAccount(
   });
 }
 
-function grant(roleId: string, permission: { module: string; action: string }, scope: string, suffix = permission.action) {
-  return {
-    roleId,
-    permissionId: `${roleId}:${permission.module}:${permission.action}:${suffix}`,
-    permission: {
-      id: `${roleId}:${permission.module}:${permission.action}:${suffix}`,
-      ...permission
-    },
-    scope,
-    constraints: {}
-  };
-}

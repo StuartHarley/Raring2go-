@@ -1,3 +1,4 @@
+import type { PermissionData } from "@raring2go/permissions";
 import type { PrivacyRequestRecord } from "@raring2go/security";
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { can, readPrivacyRequests } from "../../../../lib/privacy-runtime";
@@ -5,6 +6,7 @@ import type { PrivacyActorContext } from "../../../../lib/privacy-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { decideAction, openRequestAction } from "./actions";
+import { getPermissionData } from "../../../../lib/permission-source";
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   opened: { tone: "success", text: "Request opened. The one-month deadline is shown below." },
@@ -30,12 +32,12 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
   try {
     const shell = await requireShellPermission(request, { module: "privacy.request", action: "view" });
     const context: PrivacyActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
-    loaded = { context, ...(await readPrivacyRequests(context)) };
+    loaded = { context, permissions: await getPermissionData(), ...(await readPrivacyRequests(context)) };
   } catch (error) {
     return protectedOutcome(error);
   }
 
-  const { context, requests, checkedAt } = loaded;
+  const { context, permissions, requests, checkedAt } = loaded;
   const resultParam = Array.isArray(params.result) ? params.result[0] : params.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
   const now = checkedAt.getTime();
@@ -69,7 +71,7 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
         ) : null}
       </section>
 
-      {can(context, "create") ? (
+      {can(permissions, context, "create") ? (
         <section className="app-panel franchise-panel" aria-label="Open a request">
           <p className="eyebrow">New</p>
           <h2>Open a request</h2>
@@ -125,7 +127,7 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
                       {entry.status === "requested" && entry.dueAt.getTime() < now ? " (overdue)" : ""}
                     </td>
                     <td>{describeOutcome(entry)}</td>
-                    <td>{actionsFor(entry, context, request, query)}</td>
+                    <td>{actionsFor(entry, permissions, context, request, query)}</td>
                   </tr>
                 ))
               )}
@@ -150,11 +152,11 @@ function describeOutcome(entry: PrivacyRequestRecord) {
   return `${entry.kind === "erasure" ? "Erased" : "Exported"}: ${total} related records`;
 }
 
-function actionsFor(entry: PrivacyRequestRecord, context: PrivacyActorContext, request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>, query: string) {
-  if (entry.kind === "export" && entry.subjectContactId && entry.status !== "rejected" && can(context, "export")) {
+function actionsFor(entry: PrivacyRequestRecord, permissions: PermissionData, context: PrivacyActorContext, request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>, query: string) {
+  if (entry.kind === "export" && entry.subjectContactId && entry.status !== "rejected" && can(permissions, context, "export")) {
     return <a href={`/app/privacy/${entry.id}/export${query}`}>Download data (JSON)</a>;
   }
-  if (entry.kind === "erasure" && entry.status === "requested" && can(context, "decide")) {
+  if (entry.kind === "erasure" && entry.status === "requested" && can(permissions, context, "decide")) {
     if (entry.requestedByUserId === context.userId) return <span>Waiting for a second person to approve</span>;
     return (
       <div className="franchise-actions">

@@ -6,6 +6,7 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { generateContentDraftAction } from "../actions";
 import { ContentDraftForm } from "../ContentDraftForm";
+import { getPermissionData } from "../../../../../lib/permission-source";
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -17,7 +18,7 @@ export default async function NewAiContentPage({ searchParams }: PageProps) {
     // Route gate is content.view; content.ai.generate (and create/edit) are enforced by the
     // runtime when the draft is requested and accepted, against the publishing permission data.
     const shell = await requireShellPermission(request, { module: "content", action: "view" });
-    canUseAi = hasContentAiCapability({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId });
+    canUseAi = hasContentAiCapability(await getPermissionData(), { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId });
   } catch (error) {
     return protectedOutcome(error);
   }

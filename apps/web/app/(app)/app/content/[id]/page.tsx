@@ -8,6 +8,7 @@ import { requestFromSearchParamsAndCookies } from "../../page";
 import { approveVariantAction, generateContentDraftAction, repurposeContentAction } from "../actions";
 import { RepurposeForm } from "../RepurposeForm";
 import { ContentDraftForm } from "../ContentDraftForm";
+import { getPermissionData } from "../../../../../lib/permission-source";
 
 const channels = ["magazine", "website", "newsletter", "facebook", "instagram", "linkedin"];
 
@@ -227,7 +228,7 @@ async function loadWorkspace(
     };
     const workspace = await readContentWorkspaceView(actor, contentItemId);
 
-    return { workspace, canUseAi: hasContentAiCapability(actor) };
+    return { workspace, canUseAi: hasContentAiCapability(await getPermissionData(), actor) };
   } catch (error) {
     return { error };
   }

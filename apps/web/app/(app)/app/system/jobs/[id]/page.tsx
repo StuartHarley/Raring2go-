@@ -7,6 +7,7 @@ import { Breadcrumbs, StatusBadge } from "../../../../../../lib/workflow-ui";
 import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { cancelJobAction, retryJobAction } from "../actions";
+import { getPermissionData } from "../../../../../../lib/permission-source";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -22,7 +23,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
     return protectedOutcome(result.error);
   }
 
-  const { context, job, attempts } = result;
+  const { context, permissions, job, attempts } = result;
 
   return (
     <AppShell request={request}>
@@ -78,12 +79,12 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           ) : null}
         </dl>
         <div className="franchise-actions">
-          {(job.status === "dead" || job.status === "cancelled") && registeredJobKinds.includes(job.kind) && hasJobCapability(context, "retry", job) ? (
+          {(job.status === "dead" || job.status === "cancelled") && registeredJobKinds.includes(job.kind) && hasJobCapability(permissions, context, "retry", job) ? (
             <form action={retryJobAction.bind(null, request, "jobs", job.id)}>
               <button type="submit">Retry job</button>
             </form>
           ) : null}
-          {job.status === "queued" && hasJobCapability(context, "cancel", job) ? (
+          {job.status === "queued" && hasJobCapability(permissions, context, "cancel", job) ? (
             <form action={cancelJobAction.bind(null, request, job.id)}>
               <button type="submit">Cancel job</button>
             </form>
@@ -137,7 +138,7 @@ async function loadJob(request: Awaited<ReturnType<typeof requestFromSearchParam
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
     };
-    return { context, ...(await readJobDetail(context, id)) };
+    return { context, permissions: await getPermissionData(), ...(await readJobDetail(context, id)) };
   } catch (error) {
     return { error };
   }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { recordAuditEvent } from "@raring2go/audit";
-import { createDb, fixtureIds } from "@raring2go/db";
+import { createDb } from "@raring2go/db";
 import { evaluatePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import {
@@ -32,55 +32,11 @@ import { createOverdueInvoiceScanner, engineHooks, knownHooks, SCAN_OVERDUE_INVO
 import { createSnapshotMetricsHandler, SNAPSHOT_METRICS_KIND, snapshotMetricsIdempotencyKey } from "./analytics-runtime";
 import { appLogger } from "./logger";
 import { createEnforceRetentionHandler, ENFORCE_RETENTION_KIND, enforceRetentionIdempotencyKey } from "./security-runtime";
+import { getPermissionData } from "./permission-source";
 
 export type { JobActorContext };
 
-const grant = (roleId: string, permissionId: string, scope: string) => ({
-  roleId,
-  permission: permissionRef(permissionId),
-  scope,
-  constraints: {}
-});
-
-function permissionRef(permissionId: string) {
-  const row = jobPermissionRows.find((candidate) => candidate.id === permissionId);
-  if (!row) {
-    throw new Error(`Unknown job permission ${permissionId}.`);
-  }
-  return row;
-}
-
-const jobPermissionRows = [
-  { id: fixtureIds.permissions.jobsView, module: jobCapabilities.view.module, action: jobCapabilities.view.action },
-  { id: fixtureIds.permissions.jobsRetry, module: jobCapabilities.retry.module, action: jobCapabilities.retry.action },
-  { id: fixtureIds.permissions.jobsCancel, module: jobCapabilities.cancel.module, action: jobCapabilities.cancel.action }
-];
-
-export const jobsPermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  rolePermissions: [
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.jobsView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.jobsRetry, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.jobsCancel, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.jobsView, "own_territory")
-  ]
-};
-
-export function hasJobCapability(context: JobActorContext, capability: JobCapability, resource?: { territoryId?: string | null }) {
+export function hasJobCapability(permissions: PermissionData, context: JobActorContext, capability: JobCapability, resource?: { territoryId?: string | null }) {
   const required = jobCapabilities[capability];
   return evaluatePermission(
     {
@@ -91,14 +47,14 @@ export function hasJobCapability(context: JobActorContext, capability: JobCapabi
         ? { resource: { territoryId: resource.territoryId ?? undefined } }
         : { context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } })
     },
-    jobsPermissionData
+    permissions
   ).allowed;
 }
 
 /** Network/system-wide view, i.e. a grant that does not depend on any single territory. */
-export function hasNetworkJobAccess(userId: string) {
+export function hasNetworkJobAccess(permissions: PermissionData, userId: string) {
   const required = jobCapabilities.view;
-  return evaluatePermission({ userId, module: required.module, action: required.action }, jobsPermissionData).allowed;
+  return evaluatePermission({ userId, module: required.module, action: required.action }, permissions).allowed;
 }
 
 /**
@@ -125,6 +81,7 @@ function auditFor(db: Parameters<typeof recordAuditEvent>[0]): JobAuditRecorder 
 }
 
 export async function readJobConsole(context: JobActorContext, filter: JobFilter = {}) {
+  const jobsPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -141,6 +98,7 @@ export async function readJobConsole(context: JobActorContext, filter: JobFilter
 }
 
 export async function readJobDetail(context: JobActorContext, jobId: string) {
+  const jobsPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -151,6 +109,7 @@ export async function readJobDetail(context: JobActorContext, jobId: string) {
 }
 
 export async function retryJobAsActor(context: JobActorContext, jobId: string, source: JobSource = "jobs") {
+  const jobsPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -167,6 +126,7 @@ export async function retryJobAsActor(context: JobActorContext, jobId: string, s
 }
 
 export async function cancelJobAsActor(context: JobActorContext, jobId: string) {
+  const jobsPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {

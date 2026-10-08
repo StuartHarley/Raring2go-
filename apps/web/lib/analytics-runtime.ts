@@ -1,5 +1,5 @@
 import { auditActions, recordAuditEvent } from "@raring2go/audit";
-import { createDb, fixtureIds, foundationSeed, territories } from "@raring2go/db";
+import { createDb, territories } from "@raring2go/db";
 import { evaluatePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import {
@@ -23,46 +23,14 @@ import { defineJobHandler } from "@raring2go/workflows";
 import type { JobHandler } from "@raring2go/workflows";
 import { isNull } from "drizzle-orm";
 import { appLogger } from "./logger";
+import { getPermissionData } from "./permission-source";
 
 export type { AnalyticsActorContext };
-
-const permissionRows = [
-  { id: fixtureIds.permissions.scorecardView, ...analyticsCapabilities.scorecardView },
-  { id: fixtureIds.permissions.healthConfigManage, ...analyticsCapabilities.healthConfigManage },
-  { id: fixtureIds.permissions.snapshotGenerate, ...analyticsCapabilities.snapshotGenerate }
-];
-
-const grant = (roleId: string, permissionId: string, scope: string) => {
-  const permission = permissionRows.find((row) => row.id === permissionId);
-  if (!permission) throw new Error(`Unknown analytics permission ${permissionId}.`);
-  return { roleId, permission, scope, constraints: {} };
-};
-
-/** Fixture grants for the dev auth runtime; production reads the same grants from the database. */
-export const analyticsPermissionData: PermissionData = {
-  roleAssignments: [
-    { id: "fixture_assignment_hq", userId: fixtureIds.users.superAdmin, roleId: fixtureIds.roles.hqAdmin, organisationId: fixtureIds.organisations.hq },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  rolePermissions: [
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.scorecardView, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.healthConfigManage, "network"),
-    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.snapshotGenerate, "network"),
-    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.scorecardView, "own_territory")
-  ],
-  territories: [...foundationSeed.territories]
-};
 
 export const SNAPSHOT_METRICS_KIND = "analytics.snapshot_metrics";
 export const snapshotMetricsIdempotencyKey = (now: Date) => `${SNAPSHOT_METRICS_KIND}:${now.toISOString().slice(0, 10)}`;
 
-export function hasAnalyticsCapability(context: AnalyticsActorContext, capability: keyof typeof analyticsCapabilities) {
+export function hasAnalyticsCapability(permissions: PermissionData, context: AnalyticsActorContext, capability: keyof typeof analyticsCapabilities) {
   const required = analyticsCapabilities[capability];
   return evaluatePermission(
     {
@@ -71,14 +39,14 @@ export function hasAnalyticsCapability(context: AnalyticsActorContext, capabilit
       action: required.action,
       context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined }
     },
-    analyticsPermissionData
+    permissions
   ).allowed;
 }
 
 /** True for a network-wide grant (Head Office), as opposed to a territory-scoped one. */
-export function hasNetworkAnalyticsAccess(userId: string, capability: keyof typeof analyticsCapabilities = "scorecardView") {
+export function hasNetworkAnalyticsAccess(permissions: PermissionData, userId: string, capability: keyof typeof analyticsCapabilities = "scorecardView") {
   const required = analyticsCapabilities[capability];
-  return evaluatePermission({ userId, module: required.module, action: required.action }, analyticsPermissionData).allowed;
+  return evaluatePermission({ userId, module: required.module, action: required.action }, permissions).allowed;
 }
 
 const auditFor = (db: Parameters<typeof recordAuditEvent>[0]) => ({ record: (input: Parameters<typeof recordAuditEvent>[1]) => recordAuditEvent(db, input) });
@@ -124,6 +92,7 @@ export function createSnapshotMetricsHandler(): JobHandler {
 }
 
 export async function readScorecardForActor(context: AnalyticsActorContext, now: Date = new Date()) {
+  const analyticsPermissionData = await getPermissionData();
   const { db, sql } = createDb();
   try {
     const [collected, config, cohortRows] = await Promise.all([
@@ -132,7 +101,7 @@ export async function readScorecardForActor(context: AnalyticsActorContext, now:
       db.select({ id: territories.id, name: territories.name }).from(territories).where(isNull(territories.deletedAt))
     ]);
     const monthAgo = new Date(now.getTime() - 30 * 86_400_000);
-    const network = hasNetworkAnalyticsAccess(context.userId);
+    const network = hasNetworkAnalyticsAccess(analyticsPermissionData, context.userId);
     const [networkPrev, territoryPrev] = await Promise.all([
       network ? snapshotAtOrBefore(db, null, monthAgo) : undefined,
       !network && context.territoryId ? snapshotAtOrBefore(db, context.territoryId, monthAgo) : undefined
@@ -154,7 +123,8 @@ export async function readScorecardForActor(context: AnalyticsActorContext, now:
 }
 
 export async function readHealthConfigsForActor(context: AnalyticsActorContext) {
-  if (!hasNetworkAnalyticsAccess(context.userId, "healthConfigManage")) throw new AnalyticsAccessError("Missing permission analytics.health_config.manage.");
+  const analyticsPermissionData = await getPermissionData();
+  if (!hasNetworkAnalyticsAccess(analyticsPermissionData, context.userId, "healthConfigManage")) throw new AnalyticsAccessError("Missing permission analytics.health_config.manage.");
   const { db, sql } = createDb();
   try {
     await getActiveHealthConfig(db);
@@ -173,17 +143,24 @@ async function withAudited<T>(work: (db: AnalyticsDb, audit: ReturnType<typeof a
   }
 }
 
-export const createConfigDraftAsActor = (context: AnalyticsActorContext, input: unknown, note: string | null) =>
-  withAudited((db, audit) => createHealthConfigDraft(context, analyticsPermissionData, audit, db, input, note));
+export async function createConfigDraftAsActor(context: AnalyticsActorContext, input: unknown, note: string | null) {
+  const analyticsPermissionData = await getPermissionData();
+  return withAudited((db, audit) => createHealthConfigDraft(context, analyticsPermissionData, audit, db, input, note));
+}
 
-export const updateConfigDraftAsActor = (context: AnalyticsActorContext, id: string, input: unknown, note: string | null) =>
-  withAudited((db, audit) => updateHealthConfigDraft(context, analyticsPermissionData, audit, db, id, input, note));
+export async function updateConfigDraftAsActor(context: AnalyticsActorContext, id: string, input: unknown, note: string | null) {
+  const analyticsPermissionData = await getPermissionData();
+  return withAudited((db, audit) => updateHealthConfigDraft(context, analyticsPermissionData, audit, db, id, input, note));
+}
 
-export const activateConfigAsActor = (context: AnalyticsActorContext, id: string) =>
-  withAudited((db, audit) => activateHealthConfigVersion(context, analyticsPermissionData, audit, db, id));
+export async function activateConfigAsActor(context: AnalyticsActorContext, id: string) {
+  const analyticsPermissionData = await getPermissionData();
+  return withAudited((db, audit) => activateHealthConfigVersion(context, analyticsPermissionData, audit, db, id));
+}
 
 export async function generateSnapshotAsActor(context: AnalyticsActorContext, now: Date = new Date()) {
-  if (!hasNetworkAnalyticsAccess(context.userId, "snapshotGenerate")) throw new AnalyticsAccessError("Missing permission analytics.snapshot.generate.");
+  const analyticsPermissionData = await getPermissionData();
+  if (!hasNetworkAnalyticsAccess(analyticsPermissionData, context.userId, "snapshotGenerate")) throw new AnalyticsAccessError("Missing permission analytics.snapshot.generate.");
   const { db, sql } = createDb();
   try {
     const summary = await runSnapshot(db, now);

@@ -8,10 +8,10 @@ import {
   updateFranchiseRecord
 } from "@raring2go/franchise";
 import type { FranchiseActorContext } from "@raring2go/franchise";
-import type { PermissionData } from "@raring2go/permissions";
 import { emitWorkflowEvent, PermanentJobError, defineJobHandler } from "@raring2go/workflows";
 import type { EngineHooks, EngineStore, JobHandler } from "@raring2go/workflows";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { getPermissionData } from "./permission-source";
 
 /**
  * The workflow engine acts as a real, audited service user holding only the grants
@@ -21,24 +21,6 @@ import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 export const automationContext: FranchiseActorContext = {
   userId: fixtureIds.users.workflowAutomation,
   organisationId: fixtureIds.organisations.hq
-};
-
-export const automationPermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_automation",
-      userId: fixtureIds.users.workflowAutomation,
-      roleId: fixtureIds.roles.automation,
-      organisationId: fixtureIds.organisations.hq
-    }
-  ],
-  rolePermissions: [
-    {
-      roleId: fixtureIds.roles.automation,
-      permission: { id: fixtureIds.permissions.onboardingManage, module: "franchise.onboarding", action: "manage" },
-      scope: "network"
-    }
-  ]
 };
 
 export const OVERDUE_INVOICE_EVENT = "finance.invoice.overdue";
@@ -54,6 +36,7 @@ export const engineHooks: EngineHooks = {
      * returns the existing programme instead of creating a second one.
      */
     "franchise.start_onboarding": async ({ run }) => {
+      const automationPermissionData = await getPermissionData();
       if (!run.subjectId) {
         throw new PermanentJobError("The triggering event has no agreement to start onboarding for.", "no_subject");
       }

@@ -7,6 +7,7 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { approveSuggestionAction, discoverEventsAction, rejectSuggestionAction } from "./actions";
 import { DiscoverForm } from "./DiscoverForm";
+import { getPermissionData } from "../../../../../lib/permission-source";
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -120,8 +121,9 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   try {
     const shell = await requireShellPermission(request, { module: "content.event_suggestion", action: "view" });
     const actor = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
+    const permissions = await getPermissionData();
     const suggestions = await readEventSuggestions(actor, status);
-    return { suggestions, canDiscover: hasEventCapability(actor, "discover"), canDecide: hasEventCapability(actor, "decide"), territories: listDiscoverableTerritories(actor) };
+    return { suggestions, canDiscover: hasEventCapability(permissions, actor, "discover"), canDecide: hasEventCapability(permissions, actor, "decide"), territories: listDiscoverableTerritories(actor) };
   } catch (error) {
     return { error };
   }

@@ -9,6 +9,7 @@ import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { createDraftAction, saveDraftAction, toggleWorkflowAction } from "./actions";
 import { WorkflowDraftEditor } from "./WorkflowDraftEditor";
+import { getPermissionData } from "../../../../../../lib/permission-source";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -41,11 +42,11 @@ export default async function WorkflowDefinitionPage({ params, searchParams }: P
     return protectedOutcome(result.error);
   }
 
-  const { context, definition, versions } = result;
+  const { context, permissions, definition, versions } = result;
   const active = versions.find((version) => version.status === "active");
   const draft = versions.find((version) => version.status === "draft");
-  const canManage = hasAutomationCapability(context, "workflowManage");
-  const canActivate = hasAutomationCapability(context, "workflowActivate");
+  const canManage = hasAutomationCapability(permissions, context, "workflowManage");
+  const canActivate = hasAutomationCapability(permissions, context, "workflowActivate");
   const resultParam = Array.isArray(search.result) ? search.result[0] : search.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
 
@@ -147,7 +148,7 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   try {
     const shell = await requireShellPermission(request, { module: "automation.workflow", action: "view" });
     const context: AutomationActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
-    return { context, ...(await readWorkflowDefinition(context, id)) };
+    return { context, permissions: await getPermissionData(), ...(await readWorkflowDefinition(context, id)) };
   } catch (error) {
     return { error };
   }

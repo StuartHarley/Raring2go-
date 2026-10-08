@@ -1,4 +1,4 @@
-import { aiRuns, createDb, fixtureIds } from "@raring2go/db";
+import { aiRuns, createDb, fixtureIds, fixturePermissionData } from "@raring2go/db";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -91,13 +91,14 @@ describe("AI run permissions", async () => {
   const { hasAiRunCapability } = await import("./ai-runtime");
   const { requireShellPermission } = await import("./app-shell");
   const sutton = { userId: fixtureIds.users.franchisee, organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
+  const permissions = fixturePermissionData();
 
   it("gives HQ and a franchisee (for their own territory) view and decide; nobody else", () => {
-    expect(hasAiRunCapability(context, "view")).toBe(true);
-    expect(hasAiRunCapability(context, "decide")).toBe(true);
-    expect(hasAiRunCapability(sutton, "view")).toBe(true);
-    expect(hasAiRunCapability(sutton, "decide")).toBe(true);
-    expect(hasAiRunCapability({ userId: "someone-else" }, "view")).toBe(false);
+    expect(hasAiRunCapability(permissions, context, "view")).toBe(true);
+    expect(hasAiRunCapability(permissions, context, "decide")).toBe(true);
+    expect(hasAiRunCapability(permissions, sutton, "view")).toBe(true);
+    expect(hasAiRunCapability(permissions, sutton, "decide")).toBe(true);
+    expect(hasAiRunCapability(permissions, { userId: "someone-else" }, "view")).toBe(false);
   });
 
   it("protects the route server-side", async () => {

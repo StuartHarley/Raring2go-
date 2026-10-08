@@ -35,6 +35,7 @@ import {
   verifyInsuranceAction,
   voidAgreementAction
 } from "../actions";
+import { getPermissionData } from "../../../../../lib/permission-source";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -755,7 +756,7 @@ async function loadFranchise360(
     return {
       approve,
       cancelSignature,
-      canEdit: canEditFranchise(context),
+      canEdit: canEditFranchise(await getPermissionData(), context),
       completeNextSigner,
       completeSigning,
       declineSigning,

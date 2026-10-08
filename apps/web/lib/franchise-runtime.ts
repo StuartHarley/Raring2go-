@@ -73,178 +73,10 @@ import type {
   FranchiseRecord
 } from "@raring2go/franchise";
 import type { PermissionData } from "@raring2go/permissions";
-
-export const franchisePermissionData: PermissionData = {
-  roleAssignments: [
-    {
-      id: "fixture_assignment_superadmin",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.superAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_hq",
-      userId: fixtureIds.users.superAdmin,
-      roleId: fixtureIds.roles.hqAdmin,
-      organisationId: fixtureIds.organisations.hq
-    },
-    {
-      id: "fixture_assignment_franchisee",
-      userId: fixtureIds.users.franchisee,
-      roleId: fixtureIds.roles.franchisee,
-      organisationId: fixtureIds.organisations.franchise,
-      territoryId: fixtureIds.territories.suttonColdfield
-    }
-  ],
-  rolePermissions: [
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.franchiseView,
-      scope: "network"
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.franchiseCreate,
-      scope: "network"
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.franchiseEdit,
-      scope: "network"
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.agreementView,
-      scope: "network"
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.agreementGenerate,
-      scope: "network"
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.agreementSubmitApproval,
-      scope: "network"
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.agreementApprove,
-      scope: "network"
-    },
-    {
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId: fixtureIds.permissions.agreementVoid,
-      scope: "network"
-    },
-    ...[
-      fixtureIds.permissions.agreementSendSignature,
-      fixtureIds.permissions.agreementCancelSignature,
-      fixtureIds.permissions.agreementResendSignature,
-      fixtureIds.permissions.agreementViewSignatureStatus,
-      fixtureIds.permissions.agreementRecordSignatureEvent,
-      fixtureIds.permissions.agreementDownloadExecuted
-    ].map((permissionId) => ({
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId,
-      scope: "network" as const
-    })),
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.agreementViewSignatureStatus,
-      scope: "own_territory"
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.agreementDownloadExecuted,
-      scope: "own_territory"
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.franchiseView,
-      scope: "own_territory"
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.agreementView,
-      scope: "own_territory"
-    },
-    ...[
-      fixtureIds.permissions.documentView,
-      fixtureIds.permissions.documentUpload,
-      fixtureIds.permissions.documentDownload,
-      fixtureIds.permissions.documentArchive,
-      fixtureIds.permissions.complianceView,
-      fixtureIds.permissions.complianceManageRequirements,
-      fixtureIds.permissions.complianceSubmitEvidence,
-      fixtureIds.permissions.complianceVerify,
-      fixtureIds.permissions.complianceManageActions,
-      fixtureIds.permissions.complianceViewNetwork,
-      fixtureIds.permissions.onboardingView,
-      fixtureIds.permissions.onboardingManage,
-      fixtureIds.permissions.onboardingTemplateManage,
-      fixtureIds.permissions.onboardingTaskComplete,
-      fixtureIds.permissions.onboardingTaskAssign,
-      fixtureIds.permissions.onboardingApproveMilestone,
-      fixtureIds.permissions.onboardingApproveLaunch
-    ].map((permissionId) => ({
-      roleId: fixtureIds.roles.hqAdmin,
-      permissionId,
-      scope: "network" as const
-    })),
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.documentView,
-      scope: "own_territory"
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.documentDownload,
-      scope: "own_territory"
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.complianceView,
-      scope: "own_territory"
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.complianceSubmitEvidence,
-      scope: "own_territory"
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.onboardingView,
-      scope: "own_territory"
-    },
-    {
-      roleId: fixtureIds.roles.franchisee,
-      permissionId: fixtureIds.permissions.onboardingTaskComplete,
-      scope: "own_territory"
-    }
-  ].map((grant) => {
-    const permission = foundationSeed.permissions.find(
-      (candidate) => candidate.id === grant.permissionId
-    );
-
-    if (!permission) {
-      throw new Error("Franchise permission fixture is inconsistent.");
-    }
-
-    return {
-      roleId: grant.roleId,
-      permission,
-      scope: grant.scope,
-      constraints: {}
-    };
-  }),
-  territories: foundationSeed.territories.map((territory) => ({
-    id: territory.id,
-    franchiseOrganisationId: territory.franchiseOrganisationId
-  }))
-};
+import { getPermissionData } from "./permission-source";
 
 export async function listFranchiseSummaries(context: FranchiseActorContext) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -259,6 +91,7 @@ export async function listFranchiseSummaries(context: FranchiseActorContext) {
 }
 
 export async function listComplianceOverview(context: FranchiseActorContext) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -273,6 +106,7 @@ export async function listComplianceOverview(context: FranchiseActorContext) {
 }
 
 export async function listOnboardingOverview(context: FranchiseActorContext) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -290,6 +124,7 @@ export async function readFranchise360(
   context: FranchiseActorContext,
   franchiseId: string
 ): Promise<Franchise360> {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -304,7 +139,7 @@ export async function readFranchise360(
   }
 }
 
-export function canEditFranchise(context: FranchiseActorContext) {
+export function canEditFranchise(permissions: PermissionData, context: FranchiseActorContext) {
   return evaluatePermission(
     {
       userId: context.userId,
@@ -312,7 +147,7 @@ export function canEditFranchise(context: FranchiseActorContext) {
       action: "edit",
       context
     },
-    franchisePermissionData
+    permissions
   ).allowed;
 }
 
@@ -320,6 +155,7 @@ export async function createFranchiseFromInput(
   context: FranchiseActorContext,
   input: FranchiseRecord
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -339,6 +175,7 @@ export async function updateFranchiseFromInput(
   franchiseId: string,
   patch: Parameters<typeof updateFranchise>[4]["patch"]
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -361,6 +198,7 @@ export async function generateAgreementForFranchise(
   franchiseId: string,
   agreementId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -414,6 +252,7 @@ export async function sendCurrentAgreementForSignature(
   franchiseId: string,
   requestId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -452,6 +291,7 @@ export async function resendCurrentSignatureRequest(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   return mutateCurrentSignatureRequest(context, franchiseId, (data, requestId, tx) =>
     resendSignatureRequest(
       context,
@@ -468,6 +308,7 @@ export async function cancelCurrentSignatureRequest(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   return mutateCurrentSignatureRequest(context, franchiseId, (data, requestId, tx) =>
     cancelSignatureRequest(
       context,
@@ -518,6 +359,7 @@ export async function uploadDocumentForFranchise(
     expiryDate?: string | null;
   }
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -574,6 +416,7 @@ export async function addDocumentVersionForFranchise(
   versionId: string,
   artifactId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -612,6 +455,7 @@ export async function archiveDocumentForFranchise(
   franchiseId: string,
   documentId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -646,6 +490,7 @@ export async function upsertInsuranceForFranchise(
     evidenceDocumentId?: string | null;
   }
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -684,6 +529,7 @@ export async function verifyInsuranceForFranchise(
   policyId: string,
   status: "verified" | "rejected"
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -712,6 +558,7 @@ export async function submitComplianceEvidenceForFranchise(
     expiresAt?: string | null;
   }
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -747,6 +594,7 @@ export async function verifyComplianceForFranchise(
   recordId: string,
   status: "complete" | "rejected"
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -769,6 +617,7 @@ export async function ensureComplianceActionsForFranchise(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -795,6 +644,7 @@ export async function resolveComplianceActionForFranchise(
   franchiseId: string,
   actionId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -821,6 +671,7 @@ export async function startOnboardingForFranchise(
   franchiseId: string,
   targetLaunchDate: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -867,6 +718,7 @@ export async function changeOnboardingTargetForFranchise(
   programmeId: string,
   targetLaunchDate: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -895,6 +747,7 @@ export async function raiseOnboardingBlockerForFranchise(
     notes?: string | null;
   }
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -921,6 +774,7 @@ export async function resolveOnboardingBlockerForFranchise(
   franchiseId: string,
   blockerId: string
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -963,6 +817,7 @@ async function mutateOnboardingTask(
   taskId: string,
   mutation: typeof completeOnboardingTask | typeof approveOnboardingTask
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -987,6 +842,7 @@ async function mutateOnboardingProgramme(
   programmeId: string,
   mutation: typeof approveLaunch | typeof markFranchiseLaunched
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -1010,6 +866,7 @@ async function recordCurrentSignatureEvent(
   eventId: string,
   eventType: "signer.completed" | "declined" | "expired" | "cancelled" | "completed"
 ) {
+  const franchisePermissionData = await getPermissionData();
   return mutateCurrentSignatureRequest(context, franchiseId, (data, requestId, tx) =>
     recordSignatureProviderEvent(
       context,
@@ -1037,6 +894,7 @@ async function mutateCurrentSignatureRequest<T>(
   franchiseId: string,
   mutation: (data: Awaited<ReturnType<typeof loadFranchiseData>>, requestId: string, tx: Parameters<typeof recordAuditEvent>[0]) => Promise<T>
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
@@ -1071,6 +929,7 @@ async function mutateCurrentAgreement(
   franchiseId: string,
   mutation: typeof submitAgreementForApproval | typeof approveAgreement | typeof voidAgreement
 ) {
+  const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
