@@ -388,7 +388,10 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.workflowActivate,
         fixtureIds.permissions.workflowTest,
         fixtureIds.permissions.aiRunView,
-        fixtureIds.permissions.aiRunDecide
+        fixtureIds.permissions.aiRunDecide,
+        fixtureIds.permissions.eventSuggestionView,
+        fixtureIds.permissions.eventSuggestionDiscover,
+        fixtureIds.permissions.eventSuggestionDecide
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -446,6 +449,24 @@ export async function seedDatabase(databaseUrl?: string) {
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.contentEdit,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.eventSuggestionView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.eventSuggestionDiscover,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.eventSuggestionDecide,
         scope: "own_territory",
         constraints: {}
       },

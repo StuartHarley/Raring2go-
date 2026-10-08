@@ -164,7 +164,10 @@ describe("foundation fixtures", () => {
       "automation.workflow",
       "automation.workflow",
       "ai.run",
-      "ai.run"
+      "ai.run",
+      "content.event_suggestion",
+      "content.event_suggestion",
+      "content.event_suggestion"
     ]);
   });
 

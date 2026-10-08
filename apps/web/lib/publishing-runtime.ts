@@ -2,6 +2,15 @@ import { recordAuditEvent } from "@raring2go/audit";
 import { createDrizzleAiRunStore, decideAiRun, getAiRunForActor, markAiRunApplied } from "@raring2go/ai";
 import { createDb, fixtureIds, foundationSeed } from "@raring2go/db";
 import {
+  createDraftEventContentFromSuggestion,
+  createDrizzleEventSuggestionStore,
+  EventAccessError,
+  eventsDiscoverTask,
+  ingestDiscoveredEvents,
+  listEventSuggestionsForActor,
+  recordEventApproval,
+  rejectEventSuggestion,
+  requireApprovableSuggestion,
   contentDraftTask,
   createContentItemFromAiDraft,
   insertContentDomainEventRecords,
@@ -55,6 +64,9 @@ export const publishingPermissionData: PermissionData = {
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.editionGenerateDigital, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentView, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentAiGenerate, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionView, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionDiscover, "network"),
+    grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.eventSuggestionDecide, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentCreate, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.contentEdit, "network"),
     grant(fixtureIds.roles.hqAdmin, fixtureIds.permissions.socialView, "network"),
@@ -62,6 +74,9 @@ export const publishingPermissionData: PermissionData = {
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.editionPageEdit, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentView, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentAiGenerate, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionView, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionDiscover, "own_territory"),
+    grant(fixtureIds.roles.franchisee, fixtureIds.permissions.eventSuggestionDecide, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentCreate, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.contentEdit, "own_territory"),
     grant(fixtureIds.roles.franchisee, fixtureIds.permissions.socialView, "own_territory")
@@ -296,6 +311,133 @@ export async function rejectContentDraft(context: PublishingActorContext, runId:
         runId,
         { state: "rejected", note: "Rejected in Content Studio" }
       )
+    );
+  } finally {
+    await sql.end();
+  }
+}
+
+
+// ---- AI event discovery (AI-003) ---------------------------------------------------
+
+export type EventDiscoveryRequest = { territoryId: string; from: string; to: string; interests?: string[]; maxResults?: number };
+
+const MAX_RANGE_DAYS = 90;
+const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
+
+export function hasEventCapability(context: PublishingActorContext, action: "discover" | "decide") {
+  return evaluatePermission(
+    { userId: context.userId, module: "content.event_suggestion", action, context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } },
+    publishingPermissionData
+  ).allowed;
+}
+
+export function listDiscoverableTerritories(context: PublishingActorContext) {
+  return foundationSeed.territories
+    .filter((territory) => !context.territoryId || territory.id === context.territoryId)
+    .map((territory) => ({ id: territory.id, name: territory.name }));
+}
+
+/**
+ * Runs the events workflow for one territory and queues what it finds as pending suggestions.
+ * Nothing here creates or publishes content: that needs a person to approve each suggestion.
+ */
+export async function discoverEvents(context: PublishingActorContext, request: EventDiscoveryRequest) {
+  if (!isDate(request.from) || !isDate(request.to)) throw new Error("Choose a valid date range.");
+  const days = (new Date(`${request.to}T00:00:00Z`).getTime() - new Date(`${request.from}T00:00:00Z`).getTime()) / 86_400_000;
+  if (days < 0) throw new Error("The end date must be after the start date.");
+  if (days > MAX_RANGE_DAYS) throw new Error(`Choose a range of at most ${MAX_RANGE_DAYS} days.`);
+  const maxResults = Math.min(Math.max(Math.floor(request.maxResults ?? 10), 1), 20);
+
+  const territory = foundationSeed.territories.find((candidate) => candidate.id === request.territoryId);
+  if (!territory) throw new EventAccessError("Territory not found.");
+  // Scope is verified by the domain (ingest) as well, but fail early before any model spend.
+  if (!evaluatePermission({ userId: context.userId, module: "content.event_suggestion", action: "discover", resource: { territoryId: territory.id } }, publishingPermissionData).allowed) {
+    throw new EventAccessError("You do not have permission to discover events for this territory.");
+  }
+
+  const interests = (request.interests ?? []).map((interest) => interest.trim()).filter(Boolean).slice(0, 8);
+  const { run, output } = await runAiTaskAsActor(
+    context,
+    publishingPermissionData,
+    eventsDiscoverTask,
+    {
+      input: { territoryId: territory.id, territoryName: territory.name, from: request.from, to: request.to, interests, maxResults },
+      subject: { type: "territory", id: territory.id }
+    }
+  );
+
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const data = await loadPublishingData(tx);
+      const existing = data.contentItems
+        .filter((item) => item.contentType === "event" && item.territoryId === territory.id && !item.deletedAt)
+        .map((item) => ({
+          id: item.id,
+          kind: "content" as const,
+          title: item.title,
+          startsAt: typeof item.relevantDates.startsAt === "string" ? new Date(item.relevantDates.startsAt) : null,
+          sourceUrl: item.sourceReference ?? null
+        }));
+      const result = await ingestDiscoveredEvents(
+        context,
+        publishingPermissionData,
+        { record: (input) => recordAuditEvent(tx, input) },
+        createDrizzleEventSuggestionStore(tx as never),
+        existing,
+        { territoryId: territory.id, aiRunId: run.id, rawEvents: output.events, from: request.from, to: request.to, maxResults }
+      );
+      return { runId: run.id, territoryName: territory.name, created: result.created.length, duplicates: result.duplicates, invalid: result.invalid.length };
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readEventSuggestions(context: PublishingActorContext, status?: "pending" | "approved" | "rejected") {
+  const { db, sql } = createDb();
+
+  try {
+    return await listEventSuggestionsForActor(context, publishingPermissionData, createDrizzleEventSuggestionStore(db as never), { status, limit: 200 });
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Approving creates a DRAFT event content item and records the decision in one transaction. */
+export async function approveEventSuggestionAsActor(context: PublishingActorContext, suggestionId: string, note: string | null) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const store = createDrizzleEventSuggestionStore(tx as never);
+      const suggestion = await requireApprovableSuggestion(context, publishingPermissionData, store, suggestionId);
+      const data = await loadPublishingData(tx);
+      const eventsBefore = data.contentDomainEvents.length;
+      const { item, version } = await createDraftEventContentFromSuggestion(context, publishingPermissionData, publishingAuditFor(tx), data, {
+        itemId: crypto.randomUUID(),
+        versionId: crypto.randomUUID(),
+        organisationId: context.organisationId,
+        suggestion
+      });
+      await insertContentItemWithVersion(tx, item, version);
+      await insertContentDomainEventRecords(tx, data.contentDomainEvents.slice(eventsBefore));
+      await recordEventApproval(context, { record: (input) => recordAuditEvent(tx, input) }, store, suggestion, { contentItemId: item.id, note });
+      return { contentItemId: item.id };
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function rejectEventSuggestionAsActor(context: PublishingActorContext, suggestionId: string, note: string | null) {
+  const { db, sql } = createDb();
+
+  try {
+    return await db.transaction(async (tx) =>
+      rejectEventSuggestion(context, publishingPermissionData, { record: (input) => recordAuditEvent(tx, input) }, createDrizzleEventSuggestionStore(tx as never), suggestionId, note)
     );
   } finally {
     await sql.end();

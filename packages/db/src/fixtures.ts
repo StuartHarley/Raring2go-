@@ -173,7 +173,10 @@ export const fixtureIds = {
     workflowActivate: "00000000-0000-4000-8000-000000000551",
     workflowTest: "00000000-0000-4000-8000-000000000552",
     aiRunView: "00000000-0000-4000-8000-000000000553",
-    aiRunDecide: "00000000-0000-4000-8000-000000000554"
+    aiRunDecide: "00000000-0000-4000-8000-000000000554",
+    eventSuggestionView: "00000000-0000-4000-8000-000000000555",
+    eventSuggestionDiscover: "00000000-0000-4000-8000-000000000556",
+    eventSuggestionDecide: "00000000-0000-4000-8000-000000000557"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1391,6 +1394,24 @@ export const foundationSeed = {
       module: "ai.run",
       action: "decide",
       description: "Approve or reject AI output awaiting a human decision."
+    },
+    {
+      id: fixtureIds.permissions.eventSuggestionView,
+      module: "content.event_suggestion",
+      action: "view",
+      description: "View AI event suggestions in scope."
+    },
+    {
+      id: fixtureIds.permissions.eventSuggestionDiscover,
+      module: "content.event_suggestion",
+      action: "discover",
+      description: "Run event discovery for a territory."
+    },
+    {
+      id: fixtureIds.permissions.eventSuggestionDecide,
+      module: "content.event_suggestion",
+      action: "decide",
+      description: "Approve or reject AI event suggestions in scope."
     }
   ],
   advertisers: [

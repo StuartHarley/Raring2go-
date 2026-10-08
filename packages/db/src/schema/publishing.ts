@@ -1,5 +1,6 @@
 import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
+import { aiRuns } from "./ai";
 import { users } from "./identity";
 import { providerConnections } from "./integrations";
 import { organisations, territories } from "./tenancy";
@@ -630,5 +631,42 @@ export const socialProviderEvents = pgTable(
     uniqueIndex("social_provider_events_uidx").on(table.providerKey, table.providerEventId),
     index("social_provider_events_publication_id_idx").on(table.publicationId),
     index("social_provider_events_event_type_idx").on(table.eventType)
+  ]
+);
+
+/**
+ * AI-discovered family events awaiting a human decision (AI-003). A suggestion is never
+ * content: approving one creates a DRAFT event content item, and nothing here publishes.
+ */
+export const eventSuggestions = pgTable(
+  "event_suggestions",
+  {
+    id,
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    aiRunId: uuid("ai_run_id").references(() => aiRuns.id),
+    title: text("title").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    venue: text("venue"),
+    summary: text("summary"),
+    /** Canonical source URL the event was found at. Required: no source, no suggestion. */
+    sourceUrl: text("source_url").notNull(),
+    /** Why/where the workflow found it (excerpt or reasoning), so a reviewer can verify. */
+    sourceContext: text("source_context").notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    /** pending, approved, rejected, duplicate. */
+    status: text("status").notNull().default("pending"),
+    duplicateOfId: uuid("duplicate_of_id"),
+    contentItemId: uuid("content_item_id").references(() => contentItems.id),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionNote: text("decision_note"),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("event_suggestions_territory_dedupe_uidx").on(table.territoryId, table.dedupeKey),
+    index("event_suggestions_status_idx").on(table.status, table.startsAt),
+    index("event_suggestions_territory_id_idx").on(table.territoryId),
+    index("event_suggestions_ai_run_id_idx").on(table.aiRunId)
   ]
 );
