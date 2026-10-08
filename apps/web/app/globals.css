@@ -1751,3 +1751,9 @@ p {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.draft-body p {
+  line-height: 1.6;
+  margin: 0 0 12px;
+  max-width: 70ch;
+}

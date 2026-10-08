@@ -24,6 +24,7 @@ import {
   territoryEditionContent,
   territoryEditions
 } from "@raring2go/db";
+import { eq } from "drizzle-orm";
 import type { PublishingData } from "./types";
 
 type DrizzleDb = {
@@ -204,4 +205,82 @@ function dateTimeString(value: unknown) {
   }
 
   return (value ?? null) as string | null;
+}
+
+// ---- Content writes (AI-002) --------------------------------------------------------
+
+type WriteDb = {
+  insert(table: unknown): { values(values: unknown): { onConflictDoNothing?(): Promise<unknown> } & PromiseLike<unknown> };
+  update(table: unknown): { set(values: unknown): { where(condition: unknown): PromiseLike<unknown> } };
+};
+
+export async function insertContentItemWithVersion(
+  db: WriteDb,
+  item: PublishingData["contentItems"][number],
+  version: PublishingData["contentItemVersions"][number]
+) {
+  await db.insert(contentItems).values({
+    id: item.id,
+    title: item.title,
+    standfirst: item.standfirst ?? null,
+    contentType: item.contentType,
+    ownerLevel: item.ownerLevel,
+    organisationId: item.organisationId ?? null,
+    territoryId: item.territoryId ?? null,
+    status: item.status,
+    authorUserId: item.authorUserId ?? null,
+    sourceType: item.sourceType,
+    sourceReference: item.sourceReference ?? null,
+    heroArtifactReference: item.heroArtifactReference,
+    categories: item.categories,
+    tags: item.tags,
+    relevantDates: item.relevantDates,
+    provenance: item.provenance,
+    advertiserId: item.advertiserId ?? null,
+    commercialBookingId: item.commercialBookingId ?? null,
+    editionContentItemId: item.editionContentItemId ?? null,
+    approvedByUserId: item.approvedByUserId ?? null,
+    approvedAt: null,
+    publishedAt: null
+  });
+  await insertContentItemVersionRecord(db, version);
+}
+
+export async function insertContentItemVersionRecord(db: WriteDb, version: PublishingData["contentItemVersions"][number]) {
+  await db.insert(contentItemVersions).values({
+    id: version.id,
+    contentItemId: version.contentItemId,
+    versionNumber: version.versionNumber,
+    status: version.status,
+    snapshot: version.snapshot,
+    changeSummary: version.changeSummary ?? null,
+    provenance: version.provenance,
+    createdByUserId: version.createdByUserId ?? null
+  });
+}
+
+/** Persists the fields a content revision may change; status and approval are never touched here. */
+export async function updateContentItemDraftFields(
+  db: WriteDb,
+  item: Pick<PublishingData["contentItems"][number], "id" | "title" | "standfirst" | "provenance">
+) {
+  await db
+    .update(contentItems)
+    .set({ title: item.title, standfirst: item.standfirst ?? null, provenance: item.provenance, updatedAt: new Date() })
+    .where(eq(contentItems.id, item.id));
+}
+
+export async function insertContentDomainEventRecords(db: WriteDb, events: PublishingData["contentDomainEvents"]) {
+  for (const event of events) {
+    await db.insert(contentDomainEvents).values({
+      id: event.id,
+      eventType: event.eventType,
+      contentItemId: event.contentItemId ?? null,
+      territoryId: event.territoryId ?? null,
+      payload: event.payload,
+      occurredAt: new Date(event.occurredAt),
+      idempotencyKey: event.idempotencyKey,
+      processedAt: event.processedAt ? new Date(event.processedAt) : null
+    });
+  }
 }

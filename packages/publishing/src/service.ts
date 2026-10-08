@@ -651,6 +651,120 @@ export async function approveContentVariant(
   return variant;
 }
 
+export type AiContentDraft = { title: string; standfirst: string; body: string; notes?: string };
+
+/**
+ * Creates a NEW content item from an accepted AI draft. It is always a draft: AI-created
+ * content enters the normal approval flow like human content and is never published here.
+ */
+export async function createContentItemFromAiDraft(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  input: {
+    itemId: string;
+    versionId: string;
+    contentType: string;
+    draft: AiContentDraft;
+    aiRunId: string;
+    territoryId?: string | null;
+    organisationId?: string | null;
+  }
+) {
+  requirePublishingPermission(context, permissions, "contentAiGenerate");
+  const draft = validateAiContentDraft(input.draft);
+  const item: ContentItem = {
+    id: input.itemId,
+    title: draft.title,
+    standfirst: draft.standfirst || null,
+    contentType: input.contentType,
+    ownerLevel: input.territoryId ? "territory" : "network",
+    organisationId: input.organisationId ?? null,
+    territoryId: input.territoryId ?? null,
+    status: "draft",
+    authorUserId: context.userId,
+    sourceType: "ai",
+    sourceReference: `ai_run:${input.aiRunId}`,
+    heroArtifactReference: {},
+    categories: [],
+    tags: [],
+    relevantDates: {},
+    provenance: { generatedBy: "ai", aiRunId: input.aiRunId, acceptedByUserId: context.userId },
+    advertiserId: null,
+    commercialBookingId: null,
+    editionContentItemId: null,
+    approvedByUserId: null,
+    approvedAt: null,
+    publishedAt: null
+  };
+  const version: ContentItemVersion = {
+    id: input.versionId,
+    contentItemId: item.id,
+    versionNumber: 1,
+    status: "draft",
+    snapshot: { title: draft.title, standfirst: draft.standfirst, body: draft.body },
+    changeSummary: "AI draft accepted",
+    provenance: { generatedBy: "ai", aiRunId: input.aiRunId, notes: draft.notes ?? "" },
+    createdByUserId: context.userId
+  };
+  // Content-create permission and territory scope are enforced by the canonical path.
+  await createCanonicalContentItem(context, permissions, audit, data, item, version);
+  return { item, version };
+}
+
+/**
+ * Applies an accepted AI revision to a DRAFT content item as a new draft version.
+ * Approved or published content is refused: changing it would bypass the approval it
+ * already went through.
+ */
+export async function reviseDraftContentFromAi(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  contentItemId: string,
+  input: { versionId: string; draft: AiContentDraft; aiRunId: string }
+) {
+  requirePublishingPermission(context, permissions, "contentAiGenerate");
+  requirePublishingPermission(context, permissions, "contentEdit");
+  const item = requireCanonicalContent(data, contentItemId);
+  if (item.territoryId) {
+    ensureContextCanAccessTerritory(context, item.territoryId);
+  }
+  if (item.status !== "draft") {
+    throw new Error(`Only draft content can be revised by AI; this item is ${item.status}.`);
+  }
+  const draft = validateAiContentDraft(input.draft);
+  item.title = draft.title;
+  item.standfirst = draft.standfirst || item.standfirst;
+  item.provenance = { ...item.provenance, lastAiRunId: input.aiRunId };
+  const version: ContentItemVersion = {
+    id: input.versionId,
+    contentItemId: item.id,
+    versionNumber: nextContentVersionNumber(data, item.id),
+    status: "draft",
+    snapshot: { title: draft.title, standfirst: draft.standfirst, body: draft.body },
+    changeSummary: "AI revision accepted",
+    provenance: { generatedBy: "ai", aiRunId: input.aiRunId, notes: draft.notes ?? "" },
+    createdByUserId: context.userId
+  };
+  data.contentItemVersions.push(version);
+  await recordContentAuditAndEvent(context, audit, data, auditActions.contentUpdated, "content_item", item.id, {
+    action: "ai_revision",
+    aiRunId: input.aiRunId,
+    versionNumber: version.versionNumber
+  }, item.territoryId);
+  return { item, version };
+}
+
+function validateAiContentDraft(draft: AiContentDraft): AiContentDraft {
+  if (!draft.title.trim() || !draft.body.trim()) {
+    throw new Error("An AI content draft needs a title and body.");
+  }
+  return { ...draft, title: draft.title.trim(), standfirst: draft.standfirst.trim(), body: draft.body.trim() };
+}
+
 export async function restoreContentVersion(
   context: PublishingActorContext,
   permissions: PermissionData,

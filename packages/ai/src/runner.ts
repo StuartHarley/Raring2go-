@@ -3,6 +3,8 @@ import type { RecordAuditEventInput } from "@raring2go/audit";
 import { boundForStorage } from "./bounds";
 import { estimateCostMinor } from "./pricing";
 import type { AiProvider } from "./provider";
+import { ExternalWorkflowError } from "./workflow";
+import type { ExternalWorkflow } from "./workflow";
 import type { AiRunRecord, AiRunStore } from "./runs";
 import { AiOutputError, requiresReview } from "./task";
 import type { AiSourceRef, AiTask } from "./task";
@@ -17,6 +19,8 @@ export type AiAuditRecorder = { record: (input: RecordAuditEventInput) => Promis
 
 export type AiRunnerDeps = {
   provider: AiProvider;
+  /** Existing workflows exposed as services, keyed by task key. Preferred over the built-in prompt. */
+  workflows?: Record<string, ExternalWorkflow>;
   store: AiRunStore;
   audit?: AiAuditRecorder;
   /**
@@ -81,10 +85,20 @@ export async function runAiTask<Input, Output extends Record<string, unknown>>(
 
   let output: Output;
   let usage = { inputTokens: 0, outputTokens: 0 };
-  let modelReference = deps.provider.deterministic ? `deterministic-${task.key}` : "unknown";
+  const workflow = deps.workflows?.[task.key];
+  const providerKey = workflow ? "external_workflow" : deps.provider.key;
+  let modelReference = workflow ? `external:${task.key}` : deps.provider.deterministic ? `deterministic-${task.key}` : "unknown";
 
   try {
-    if (deps.provider.deterministic) {
+    if (workflow) {
+      if (!task.fromStructured || !task.structuredInput) {
+        throw new Error(`Task ${task.key} cannot be routed to an external workflow.`);
+      }
+      const result = await workflow.run(task.structuredInput(request.input));
+      usage = result.usage;
+      modelReference = result.modelReference;
+      output = task.fromStructured(result.output, request.input);
+    } else if (deps.provider.deterministic) {
       output = task.deterministic(request.input);
     } else {
       const completion = await deps.provider.complete({
@@ -100,7 +114,7 @@ export async function runAiTask<Input, Output extends Record<string, unknown>>(
     const failed = await deps.store.insert(
       {
         ...base,
-        providerKey: deps.provider.key,
+        providerKey,
         modelReference,
         status: "failed",
         approvalState: "not_required",
@@ -113,14 +127,14 @@ export async function runAiTask<Input, Output extends Record<string, unknown>>(
       },
       now()
     );
-    // Output problems are the model's fault and safe to describe; provider/network detail is not.
-    throw new AiRunFailedError(error instanceof AiOutputError ? error.message : SAFE_FAILURE, failed.id);
+    // Output problems and external-workflow status are safe to describe; provider/network detail is not.
+    throw new AiRunFailedError(error instanceof AiOutputError || error instanceof ExternalWorkflowError ? error.message : SAFE_FAILURE, failed.id);
   }
 
   const run = await deps.store.insert(
     {
       ...base,
-      providerKey: deps.provider.key,
+      providerKey,
       modelReference,
       status: "succeeded",
       approvalState: requiresReview(task) ? "pending" : "not_required",
@@ -136,7 +150,7 @@ export async function runAiTask<Input, Output extends Record<string, unknown>>(
 
   await deps.audit?.record({
     action: auditActions.aiGenerate,
-    actor: { type: "ai", runId: run.id, model: modelReference, provider: deps.provider.key, mode: "suggested" },
+    actor: { type: "ai", runId: run.id, model: modelReference, provider: providerKey, mode: "suggested" },
     entity: { type: "ai_run", id: run.id },
     scope: { organisationId: base.organisationId ?? undefined, territoryId: base.territoryId ?? undefined },
     metadata: {

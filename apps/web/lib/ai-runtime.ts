@@ -1,6 +1,6 @@
 import { auditActions, recordAuditEvent } from "@raring2go/audit";
-import { aiRunCapabilities, createAiGatewayFromEnv, createDrizzleAiRunStore, decideAiRun, estimateCostMinor as estimateCost, getAiRunForActor, listAiRunsForActor } from "@raring2go/ai";
-import type { AiActorContext, AiApprovalState, AiGateway, AiSuggestionResult, AiUsage, CampaignDraft } from "@raring2go/ai";
+import { aiRunCapabilities, createAiGatewayFromEnv, createAiProviderFromEnv, createExternalWorkflowsFromEnv, runAiTask, createDrizzleAiRunStore, decideAiRun, estimateCostMinor as estimateCost, getAiRunForActor, listAiRunsForActor } from "@raring2go/ai";
+import type { AiActorContext, AiApprovalState, AiGateway, AiRunRecord, AiSuggestionResult, AiTask, AiUsage, CampaignDraft } from "@raring2go/ai";
 import { createDevelopmentMemoryRateLimiter } from "@raring2go/auth";
 import type { RateLimiter } from "@raring2go/auth";
 import { aiUsageEvents, createDb, fixtureIds } from "@raring2go/db";
@@ -481,6 +481,82 @@ export async function decideAiRunAsActor(context: AiActorContext, runId: string,
         decision
       )
     );
+  } finally {
+    await closeSql.end();
+  }
+}
+
+// ---- Generic task runner (AI-001/002/003) -----------------------------------------
+
+/** Task keys that may be routed to an existing workflow exposed as a service (see docs/AI_AUTOMATION.md). */
+const ROUTABLE_TASK_KEYS = ["content.draft", "events.discover"];
+
+/**
+ * Runs an AI task as `context`, with everything the guardrails require: the task's
+ * permission against the caller's own permission data, the per-territory rate limit,
+ * the monthly spend cap, routing to an external workflow when one is configured, an
+ * ai_runs record (success or failure), a usage event so spend caps see it, and an audit
+ * event. UI and domain code call this; they never call a model directly.
+ */
+export async function runAiTaskAsActor<Input, Output extends Record<string, unknown>>(
+  context: MarketingActorContext,
+  permissions: PermissionData,
+  task: AiTask<Input, Output>,
+  request: { input: Input; subject?: { type: string; id: string } }
+): Promise<{ run: AiRunRecord; output: Output }> {
+  const provider = createAiProviderFromEnv();
+
+  if (!provider) {
+    throw new Error("AI assist is not configured for this environment.");
+  }
+
+  const { db, sql: closeSql } = createDb();
+
+  try {
+    const result = await runAiTask(
+      {
+        provider,
+        workflows: createExternalWorkflowsFromEnv(ROUTABLE_TASK_KEYS),
+        store: createDrizzleAiRunStore(db),
+        audit: { record: (input) => recordAuditEvent(db, input) },
+        guard: async () => {
+          requirePermission(
+            {
+              userId: context.userId,
+              module: task.capability.module,
+              action: task.capability.action,
+              context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined }
+            },
+            permissions
+          );
+          await enforceAiAssistRateLimit(context);
+          await enforceAiSpendCap(context);
+        }
+      },
+      task,
+      {
+        input: request.input,
+        actor: { type: "human", userId: context.userId },
+        scope: { organisationId: context.organisationId, territoryId: context.territoryId },
+        subject: request.subject
+      }
+    );
+
+    if (context.organisationId) {
+      await db.insert(aiUsageEvents).values({
+        organisationId: context.organisationId,
+        territoryId: context.territoryId ?? null,
+        actorUserId: context.userId,
+        feature: task.key,
+        providerKey: result.run.providerKey,
+        modelReference: result.run.modelReference,
+        inputTokens: result.run.inputTokens,
+        outputTokens: result.run.outputTokens,
+        estimatedCostMinor: result.run.estimatedCostMinor
+      });
+    }
+
+    return result;
   } finally {
     await closeSql.end();
   }

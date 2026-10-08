@@ -439,6 +439,18 @@ export async function seedDatabase(databaseUrl?: string) {
       },
       {
         roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.contentCreate,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.contentEdit,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.jobsView,
         scope: "own_territory",
         constraints: {}

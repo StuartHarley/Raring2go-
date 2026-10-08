@@ -7,3 +7,4 @@ export * from "./repository";
 export * from "./runner";
 export * from "./runs";
 export * from "./task";
+export * from "./workflow";
