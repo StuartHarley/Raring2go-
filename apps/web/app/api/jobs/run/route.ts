@@ -1,3 +1,4 @@
+import { isAuthorizedCronRequest } from "@raring2go/security";
 import { NextResponse } from "next/server";
 import { correlationHeader, correlationIdFrom } from "@raring2go/observability";
 import { runJobWorkerTick } from "../../../../lib/jobs-runtime";
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
 }
 
 async function tick(request: Request) {
-  if (!isAuthorizedCronRequest(request)) {
+  if (!isAuthorizedCronRequest(request.headers)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -22,12 +23,3 @@ async function tick(request: Request) {
   return NextResponse.json(summary, { headers: { [correlationHeader]: correlationId } });
 }
 
-function isAuthorizedCronRequest(request: Request) {
-  const secret = process.env.CRON_SECRET;
-
-  if (!secret) {
-    return process.env.APP_ENV !== "production";
-  }
-
-  return request.headers.get("authorization") === `Bearer ${secret}`;
-}

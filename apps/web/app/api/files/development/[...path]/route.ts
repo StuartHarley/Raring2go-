@@ -18,6 +18,15 @@ const CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp"
 };
 
+/**
+ * This backend has no authentication, so it must not exist outside local development. In any
+ * deployed build (NODE_ENV=production, which includes preview deployments) it answers 404 as if
+ * the route were not there, whatever STORAGE_PROVIDER says.
+ */
+function notAvailable() {
+  return process.env.NODE_ENV === "production" ? NextResponse.json({ error: "Not found." }, { status: 404 }) : undefined;
+}
+
 function resolveStorageKey(pathSegments: string[]): { action: "upload" | "download"; storageKey: string; filePath: string } {
   const [action, ...keyParts] = pathSegments;
 
@@ -32,6 +41,8 @@ function resolveStorageKey(pathSegments: string[]): { action: "upload" | "downlo
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  const blocked = notAvailable();
+  if (blocked) return blocked;
   const { action, filePath } = resolveStorageKey((await params).path);
 
   if (action !== "upload") {
@@ -46,6 +57,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ path
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  const blocked = notAvailable();
+  if (blocked) return blocked;
   const { action, storageKey, filePath } = resolveStorageKey((await params).path);
 
   if (action !== "download") {

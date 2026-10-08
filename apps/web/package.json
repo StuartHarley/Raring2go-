@@ -30,6 +30,7 @@
     "@raring2go/observability": "workspace:*",
     "@raring2go/permissions": "workspace:*",
     "@raring2go/public": "workspace:*",
+    "@raring2go/security": "workspace:*",
     "@raring2go/publishing": "workspace:*",
     "@raring2go/storage": "workspace:*",
     "@raring2go/workflows": "workspace:*",

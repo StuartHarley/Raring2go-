@@ -1,3 +1,4 @@
+import { isAuthorizedCronRequest } from "@raring2go/security";
 import { NextResponse } from "next/server";
 import {
   advanceJourneyExecution,
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
 }
 
 async function processNextJourneyExecution(request: Request) {
-  if (!isAuthorizedCronRequest(request)) {
+  if (!isAuthorizedCronRequest(request.headers)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -152,12 +153,3 @@ async function processNextJourneyExecution(request: Request) {
   }
 }
 
-function isAuthorizedCronRequest(request: Request) {
-  const secret = process.env.CRON_SECRET;
-
-  if (!secret) {
-    return process.env.APP_ENV !== "production";
-  }
-
-  return request.headers.get("authorization") === `Bearer ${secret}`;
-}

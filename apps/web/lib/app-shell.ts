@@ -368,6 +368,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "franchise"
   },
   {
+    id: "privacy",
+    label: "Privacy Requests",
+    href: "/app/privacy",
+    capability: {
+      module: "privacy.request",
+      action: "view"
+    },
+    contextLevel: "system",
+    group: "administration"
+  },
+  {
     id: "jobs",
     label: "Job Console",
     href: "/app/system/jobs",
@@ -545,7 +556,7 @@ const permissionData: PermissionData = {
       scope: "own_territory",
       constraints: {}
     },
-    ...[fixtureIds.permissions.scorecardView, fixtureIds.permissions.healthConfigManage, fixtureIds.permissions.snapshotGenerate].map((permissionId) => ({
+    ...[fixtureIds.permissions.scorecardView, fixtureIds.permissions.healthConfigManage, fixtureIds.permissions.snapshotGenerate, fixtureIds.permissions.privacyRequestView, fixtureIds.permissions.privacyRequestCreate, fixtureIds.permissions.privacyRequestDecide, fixtureIds.permissions.privacyRequestExport].map((permissionId) => ({
       roleId: fixtureIds.roles.hqAdmin,
       permissionId,
       scope: "network" as const,

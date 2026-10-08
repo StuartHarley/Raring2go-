@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
+import { rateLimitRules } from "@raring2go/security";
 import { NextResponse } from "next/server";
 import { PortalAccessError, PortalStateError } from "@raring2go/advertising";
 import { requireShellPermission, ShellAccessError } from "../../../../lib/app-shell";
 import { sessionCookieName } from "../../../../lib/auth-runtime";
 import { appLogger } from "../../../../lib/logger";
 import { submitArtworkAsAdvertiser } from "../../../../lib/portal-runtime";
+import { firstRateLimitRefusal, tooManyRequestsResponse } from "../../../../lib/rate-limit-runtime";
 
 /**
  * Advertiser artwork upload. Identity comes only from the session: the organisation is taken
@@ -31,6 +33,9 @@ export async function POST(request: Request) {
     }
     throw error;
   }
+
+  const refusal = await firstRateLimitRefusal([{ rule: rateLimitRules.artworkUploadUser, identifier: shell.userId }]);
+  if (refusal) return tooManyRequestsResponse(refusal);
 
   const formData = await request.formData();
   const file = formData.get("file");

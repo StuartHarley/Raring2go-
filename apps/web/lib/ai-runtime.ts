@@ -1,8 +1,8 @@
 import { auditActions, recordAuditEvent } from "@raring2go/audit";
 import { aiRunCapabilities, createAiGatewayFromEnv, createAiProviderFromEnv, createExternalWorkflowsFromEnv, runAiTask, createDrizzleAiRunStore, decideAiRun, estimateCostMinor as estimateCost, getAiRunForActor, listAiRunsForActor } from "@raring2go/ai";
 import type { AiActorContext, AiApprovalState, AiGateway, AiRunRecord, AiSuggestionResult, AiTask, AiUsage, CampaignDraft } from "@raring2go/ai";
-import { createDevelopmentMemoryRateLimiter } from "@raring2go/auth";
-import type { RateLimiter } from "@raring2go/auth";
+import { rateLimitRules } from "@raring2go/security";
+import { firstRateLimitRefusal } from "./rate-limit-runtime";
 import { aiUsageEvents, createDb, fixtureIds } from "@raring2go/db";
 import { evaluatePermission, requirePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
@@ -12,28 +12,20 @@ import { boundForStorage } from "@raring2go/ai";
 import { sql } from "drizzle-orm";
 import { marketingPermissionData } from "./marketing-runtime";
 
-const rateLimiterKey = Symbol.for("raring2go.ai-assist-rate-limiter");
-const globalRateLimiter = globalThis as typeof globalThis & {
-  [rateLimiterKey]?: RateLimiter;
-};
-
-function getAiAssistRateLimiter(): RateLimiter {
-  if (!globalRateLimiter[rateLimiterKey]) {
-    globalRateLimiter[rateLimiterKey] = createDevelopmentMemoryRateLimiter({
-      limit: Number(process.env.AI_ASSIST_RATE_LIMIT ?? 20),
-      windowMs: Number(process.env.AI_ASSIST_RATE_LIMIT_WINDOW_MS ?? 60 * 60 * 1000)
-    });
-  }
-
-  return globalRateLimiter[rateLimiterKey];
-}
-
+/**
+ * Counters live in Postgres (shared by every serverless instance), keyed by territory so one
+ * franchise cannot burn the whole network's allowance. Limit and window keep their old env overrides.
+ */
 async function enforceAiAssistRateLimit(context: MarketingActorContext) {
-  const key = context.territoryId ?? context.userId;
-  const decision = await getAiAssistRateLimiter().check(key);
+  const rule = {
+    ...rateLimitRules.aiAssistUser,
+    limit: Number(process.env.AI_ASSIST_RATE_LIMIT ?? 20),
+    windowSeconds: Math.max(1, Math.round(Number(process.env.AI_ASSIST_RATE_LIMIT_WINDOW_MS ?? 60 * 60 * 1000) / 1000))
+  };
+  const refusal = await firstRateLimitRefusal([{ rule, identifier: context.territoryId ?? context.userId }]);
 
-  if (!decision.allowed) {
-    throw new Error(`AI assist limit reached for this territory. Try again after ${decision.resetAt.toLocaleTimeString()}.`);
+  if (refusal) {
+    throw new Error(`AI assist limit reached for this territory. Try again after ${refusal.resetAt.toLocaleTimeString()}.`);
   }
 }
 

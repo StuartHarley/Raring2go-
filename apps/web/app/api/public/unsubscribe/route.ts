@@ -1,4 +1,6 @@
+import { rateLimitRules } from "@raring2go/security";
 import { NextResponse } from "next/server";
+import { clientIp, firstRateLimitRefusal, tooManyRequestsResponse } from "../../../../lib/rate-limit-runtime";
 import {
   insertSuppressionRecord,
   loadContactForUnsubscribe,
@@ -18,6 +20,9 @@ export async function POST(request: Request) {
 }
 
 async function handleUnsubscribe(request: Request, format: "html" | "json") {
+  const refusal = await firstRateLimitRefusal([{ rule: rateLimitRules.publicUnsubscribeIp, identifier: clientIp(request.headers) }]);
+  if (refusal) return tooManyRequestsResponse(refusal);
+
   const url = new URL(request.url);
   const contactId = url.searchParams.get("c");
   const campaignId = url.searchParams.get("m");

@@ -171,7 +171,11 @@ describe("foundation fixtures", () => {
       "portal.advertiser",
       "analytics.scorecard",
       "analytics.health_config",
-      "analytics.snapshot"
+      "analytics.snapshot",
+      "privacy.request",
+      "privacy.request",
+      "privacy.request",
+      "privacy.request"
     ]);
   });
 

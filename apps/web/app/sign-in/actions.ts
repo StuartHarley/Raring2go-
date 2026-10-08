@@ -1,10 +1,11 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { createSession, findOrCreateUserByEmail } from "@raring2go/auth";
+import { rateLimitRules } from "@raring2go/security";
 import {
   appAuditRecorder,
   appAuthRepository,
@@ -13,6 +14,7 @@ import {
   sessionCookieName,
   signOut
 } from "../../lib/auth-runtime";
+import { clientIp, firstRateLimitRefusal } from "../../lib/rate-limit-runtime";
 
 const devSessionTtlMs = 30 * 24 * 60 * 60 * 1000;
 
@@ -46,6 +48,17 @@ export async function requestSignInAction(formData: FormData) {
     });
 
     redirect(returnTo as Route);
+  }
+
+  // Production only (the development shortcut above sends no email). Limited per address and per
+  // caller so neither one inbox nor one attacker can be flooded with sign-in emails. The answer is
+  // the same whether or not the address belongs to anyone, so this leaks nothing about accounts.
+  const refusal = await firstRateLimitRefusal([
+    { rule: rateLimitRules.signInRequestEmail, identifier: email },
+    { rule: rateLimitRules.signInRequestIp, identifier: clientIp(await headers()) }
+  ]);
+  if (refusal) {
+    redirect(`/sign-in?error=rate-limited&returnTo=${encodeURIComponent(returnTo)}` as Route);
   }
 
   const token = randomUUID();

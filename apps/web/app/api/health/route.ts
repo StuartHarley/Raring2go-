@@ -1,3 +1,4 @@
+import { isAuthorizedCronRequest } from "@raring2go/security";
 import { NextResponse } from "next/server";
 import { readSystemHealth } from "../../../lib/health-runtime";
 
@@ -9,8 +10,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const report = await readSystemHealth();
-  const secret = process.env.CRON_SECRET;
-  const detailed = secret ? request.headers.get("authorization") === `Bearer ${secret}` : process.env.APP_ENV !== "production";
+  const detailed = isAuthorizedCronRequest(request.headers);
   const status = report.status === "down" ? 503 : 200;
 
   return NextResponse.json(detailed ? report : { status: report.status, checkedAt: report.checkedAt }, {
