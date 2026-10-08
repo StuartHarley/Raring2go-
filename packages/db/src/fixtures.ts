@@ -171,7 +171,9 @@ export const fixtureIds = {
     workflowView: "00000000-0000-4000-8000-000000000549",
     workflowManage: "00000000-0000-4000-8000-000000000550",
     workflowActivate: "00000000-0000-4000-8000-000000000551",
-    workflowTest: "00000000-0000-4000-8000-000000000552"
+    workflowTest: "00000000-0000-4000-8000-000000000552",
+    aiRunView: "00000000-0000-4000-8000-000000000553",
+    aiRunDecide: "00000000-0000-4000-8000-000000000554"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1377,6 +1379,18 @@ export const foundationSeed = {
       module: "automation.workflow",
       action: "test",
       description: "Test-run a workflow without side effects."
+    },
+    {
+      id: fixtureIds.permissions.aiRunView,
+      module: "ai.run",
+      action: "view",
+      description: "View AI runs, their sources, output and approval state in scope."
+    },
+    {
+      id: fixtureIds.permissions.aiRunDecide,
+      module: "ai.run",
+      action: "decide",
+      description: "Approve or reject AI output awaiting a human decision."
     }
   ],
   advertisers: [

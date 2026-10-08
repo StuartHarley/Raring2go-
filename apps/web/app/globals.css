@@ -1738,3 +1738,16 @@ p {
   font-family: ui-monospace, monospace;
   width: 100%;
 }
+
+.code-block {
+  background: var(--r2-surface-tint);
+  border-radius: 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+  margin: 12px 0 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

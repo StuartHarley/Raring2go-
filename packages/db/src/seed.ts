@@ -157,7 +157,7 @@ export async function seedDatabase(databaseUrl?: string) {
         scope: "network" as const,
         constraints: {}
       },
-      ...[fixtureIds.permissions.jobsView, fixtureIds.permissions.jobsRetry, fixtureIds.permissions.jobsCancel, fixtureIds.permissions.workflowView, fixtureIds.permissions.workflowManage, fixtureIds.permissions.workflowActivate, fixtureIds.permissions.workflowTest].map((permissionId) => ({
+      ...[fixtureIds.permissions.jobsView, fixtureIds.permissions.jobsRetry, fixtureIds.permissions.jobsCancel, fixtureIds.permissions.workflowView, fixtureIds.permissions.workflowManage, fixtureIds.permissions.workflowActivate, fixtureIds.permissions.workflowTest, fixtureIds.permissions.aiRunView, fixtureIds.permissions.aiRunDecide].map((permissionId) => ({
         roleId: fixtureIds.roles.superAdmin,
         permissionId,
         scope: "system" as const,
@@ -386,7 +386,9 @@ export async function seedDatabase(databaseUrl?: string) {
         fixtureIds.permissions.workflowView,
         fixtureIds.permissions.workflowManage,
         fixtureIds.permissions.workflowActivate,
-        fixtureIds.permissions.workflowTest
+        fixtureIds.permissions.workflowTest,
+        fixtureIds.permissions.aiRunView,
+        fixtureIds.permissions.aiRunDecide
       ].map((permissionId) => ({
         roleId: fixtureIds.roles.hqAdmin,
         permissionId,
@@ -420,6 +422,18 @@ export async function seedDatabase(databaseUrl?: string) {
       {
         roleId: fixtureIds.roles.franchisee,
         permissionId: fixtureIds.permissions.workflowView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.aiRunView,
+        scope: "own_territory",
+        constraints: {}
+      },
+      {
+        roleId: fixtureIds.roles.franchisee,
+        permissionId: fixtureIds.permissions.aiRunDecide,
         scope: "own_territory",
         constraints: {}
       },

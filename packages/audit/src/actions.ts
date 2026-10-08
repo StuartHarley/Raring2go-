@@ -17,6 +17,8 @@ export const auditActions = {
   permissionDelegationRevoke: "permission.delegation.revoke",
   aiGenerate: "ai.generate",
   aiApprove: "ai.approve",
+  aiReject: "ai.reject",
+  aiApply: "ai.apply",
   systemRun: "system.run",
   authSignIn: "auth.sign.in",
   authSignOut: "auth.sign.out",

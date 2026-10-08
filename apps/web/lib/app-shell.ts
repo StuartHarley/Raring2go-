@@ -313,6 +313,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "administration"
   },
   {
+    id: "ai-runs",
+    label: "AI Runs",
+    href: "/app/system/ai",
+    capability: {
+      module: "ai.run",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "administration"
+  },
+  {
     id: "workflows",
     label: "Workflows",
     href: "/app/system/workflows",
@@ -442,6 +453,18 @@ const permissionData: PermissionData = {
     {
       roleId: fixtureIds.roles.franchisee,
       permissionId: fixtureIds.permissions.workflowView,
+      scope: "own_territory",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.hqAdmin,
+      permissionId: fixtureIds.permissions.aiRunView,
+      scope: "network",
+      constraints: {}
+    },
+    {
+      roleId: fixtureIds.roles.franchisee,
+      permissionId: fixtureIds.permissions.aiRunView,
       scope: "own_territory",
       constraints: {}
     },
