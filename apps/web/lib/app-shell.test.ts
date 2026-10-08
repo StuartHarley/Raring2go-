@@ -225,6 +225,7 @@ describe("app shell context and capabilities", () => {
         "system",
         "ai-runs",
         "workflows",
+        "scorecard",
         "jobs",
         "activity"
       ]);

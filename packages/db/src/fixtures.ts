@@ -179,7 +179,10 @@ export const fixtureIds = {
     eventSuggestionView: "00000000-0000-4000-8000-000000000555",
     eventSuggestionDiscover: "00000000-0000-4000-8000-000000000556",
     eventSuggestionDecide: "00000000-0000-4000-8000-000000000557",
-    portalView: "00000000-0000-4000-8000-000000000558"
+    portalView: "00000000-0000-4000-8000-000000000558",
+    scorecardView: "00000000-0000-4000-8000-000000000559",
+    healthConfigManage: "00000000-0000-4000-8000-000000000560",
+    snapshotGenerate: "00000000-0000-4000-8000-000000000561"
   },
   advertisers: {
     example: "00000000-0000-4000-8000-000000000701"
@@ -1433,6 +1436,24 @@ export const foundationSeed = {
       module: "portal.advertiser",
       action: "view",
       description: "Use the advertiser portal for your own organisation."
+    },
+    {
+      id: fixtureIds.permissions.scorecardView,
+      module: "analytics.scorecard",
+      action: "view",
+      description: "View the Business-in-a-Box scorecard, health score and peer benchmarks in scope."
+    },
+    {
+      id: fixtureIds.permissions.healthConfigManage,
+      module: "analytics.health_config",
+      action: "manage",
+      description: "Create, edit and activate versions of the Franchise Health Score configuration."
+    },
+    {
+      id: fixtureIds.permissions.snapshotGenerate,
+      module: "analytics.snapshot",
+      action: "generate",
+      description: "Generate metric and health snapshots on demand."
     }
   ],
   advertisers: [

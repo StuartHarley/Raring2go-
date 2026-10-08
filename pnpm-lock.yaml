@@ -47,6 +47,9 @@ importers:
       '@raring2go/ai':
         specifier: workspace:*
         version: link:../../packages/ai
+      '@raring2go/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
       '@raring2go/audit':
         specifier: workspace:*
         version: link:../../packages/audit
@@ -151,6 +154,25 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 0.125.0
         version: 0.125.0(zod@4.4.3)
+      '@raring2go/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@raring2go/db':
+        specifier: workspace:*
+        version: link:../db
+      '@raring2go/permissions':
+        specifier: workspace:*
+        version: link:../permissions
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(postgres@3.4.9)
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(tsx@4.23.12))
+
+  packages/analytics:
+    dependencies:
       '@raring2go/audit':
         specifier: workspace:*
         version: link:../audit
