@@ -20,6 +20,7 @@ This document says what is enforced, where, and how it is proved. Where somethin
 | Security headers | `apps/web/next.config.ts` | `nosniff`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, HSTS and a CSP limited to `frame-ancestors`, `base-uri`, `object-src`. |
 | Retention is enforced, not just declared | `retention.ts`, job `security.enforce_retention` | Daily job deletes expired sessions, sign-in links, invitations, public analytics past their `retain_until` (previously set to 18 months but never deleted), and rate-limit counters. Integration test checks it removes only what is expired. Counts are audited. |
 | Data-subject access and erasure | `privacy/`, `/app/privacy` | See below. |
+| Webhooks are idempotent across instances | `webhook_event_claims`, `apps/web/lib/email-webhook-runtime.ts` | Each provider event is claimed by a unique (provider, event id) in the same transaction as its work: a retry or a copy arriving on another instance is skipped, a failure rolls the claim back so the retry is processed, and an event for a message not yet recorded is not claimed. A bad signature is 401; a processing failure is 500 so the provider retries. Postgres test: 6 simultaneous copies persist once. Claims are pruned after 90 days. |
 | Backups restore | `scripts/backup-drill.sh` | `pnpm drill:backup` dumps, restores into a scratch database and compares exact row counts for every table, plus migrations and foreign keys. |
 
 ## Rate limits
@@ -86,9 +87,7 @@ with expiring links. The development disk backend is blocked outside local devel
 1. **Franchisees cannot yet administer their own staff's access.** Access is database-backed and administered at `/app/roles` (see `docs/PERMISSIONS.md`), but only Head Office can assign roles and invite people. The escalation guards already make delegation safe to enable once the Franchise Staff role exists.
 2. **CSP has no `script-src`.** A strict script policy needs per-request nonces with this Next.js version; the
    present CSP covers framing, base-tag and plugin injection only.
-3. **Email webhook de-duplication is an in-memory cache per instance.** Idempotency across instances depends on the
-   downstream upserts; review before relying on it for billing-grade events.
-4. **Audit redaction is by key name** (`password`, `token`, ...). Free-text fields such as decision notes are
+3. **Audit redaction is by key name** (`password`, `token`, ...). Free-text fields such as decision notes are
    not scanned; the privacy workflows deliberately keep them out of audit metadata.
-5. **Provider-side controls are outside the repo:** database point-in-time recovery, secret rotation, WAF/DDoS,
+4. **Provider-side controls are outside the repo:** database point-in-time recovery, secret rotation, WAF/DDoS,
    DPA/sub-processor agreements and a penetration test. See the release checklist.

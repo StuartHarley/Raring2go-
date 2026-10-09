@@ -2297,7 +2297,9 @@ function ensureJourneyAccess(context: MarketingActorContext, journey: { territor
 
 export function applyEmailDeliveryEvent(
   data: { contacts: AudienceContact[]; suppressions: AudienceSuppression[]; emailDeliveryRecords: EmailDeliveryRecord[] },
-  delivery: EmailDeliveryRecord
+  delivery: EmailDeliveryRecord,
+  /** Real persistence needs a UUID for the suppression it may create; without it the id is `${delivery.id}_suppression`. */
+  options: { newId?: () => string } = {}
 ) {
   data.emailDeliveryRecords.push(delivery);
   const suppressionReason = suppressionReasonForEventType(delivery.eventType, delivery.metadata);
@@ -2314,7 +2316,7 @@ export function applyEmailDeliveryEvent(
   }
 
   data.suppressions.push({
-    id: `${delivery.id}_suppression`,
+    id: options.newId ? options.newId() : `${delivery.id}_suppression`,
     contactId: contact.id,
     emailNormalised: contact.emailNormalised,
     territoryId: null,

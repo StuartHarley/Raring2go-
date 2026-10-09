@@ -1,4 +1,4 @@
-import { authInvitations, authSessions, authVerificationTokens, publicAnalyticsEvents, rateLimitBuckets } from "@raring2go/db";
+import { authInvitations, authSessions, authVerificationTokens, publicAnalyticsEvents, rateLimitBuckets, webhookEventClaims } from "@raring2go/db";
 import type { createDb } from "@raring2go/db";
 import { and, isNotNull, lt, or } from "drizzle-orm";
 
@@ -25,6 +25,7 @@ export const retentionPolicies: RetentionPolicy[] = [
   { key: "auth_invitations", data: "Staff and franchisee invitations", keep: "90 days after expiry, acceptance or revocation", basis: "Onboarding audit trail", enforced: true },
   { key: "public_analytics_events", data: "Pseudonymous public website analytics events", keep: "Until each row's own retain_until (18 months from the event)", basis: "Aggregate reporting only; recorded per row at collection", enforced: true },
   { key: "rate_limit_buckets", data: "Rate limit counters (hashed keys)", keep: "2 days", basis: "Operational only", enforced: true },
+  { key: "webhook_event_claims", data: "Provider webhook idempotency claims", keep: "90 days", basis: "Longer than any provider's retry window; only the provider event id is held", enforced: true },
   { key: "jobs", data: "Completed background job history", keep: "30 days", basis: "Operations; enforced by the job-history prune job (OPS-001)", enforced: true },
   { key: "audit_events", data: "Audit trail", keep: "Indefinitely (append-only)", basis: "Accountability; personal data inside events is redacted at write time", enforced: false },
   { key: "privacy_requests", data: "Data-subject request records", keep: "6 years", basis: "Evidence of compliance; holds only a hash of the subject's email", enforced: false },
@@ -73,6 +74,8 @@ export async function enforceRetention(db: Db, now: Date = new Date()): Promise<
   result.public_analytics_events = (await db.delete(publicAnalyticsEvents).where(lt(publicAnalyticsEvents.retainUntil, now)).returning({ id: publicAnalyticsEvents.id })).length;
 
   result.rate_limit_buckets = (await db.delete(rateLimitBuckets).where(lt(rateLimitBuckets.windowStart, ago(2))).returning({ key: rateLimitBuckets.key })).length;
+
+  result.webhook_event_claims = (await db.delete(webhookEventClaims).where(lt(webhookEventClaims.claimedAt, ago(90))).returning({ id: webhookEventClaims.id })).length;
 
   return result;
 }

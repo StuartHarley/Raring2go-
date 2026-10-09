@@ -330,6 +330,13 @@
       "when": 1791472046289,
       "tag": "0046_broken_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791525644525,
+      "tag": "0047_acoustic_deathstrike",
+      "breakpoints": true
     }
   ]
 }
