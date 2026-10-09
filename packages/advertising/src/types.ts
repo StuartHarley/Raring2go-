@@ -631,8 +631,16 @@ export type CatalogueView = {
   inventorySlots: InventorySlot[];
 };
 
+/** Figures defined once in the analytics metric catalogue (definitions version 2026.10.2); computed here from the same rules. */
+export type CommercialMix = { soldMinor: number; packageMinor: number; digitalMinor: number; packageSharePercent: number | null; digitalSharePercent: number | null };
+export type AdvertiserChurn = { baseAYearAgo: number; lost: number; ratePercent: number | null };
+
 export type CommercialCommandCentreView = {
   scope: "network" | "territory";
+  definitionsNote: string;
+  mix: CommercialMix;
+  churn: AdvertiserChurn;
+  lostReasons: Array<{ reason: string; count: number }>;
   totals: {
     advertisers: number;
     activeAdvertisers: number;
@@ -660,6 +668,8 @@ export type CommercialCommandCentreView = {
     conversionRate: number;
     retentionRate: number;
     openRenewals: number;
+    mix: CommercialMix;
+    churn: AdvertiserChurn;
   }>;
   attention: {
     overdueDebtAdvertiserIds: string[];

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackedLink } from "../_components/TrackedLink";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -66,12 +67,12 @@ export default async function ForYouPage({ params }: PageProps) {
         <div className="public-card-grid">
           {recommendations.emptyState ? <p className="public-empty">{recommendations.emptyState}</p> : null}
           {recommendations.recommendations.map((item) => (
-            <Link key={item.id} href={item.href as Route} className="public-card">
+            <TrackedLink key={item.id} territorySlug={recommendations.territory.slug} path={`/areas/${recommendations.territory.slug}/for-you`} eventType="discovery_item_clicked" entityType="content" entityId={item.id} component="for_you_card" href={item.href} className="public-card">
               <span>{item.type}</span>
               <h3>{item.title}</h3>
               <p>{item.summary}</p>
               <small>{item.reasons.join(" · ")}</small>
-            </Link>
+            </TrackedLink>
           ))}
         </div>
       </section>

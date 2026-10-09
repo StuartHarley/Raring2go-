@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackedLink } from "../_components/TrackedLink";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
@@ -53,12 +54,12 @@ export default async function BusinessesPage({ params }: PageProps) {
         <div className="public-card-grid">
           {discovery.emptyState ? <p className="public-empty">{discovery.emptyState}</p> : null}
           {discovery.placements.map((placement) => (
-            <Link key={placement.id} href={placement.href as Route} className="public-card public-sponsored">
+            <TrackedLink key={placement.id} territorySlug={discovery.territory.slug} path={`/areas/${discovery.territory.slug}/businesses`} eventType="commercial_placement_clicked" entityType="advertiser" entityId={placement.advertiserId} component="businesses_placement" href={placement.href} className="public-card public-sponsored">
               <span>{placement.label}</span>
               <h3>{placement.title}</h3>
               <p>{placement.summary}</p>
               <small>{placement.tags?.join(", ") || "Family-friendly"}</small>
-            </Link>
+            </TrackedLink>
           ))}
         </div>
       </section>

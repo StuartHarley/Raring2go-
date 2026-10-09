@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackedLink } from "./_components/TrackedLink";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
@@ -71,15 +72,15 @@ export default async function TerritoryHomepage({ params }: PageProps) {
       </section>
 
       <PublicSection title="Latest local stories" empty={emptyFor(homepage, "stories")}>
-        {homepage.stories.map((story) => <PublicCard key={story.id} card={story} />)}
+        {homepage.stories.map((story) => <PublicCard key={story.id} card={story} territorySlug={homepage.territory.slug} />)}
       </PublicSection>
 
       <PublicSection title="What's on near you" empty={emptyFor(homepage, "whats_on")}>
-        {homepage.whatsOn.map((story) => <PublicCard key={story.id} card={story} />)}
+        {homepage.whatsOn.map((story) => <PublicCard key={story.id} card={story} territorySlug={homepage.territory.slug} />)}
       </PublicSection>
 
       <PublicSection title="Things to do" empty={emptyFor(homepage, "things_to_do")}>
-        {homepage.thingsToDo.map((story) => <PublicCard key={story.id} card={story} />)}
+        {homepage.thingsToDo.map((story) => <PublicCard key={story.id} card={story} territorySlug={homepage.territory.slug} />)}
       </PublicSection>
 
       <section className="public-band">
@@ -140,16 +141,18 @@ function PublicSection({
 }
 
 function PublicCard({
-  card
+  card,
+  territorySlug
 }: {
-  card: { href: string; source: string; type: string; title: string; summary: string };
+  card: { id: string; href: string; source: string; type: string; title: string; summary: string };
+  territorySlug: string;
 }) {
   return (
-    <Link href={card.href as Route} className="public-card">
+    <TrackedLink territorySlug={territorySlug} path={`/areas/${territorySlug}`} eventType="discovery_item_clicked" entityType="content" entityId={card.id} component="homepage_card" href={card.href} className="public-card">
       <span>{card.source} {card.type}</span>
       <h3>{card.title}</h3>
       <p>{card.summary}</p>
-    </Link>
+    </TrackedLink>
   );
 }
 

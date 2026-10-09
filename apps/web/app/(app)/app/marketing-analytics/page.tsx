@@ -1,5 +1,6 @@
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { readMarketingAnalytics } from "../../../../lib/marketing-runtime";
+import { readContentEngagement } from "../../../../lib/marketing-insights";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
@@ -16,6 +17,8 @@ export default async function MarketingAnalyticsPage({ searchParams }: PageProps
   }
 
   const analytics = result.analytics;
+  const engagement = result.engagement;
+  const show = (tracked: boolean, value: number) => (tracked ? String(value) : "Not tracked yet");
 
   return (
     <AppShell request={request}>
@@ -112,6 +115,37 @@ export default async function MarketingAnalyticsPage({ searchParams }: PageProps
           ))}
         </div>
       </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Content engagement</p>
+        <h2>What families read and click (last {engagement.windowDays} days)</h2>
+        <div className="franchise-metrics">
+          <article><span>Area page views</span><strong>{show(engagement.tracked.views, engagement.totals.territoryViews)}</strong></article>
+          <article><span>Content views</span><strong>{show(engagement.tracked.views, engagement.totals.contentViews)}</strong></article>
+          <article><span>Content clicks</span><strong>{show(engagement.tracked.clicks, engagement.totals.contentClicks)}</strong></article>
+          <article><span>Sponsored clicks</span><strong>{show(engagement.tracked.clicks, engagement.totals.placementClicks)}</strong></article>
+          <article><span>Newsletter sign-ups</span><strong>{show(engagement.tracked.signups, engagement.totals.signupsCompleted)}</strong></article>
+        </div>
+        <h3>Top content</h3>
+        {engagement.topContent.length === 0 ? <p>No content activity recorded yet.</p> : (
+          <div className="franchise-list">
+            {engagement.topContent.map((item) => (
+              <div key={item.contentId}><strong>{item.title}</strong><span>{item.views} views - {item.clicks} clicks</span></div>
+            ))}
+          </div>
+        )}
+        <h3>Where visits come from</h3>
+        <p>Credited from campaign tags (utm_source) on the landing link. Visits with no tag are shown as direct or unknown.</p>
+        {engagement.attribution.length === 0 ? <p>No visits recorded yet.</p> : (
+          <div className="franchise-list">
+            {engagement.attribution.map((item) => (
+              <div key={item.source}><strong>{item.source}</strong><span>{item.visits} visits - {item.contentViews} content views - {item.signups} sign-ups</span></div>
+            ))}
+          </div>
+        )}
+        <h3>Not measured</h3>
+        <ul>{engagement.notTracked.map((note) => <li key={note}>{note}</li>)}</ul>
+      </section>
     </AppShell>
   );
 }
@@ -128,7 +162,13 @@ async function loadAnalytics(request: Awaited<ReturnType<typeof requestFromSearc
       territoryId: shell.activeContext.territoryId
     });
 
-    return { analytics };
+    const engagement = await readContentEngagement({
+      userId: shell.userId,
+      organisationId: shell.activeContext.organisationId,
+      territoryId: shell.activeContext.territoryId
+    });
+
+    return { analytics, engagement };
   } catch (error) {
     return { error };
   }

@@ -28,6 +28,33 @@ describe("catalogue", () => {
   });
 });
 
+describe("churn and sales mix", () => {
+  const derived = (key: string) => {
+    const definition = metricByKey.get(key)!;
+    if (definition.kind !== "derived") throw new Error("expected derived");
+    return definition.derive;
+  };
+
+  it("derives churn from the base a year ago, and has no figure when there was no base to lose", () => {
+    const churn = derived("commercial.churn_rate_12m");
+    expect(churn({ "commercial.churned_12m": 3, "commercial.customer_base_12m_ago": 40 })).toBe(7.5);
+    expect(churn({ "commercial.churned_12m": 0, "commercial.customer_base_12m_ago": 12 })).toBe(0);
+    expect(churn({ "commercial.churned_12m": 0, "commercial.customer_base_12m_ago": 0 })).toBeNull();
+  });
+
+  it("derives package and digital share of sold value, with no figure when nothing was sold", () => {
+    expect(derived("commercial.package_share_90d")({ "commercial.package_value_90d": 25_000, "commercial.sold_value_90d": 100_000 })).toBe(25);
+    expect(derived("commercial.digital_share_90d")({ "commercial.digital_value_90d": 1, "commercial.sold_value_90d": 3 })).toBe(33.3);
+    expect(derived("commercial.digital_share_90d")({ "commercial.digital_value_90d": 0, "commercial.sold_value_90d": 0 })).toBeNull();
+  });
+
+  it("declares a window for every new metric", () => {
+    for (const key of ["commercial.churn_rate_12m", "commercial.package_share_90d", "commercial.digital_share_90d"]) {
+      expect(metricByKey.get(key)!.window).toMatch(/^rolling_(12_months|90_days)$/);
+    }
+  });
+});
+
 describe("normaliseValue", () => {
   it("scales linearly between the anchors, clamped, in either direction", () => {
     expect(normaliseValue(250, { bad: 0, good: 500 })).toBe(50);

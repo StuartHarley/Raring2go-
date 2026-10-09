@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 
 /** Bump when a definition changes meaning, so a stored snapshot can be interpreted later. */
-export const DEFINITIONS_VERSION = "2026.10.1";
+export const DEFINITIONS_VERSION = "2026.10.2";
 
 export type MetricDomain = "commercial" | "audience" | "publishing" | "franchise" | "operations";
 export type MetricUnit = "count" | "minor_currency" | "percent";
@@ -24,7 +24,7 @@ export type MetricDefinition = {
   /** The exact rule, for anyone who needs to reconcile it. */
   formula: string;
   source: string;
-  window: "current" | "rolling_30_days";
+  window: "current" | "rolling_30_days" | "rolling_90_days" | "rolling_12_months";
 } & (
   | { kind: "query"; query: (context: QueryContext) => SQL }
   | { kind: "derived"; derive: (values: MetricValues) => number | null; components: string[] }
@@ -38,6 +38,25 @@ export type MetricDefinition = {
  *
  * Queries return rows of (territory_id, value). Soft-deleted rows are always excluded.
  */
+function shareOf(part: number | null | undefined, whole: number | null | undefined) {
+  return part == null || whole == null || whole <= 0 ? null : Math.round((part / whole) * 1000) / 10;
+}
+
+/** Booking item value by territory over the last 90 days; `extra` narrows it (package, digital). */
+function mixQuery(now: Date, extra: SQL) {
+  const since = new Date(now.getTime() - 90 * 86_400_000).toISOString().slice(0, 10);
+  return sql`
+    SELECT b.territory_id AS territory_id, COALESCE(SUM(bi.total_price_minor), 0)::float8 AS value
+    FROM commercial_booking_items bi
+    JOIN commercial_bookings b ON b.id = bi.booking_id
+    JOIN commercial_proposal_items pi ON pi.id = bi.proposal_item_id
+    JOIN commercial_products p ON p.id = bi.product_id
+    WHERE bi.deleted_at IS NULL AND b.deleted_at IS NULL AND b.status = 'booked'
+      AND b.advertiser_id IN (SELECT id FROM advertisers WHERE deleted_at IS NULL AND status <> 'archived')
+       AND b.booked_on >= ${since}::date ${extra}
+    GROUP BY b.territory_id`;
+}
+
 export const metricCatalogue: MetricDefinition[] = [
   {
     key: "commercial.bookings_value_30d",
@@ -105,6 +124,133 @@ export const metricCatalogue: MetricDefinition[] = [
       FROM advertiser_invoices
       WHERE deleted_at IS NULL AND status IN ('issued', 'part_paid') AND due_date < ${today}::date
       GROUP BY territory_id`
+  },
+  {
+    key: "commercial.customer_base_12m_ago",
+    label: "Advertiser base a year ago",
+    domain: "commercial",
+    unit: "count",
+    direction: "neutral",
+    description: "Advertisers who had booked before the start of the last 12 months and had not already lapsed then. The starting point churn is measured against.",
+    formula: "Count of advertisers with first booked on or before 12 months ago and no lapse date, or a lapse date after that point.",
+    source: "advertisers",
+    window: "rolling_12_months",
+    kind: "query",
+    query: ({ now }) => {
+      const start = new Date(now.getTime() - 365 * 86_400_000).toISOString().slice(0, 10);
+      return sql`
+        SELECT owning_territory_id AS territory_id, COUNT(*)::float8 AS value
+        FROM advertisers
+        WHERE deleted_at IS NULL AND status <> 'archived' AND first_booked_on IS NOT NULL AND first_booked_on <= ${start}::date
+          AND (lapsed_on IS NULL OR lapsed_on > ${start}::date)
+        GROUP BY owning_territory_id`;
+    }
+  },
+  {
+    key: "commercial.churned_12m",
+    label: "Advertisers lost (12 months)",
+    domain: "commercial",
+    unit: "count",
+    direction: "lower",
+    description: "Advertisers from the starting base who have since lapsed: no booking for more than 12 months.",
+    formula: "Count of advertisers in the base a year ago whose lapse date falls within the last 12 months.",
+    source: "advertisers",
+    window: "rolling_12_months",
+    kind: "query",
+    query: ({ now }) => {
+      const start = new Date(now.getTime() - 365 * 86_400_000).toISOString().slice(0, 10);
+      return sql`
+        SELECT owning_territory_id AS territory_id, COUNT(*)::float8 AS value
+        FROM advertisers
+        WHERE deleted_at IS NULL AND status <> 'archived' AND first_booked_on IS NOT NULL AND first_booked_on <= ${start}::date
+          AND lapsed_on IS NOT NULL AND lapsed_on > ${start}::date AND lapsed_on <= ${now.toISOString().slice(0, 10)}::date
+        GROUP BY owning_territory_id`;
+    }
+  },
+  {
+    key: "commercial.churn_rate_12m",
+    label: "Advertiser churn (12 months)",
+    domain: "commercial",
+    unit: "percent",
+    direction: "lower",
+    description: "The share of last year's advertisers who have since lapsed. No data when there was no advertiser base to lose.",
+    formula: "Advertisers lost (12 months) divided by advertiser base a year ago, as a percentage.",
+    source: "derived",
+    window: "rolling_12_months",
+    kind: "derived",
+    components: ["commercial.churned_12m", "commercial.customer_base_12m_ago"],
+    derive: (values) => {
+      const base = values["commercial.customer_base_12m_ago"];
+      const lost = values["commercial.churned_12m"];
+      return base == null || lost == null || base <= 0 ? null : Math.round((lost / base) * 1000) / 10;
+    }
+  },
+  {
+    key: "commercial.sold_value_90d",
+    label: "Sold line value (90 days)",
+    domain: "commercial",
+    unit: "minor_currency",
+    direction: "neutral",
+    description: "The value of every advertising line sold in the last 90 days. The whole that package and digital shares are measured against.",
+    formula: "Sum of booking item totals on bookings with status booked and booked on or after 90 days ago.",
+    source: "commercial_booking_items",
+    window: "rolling_90_days",
+    kind: "query",
+    query: ({ now }) => mixQuery(now, sql``)
+  },
+  {
+    key: "commercial.package_value_90d",
+    label: "Package sales (90 days)",
+    domain: "commercial",
+    unit: "minor_currency",
+    direction: "neutral",
+    description: "The value of lines sold as part of a package in the last 90 days.",
+    formula: "Sum of booking item totals (last 90 days) whose proposal line belongs to a commercial package.",
+    source: "commercial_booking_items",
+    window: "rolling_90_days",
+    kind: "query",
+    query: ({ now }) => mixQuery(now, sql`AND pi.package_id IS NOT NULL`)
+  },
+  {
+    key: "commercial.digital_value_90d",
+    label: "Digital sales (90 days)",
+    domain: "commercial",
+    unit: "minor_currency",
+    direction: "neutral",
+    description: "The value of lines sold on digital products (anything that is not the printed magazine) in the last 90 days.",
+    formula: "Sum of booking item totals (last 90 days) whose product channel is not magazine.",
+    source: "commercial_booking_items",
+    window: "rolling_90_days",
+    kind: "query",
+    query: ({ now }) => mixQuery(now, sql`AND p.channel <> 'magazine'`)
+  },
+  {
+    key: "commercial.package_share_90d",
+    label: "Package share of sales",
+    domain: "commercial",
+    unit: "percent",
+    direction: "higher",
+    description: "How much of what was sold in the last 90 days was sold as a package. No data when nothing was sold.",
+    formula: "Package sales divided by sold line value, as a percentage.",
+    source: "derived",
+    window: "rolling_90_days",
+    kind: "derived",
+    components: ["commercial.package_value_90d", "commercial.sold_value_90d"],
+    derive: (values) => shareOf(values["commercial.package_value_90d"], values["commercial.sold_value_90d"])
+  },
+  {
+    key: "commercial.digital_share_90d",
+    label: "Digital share of sales",
+    domain: "commercial",
+    unit: "percent",
+    direction: "neutral",
+    description: "How much of what was sold in the last 90 days was digital rather than print. No data when nothing was sold.",
+    formula: "Digital sales divided by sold line value, as a percentage.",
+    source: "derived",
+    window: "rolling_90_days",
+    kind: "derived",
+    components: ["commercial.digital_value_90d", "commercial.sold_value_90d"],
+    derive: (values) => shareOf(values["commercial.digital_value_90d"], values["commercial.sold_value_90d"])
   },
   {
     key: "commercial.overdue_share",
