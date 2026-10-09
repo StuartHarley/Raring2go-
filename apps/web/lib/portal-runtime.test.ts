@@ -2,7 +2,7 @@ import {
   advertiserDomainEvents, advertiserProposalAcceptances, artworkRequirements, artworkVersions, commercialBookingItems, commercialBookings, commercialProductionRequests,
   commercialProposals, createDb, fixtureIds, inventoryReservations, inventorySlots
 } from "@raring2go/db";
-import { createArtworkRequirement, loadAdvertisingData, persistAdvertisingChanges, snapshotAdvertisingData, updateArtworkStatus } from "@raring2go/advertising";
+import { loadAdvertisingData, persistAdvertisingChanges, snapshotAdvertisingData, updateArtworkStatus } from "@raring2go/advertising";
 import type { PermissionData } from "@raring2go/permissions";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -119,13 +119,12 @@ describe("advertiser portal against the real database", () => {
   });
 
   it("takes artwork through submission, a staff-issued proof, and the advertiser's approval", async () => {
-    // Staff create the artwork requirement for the production request (a staff action, persisted the same way).
+    // Booking has already requested the artwork (the handoff to production); staff add the specification.
     await staffDo(async (data) => {
       const request = data.productionRequests.find((entry) => entry.advertiserId === fixtureIds.advertisers.example)!;
-      await createArtworkRequirement(staff, staffPermissions, noAudit, data, {
-        id: crypto.randomUUID(), productionRequestId: request.id, bookingItemId: request.bookingItemId, advertiserId: request.advertiserId, territoryId: request.territoryId,
-        sourceType: "advertiser_supplied", status: "requested", specification: {}, dimensions: { width: 210, height: 297 }, contentFields: {}, proofReference: {}, deadline: "2099-01-01"
-      }, crypto.randomUUID());
+      const requirement = data.artworkRequirements.find((entry) => entry.productionRequestId === request.id)!;
+      requirement.dimensions = { width: 210, height: 297 };
+      requirement.deadline = "2099-01-01";
     });
 
     const requirementId = (await readPortal(advertiser)).view.campaigns[0]!.artwork[0]!.requirementId;
@@ -147,7 +146,7 @@ describe("advertiser portal against the real database", () => {
 
     // Staff issue the proof; the advertiser approves it.
     await staffDo(async (data) => {
-      await updateArtworkStatus(staff, staffPermissions, noAudit, data, requirementId, { status: "in_review", proofReference: { proofId: "proof-1" }, actorDate: "2026-03-10", domainEventId: crypto.randomUUID() });
+      await updateArtworkStatus(staff, staffPermissions, noAudit, data, requirementId, { status: "in_review", approvedVersionId: version.id, proofReference: { proofId: "proof-1" }, actorDate: "2026-03-10", domainEventId: crypto.randomUUID() });
     });
     expect((await readPortal(advertiser)).view.needsAction.map((entry) => entry.kind)).toContain("proof");
     await respondToProofAsAdvertiser(advertiser, { requirementId, decision: "approved" });

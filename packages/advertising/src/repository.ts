@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import {
   advertiserActivityEvents,
   advertiserContacts,
@@ -7,6 +8,9 @@ import {
   advertiserInvoiceLines,
   advertiserInvoiceSequences,
   advertiserTaxRates,
+  editionPages,
+  publicationOutputs,
+  territoryEditions,
   advertiserInvoices,
   advertiserMetricSnapshots,
   advertiserPaymentAllocations,
@@ -241,4 +245,42 @@ function dateString(value: unknown) {
   }
 
   return (value ?? null) as string | null;
+}
+
+// Real Drizzle query builders, typed loosely because this file otherwise accepts a minimal select stub.
+type WhereDb = { select(columns?: unknown): { from(table: unknown): { where(condition: unknown): PromiseLike<any[]> } } };
+
+/**
+ * Evidence that a placement is in a published output: the edition is published, a generated
+ * output exists for it, and (for a page placement) the page itself is published. Read straight from
+ * Edition Factory so "fulfilled" cannot be asserted without it.
+ */
+export async function loadPublishedPlacementEvidence(
+  anyDb: unknown,
+  input: { territoryEditionId: string; editionPageId?: string | null }
+): Promise<import("./service").PublishedPlacementEvidence | undefined> {
+  const db = anyDb as WhereDb;
+  const [edition] = await db.select().from(territoryEditions).where(and(eq(territoryEditions.id, input.territoryEditionId), eq(territoryEditions.status, "published")));
+  if (!edition) return undefined;
+
+  const outputs = await db
+    .select()
+    .from(publicationOutputs)
+    .where(and(eq(publicationOutputs.territoryEditionId, edition.id), eq(publicationOutputs.status, "generated")));
+  const output = outputs.sort((left, right) => right.version - left.version)[0];
+  if (!output) return undefined;
+
+  if (input.editionPageId) {
+    const [page] = await db.select().from(editionPages).where(and(eq(editionPages.id, input.editionPageId), eq(editionPages.territoryEditionId, edition.id)));
+    if (!page || page.status !== "published") return undefined;
+  }
+
+  return { territoryEditionId: edition.id, editionPageId: input.editionPageId ?? null, outputId: output.id, publishedOn: edition.publicationDate ? String(edition.publicationDate) : null };
+}
+
+/** The page's readiness as Edition Factory records it, for artwork sign-off. */
+export async function loadEditionPageReadiness(anyDb: unknown, editionPageId: string): Promise<string | null> {
+  const db = anyDb as WhereDb;
+  const [page] = await db.select({ readiness: editionPages.readiness }).from(editionPages).where(eq(editionPages.id, editionPageId));
+  return page?.readiness ?? null;
 }

@@ -28,6 +28,7 @@ import {
   workflowTickIdempotencyKey
 } from "@raring2go/workflows";
 import type { JobActorContext, JobAuditRecorder, JobCapability, JobFilter, JobSource, WorkflowsDb } from "@raring2go/workflows";
+import { createGenerateRenewalsHandler, GENERATE_RENEWALS_KIND, generateRenewalsIdempotencyKey } from "./advertising-jobs";
 import { createOverdueInvoiceScanner, engineHooks, knownHooks, SCAN_OVERDUE_INVOICES_KIND, scanOverdueInvoicesIdempotencyKey } from "./automation-hooks";
 import { createSnapshotMetricsHandler, SNAPSHOT_METRICS_KIND, snapshotMetricsIdempotencyKey } from "./analytics-runtime";
 import { appLogger } from "./logger";
@@ -62,7 +63,7 @@ export function hasNetworkJobAccess(permissions: PermissionData, userId: string)
  * decide whether to offer Retry without building a DB-backed registry; a unit test
  * asserts the two never drift apart.
  */
-export const registeredJobKinds: string[] = [PRUNE_JOB_HISTORY_KIND, EXECUTE_RUN_KIND, WORKFLOW_TICK_KIND, SCAN_OVERDUE_INVOICES_KIND, SNAPSHOT_METRICS_KIND, ENFORCE_RETENTION_KIND];
+export const registeredJobKinds: string[] = [PRUNE_JOB_HISTORY_KIND, EXECUTE_RUN_KIND, WORKFLOW_TICK_KIND, SCAN_OVERDUE_INVOICES_KIND, SNAPSHOT_METRICS_KIND, ENFORCE_RETENTION_KIND, GENERATE_RENEWALS_KIND];
 
 /** Handlers need a live DB handle, so the registry is built per request/tick. */
 export function buildJobRegistry(db: WorkflowsDb) {
@@ -72,7 +73,8 @@ export function buildJobRegistry(db: WorkflowsDb) {
     ...createWorkflowJobHandlers({ store: engine, hooks: engineHooks, jobs: createDrizzleJobStore(db) }),
     createOverdueInvoiceScanner(engine),
     createSnapshotMetricsHandler(),
-    createEnforceRetentionHandler()
+    createEnforceRetentionHandler(),
+    createGenerateRenewalsHandler()
   ]);
 }
 
@@ -163,6 +165,7 @@ export async function runJobWorkerTick(options: { workerId?: string; maxJobs?: n
     await enqueueJob(store, undefined, { kind: SCAN_OVERDUE_INVOICES_KIND, idempotencyKey: scanOverdueInvoicesIdempotencyKey(now), correlationId: options.correlationId }, now);
     await enqueueJob(store, undefined, { kind: SNAPSHOT_METRICS_KIND, idempotencyKey: snapshotMetricsIdempotencyKey(now), correlationId: options.correlationId }, now);
     await enqueueJob(store, undefined, { kind: ENFORCE_RETENTION_KIND, idempotencyKey: enforceRetentionIdempotencyKey(now), correlationId: options.correlationId }, now);
+    await enqueueJob(store, undefined, { kind: GENERATE_RENEWALS_KIND, idempotencyKey: generateRenewalsIdempotencyKey(now), correlationId: options.correlationId }, now);
 
     const summary = await runDueJobs(store, buildJobRegistry(db), {
       workerId: options.workerId ?? `web-${randomUUID().slice(0, 8)}`,

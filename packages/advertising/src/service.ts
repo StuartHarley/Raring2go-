@@ -188,6 +188,10 @@ export async function updateAdvertiser(
   requireAdvertisingPermission(context, permissions, "edit");
   const advertiser = requireAdvertiser(data, advertiserId);
   ensureContextCanAccessAdvertiser(context, advertiser, data);
+  // Status is a closed set. A form can post anything, so the domain, not the page, decides what is valid.
+  if (patch.status !== undefined && !["prospect", "active", "paused", "archived"].includes(patch.status)) {
+    throw new Error("That is not a valid advertiser status.");
+  }
   Object.assign(advertiser, patch);
   await audit.record(auditEvent(context, auditActions.advertiserUpdate, advertiser, {
     patch: Object.keys(patch)
@@ -531,6 +535,13 @@ export async function createProposal(
   return created;
 }
 
+export type PublishedPlacementEvidence = {
+  territoryEditionId: string;
+  editionPageId?: string | null;
+  outputId: string;
+  publishedOn?: string | null;
+};
+
 export type ProposalLineInput = {
   productId: string;
   quantity: number;
@@ -753,6 +764,7 @@ export async function acceptProposalAsBooking(
   };
   const bookingItems: CommercialBookingItem[] = [];
   const productionRequests: CommercialProductionRequest[] = [];
+  const artworkRequirementsToCreate: ArtworkRequirement[] = [];
   const reservations: InventoryReservation[] = [];
 
   proposalItems.forEach((item, index) => {
@@ -802,8 +814,9 @@ export async function acceptProposalAsBooking(
     });
     const product = requireProduct(data, item.productId);
     if (product.requiresArtwork) {
+      const productionRequestId = input.newId ? input.newId() : `${input.productionRequestIdPrefix}_${index + 1}`;
       productionRequests.push({
-        id: input.newId ? input.newId() : `${input.productionRequestIdPrefix}_${index + 1}`,
+        id: productionRequestId,
         bookingId: booking.id,
         bookingItemId,
         advertiserId: proposal.advertiserId,
@@ -815,6 +828,29 @@ export async function acceptProposalAsBooking(
           productId: product.id
         }
       });
+      // Booking is the handoff to production: the advertiser is asked for artwork straight away, placed
+      // on the slot's edition and page when there is one, so nothing depends on someone remembering to ask.
+      const slot = inventorySlotForBookingItem(data, inventoryReservationId, reservations);
+      artworkRequirementsToCreate.push({
+        id: input.newId ? input.newId() : `${input.productionRequestIdPrefix}_artwork_${index + 1}`,
+        productionRequestId,
+        bookingItemId,
+        advertiserId: proposal.advertiserId,
+        territoryId: proposal.territoryId,
+        territoryEditionId: slot?.territoryEditionId ?? null,
+        editionPageId: slot?.editionPageId ?? null,
+        inventorySlotId: slot?.id ?? null,
+        sourceType: "advertiser_supplied",
+        status: "requested",
+        specification: { productKey: product.key },
+        dimensions: {},
+        contentFields: {},
+        deadline: null,
+        approvedVersionId: null,
+        proofReference: {},
+        advertiserApprovedAt: null,
+        productionApprovedAt: null
+      });
     }
   });
 
@@ -824,6 +860,13 @@ export async function acceptProposalAsBooking(
   data.bookings.push(booking);
   data.bookingItems.push(...bookingItems);
   data.productionRequests.push(...productionRequests);
+  data.artworkRequirements.push(...artworkRequirementsToCreate);
+  for (const requirement of artworkRequirementsToCreate) {
+    emitAdvertiserEvent(data, event(input.newId ? input.newId() : `${requirement.id}_event`, "advertiser.artwork.requested", "artwork_requirement", requirement.id, advertiser, {
+      productionRequestId: requirement.productionRequestId,
+      bookingItemId: requirement.bookingItemId
+    }));
+  }
   await audit.record(auditEvent(context, auditActions.advertiserProposalAccept, advertiser, {
     proposalId: proposal.id,
     bookingId: booking.id
@@ -1313,6 +1356,15 @@ export async function submitArtworkVersion(
   }
   data.artworkVersions.push(version);
   requirement.status = version.preflightResultId && version.status === "rejected" ? "rejected" : "submitted";
+  // A failed preflight is a production exception: it stays open, and blocks sign-off, until a later
+  // version gets through. Nothing here lets an exception be bypassed.
+  const exceptions = artworkExceptions(requirement);
+  if (version.status === "rejected") {
+    exceptions.push({ versionId: version.id, preflightResultId: version.preflightResultId ?? null, raisedAt: today(), resolvedAt: null });
+  } else {
+    for (const open of exceptions) if (!open.resolvedAt) open.resolvedAt = today();
+  }
+  requirement.proofReference = { ...requirement.proofReference, exceptions };
   emitAdvertiserEvent(data, event(domainEventId, "advertiser.artwork.submitted", "artwork_requirement", requirement.id, advertiser, {
     versionId: version.id,
     preflightResultId: version.preflightResultId ?? null
@@ -1343,6 +1395,8 @@ export async function updateArtworkStatus(
     proofReference?: Record<string, unknown>;
     actorDate: string;
     domainEventId: string;
+    /** The edition page's readiness, read by the caller from Edition Factory when the artwork is placed on a page. */
+    pageReadiness?: string | null;
   }
 ) {
   requireAdvertisingPermission(context, permissions, input.status === "production_ready" || input.status === "approved" ? "artworkApprove" : "artworkManage");
@@ -1352,6 +1406,7 @@ export async function updateArtworkStatus(
   if (input.approvedVersionId && !data.artworkVersions.some((version) => version.id === input.approvedVersionId && version.artworkRequirementId === requirement.id && !version.deletedAt)) {
     throw new Error("Approved artwork version must belong to the requirement.");
   }
+  assertArtworkTransition(data, requirement, input);
   requirement.status = input.status;
   requirement.approvedVersionId = input.approvedVersionId ?? requirement.approvedVersionId ?? null;
   requirement.proofReference = input.proofReference ?? requirement.proofReference;
@@ -1386,13 +1441,68 @@ export async function updateArtworkStatus(
   return requirement;
 }
 
+type ArtworkException = { versionId: string; preflightResultId: string | null; raisedAt: string; resolvedAt: string | null };
+
+export function artworkExceptions(requirement: ArtworkRequirement): ArtworkException[] {
+  const raw = requirement.proofReference?.exceptions;
+  return Array.isArray(raw) ? (raw as ArtworkException[]) : [];
+}
+
+export function openArtworkExceptions(requirement: ArtworkRequirement) {
+  return artworkExceptions(requirement).filter((entry) => !entry.resolvedAt);
+}
+
+const artworkTransitions: Record<string, string[]> = {
+  requested: ["submitted", "received", "changes_requested"],
+  submitted: ["received", "in_review", "changes_requested", "approved", "rejected"],
+  received: ["in_review", "changes_requested", "approved", "rejected"],
+  in_review: ["changes_requested", "approved", "rejected"],
+  changes_requested: ["submitted", "received", "in_review", "approved"],
+  rejected: ["submitted", "changes_requested"],
+  approved: ["production_ready", "changes_requested"],
+  production_ready: []
+};
+
+/**
+ * What may happen to artwork next. Sign-off for production needs an approved, passing version, no
+ * open production exception, and (when it is placed on a page) a page that Edition Factory says is
+ * ready, so artwork can never be pushed to production past a failed preflight or an unready page.
+ */
+function assertArtworkTransition(
+  data: AdvertisingData,
+  requirement: ArtworkRequirement,
+  input: { status: string; approvedVersionId?: string | null; pageReadiness?: string | null }
+) {
+  if (requirement.status === input.status) return;
+  if (!(artworkTransitions[requirement.status] ?? []).includes(input.status)) {
+    throw new Error(`Artwork cannot move from ${requirement.status.replaceAll("_", " ")} to ${input.status.replaceAll("_", " ")}.`);
+  }
+
+  const versionId = input.approvedVersionId ?? requirement.approvedVersionId;
+  if (input.status === "approved" || input.status === "production_ready") {
+    const version = versionId ? data.artworkVersions.find((candidate) => candidate.id === versionId && !candidate.deletedAt) : undefined;
+    if (!version) throw new Error("Artwork needs a submitted version before it can be approved.");
+    if (version.status === "rejected") throw new Error("A version that failed preflight cannot be approved.");
+  }
+  if (input.status === "production_ready") {
+    if (openArtworkExceptions(requirement).length > 0) {
+      throw new Error("Resolve the open production exception before sign-off.");
+    }
+    if (requirement.editionPageId && input.pageReadiness !== "ready") {
+      throw new Error("The edition page is not ready for artwork sign-off.");
+    }
+  }
+}
+
 export async function recordCampaignFulfilment(
   context: AdvertisingActorContext,
   permissions: PermissionData,
   audit: AdvertisingAuditRecorder,
   data: AdvertisingData,
   fulfilment: CampaignFulfilment,
-  domainEventId: string
+  domainEventId: string,
+  /** Proof, found by the caller in Edition Factory, that the placement is in a published output. */
+  options: { publishedEvidence?: PublishedPlacementEvidence } = {}
 ) {
   requireAdvertisingPermission(context, permissions, "fulfilmentManage");
   const booking = requireBooking(data, fulfilment.bookingId);
@@ -1408,9 +1518,20 @@ export async function recordCampaignFulfilment(
   if (fulfilment.territoryId !== advertiser.owningTerritoryId) {
     throw new Error("Campaign fulfilment territory must match the advertiser territory.");
   }
+  // "Fulfilled" is a promise to the advertiser that their advert ran, so for an edition placement it
+  // must point at a published output rather than be asserted.
+  if (fulfilment.status === "fulfilled" && fulfilment.territoryEditionId) {
+    const evidence = options.publishedEvidence;
+    if (!evidence || evidence.territoryEditionId !== fulfilment.territoryEditionId || (fulfilment.editionPageId && evidence.editionPageId !== fulfilment.editionPageId)) {
+      throw new Error("Fulfilment needs a published edition output for this placement.");
+    }
+    fulfilment = { ...fulfilment, fulfilledOn: fulfilment.fulfilledOn ?? today(), placementReference: { ...fulfilment.placementReference, publishedOutputId: evidence.outputId, publishedOn: evidence.publishedOn ?? null } };
+  }
   if (fulfilment.artworkRequirementId) {
     const requirement = requireArtworkRequirement(data, fulfilment.artworkRequirementId);
-    if (requirement.bookingItemId !== fulfilment.bookingItemId || requirement.status !== "production_ready") {
+    // Scheduling can happen while artwork is still being produced; running the campaign cannot.
+    const needsArtwork = fulfilment.status === "in_progress" || fulfilment.status === "fulfilled";
+    if (requirement.bookingItemId !== fulfilment.bookingItemId || (needsArtwork && requirement.status !== "production_ready")) {
       throw new Error("Campaign fulfilment requires production-ready artwork for the booking item.");
     }
   }
@@ -1523,6 +1644,149 @@ export async function createRenewalPromptFromProofPack(
     dueOn: renewal.dueOn ?? null
   }));
   return renewal;
+}
+
+export type DerivedRenewal = {
+  advertiserId: string;
+  territoryId: string;
+  sourceBookingId: string;
+  sourceProofPackId: string | null;
+  dueOn: string;
+  renewalSnapshot: Record<string, unknown>;
+};
+
+const renewalLeadDays = 14;
+const renewalDueDays = 30;
+const highValueRenewalMinor = 200000;
+
+/**
+ * Who is due a renewal conversation, worked out from campaign history and advertiser value: the
+ * latest fulfilled campaign per advertiser, once it has been over for two weeks, unless they have
+ * already booked again, already have an open prompt, or the account is not live. Pure; callers
+ * persist what it returns. A booking that already has a prompt (of any outcome) never gets another.
+ */
+export function deriveRenewalPrompts(data: AdvertisingData, asOf: string = today()): DerivedRenewal[] {
+  const out: DerivedRenewal[] = [];
+  const daysBetween = (from: string, to: string) => Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+
+  for (const advertiser of data.advertisers.filter((candidate) => !candidate.deletedAt && ["active", "prospect"].includes(candidate.status))) {
+    const fulfilled = data.campaignFulfilments
+      .filter((item) => item.advertiserId === advertiser.id && item.status === "fulfilled" && item.fulfilledOn && !item.deletedAt)
+      .sort((left, right) => right.fulfilledOn!.localeCompare(left.fulfilledOn!))[0];
+    if (!fulfilled) continue;
+    if (daysBetween(fulfilled.fulfilledOn!, asOf) < renewalLeadDays) continue;
+
+    const prompts = data.renewalPrompts.filter((prompt) => prompt.advertiserId === advertiser.id && !prompt.deletedAt);
+    if (prompts.some((prompt) => prompt.status === "open" || prompt.sourceBookingId === fulfilled.bookingId)) continue;
+    const bookedAgain = data.bookings.some((booking) => booking.id !== fulfilled.bookingId && booking.advertiserId === advertiser.id && booking.status === "booked" && !booking.deletedAt && booking.bookedOn > fulfilled.fulfilledOn!);
+    if (bookedAgain) continue;
+
+    const proofPack = data.proofPacks.find((pack) => pack.fulfilmentId === fulfilled.id && !pack.deletedAt);
+    const booking = data.bookings.find((candidate) => candidate.id === fulfilled.bookingId);
+    out.push({
+      advertiserId: advertiser.id,
+      territoryId: advertiser.owningTerritoryId,
+      sourceBookingId: fulfilled.bookingId,
+      sourceProofPackId: proofPack?.id ?? null,
+      dueOn: new Date(Date.parse(`${fulfilled.fulfilledOn}T00:00:00Z`) + renewalDueDays * 86400000).toISOString().slice(0, 10),
+      renewalSnapshot: {
+        lastFulfilledOn: fulfilled.fulfilledOn,
+        lastCampaignValueMinor: booking?.totalValueMinor ?? null,
+        annualAdvertiserValueMinor: advertiser.annualAdvertiserValueMinor,
+        averageSaleValueMinor: advertiser.averageSaleValueMinor,
+        priority: advertiser.annualAdvertiserValueMinor >= highValueRenewalMinor ? "high" : "normal",
+        hasProofPack: Boolean(proofPack)
+      }
+    });
+  }
+  return out;
+}
+
+/** Writes the prompts `deriveRenewalPrompts` found, linking each to its proof pack. System work: no user, so no permission check. */
+export function applyDerivedRenewals(data: AdvertisingData, derived: DerivedRenewal[], newId: () => string): RenewalPrompt[] {
+  const created: RenewalPrompt[] = [];
+  for (const item of derived) {
+    const advertiser = requireAdvertiser(data, item.advertiserId);
+    const prompt: RenewalPrompt = {
+      id: newId(),
+      advertiserId: item.advertiserId,
+      territoryId: item.territoryId,
+      sourceBookingId: item.sourceBookingId,
+      sourceProofPackId: item.sourceProofPackId,
+      status: "open",
+      dueOn: item.dueOn,
+      assignedToUserId: advertiser.accountOwnerUserId ?? null,
+      opportunityId: null,
+      renewalSnapshot: item.renewalSnapshot,
+      metadata: { source: "renewal_engine" }
+    };
+    data.renewalPrompts.push(prompt);
+    if (item.sourceProofPackId) {
+      const pack = data.proofPacks.find((candidate) => candidate.id === item.sourceProofPackId);
+      if (pack) pack.renewalPromptId = prompt.id;
+    }
+    emitAdvertiserEvent(data, event(newId(), "advertiser.renewal.prompt_created", "renewal_prompt", prompt.id, advertiser, { dueOn: prompt.dueOn, sourceBookingId: prompt.sourceBookingId, derived: true }));
+    created.push(prompt);
+  }
+  return created;
+}
+
+export async function dismissRenewalPrompt(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  renewalId: string,
+  reason: string
+) {
+  requireAdvertisingPermission(context, permissions, "renewalManage");
+  const renewal = data.renewalPrompts.find((candidate) => candidate.id === renewalId && !candidate.deletedAt);
+  if (!renewal) throw new Error("Renewal prompt was not found.");
+  const advertiser = requireAdvertiser(data, renewal.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
+  if (renewal.status !== "open") throw new Error("Only an open renewal prompt can be dismissed.");
+  if (!reason.trim()) throw new Error("Say why this renewal is being dismissed.");
+  renewal.status = "dismissed";
+  renewal.metadata = { ...renewal.metadata, dismissedReason: reason.trim(), dismissedByUserId: context.userId, dismissedOn: today() };
+  await audit.record(auditEvent(context, auditActions.advertiserRenewalPromptCreate, advertiser, { renewalPromptId: renewal.id, action: "dismissed" }));
+  return renewal;
+}
+
+/** Turns an open renewal into a pipeline opportunity, linking the two so it cannot be converted twice. */
+export async function convertRenewalToOpportunity(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: { renewalId: string; opportunityId: string; stageId: string; title: string }
+) {
+  requireAdvertisingPermission(context, permissions, "renewalManage");
+  const renewal = data.renewalPrompts.find((candidate) => candidate.id === input.renewalId && !candidate.deletedAt);
+  if (!renewal) throw new Error("Renewal prompt was not found.");
+  if (renewal.status !== "open") throw new Error("Only an open renewal prompt can be converted.");
+  const advertiser = requireAdvertiser(data, renewal.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
+
+  const lastValue = Number(renewal.renewalSnapshot.lastCampaignValueMinor ?? 0);
+  const opportunity = await createOpportunity(context, permissions, audit, data, {
+    id: input.opportunityId,
+    advertiserId: advertiser.id,
+    territoryId: advertiser.owningTerritoryId,
+    ownerUserId: context.userId,
+    stageId: input.stageId,
+    source: "renewal",
+    title: input.title,
+    estimatedValueMinor: lastValue,
+    currency: advertiser.currency,
+    probability: 0,
+    expectedCloseDate: renewal.dueOn ?? null,
+    nextAction: "Renewal conversation",
+    nextActionDate: renewal.dueOn ?? null,
+    notes: `From the renewal prompt for the campaign that finished ${renewal.renewalSnapshot.lastFulfilledOn ?? "recently"}.`
+  });
+  renewal.status = "converted";
+  renewal.opportunityId = opportunity.id;
+  return opportunity;
 }
 
 function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserRecord): Advertiser360 {
@@ -1789,6 +2053,11 @@ function commercialSnapshot(data: AdvertisingData, proposal: CommercialProposal,
       contentHash: terms.contentHash
     }
   };
+}
+
+function inventorySlotForBookingItem(data: AdvertisingData, reservationId: string | null | undefined, pending: InventoryReservation[]) {
+  const reservation = reservationId ? pending.find((candidate) => candidate.id === reservationId) : undefined;
+  return reservation ? data.inventorySlots.find((candidate) => candidate.id === reservation.inventorySlotId) : undefined;
 }
 
 function emitAdvertiserEvent(data: AdvertisingData, event: AdvertiserDomainEvent) {

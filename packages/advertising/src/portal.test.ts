@@ -165,6 +165,9 @@ describe("portalRespondToProof", () => {
     const requirement = data.artworkRequirements.find((entry) => entry.advertiserId === A.adv)!;
     requirement.status = "in_review";
     requirement.proofReference = { proofId: "p1" };
+    // Staff issue a proof against a real, passing version.
+    data.artworkVersions.push({ id: `ver-${requirement.id}`, artworkRequirementId: requirement.id, versionNumber: 1, assetReference: {}, status: "submitted" } as never);
+    requirement.approvedVersionId = `ver-${requirement.id}`;
     return { data, requirement };
   }
   const base = { requirementId: "req-adv-a", actorDate: "2026-03-10", domainEventId: "evt-p" };
