@@ -503,6 +503,26 @@ describe("@raring2go/public detail pages", () => {
     expect(await getPublicContentDetail(withBody(offer, {}), defaultPublicTerritorySlug, "offers", "soft-play-deal")).toBeDefined();
   });
 
+  it("gives two items with the same title different addresses so each card reaches its own page", async () => {
+    const first = publicContent({ id: "11111111-1111-4111-8111-111111111111", title: "Story Time", contentType: "event" });
+    const second = publicContent({ id: "22222222-2222-4222-8222-222222222222", title: "Story Time", contentType: "event" });
+    const db = dbWithPublicContent([second, first]);
+
+    const discovery = await getPublicDiscovery(db, defaultPublicTerritorySlug, "whats_on");
+    const hrefs = discovery?.items.map((item) => item.href) ?? [];
+    expect(new Set(hrefs).size).toBe(2);
+    expect(hrefs).toContain("/areas/sutton-coldfield/whats-on/story-time");
+
+    for (const item of discovery?.items ?? []) {
+      const detail = await getPublicContentDetail(db, defaultPublicTerritorySlug, "whats-on", item.slug);
+      expect(detail?.item.id).toBe(item.id);
+    }
+    // The lowest id keeps the plain address, and the sitemap lists each page once.
+    expect(discovery?.items.find((item) => item.href.endsWith("/story-time"))?.id).toBe(first.id);
+    const paths = (await publicSeoRoutesForDb(db, "https://x.example")).map((route) => route.path);
+    expect(new Set(paths).size).toBe(paths.length);
+  });
+
   it("lists detail pages in the sitemap only while they are public", async () => {
     const live = publicContent({ id: itemId, title: "Live event", contentType: "event" });
     const draft = publicContent({ id: "78787878-7878-4787-8787-787878787878", title: "Draft event", status: "draft" });

@@ -253,6 +253,11 @@ export const fixtureIds = {
   advertiserInvoiceSequences: {
     franchiseDefault: "00000000-0000-4000-8000-000000000722"
   },
+  advertiserTaxRates: {
+    standardVat: "00000000-0000-4000-8000-000000000761",
+    zeroRated: "00000000-0000-4000-8000-000000000762",
+    exempt: "00000000-0000-4000-8000-000000000763"
+  },
   audienceContacts: {
     parentOne: "00000000-0000-4000-8000-000000000741"
   },
@@ -1817,6 +1822,11 @@ export const foundationSeed = {
       nextNumber: 1,
       padding: 5
     }
+  ],
+  advertiserTaxRates: [
+    { id: fixtureIds.advertiserTaxRates.standardVat, code: "standard_vat", description: "UK standard rate VAT", rateBps: 2000, effectiveFrom: "2011-01-04", effectiveTo: null },
+    { id: fixtureIds.advertiserTaxRates.zeroRated, code: "zero_rated", description: "Zero-rated", rateBps: 0, effectiveFrom: "2011-01-04", effectiveTo: null },
+    { id: fixtureIds.advertiserTaxRates.exempt, code: "exempt", description: "Exempt", rateBps: 0, effectiveFrom: "2011-01-04", effectiveTo: null }
   ],
   advertiserInvoices: [],
   advertiserInvoiceLines: [],

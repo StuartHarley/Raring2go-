@@ -816,3 +816,22 @@ export const renewalPrompts = pgTable(
     index("renewal_prompts_deleted_at_idx").on(table.deletedAt)
   ]
 );
+
+/**
+ * Tax rates by code and date. Products carry a tax code, and an invoice line takes the rate in
+ * force on the day the invoice is created, so a rate change never rewrites an old invoice and
+ * no rate is hard-coded in the invoicing code.
+ */
+export const advertiserTaxRates = pgTable(
+  "advertiser_tax_rates",
+  {
+    id,
+    code: text("code").notNull(),
+    description: text("description").notNull().default(""),
+    rateBps: integer("rate_bps").notNull(),
+    effectiveFrom: date("effective_from", { mode: "string" }).notNull(),
+    effectiveTo: date("effective_to", { mode: "string" }),
+    ...timestamps
+  },
+  (table) => [uniqueIndex("advertiser_tax_rates_code_from_uidx").on(table.code, table.effectiveFrom)]
+);

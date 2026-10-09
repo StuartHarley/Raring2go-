@@ -532,6 +532,15 @@ export type AdvertisingTerritory = {
   status?: string;
 };
 
+export type TaxRate = {
+  id: string;
+  code: string;
+  description: string;
+  rateBps: number;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+};
+
 export type AdvertisingData = {
   advertisers: AdvertiserRecord[];
   contacts: AdvertiserContact[];
@@ -554,6 +563,7 @@ export type AdvertisingData = {
   acceptances: AdvertiserProposalAcceptance[];
   domainEvents: AdvertiserDomainEvent[];
   invoiceSequences: AdvertiserInvoiceSequence[];
+  taxRates: TaxRate[];
   invoices: AdvertiserInvoice[];
   invoiceLines: AdvertiserInvoiceLine[];
   creditNotes: AdvertiserCreditNote[];
