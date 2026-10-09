@@ -172,11 +172,12 @@ export async function scanJourneyTriggers(db: Db, now: Date = new Date()) {
       }
     };
 
-    // New subscribers, whatever route they came in by (parent preferences, import, staff). The key matches the one the
+    // New subscribers, whatever route they came in by (parent preferences, staff). Imported people are not welcomed:
+    // they never asked for this list to start emailing them today. The key matches the one the
     // direct subscribe path uses, so a person who was entered immediately is not entered a second time here.
     const recentSince = now.getTime() - NEW_SUBSCRIBER_DAYS * 86_400_000;
     for (const { journey } of findActiveJourneysForTrigger(data, { type: "contact_subscribed_to_territory" })) {
-      for (const subscription of data.subscriptions.filter((item) => item.status === "subscribed" && !item.deletedAt && item.subscribedAt && Date.parse(item.subscribedAt) >= recentSince && (!journey.territoryId || journey.territoryId === item.territoryId))) {
+      for (const subscription of data.subscriptions.filter((item) => item.status === "subscribed" && !item.deletedAt && !item.source.startsWith("import:") && item.subscribedAt && Date.parse(item.subscribedAt) >= recentSince && (!journey.territoryId || journey.territoryId === item.territoryId))) {
         if (await enter({ journeyId: journey.id, contactId: subscription.contactId, territoryId: subscription.territoryId, sourceEventType: "audience.subscribed", sourceEventId: subscription.id, idempotencyKey: `audience.subscribed:${subscription.id}:${journey.id}` })) entered.welcome += 1;
       }
     }

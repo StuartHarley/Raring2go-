@@ -21,6 +21,7 @@ export type RouteProtection =
 export type RouteEntry = { protection: RouteProtection; reason: string; extraMarkers?: RegExp[] };
 
 export const routeManifest: Record<string, RouteEntry> = {
+  "api/audience/import/route.ts": { protection: "session", reason: "Audience CSV upload (dry run only): needs marketing.import.manage for the territory, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
   "api/files/development/[...path]/route.ts": { protection: "dev_only", reason: "Local disk storage backend: unauthenticated, so disabled in production builds." },
   "api/files/list/route.ts": { protection: "session", reason: "Lists the caller's own uploaded images." },
   "api/files/upload/route.ts": { protection: "session", reason: "Newsletter image upload, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
@@ -40,6 +41,7 @@ export const routeManifest: Record<string, RouteEntry> = {
   "api/public/unsubscribe/route.ts": { protection: "public_rate_limited", reason: "One-click unsubscribe, authorised by a signed link token.", extraMarkers: [/verifyUnsubscribeToken\(/] },
   "auth/[...nextauth]/route.ts": { protection: "public_static", reason: "Lists sign-in provider names; the POST handler is rejected." },
   "sign-in/verify/route.ts": { protection: "public_rate_limited", reason: "Consumes a one-time sign-in link.", extraMarkers: [/verifySignIn\(/] },
+  "(app)/app/audience/import/[id]/report/route.ts": { protection: "session", reason: "Import reject report download: only for an import in the caller's own territory.", extraMarkers: [/no-store/] },
   "(app)/app/privacy/[id]/export/route.ts": { protection: "session", reason: "Subscriber data export: needs the privacy.request.export permission.", extraMarkers: [/privacy\.request/, /no-store/] }
 };
 

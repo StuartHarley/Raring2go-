@@ -9,3 +9,5 @@ export * from "./segment-rules";
 export * from "./service";
 export type * from "./types";
 export * from "./journey-templates";
+export * from "./audience-import";
+export * from "./audience-import-store";
