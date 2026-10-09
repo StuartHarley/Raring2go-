@@ -4,7 +4,7 @@
 - Issuing an invoice or credit note creates one `advertiser_provider_sync_references` row (type `accounting`, status `pending`) **in the same transaction**, so an issued document can never be missed.
 - Durable job `finance.sync_accounting` (enqueued from the minute tick, one per five-minute bucket) leases due references in a single skip-locked statement, calls the provider with no transaction open and a stable idempotency key (`invoice:<id>` / `credit:<id>`), then records the answer.
 - Failures retry with exponential backoff (5 min doubling, cap 6 h). After 8 attempts the reference is `failed` and stops; `/app/finance/accounting` shows it with the last error and a **Retry now** button. A `synced` reference is final.
-- Provider choice is yours: the domain only knows the neutral `AccountingProvider` port. Development and tests use the deterministic provider. **In production with nothing configured every push fails visibly and stays queued** (nothing is ever shown as synced that was not). A real adapter plugs in at `apps/web/lib/accounting-provider.ts`.
+- The accounting system is **Xero**, connected per franchise (`docs/XERO.md`). Development and tests use the deterministic provider when a franchise has no Xero connection. **In production a franchise with no connection waits** (visible on `/app/finance/accounting`, no attempt spent, retried every 6 hours and sent as soon as it connects); nothing is ever shown as synced that was not.
 
 ## Tax configuration
 - Rates live in `advertiser_tax_rates` (code, basis points, effective dates). Invoices are priced with the rate in force on the issue date; an unconfigured code is an error, never a guess.

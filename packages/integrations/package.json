@@ -15,6 +15,7 @@
   "dependencies": {
     "@raring2go/audit": "workspace:*",
     "@raring2go/db": "workspace:*",
+    "@raring2go/finance": "workspace:*",
     "@raring2go/permissions": "workspace:*",
     "drizzle-orm": "0.45.2"
   }

@@ -44,7 +44,7 @@ which must be filled in before the controlled pilot.
 | Symptom | Where to look | Usual cause and action |
 | --- | --- | --- |
 | Alert: `job_queue` degraded | Job Console: filter dead and overdue | A job kind keeps failing: read its last error; fix the cause, then **Retry**. Overdue with no failures: the cron is not firing; check the cron and `CRON_SECRET`. |
-| Alert: `accounting_sync` degraded | `/app/finance/accounting` | Accounting system unreachable or rejecting. Items retry on their own, then stop after 8 attempts: fix the cause, then **Retry now**. In production with no provider configured every push fails by design. |
+| Alert: `accounting_sync` degraded | `/app/finance/accounting` | Each item says why. **Waiting** (no Xero connection yet, or Xero needs reconnecting) is fixed by the franchisee on Settings, Connections. **Failed** (Xero refused it, e.g. an unmapped tax type) retries then stops after 8 attempts: fix the mapping, then **Retry now**. See `docs/XERO.md`. |
 | Alert: `security_config` degraded | `/api/health` detail (finding codes) | A required production setting is missing or weak: set it in Vercel and redeploy. |
 | Newsletter did not send | `/app/marketing-command` send exceptions; Job Console email-send jobs | Failed email jobs resume from their saved position when retried: safe to retry. |
 | Social post failed or "outcome unknown" | `/app/social`, Job Console | Failed: fix the connection and retry from the post. **Outcome unknown** means the worker died mid-publish: check the Facebook page by hand before doing anything; it is never retried automatically. |

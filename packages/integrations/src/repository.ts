@@ -173,11 +173,14 @@ function providerConnectionToRow(input: ProviderConnection) {
   };
 }
 
+/**
+ * Only the fields the patch actually names. (Mapping a full row and filtering by value would overwrite everything a
+ * patch left out with the empty defaults: provider, account id and expiry blanked by an unrelated token refresh.)
+ */
 function providerConnectionPatchToRow(input: Partial<ProviderConnection>) {
+  const named = new Set(Object.keys(input).filter((key) => (input as Record<string, unknown>)[key] !== undefined));
   return Object.fromEntries(
-    Object.entries(providerConnectionToRow({ ...emptyConnection(), ...input } as ProviderConnection))
-      .filter(([key]) => key !== "id")
-      .filter(([, value]) => value !== undefined)
+    Object.entries(providerConnectionToRow({ ...emptyConnection(), ...input } as ProviderConnection)).filter(([key]) => key !== "id" && named.has(key))
   );
 }
 

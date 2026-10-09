@@ -1,3 +1,8 @@
+export type AccountingCustomer = { name: string; email?: string | null };
+
+/** A document line as the books need it: money in minor units, the tax code to translate, never a rate guess. */
+export type AccountingLine = { description: string; quantity: number; netMinor: number; taxMinor: number; taxCode: string };
+
 export type AccountingProviderInvoice = {
   id: string;
   invoiceNumber: string;
@@ -11,6 +16,8 @@ export type AccountingProviderInvoice = {
   dueDate?: string | null;
   /** Stable per document, so a provider that sees the same push twice records it once. */
   idempotencyKey?: string;
+  customer?: AccountingCustomer;
+  lines?: AccountingLine[];
 };
 
 export type AccountingProviderCreditNote = {
@@ -21,6 +28,12 @@ export type AccountingProviderCreditNote = {
   currency: string;
   issuedDate?: string;
   idempotencyKey?: string;
+  customerOrganisationId?: string;
+  customer?: AccountingCustomer;
+  lines?: AccountingLine[];
+  sourceInvoiceNumber?: string;
+  /** The accounting system's own id for the invoice being credited, when it has been synced. */
+  sourceInvoiceProviderId?: string | null;
 };
 
 export type AccountingSyncResult = {

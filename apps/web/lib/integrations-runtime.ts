@@ -51,7 +51,8 @@ export async function listConnectionCards(
         status: connection.status,
         lastHealthStatus: connection.lastHealthStatus,
         lastHealthCheckAt: connection.lastHealthCheckAt,
-        lastFailureSummary: connection.lastFailureSummary
+        lastFailureSummary: connection.lastFailureSummary,
+        providerSafeMetadata: connection.providerSafeMetadata
       }))
     };
   } finally {
@@ -373,7 +374,7 @@ function metaConfig() {
   };
 }
 
-function requiredEnv(key: string) {
+export function requiredEnv(key: string) {
   const value = process.env[key];
   if (!value) {
     throw new Error(`${key} is required for Meta provider connections.`);
@@ -381,7 +382,7 @@ function requiredEnv(key: string) {
   return value;
 }
 
-function drizzleAuditRecorder(db: Parameters<typeof recordAuditEvent>[0]) {
+export function drizzleAuditRecorder(db: Parameters<typeof recordAuditEvent>[0]) {
   return {
     async record(event: {
       action: string;

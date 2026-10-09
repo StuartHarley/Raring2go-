@@ -71,7 +71,7 @@ export default async function AccountingPage({ searchParams }: PageProps) {
           {result.attention.map((item) => (
             <div key={item.id}>
               <strong>{item.entityType === "advertiser_invoice" ? "Invoice" : "Credit note"} - {item.status}</strong>
-              <span>{item.attempts} attempt{item.attempts === 1 ? "" : "s"}{item.lastError ? ` - ${item.lastError}` : ""}</span>
+              <span>{item.attempts} attempt{item.attempts === 1 ? "" : "s"}{item.lastError ? ` - ${item.lastError}` : ""}{item.waitingFor ? ` - Waiting: ${item.waitingFor}` : ""}</span>
               <form action={retryAccountingSyncAction.bind(null, request, item.id)}><button type="submit">Retry now</button></form>
             </div>
           ))}
