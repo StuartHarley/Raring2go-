@@ -52,7 +52,7 @@ Retry from the console is deliberately narrow: only a **failed email send job** 
 - **Logging** (`@raring2go/observability`): `createLogger` writes one JSON object per line (`time`, `level`, `service`, `message`, fields). Secrets (`token`, `password`, `apiKey`, ...) are redacted in fields and child context, `Error` objects are serialised, and reserved keys cannot be spoofed. `LOG_LEVEL` selects the minimum level. `child({ correlationId, jobId })` stamps context onto every record.
 - **Correlation**: the cron route accepts or mints an `x-correlation-id` (malformed values are replaced), logs with it, and echoes it in the response.
 - **Health** (`GET /api/health`): `database` (critical) and `job_queue` checks. Queue health is `degraded` for any dead-lettered job, overdue job or expired lease, and `down` at 25 dead / 50 overdue (stalled worker). Anonymous callers get only the overall status (503 when down); the per-check detail needs `Authorization: Bearer $CRON_SECRET`. The console shows the detailed panel only to users with a network-wide `system.jobs.view` grant.
-- Point an uptime monitor at `/api/health` and alert on non-200 or `degraded`.
+- Point an uptime monitor at `/api/health` and alert on non-200 or `degraded`. In addition the `ops.health_alert` job (every ~5 minutes) posts to `ALERT_WEBHOOK_URL` when health gets worse, reminds every 6 hours, and announces recovery (state in `ops_alert_state`, advanced only after the webhook accepts the message). Checks: `database`, `job_queue`, `accounting_sync`, `security_config`.
 
 ## Migration and seed impact
 

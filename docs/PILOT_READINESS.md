@@ -87,7 +87,7 @@ Status: AMBER.
 - Job states exist for email/social/publishing-style workflows and are visible in My Today/Command Centre patterns.
 - Provider errors are represented as recoverable operational state.
 - OPS-001 added a durable job runtime with dead-lettering, a Job Console (`/app/system/jobs`) that unifies background, email-send, social, website and edition-output jobs with scoped, audited retry, structured redacted logging with correlation ids, and `/api/health`. See `docs/JOBS.md`.
-- External alerting (paging on `/api/health` going degraded/down) and a support playbook remain before broader rollout.
+- Health alerting (`ops.health_alert` to `ALERT_WEBHOOK_URL`), `docs/PILOT_RUNBOOK.md`, `docs/SUPPORT_PLAYBOOK.md`, `docs/PROVIDER_FAILURE_DRILLS.md` and `pnpm drill:providers` now exist. Still required from the owner team: name the owners, configure the webhook and an external uptime monitor, rehearse the hosted restore, and run the live drills.
 
 ## Remaining Provider/Stubs Classification
 

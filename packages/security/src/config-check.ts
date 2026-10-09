@@ -26,6 +26,7 @@ export function checkSecurityConfig(env: Env): ConfigFinding[] {
     warn("database_tls_unconfirmed", "DATABASE_URL does not request TLS (sslmode=require); confirm the provider enforces it.");
   }
 
+  if (!env.ALERT_WEBHOOK_URL) warn("alert_webhook_missing", "ALERT_WEBHOOK_URL is not set; nobody is paged when health degrades.");
   if (weak(env.CRON_SECRET)) error("cron_secret_weak", "CRON_SECRET is missing or too weak; scheduled job and health detail endpoints cannot be protected.");
   if (weak(env.AUDIENCE_UNSUBSCRIBE_SECRET)) error("unsubscribe_secret_weak", "AUDIENCE_UNSUBSCRIBE_SECRET is missing or too weak; unsubscribe links cannot be signed safely.");
 

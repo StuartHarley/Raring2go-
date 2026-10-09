@@ -66,3 +66,14 @@ export const webhookEventClaims = pgTable(
   },
   (table) => [uniqueIndex("webhook_event_claims_provider_event_uidx").on(table.providerKey, table.eventId), index("webhook_event_claims_claimed_at_idx").on(table.claimedAt)]
 );
+
+/**
+ * What the health alerting job last told people, so it alerts on a change and reminds rather than repeating
+ * itself every minute. One row per alert stream (currently only `health`).
+ */
+export const opsAlertState = pgTable("ops_alert_state", {
+  key: text("key").primaryKey(),
+  lastStatus: text("last_status").notNull().default("ok"),
+  lastAlertedAt: timestamp("last_alerted_at", { mode: "date", withTimezone: true }),
+  lastChangedAt: timestamp("last_changed_at", { mode: "date", withTimezone: true }).notNull().defaultNow()
+});
