@@ -1,5 +1,7 @@
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { readAudienceOverview } from "../../../../lib/marketing-runtime";
+import Link from "next/link";
+import type { Route } from "next";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
@@ -24,6 +26,7 @@ export default async function AudiencePage({ searchParams }: PageProps) {
           Raring2go-owned contacts, territory subscriptions, consent history,
           preferences and suppression foundations.
         </p>
+        <Link href={"/app/audience/import" as Route} className="app-link-button">Import contacts</Link>
         <div className="franchise-metrics">
           <article>
             <span>Contacts</span>

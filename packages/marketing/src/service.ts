@@ -482,6 +482,12 @@ export function getJourneyDetail(context: MarketingActorContext, permissions: Pe
   return { journey, latestVersion, entries, activeExecutions, failedExecutions };
 }
 
+/** Who may import into a territory: needs the import permission, and the territory must be within the actor's scope. */
+export function authoriseAudienceImport(context: MarketingActorContext, permissions: PermissionData, territoryId: string) {
+  requireMarketingPermission(context, permissions, "importManage");
+  ensureContextCanAccessTerritory(context, territoryId);
+}
+
 export async function upsertAudienceContact(
   context: MarketingActorContext,
   permissions: PermissionData,
