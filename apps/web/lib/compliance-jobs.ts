@@ -7,15 +7,13 @@ import type { EmailDeliveryProvider } from "@raring2go/email";
 import {
   dueComplianceReminders,
   ensureComplianceActions,
-  franchiseCapabilities,
   insertComplianceActionRecords,
   insertComplianceReminderRecords,
   isReminderUndeliverable,
   loadFranchiseData,
   scheduleOverdueComplianceReminders
 } from "@raring2go/franchise";
-import type { FranchiseActorContext } from "@raring2go/franchise";
-import type { PermissionData } from "@raring2go/permissions";
+import { systemFranchiseIdentity } from "./franchise-system";
 import { defineJobHandler } from "@raring2go/workflows";
 import type { JobHandler } from "@raring2go/workflows";
 import { and, eq } from "drizzle-orm";
@@ -24,32 +22,13 @@ export const COMPLIANCE_DAILY_KIND = "franchise.compliance_daily";
 export const complianceDailyIdempotencyKey = (now: Date) => `${COMPLIANCE_DAILY_KIND}:${now.toISOString().slice(0, 10)}`;
 
 // A dedicated system identity: it never acts as a person, and holds the franchise capabilities only in memory for the run.
-const SYSTEM_USER = "compliance-scheduler";
-const SYSTEM_ROLE = "compliance-scheduler-role";
-const systemContext: FranchiseActorContext = { userId: SYSTEM_USER, organisationId: "system" };
-const systemPermissions: PermissionData = {
-  roleAssignments: [{ id: "compliance-scheduler-assignment", userId: SYSTEM_USER, roleId: SYSTEM_ROLE }],
-  rolePermissions: Object.values(franchiseCapabilities).map((capability) => ({
-    roleId: SYSTEM_ROLE,
-    permission: { id: `compliance-scheduler:${capability.module}:${capability.action}`, module: capability.module, action: capability.action },
-    scope: "network"
-  }))
-};
+const system = systemFranchiseIdentity("compliance-scheduler", COMPLIANCE_DAILY_KIND);
+const systemContext = system.context;
+const systemPermissions = system.permissions;
 
 type Db = ReturnType<typeof createDb>["db"];
 
-/**
- * The franchise domain records events as a "human" actor. Ours is not a person, so those are re-labelled as
- * automation before they are stored; events this job writes itself arrive in the same shape.
- */
-function systemAudit(db: Parameters<typeof recordAuditEvent>[0]) {
-  return {
-    record: async (input: RecordAuditEventInput) => {
-      const actor = input.actor.type === "human" && input.actor.userId === SYSTEM_USER ? ({ type: "automation", automationId: COMPLIANCE_DAILY_KIND } as const) : input.actor;
-      await recordAuditEvent(db, { ...input, actor });
-    }
-  };
-}
+const systemAudit = system.audit;
 
 function reminderEmail(input: { title: string; reminderType: string; dueDate?: string | null; territoryName?: string; recipientName?: string | null; appUrl: string }) {
   const overdue = input.reminderType === "overdue";

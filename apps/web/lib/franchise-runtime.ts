@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
 import {
   activeAgreementForFranchise,
   addFranchiseDocumentVersion,
+  assertFranchiseDocumentUploadAllowed,
+  authoriseFranchiseDocumentDownload,
   archiveFranchiseDocument,
   archiveFranchiseDocumentRecord,
   approveAgreement,
@@ -61,6 +64,9 @@ import { evaluatePermission } from "@raring2go/permissions";
 import { createDb, users } from "@raring2go/db";
 import { eq } from "drizzle-orm";
 import { createFileReference } from "@raring2go/storage";
+import type { FileReference } from "@raring2go/storage";
+import { createDocumentDownloadUrl, defaultFileProviders, saveFileReference, storeDocumentFile, validateDocumentFile } from "./franchise-files";
+import type { FileProviders } from "./franchise-files";
 import type {
   AgreementSigner,
   ESignProvider,
@@ -346,64 +352,75 @@ export async function declineCurrentAgreementSigning(
   return recordCurrentSignatureEvent(context, franchiseId, eventId, "declined");
 }
 
+type DocumentFileInput = { fileName: string; contentType: string; bytes: Uint8Array };
+
+/** The artefact record for a stored file: the same file reference the storage layer holds, not a placeholder path. */
+function documentArtifactFor(artifactId: string, franchiseId: string, documentId: string, title: string, file: FileReference): FranchiseArtifactReference {
+  return {
+    id: artifactId,
+    franchiseId,
+    entityType: "franchise_document",
+    entityId: documentId,
+    category: "vault_document",
+    label: title,
+    storageKey: file.storageKey,
+    contentType: file.contentType,
+    checksum: file.checksum ?? null,
+    providerMetadata: { fileId: file.id, provider: file.providerKey, byteSize: file.byteSize ?? null, fileName: file.fileName }
+  };
+}
+
+/**
+ * Uploads a real file into the vault. Order matters: permission and scope are checked first (so a refused request
+ * stores nothing), then the file is validated, stored and scanned, and only then is the document recorded.
+ */
 export async function uploadDocumentForFranchise(
   context: FranchiseActorContext,
   franchiseId: string,
   input: {
-    documentId: string;
-    versionId: string;
-    artifactId: string;
     category: string;
     documentType: string;
     title: string;
     description?: string | null;
     expiryDate?: string | null;
-  }
+    file: DocumentFileInput;
+  },
+  providers: FileProviders = defaultFileProviders()
 ) {
   const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
+    const franchise = assertFranchiseDocumentUploadAllowed(context, franchisePermissionData, await loadFranchiseData(db), { franchiseId });
+    const checked = validateDocumentFile(input.file);
+    const reference = await storeDocumentFile(
+      { franchise: { organisationId: franchise.franchiseOrganisationId, territoryId: franchise.primaryTerritoryId }, userId: context.userId, fileName: input.file.fileName, contentType: checked.contentType, bytes: input.file.bytes },
+      providers
+    );
+
     return await db.transaction(async (tx) => {
       const data = await loadFranchiseData(tx);
-      const view = getFranchise360(context, franchisePermissionData, data, franchiseId);
+      const documentId = randomUUID();
+      const versionId = randomUUID();
+      const artifactId = randomUUID();
       const document: FranchiseDocument = {
-        id: input.documentId,
+        id: documentId,
         franchiseId,
-        organisationId: view.franchise.franchiseOrganisationId,
-        territoryId: view.franchise.primaryTerritoryId,
+        organisationId: franchise.franchiseOrganisationId,
+        territoryId: franchise.primaryTerritoryId,
         category: input.category,
         documentType: input.documentType,
         title: input.title,
         description: input.description ?? null,
         status: "active",
-        currentVersionId: input.versionId,
+        currentVersionId: versionId,
         expiryDate: input.expiryDate ?? null,
         uploadedByUserId: context.userId
       };
-      const version: FranchiseDocumentVersion = {
-        id: input.versionId,
-        documentId: input.documentId,
-        versionNumber: 1,
-        artifactReferenceId: input.artifactId,
-        uploadedByUserId: context.userId,
-        uploadedAt: today()
-      };
-      const artifact: FranchiseArtifactReference = documentArtifact(
-        input.artifactId,
-        franchiseId,
-        territoryIdForFranchise(data, franchiseId),
-        input.documentId,
-        input.title,
-        context.userId
-      );
-      const uploaded = await uploadFranchiseDocument(
-        context,
-        franchisePermissionData,
-        auditFor(tx),
-        data,
-        { document, version, artifact }
-      );
+      const version: FranchiseDocumentVersion = { id: versionId, documentId, versionNumber: 1, artifactReferenceId: artifactId, uploadedByUserId: context.userId, uploadedAt: today() };
+      const artifact = documentArtifactFor(artifactId, franchiseId, documentId, input.title, reference);
+      await saveFileReference(tx, reference);
+      const uploaded = await uploadFranchiseDocument(context, franchisePermissionData, auditFor(tx), data, { document, version, artifact });
       await insertFranchiseDocumentGraph(tx, { document, version, artifact });
       return uploaded;
     });
@@ -416,8 +433,45 @@ export async function addDocumentVersionForFranchise(
   context: FranchiseActorContext,
   franchiseId: string,
   documentId: string,
-  versionId: string,
-  artifactId: string
+  input: { file: DocumentFileInput },
+  providers: FileProviders = defaultFileProviders()
+) {
+  const franchisePermissionData = await getPermissionData();
+  const { db, sql } = createDb();
+
+  try {
+    const franchise = assertFranchiseDocumentUploadAllowed(context, franchisePermissionData, await loadFranchiseData(db), { franchiseId, documentId });
+    const checked = validateDocumentFile(input.file);
+    const reference = await storeDocumentFile(
+      { franchise: { organisationId: franchise.franchiseOrganisationId, territoryId: franchise.primaryTerritoryId }, userId: context.userId, fileName: input.file.fileName, contentType: checked.contentType, bytes: input.file.bytes },
+      providers
+    );
+
+    return await db.transaction(async (tx) => {
+      const data = await loadFranchiseData(tx);
+      const existing = (data.documentVersions ?? []).filter((version) => version.documentId === documentId);
+      const versionId = randomUUID();
+      const artifactId = randomUUID();
+      const version: FranchiseDocumentVersion = { id: versionId, documentId, versionNumber: Math.max(0, ...existing.map((candidate) => candidate.versionNumber)) + 1, artifactReferenceId: artifactId, uploadedByUserId: context.userId, uploadedAt: today() };
+      const title = (data.documents ?? []).find((candidate) => candidate.id === documentId)?.title ?? "Document";
+      const artifact = documentArtifactFor(artifactId, franchiseId, documentId, title, reference);
+      await saveFileReference(tx, reference);
+      const document = await addFranchiseDocumentVersion(context, franchisePermissionData, auditFor(tx), data, { documentId, version, artifact });
+      await insertFranchiseDocumentVersionGraph(tx, { document, version, artifact });
+      return document;
+    });
+  } finally {
+    await sql.end();
+  }
+}
+
+/** A short-lived link to one version of a document, after authorising, scoping and auditing the request. */
+export async function downloadDocumentForFranchise(
+  context: FranchiseActorContext,
+  franchiseId: string,
+  documentId: string,
+  versionNumber?: number,
+  providers: Pick<FileProviders, "storage"> = defaultFileProviders()
 ) {
   const franchisePermissionData = await getPermissionData();
   const { db, sql } = createDb();
@@ -425,28 +479,8 @@ export async function addDocumentVersionForFranchise(
   try {
     return await db.transaction(async (tx) => {
       const data = await loadFranchiseData(tx);
-      getFranchise360(context, franchisePermissionData, data, franchiseId);
-      const existingVersions = (data.documentVersions ?? []).filter(
-        (version) => version.documentId === documentId
-      );
-      const version: FranchiseDocumentVersion = {
-        id: versionId,
-        documentId,
-        versionNumber: existingVersions.length + 1,
-        artifactReferenceId: artifactId,
-        uploadedByUserId: context.userId,
-        uploadedAt: today()
-      };
-      const artifact = documentArtifact(artifactId, franchiseId, territoryIdForFranchise(data, franchiseId), documentId, "Document version", context.userId);
-      const document = await addFranchiseDocumentVersion(
-        context,
-        franchisePermissionData,
-        auditFor(tx),
-        data,
-        { documentId, version, artifact }
-      );
-      await insertFranchiseDocumentVersionGraph(tx, { document, version, artifact });
-      return document;
+      const { franchise, artifact } = await authoriseFranchiseDocumentDownload(context, franchisePermissionData, auditFor(tx), data, { franchiseId, documentId, versionNumber });
+      return createDocumentDownloadUrl(tx, { artifact, territoryId: franchise.primaryTerritoryId, organisationId: franchise.franchiseOrganisationId }, providers);
     });
   } finally {
     await sql.end();
@@ -1012,7 +1046,7 @@ async function defaultSigners(
 
   return [
     {
-      id: `${requestId}-franchisee`,
+      id: randomUUID(),
       role: "franchisee",
       userId: view.owner.id,
       name: view.owner.displayName ?? view.owner.email,
@@ -1021,7 +1055,7 @@ async function defaultSigners(
       required: true
     },
     {
-      id: `${requestId}-franchisor`,
+      id: randomUUID(),
       role: "franchisor",
       userId: franchisor.id,
       name: franchisor.displayName ?? franchisor.email,

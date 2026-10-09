@@ -510,7 +510,9 @@ export async function recordSignatureProviderEvent(
   }
 
   data.signatureEvents.push({
-    id: input.eventId,
+    // The row id is ours. A provider's event id is not a UUID (and must never be trusted as a primary key), so it is
+    // kept as `providerEventId`, which is what idempotency keys on.
+    id: randomUUID(),
     signatureRequestId: input.requestId,
     providerEventId: input.eventId,
     eventType: input.eventType,
@@ -550,6 +552,54 @@ export async function recordSignatureProviderEvent(
   }
 
   return { request, agreement, duplicate: false };
+}
+
+/** Checked before any bytes are stored, so a request that will be refused never leaves a file behind. */
+export function assertFranchiseDocumentUploadAllowed(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  data: FranchiseData,
+  input: { franchiseId: string; documentId?: string }
+) {
+  const franchise = requireFranchise(data, input.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "documentUpload");
+  if (input.documentId) {
+    const document = requireDocument(data, input.documentId);
+    if (document.franchiseId !== franchise.id) throw new Error("Document was not found.");
+    if (document.status === "archived") throw new Error("An archived document cannot be changed.");
+  }
+  return franchise;
+}
+
+/**
+ * Who may download a document: anyone granted document download for this franchise. Returns the version's artifact so the
+ * caller can fetch the file, and records the download. A document of another franchise is simply "not found".
+ */
+export async function authoriseFranchiseDocumentDownload(
+  context: FranchiseActorContext,
+  permissions: PermissionData,
+  audit: FranchiseAuditRecorder,
+  data: FranchiseData,
+  input: { franchiseId: string; documentId: string; versionNumber?: number }
+) {
+  const franchise = requireFranchise(data, input.franchiseId);
+  requireFranchiseAccess(context, permissions, franchise, "documentDownload");
+  const document = (data.documents ?? []).find((candidate) => candidate.id === input.documentId && candidate.franchiseId === franchise.id && !candidate.deletedAt);
+  if (!document) throw new Error("Document was not found.");
+
+  const versions = (data.documentVersions ?? []).filter((candidate) => candidate.documentId === document.id && !candidate.deletedAt);
+  const version = input.versionNumber ? versions.find((candidate) => candidate.versionNumber === input.versionNumber) : versions.find((candidate) => candidate.id === document.currentVersionId) ?? versions.sort((left, right) => right.versionNumber - left.versionNumber)[0];
+  const artifact = version ? (data.artifactReferences ?? []).find((candidate) => candidate.id === version.artifactReferenceId && !candidate.deletedAt) : undefined;
+  if (!version || !artifact) throw new Error("Document was not found.");
+
+  await audit.record({
+    action: "franchise.document.download",
+    actor: { type: "human", userId: context.userId },
+    entity: { type: "franchise_document", id: document.id },
+    scope: { organisationId: franchise.franchiseOrganisationId, territoryId: franchise.primaryTerritoryId },
+    after: { versionNumber: version.versionNumber, title: document.title }
+  });
+  return { franchise, document, version, artifact };
 }
 
 export async function uploadFranchiseDocument(
@@ -1632,9 +1682,44 @@ function executeAgreement(
   data.artifactReferences.push(signedAgreementArtifact, completionCertificateArtifact);
   agreement.signedAgreementArtifactId = signedAgreementArtifact.id;
   agreement.completionCertificateArtifactId = completionCertificateArtifact.id;
+  // The executed agreement shows in the document vault. It points at the same artefact record rather than a copy,
+  // so the vault and the agreement can never disagree about what was signed.
+  adoptAgreementArtifactIntoVault(data, franchise, agreement, signedAgreementArtifact, "Signed franchise agreement", "signed_agreement");
+  adoptAgreementArtifactIntoVault(data, franchise, agreement, completionCertificateArtifact, "Signing completion certificate", "completion_certificate");
   agreement.executedAt = today();
   transitionAgreement(agreement, "executed");
   addDomainEvent(data, "franchise.agreement.executed", franchise, agreement);
+}
+
+function adoptAgreementArtifactIntoVault(
+  data: FranchiseData,
+  franchise: FranchiseRecord,
+  agreement: FranchiseAgreement,
+  artifact: FranchiseArtifactReference,
+  title: string,
+  documentType: string
+) {
+  data.documents ??= [];
+  data.documentVersions ??= [];
+  if (data.documentVersions.some((version) => version.artifactReferenceId === artifact.id && !version.deletedAt)) return;
+
+  const documentId = randomUUID();
+  const versionId = randomUUID();
+  data.documents.push({
+    id: documentId,
+    franchiseId: franchise.id,
+    organisationId: franchise.franchiseOrganisationId,
+    territoryId: franchise.primaryTerritoryId,
+    category: "agreement",
+    documentType,
+    title,
+    description: `From agreement ${agreement.id}`,
+    status: "active",
+    currentVersionId: versionId,
+    expiryDate: null,
+    uploadedByUserId: null
+  });
+  data.documentVersions.push({ id: versionId, documentId, versionNumber: 1, artifactReferenceId: artifact.id, uploadedByUserId: null, uploadedAt: today() });
 }
 
 function lockArtifact(
@@ -1665,7 +1750,7 @@ function addDomainEvent(
   }
 
   data.domainEvents.push({
-    id: idempotencyKey,
+    id: randomUUID(),
     eventType,
     entityType: "franchise_agreement",
     entityId: agreement.id,

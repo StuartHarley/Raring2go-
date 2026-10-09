@@ -154,39 +154,6 @@ export async function declineSigningAction(
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
 
-export async function uploadDocumentAction(
-  context: FranchiseActorContext,
-  franchiseId: string,
-  formData: FormData
-) {
-  await uploadDocumentForFranchise(context, franchiseId, {
-    documentId: randomUUID(),
-    versionId: randomUUID(),
-    artifactId: randomUUID(),
-    category: String(formData.get("category") || "company_document"),
-    documentType: String(formData.get("documentType") || "general"),
-    title: String(formData.get("title") || "Untitled document"),
-    description: String(formData.get("description") || "") || null,
-    expiryDate: String(formData.get("expiryDate") || "") || null
-  });
-  revalidatePath(`/app/franchisees/${franchiseId}`);
-}
-
-export async function addDocumentVersionAction(
-  context: FranchiseActorContext,
-  franchiseId: string,
-  documentId: string
-) {
-  await addDocumentVersionForFranchise(
-    context,
-    franchiseId,
-    documentId,
-    randomUUID(),
-    randomUUID()
-  );
-  revalidatePath(`/app/franchisees/${franchiseId}`);
-}
-
 export async function archiveDocumentAction(
   context: FranchiseActorContext,
   franchiseId: string,

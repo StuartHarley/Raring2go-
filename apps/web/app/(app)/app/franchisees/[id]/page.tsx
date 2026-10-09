@@ -4,10 +4,10 @@ import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { readFranchisePanel } from "../../../../../lib/assistants-franchise";
 import { FranchiseAssistantPanel } from "./FranchiseAssistantPanel";
+import { DocumentUploadForm } from "./DocumentUploadForm";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import {
   approveAgreementAction,
-  addDocumentVersionAction,
   archiveDocumentAction,
   cancelSignatureAction,
   completeNextSignerAction,
@@ -32,7 +32,6 @@ import {
   startOnboardingAction,
   updateFranchiseAction,
   upsertInsuranceAction,
-  uploadDocumentAction,
   verifyComplianceAction,
   verifyInsuranceAction,
   voidAgreementAction
@@ -55,13 +54,20 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     return protectedOutcome(result.error);
   }
 
+  // The session is carried by cookie; these only repeat any explicit context the page was opened with.
+  const contextParams = new URLSearchParams();
+  if (request.sessionKey) contextParams.set("session", request.sessionKey);
+  if (request.organisationId) contextParams.set("organisationId", request.organisationId);
+  if (request.territoryId) contextParams.set("territoryId", request.territoryId);
+  const uploadQuery = contextParams.size > 0 ? `?${contextParams.toString()}` : "";
+  const downloadQuery = contextParams.size > 0 ? `&${contextParams.toString()}` : "";
+
   const {
     approve,
     cancelSignature,
     completeNextSigner,
     completeSigning,
     declineSigning,
-    uploadDocument,
     generate,
     resendSignature,
     sendSignature,
@@ -329,16 +335,22 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
                     Version {document.currentVersion?.versionNumber ?? "-"} -
                     {document.expiryDate ? ` expires ${document.expiryDate}` : " no expiry"}
                   </span>
-                  <span>{document.artifact?.storageKey ?? "No artifact reference"}</span>
+                  <span>{document.artifact?.providerMetadata && "fileName" in document.artifact.providerMetadata ? String(document.artifact.providerMetadata.fileName) : "No file stored"}</span>
+                  {document.versions.map((version) => (
+                    <span key={version.id}>
+                      v{version.versionNumber} - {version.uploadedAt ?? "date unknown"} -{" "}
+                      <a href={`/app/franchisees/${id}/documents/${document.id}/download?version=${version.versionNumber}${downloadQuery}`}>Download</a>
+                    </span>
+                  ))}
                   {canEdit ? (
-                    <div className="franchise-actions">
-                      <form action={documentActions[document.id]?.version}>
-                        <button type="submit">Add version</button>
-                      </form>
-                      <form action={documentActions[document.id]?.archive}>
-                        <button type="submit">Archive</button>
-                      </form>
-                    </div>
+                    <>
+                      <DocumentUploadForm franchiseId={id} documentId={document.id} queryString={uploadQuery} label="Upload a new version" />
+                      <div className="franchise-actions">
+                        <form action={documentActions[document.id]?.archive}>
+                          <button type="submit">Archive</button>
+                        </form>
+                      </div>
+                    </>
                   ) : null}
                 </div>
               ))}
@@ -349,36 +361,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
               <p>Upload franchise documents, agreement references and supporting files.</p>
             </div>
           )}
-          {canEdit ? (
-            <form action={uploadDocument} className="franchise-form">
-              <label>
-                Title
-                <input name="title" defaultValue="New franchise document" />
-              </label>
-              <label>
-                Category
-                <select name="category" defaultValue="company_document">
-                  <option value="agreement">Agreement</option>
-                  <option value="insurance_certificate">Insurance certificate</option>
-                  <option value="company_document">Company document</option>
-                  <option value="policy_certificate">Policy/certificate</option>
-                </select>
-              </label>
-              <label>
-                Document type
-                <input name="documentType" defaultValue="general" />
-              </label>
-              <label>
-                Expiry date
-                <input name="expiryDate" type="date" />
-              </label>
-              <label>
-                Description
-                <input name="description" defaultValue="" />
-              </label>
-              <button type="submit">Upload document reference</button>
-            </form>
-          ) : null}
+          {canEdit ? <DocumentUploadForm franchiseId={id} queryString={uploadQuery} label="Upload document" /> : null}
         </section>
         <section id="compliance" className="app-panel">
           <p className="eyebrow">Compliance</p>
@@ -678,7 +661,6 @@ async function loadFranchise360(
     const completeNextSigner = completeNextSignerAction.bind(null, context, id);
     const completeSigning = completeSigningAction.bind(null, context, id);
     const declineSigning = declineSigningAction.bind(null, context, id);
-    const uploadDocument = uploadDocumentAction.bind(null, context, id);
     const upsertInsurance = upsertInsuranceAction.bind(null, context, id);
     const ensureActions = ensureComplianceActionsAction.bind(null, context, id);
     const onboardingActions = {
@@ -715,7 +697,6 @@ async function loadFranchise360(
       view.documents.map((document) => [
         document.id,
         {
-          version: addDocumentVersionAction.bind(null, context, id, document.id),
           archive: archiveDocumentAction.bind(null, context, id, document.id)
         }
       ])
@@ -769,7 +750,6 @@ async function loadFranchise360(
       completeNextSigner,
       completeSigning,
       declineSigning,
-      uploadDocument,
       generate,
       resendSignature,
       sendSignature,
