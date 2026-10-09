@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { auditActions } from "@raring2go/audit";
 import { evaluatePermission, requirePermission, type PermissionData } from "@raring2go/permissions";
 import { advertisingCapabilities, type AdvertisingCapability } from "./permissions";
@@ -1160,6 +1161,7 @@ export async function issueInvoice(
   invoice.status = "issued";
   invoice.issueDate = input.issuedOn;
   invoice.issuedSnapshot = invoiceSnapshot(data, invoice);
+  queueAccountingSync(data, "advertiser_invoice", invoice.id);
   emitAdvertiserEvent(data, event(input.domainEventId, "advertiser.invoice.issued", "advertiser_invoice", invoice.id, advertiser, {
     invoiceNumber: invoice.invoiceNumber,
     totalMinor: invoice.totalMinor
@@ -1294,6 +1296,7 @@ export async function issueCreditNote(
   };
   data.creditNotes.push(credit);
   data.creditNoteLines.push(...input.lines);
+  queueAccountingSync(data, "advertiser_credit_note", credit.id);
   invoice.balanceMinor -= totalMinor;
   invoice.status = invoice.balanceMinor === 0 ? "credited" : invoice.status;
   emitAdvertiserEvent(data, event(input.domainEventId, "advertiser.credit.issued", "advertiser_credit_note", credit.id, advertiser, {
@@ -2085,6 +2088,97 @@ function formatInvoiceNumber(sequence: { prefix: string; nextNumber: number; pad
 }
 
 /** The rate for a tax code on a date. A code with no rate in force is an error, never a guess. */
+export const ACCOUNTING_PROVIDER_TYPE = "accounting";
+export const ACCOUNTING_PROVIDER_KEY = "primary";
+/** After this many failed pushes a sync stops retrying on its own and waits for a person. */
+export const ACCOUNTING_MAX_ATTEMPTS = 8;
+
+/**
+ * Every issued invoice and credit note must reach the accounting system. This records the intent in the same
+ * transaction as the issue itself, so a crash can never leave an issued document nobody will ever push.
+ * It is idempotent: one reference per document.
+ */
+export function queueAccountingSync(data: AdvertisingData, entityType: "advertiser_invoice" | "advertiser_credit_note", entityId: string) {
+  const existing = data.providerSyncReferences.find((reference) =>
+    reference.providerType === ACCOUNTING_PROVIDER_TYPE && reference.providerKey === ACCOUNTING_PROVIDER_KEY && reference.entityType === entityType && reference.entityId === entityId);
+  if (existing) return existing;
+  const reference = {
+    id: randomUUID(),
+    providerType: ACCOUNTING_PROVIDER_TYPE,
+    providerKey: ACCOUNTING_PROVIDER_KEY,
+    entityType,
+    entityId,
+    providerEntityId: null,
+    status: "pending",
+    lastSyncedAt: null,
+    metadata: { attempts: 0 }
+  };
+  data.providerSyncReferences.push(reference);
+  return reference;
+}
+
+/**
+ * Records what the accounting provider answered. The durable job is the only caller and it audits as an
+ * automation. A synced reference is final and is never moved back; a failure retries until the limit and then
+ * waits for a person.
+ */
+export function applyAccountingSyncResult(
+  data: AdvertisingData,
+  referenceId: string,
+  result: { status: "synced" | "failed"; providerEntityId?: string | null; error?: string; nextAttemptAt?: string; today: string }
+) {
+  const reference = data.providerSyncReferences.find((candidate) => candidate.id === referenceId && candidate.providerType === ACCOUNTING_PROVIDER_TYPE);
+  if (!reference) throw new Error("Accounting sync reference was not found.");
+  if (reference.status === "synced") return reference;
+  const attempts = Number(reference.metadata.attempts ?? 0) + 1;
+  if (result.status === "synced") {
+    reference.status = "synced";
+    reference.providerEntityId = result.providerEntityId ?? null;
+    reference.lastSyncedAt = result.today;
+    reference.metadata = { attempts };
+  } else {
+    reference.status = attempts >= ACCOUNTING_MAX_ATTEMPTS ? "failed" : "pending";
+    reference.metadata = { attempts, lastError: (result.error ?? "Unknown error").slice(0, 300), nextAttemptAt: result.nextAttemptAt ?? null };
+  }
+  return reference;
+}
+
+/** Sets a rate from a date, closing the rate it replaces the day before so exactly one rate is ever in force. */
+export async function setTaxRate(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: { id: string; code: string; description: string; rateBps: number; effectiveFrom: string }
+) {
+  requireAdvertisingPermission(context, permissions, "taxRateManage");
+  const code = input.code.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_]{1,40}$/.test(code)) throw new Error("A tax code is lower-case letters, numbers and underscores.");
+  if (!Number.isInteger(input.rateBps) || input.rateBps < 0 || input.rateBps > 10000) throw new Error("A tax rate must be between 0% and 100%.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom)) throw new Error("Give the date the rate starts as YYYY-MM-DD.");
+  const history = data.taxRates.filter((rate) => rate.code === code);
+  const latest = history.sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
+  if (latest && input.effectiveFrom <= latest.effectiveFrom) {
+    throw new Error("A new rate must start after the rate it replaces. Rates already in force are never rewritten.");
+  }
+  if (latest && !latest.effectiveTo) {
+    const day = new Date(`${input.effectiveFrom}T00:00:00Z`);
+    day.setUTCDate(day.getUTCDate() - 1);
+    latest.effectiveTo = day.toISOString().slice(0, 10);
+  }
+  const rate = { id: input.id, code, description: input.description.trim(), rateBps: input.rateBps, effectiveFrom: input.effectiveFrom, effectiveTo: null };
+  data.taxRates.push(rate);
+  await audit.record({
+    action: auditActions.advertiserTaxRateSet,
+    actorUserId: context.userId,
+    entityType: "advertiser_tax_rate",
+    entityId: rate.id,
+    organisationId: context.organisationId,
+    payload: { code, rateBps: rate.rateBps, effectiveFrom: rate.effectiveFrom }
+  });
+  return rate;
+}
+
 export function taxRateFor(data: AdvertisingData, taxCode: string, onDate: string) {
   const rate = data.taxRates
     .filter((candidate) => candidate.code === taxCode && candidate.effectiveFrom <= onDate && (!candidate.effectiveTo || candidate.effectiveTo >= onDate))

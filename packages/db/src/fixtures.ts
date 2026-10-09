@@ -113,6 +113,7 @@ export const fixtureIds = {
     segmentView: "00000000-0000-4000-8000-000000000489",
     segmentManage: "00000000-0000-4000-8000-000000000490",
     audienceImportManage: "00000000-0000-4000-8000-000000000491",
+    taxRateManage: "00000000-0000-4000-8000-000000000573",
     emailView: "00000000-0000-4000-8000-000000000492",
     emailCreate: "00000000-0000-4000-8000-000000000493",
     emailApprove: "00000000-0000-4000-8000-000000000494",
@@ -1044,6 +1045,12 @@ export const foundationSeed = {
       module: "marketing.segment",
       action: "manage",
       description: "Create and manage audience segment definitions."
+    },
+    {
+      id: fixtureIds.permissions.taxRateManage,
+      module: "advertiser.tax_rate",
+      action: "manage",
+      description: "Configure the tax rates advertiser invoices are priced with."
     },
     {
       id: fixtureIds.permissions.audienceImportManage,
@@ -3022,6 +3029,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     fixtureIds.permissions.consentManage,
     fixtureIds.permissions.segmentView,
     fixtureIds.permissions.segmentManage,
+    fixtureIds.permissions.taxRateManage,
     fixtureIds.permissions.audienceImportManage,
     fixtureIds.permissions.emailView,
     fixtureIds.permissions.emailCreate,

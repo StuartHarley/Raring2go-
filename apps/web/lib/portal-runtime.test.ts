@@ -1,3 +1,4 @@
+import { withFinanceGuardsDisabled } from "./finance-test-support";
 import {
   advertiserDomainEvents, advertiserProposalAcceptances, artworkRequirements, artworkVersions, commercialBookingItems, commercialBookings, commercialProductionRequests,
   commercialProposals, createDb, fixtureIds, inventoryReservations, inventorySlots
@@ -59,6 +60,8 @@ describe("advertiser portal against the real database", () => {
 
   afterAll(async () => {
     const { db, sql } = createDb();
+    await withFinanceGuardsDisabled(db, async () => {
+
     const bookings = await db.select({ id: commercialBookings.id }).from(commercialBookings).where(eq(commercialBookings.proposalId, PROPOSAL));
     const bookingIds = bookings.map((booking) => booking.id);
     await db.delete(advertiserProposalAcceptances).where(eq(advertiserProposalAcceptances.proposalId, PROPOSAL));
@@ -77,6 +80,7 @@ describe("advertiser portal against the real database", () => {
     await db.delete(advertiserDomainEvents).where(inArray(advertiserDomainEvents.eventType, ["advertiser.proposal.accepted", "advertiser.booking.confirmed", "advertiser.artwork.requested", "advertiser.artwork.submitted", "advertiser.artwork.proof_issued", "advertiser.artwork.proof_approved"]));
     await db.update(commercialProposals).set({ status: "sent", acceptedOn: null, validUntil: originalValidUntil }).where(eq(commercialProposals.id, PROPOSAL));
     await db.update(inventorySlots).set({ status: "available" }).where(eq(inventorySlots.id, SLOT));
+    });
     await sql.end();
   });
 

@@ -5,6 +5,12 @@ export type AccountingProviderInvoice = {
   customerOrganisationId: string;
   totalMinor: number;
   currency: string;
+  subtotalMinor?: number;
+  taxMinor?: number;
+  issueDate?: string;
+  dueDate?: string | null;
+  /** Stable per document, so a provider that sees the same push twice records it once. */
+  idempotencyKey?: string;
 };
 
 export type AccountingProviderCreditNote = {
@@ -13,6 +19,8 @@ export type AccountingProviderCreditNote = {
   sourceInvoiceId: string;
   totalMinor: number;
   currency: string;
+  issuedDate?: string;
+  idempotencyKey?: string;
 };
 
 export type AccountingSyncResult = {

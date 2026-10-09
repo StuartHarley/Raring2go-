@@ -1,6 +1,7 @@
+import { withFinanceGuardsDisabled } from "./finance-test-support";
 import { randomUUID } from "node:crypto";
 import {
-  advertiserActivityEvents, advertiserDomainEvents, advertiserInvoiceLines, advertiserInvoiceSequences, advertiserInvoices, advertiserPaymentAllocations, advertiserPayments,
+  advertiserActivityEvents, advertiserDomainEvents, advertiserInvoiceLines, advertiserInvoiceSequences, advertiserInvoices, advertiserPaymentAllocations, advertiserPayments, advertiserProviderSyncReferences,
   advertisers, auditEvents, commercialBookingItems, commercialBookings, commercialProductionRequests, commercialProposalItems, commercialProposals, createDb, fixtureIds,
   inventoryReservations, inventorySlots, organisations, artworkRequirements, artworkVersions
 } from "@raring2go/db";
@@ -37,11 +38,13 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("advertiser sales and billing (postgr
   }
 
   afterAll(async () => {
+    await withFinanceGuardsDisabled(db, async () => {
     const proposals = advertiserIds.length ? await db.select({ id: commercialProposals.id }).from(commercialProposals).where(inArray(commercialProposals.advertiserId, advertiserIds)) : [];
     const bookings = advertiserIds.length ? await db.select({ id: commercialBookings.id }).from(commercialBookings).where(inArray(commercialBookings.advertiserId, advertiserIds)) : [];
     const invoices = advertiserIds.length ? await db.select({ id: advertiserInvoices.id }).from(advertiserInvoices).where(inArray(advertiserInvoices.advertiserId, advertiserIds)) : [];
     const payments = advertiserIds.length ? await db.select({ id: advertiserPayments.id }).from(advertiserPayments).where(inArray(advertiserPayments.advertiserId, advertiserIds)) : [];
     const ids = (rows: Array<{ id: string }>) => rows.map((row) => row.id);
+    if (invoices.length) await db.delete(advertiserProviderSyncReferences).where(inArray(advertiserProviderSyncReferences.entityId, ids(invoices)));
     if (payments.length) await db.delete(advertiserPaymentAllocations).where(inArray(advertiserPaymentAllocations.paymentId, ids(payments)));
     if (invoices.length) await db.delete(advertiserInvoiceLines).where(inArray(advertiserInvoiceLines.invoiceId, ids(invoices)));
     if (advertiserIds.length) {
@@ -66,6 +69,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("advertiser sales and billing (postgr
     }
     if (slotIds.length) await db.delete(inventorySlots).where(inArray(inventorySlots.id, slotIds));
     if (organisationIds.length) await db.delete(organisations).where(inArray(organisations.id, organisationIds));
+    });
     await sql.end();
   });
 

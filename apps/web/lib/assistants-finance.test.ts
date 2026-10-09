@@ -1,3 +1,4 @@
+import { withFinanceGuardsDisabled } from "./finance-test-support";
 import { randomUUID } from "node:crypto";
 import { advertiserInvoices, advertiserPaymentAllocations, advertiserPayments, aiRuns, aiUsageEvents, auditEvents, createDb, fixtureIds, royaltyRules, royaltyStatements } from "@raring2go/db";
 import { and, eq, inArray, like } from "drizzle-orm";
@@ -25,9 +26,9 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("finance assistant end to end (postgr
     const { db, sql } = createDb();
     const base = { issuerOrganisationId: fixtureIds.organisations.franchise, advertiserId: fixtureIds.advertisers.example, customerOrganisationId: fixtureIds.organisations.advertiser, territoryId: fixtureIds.territories.suttonColdfield, status: "issued" };
     await db.insert(advertiserInvoices).values([
-      { ...base, id: ids.oldInvoice, invoiceNumber: `T-${tag}-OLD`, dueDate: D(dayOffset(-68)), totalMinor: 120_000, balanceMinor: 120_000 },
-      { ...base, id: ids.recentInvoice, invoiceNumber: `T-${tag}-REC`, dueDate: D(dayOffset(-10)), totalMinor: 50_000, balanceMinor: 50_000 },
-      { ...base, id: ids.futureInvoice, invoiceNumber: `T-${tag}-FUT`, dueDate: D(dayOffset(20)), totalMinor: 30_000, balanceMinor: 30_000 }
+      { ...base, id: ids.oldInvoice, invoiceNumber: `T-${tag}-OLD`, dueDate: D(dayOffset(-68)), subtotalMinor: 120_000, totalMinor: 120_000, balanceMinor: 120_000 },
+      { ...base, id: ids.recentInvoice, invoiceNumber: `T-${tag}-REC`, dueDate: D(dayOffset(-10)), subtotalMinor: 50_000, totalMinor: 50_000, balanceMinor: 50_000 },
+      { ...base, id: ids.futureInvoice, invoiceNumber: `T-${tag}-FUT`, dueDate: D(dayOffset(20)), subtotalMinor: 30_000, totalMinor: 30_000, balanceMinor: 30_000 }
     ]);
     await db.insert(advertiserPayments).values({ id: ids.payment, issuerOrganisationId: fixtureIds.organisations.franchise, advertiserId: fixtureIds.advertisers.example, payerOrganisationId: fixtureIds.organisations.advertiser, amountMinor: 50_000, allocatedMinor: 0, unallocatedMinor: 50_000, receivedDate: D(dayOffset(-2)), method: "bank_transfer", externalReference: `Paid T-${tag}-REC thanks`, status: "received" });
 
@@ -43,9 +44,11 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("finance assistant end to end (postgr
 
   afterAll(async () => {
     const { db, sql } = createDb();
+    await withFinanceGuardsDisabled(db, async () => {
     await db.delete(advertiserPaymentAllocations).where(eq(advertiserPaymentAllocations.paymentId, ids.payment));
     await db.delete(advertiserPayments).where(eq(advertiserPayments.id, ids.payment));
     await db.delete(advertiserInvoices).where(inArray(advertiserInvoices.id, [ids.oldInvoice, ids.recentInvoice, ids.futureInvoice]));
+    });
     await db.delete(royaltyStatements).where(inArray(royaltyStatements.id, statementIds));
     await db.delete(royaltyRules).where(eq(royaltyRules.id, ids.rule));
     await db.delete(aiUsageEvents).where(inArray(aiUsageEvents.feature, ["finance.chase_notes", "finance.royalty_notes"]));

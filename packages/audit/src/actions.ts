@@ -103,6 +103,8 @@ export const auditActions = {
   advertiserInvoiceIssue: "advertiser.invoice.issue",
   advertiserInvoiceVoid: "advertiser.invoice.void",
   advertiserCreditIssue: "advertiser.credit.issue",
+  advertiserTaxRateSet: "advertiser.tax_rate.set",
+  advertiserAccountingSync: "advertiser.accounting.sync",
   advertiserPaymentRecord: "advertiser.payment.record",
   advertiserPaymentAllocate: "advertiser.payment.allocate",
   advertiserPaymentUnallocate: "advertiser.payment.unallocate",
