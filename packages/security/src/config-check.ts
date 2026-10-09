@@ -26,6 +26,12 @@ export function checkSecurityConfig(env: Env): ConfigFinding[] {
     warn("database_tls_unconfirmed", "DATABASE_URL does not request TLS (sslmode=require); confirm the provider enforces it.");
   }
 
+  if (env.SIGNWELL_API_KEY) {
+    if (env.SIGNWELL_TEST_MODE !== "false") warn("signwell_test_mode", "SIGNWELL_TEST_MODE is not 'false': agreements are sent as test documents, which are watermarked and not legally binding.");
+    if (!env.SIGNWELL_WEBHOOK_ID) warn("signwell_webhook_missing", "SIGNWELL_WEBHOOK_ID is not set; signed agreements cannot be received.");
+    if (weak(env.ESIGN_WEBHOOK_SECRET)) error("esign_secret_weak", "ESIGN_WEBHOOK_SECRET is missing or too weak; SignWell events cannot be applied safely.");
+    if (!/(^|,)\s*www\.signwell\.com\s*(,|$)/.test(env.ESIGN_ARTIFACT_HOSTS ?? "")) warn("esign_hosts_missing", "ESIGN_ARTIFACT_HOSTS does not include www.signwell.com; completed documents would be refused.");
+  }
   if (!env.ALERT_WEBHOOK_URL) warn("alert_webhook_missing", "ALERT_WEBHOOK_URL is not set; nobody is paged when health degrades.");
   if (weak(env.CRON_SECRET)) error("cron_secret_weak", "CRON_SECRET is missing or too weak; scheduled job and health detail endpoints cannot be protected.");
   if (weak(env.AUDIENCE_UNSUBSCRIBE_SECRET)) error("unsubscribe_secret_weak", "AUDIENCE_UNSUBSCRIBE_SECRET is missing or too weak; unsubscribe links cannot be signed safely.");

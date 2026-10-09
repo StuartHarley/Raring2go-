@@ -73,7 +73,7 @@ which must be filled in before the controlled pilot.
 
 ## 8. Known pilot limitations
 
-- No real accounting or e-signature provider yet: development providers only; production fails closed.
+- Accounting (Xero), payments (Stripe, GoCardless) and e-signature (SignWell) are built but have not been run against live accounts: complete one test-mode run of each before the pilot (`docs/XERO.md`, `docs/PAYMENTS.md`, `docs/SIGNWELL.md`).
 - Franchisees manage their own team (Franchise Staff role only) at `/app/team`; every other role is assigned by Head Office.
 - No administrator screen to disable a user or end another person's sessions (section 5).
 - Impressions, email opens and clicks where a provider does not report them, and social reach are not measured.
