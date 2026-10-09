@@ -195,6 +195,77 @@ export async function updateAdvertiser(
   return advertiser;
 }
 
+export type DerivedAdvertiserMetrics = Pick<
+  AdvertiserRecord,
+  "firstBookedOn" | "lastBookedOn" | "lapsedOn" | "averageSaleValueMinor" | "annualAdvertiserValueMinor" | "relationshipState"
+>;
+
+const dayMs = 24 * 60 * 60 * 1000;
+
+/**
+ * Average sale value, annual advertiser value and relationship state computed from the booking
+ * history, so they cannot drift from what was actually sold. Annual value is the last 365 days;
+ * a booking in the last 9 months keeps an advertiser healthy, 9 to 12 months is at risk, and
+ * more than 12 months is lapsed (with the lapse date recorded).
+ */
+export function deriveAdvertiserMetrics(data: AdvertisingData, advertiserId: string, asOf: string = today()): DerivedAdvertiserMetrics {
+  const bookings = data.bookings
+    .filter((booking) => booking.advertiserId === advertiserId && booking.status === "booked" && !booking.deletedAt)
+    .sort((left, right) => left.bookedOn.localeCompare(right.bookedOn));
+  const asOfTime = Date.parse(`${asOf}T00:00:00Z`);
+  const daysSince = (date: string) => Math.floor((asOfTime - Date.parse(`${date}T00:00:00Z`)) / dayMs);
+
+  if (bookings.length === 0) {
+    return { firstBookedOn: null, lastBookedOn: null, lapsedOn: null, averageSaleValueMinor: 0, annualAdvertiserValueMinor: 0, relationshipState: "new" };
+  }
+
+  const first = bookings[0]!.bookedOn;
+  const last = bookings[bookings.length - 1]!.bookedOn;
+  const recent = bookings.filter((booking) => daysSince(booking.bookedOn) <= 365);
+  const sinceLast = daysSince(last);
+
+  let relationshipState: AdvertiserRecord["relationshipState"];
+  let lapsedOn: string | null = null;
+  if (sinceLast > 365) {
+    relationshipState = "lapsed";
+    lapsedOn = new Date(Date.parse(`${last}T00:00:00Z`) + 365 * dayMs).toISOString().slice(0, 10);
+  } else if (sinceLast > 270) {
+    relationshipState = "at_risk";
+  } else {
+    // Retained once they have bought again after their first booking.
+    relationshipState = bookings.length > 1 ? "retained" : "new";
+  }
+
+  return {
+    firstBookedOn: first,
+    lastBookedOn: last,
+    lapsedOn,
+    averageSaleValueMinor: Math.round(bookings.reduce((sum, booking) => sum + booking.totalValueMinor, 0) / bookings.length),
+    annualAdvertiserValueMinor: recent.reduce((sum, booking) => sum + booking.totalValueMinor, 0),
+    relationshipState
+  };
+}
+
+export async function refreshAdvertiserMetrics(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  advertiserId: string,
+  asOf: string = today()
+) {
+  requireAdvertisingPermission(context, permissions, "edit");
+  const advertiser = requireAdvertiser(data, advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
+  const derived = deriveAdvertiserMetrics(data, advertiserId, asOf);
+  const changed = (Object.keys(derived) as Array<keyof DerivedAdvertiserMetrics>).filter((key) => advertiser[key] !== derived[key]);
+  if (changed.length === 0) return { advertiser, changed };
+
+  Object.assign(advertiser, derived);
+  await audit.record(auditEvent(context, auditActions.advertiserUpdate, advertiser, { derived: true, fields: changed, asOf }));
+  return { advertiser, changed };
+}
+
 export async function addAdvertiserContact(
   context: AdvertisingActorContext,
   permissions: PermissionData,
@@ -1681,7 +1752,7 @@ function opportunityAttention(opportunity: Opportunity): OpportunityView["attent
   if (opportunity.nextActionDate && opportunity.nextActionDate < today()) {
     return "overdue_follow_up";
   }
-  if (opportunity.expectedCloseDate && opportunity.expectedCloseDate <= "2026-08-18") {
+  if (opportunity.expectedCloseDate && opportunity.expectedCloseDate <= daysFromToday(7)) {
     return "closing_soon";
   }
   if (!opportunity.nextActionDate) {
@@ -1690,8 +1761,15 @@ function opportunityAttention(opportunity: Opportunity): OpportunityView["attent
   return "normal";
 }
 
+/** Today's date from the clock. Tests pin the clock with fake timers rather than the code carrying a fixed date. */
 function today() {
-  return "2026-08-11";
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysFromToday(days: number) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function auditEvent(

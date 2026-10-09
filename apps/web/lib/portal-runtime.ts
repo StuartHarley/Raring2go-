@@ -16,23 +16,11 @@ import type { PortalIdentity } from "@raring2go/advertising";
 import { requirePermission } from "@raring2go/permissions";
 import type { PermissionData } from "@raring2go/permissions";
 import { uploadAdvertiserArtwork } from "./files-runtime";
+import { advertisingAuditFor } from "./advertising-audit";
 import { appLogger } from "./logger";
 import { getPermissionData } from "./permission-source";
 
 export type PortalActorContext = { userId: string; organisationId: string };
-
-function advertisingAuditFor(db: Parameters<typeof recordAuditEvent>[0]) {
-  return {
-    record: (event: { action: string; actorUserId?: string | null; entityType: string; entityId?: string | null; organisationId?: string | null; territoryId?: string | null; payload?: Record<string, unknown> }) =>
-      recordAuditEvent(db, {
-        action: event.action,
-        actor: { type: "human", userId: event.actorUserId ?? "" },
-        entity: { type: event.entityType, id: event.entityId ?? undefined },
-        scope: { organisationId: event.organisationId ?? undefined, territoryId: event.territoryId ?? undefined },
-        after: event.payload
-      }).then(() => undefined)
-  };
-}
 
 /**
  * The portal runtime checks the grant itself rather than trusting its caller: being a member of an

@@ -2,7 +2,10 @@ import Link from "next/link";
 import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { listAdvertiser360Rows } from "../../../../lib/advertising-runtime";
+import { getDirectory } from "../../../../lib/directory";
 import { AppShell } from "../../layout";
+import { createAdvertiserAction } from "./actions";
+import { CrmBanner } from "./CrmBanner";
 import { requestFromSearchParamsAndCookies } from "../page";
 
 type PageProps = {
@@ -10,7 +13,9 @@ type PageProps = {
 };
 
 export default async function AdvertisersPage({ searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const params = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(params);
+  const resultCode = Array.isArray(params.result) ? params.result[0] : params.result;
   const result = await loadAdvertisers(request);
 
   if ("error" in result) {
@@ -25,6 +30,7 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
 
   return (
     <AppShell request={request}>
+      <CrmBanner result={resultCode} />
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Advertiser CRM</p>
         <h2>Advertisers</h2>
@@ -58,6 +64,30 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
       </section>
 
       <section className="app-panel franchise-panel">
+        <p className="eyebrow">New advertiser</p>
+        <h2>Add an advertiser</h2>
+        <form action={createAdvertiserAction.bind(null, request)} className="franchise-form">
+          <label>
+            Business name
+            <input name="name" required maxLength={120} />
+          </label>
+          <label>
+            Area
+            <select name="territoryId" required defaultValue={request.territoryId ?? ""}>
+              {result.territories.map((territory) => (
+                <option key={territory.id} value={territory.id}>{territory.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            How did they find us?
+            <input name="source" maxLength={80} placeholder="Referral, event, cold call" />
+          </label>
+          <button type="submit">Create advertiser</button>
+        </form>
+      </section>
+
+      <section className="app-panel franchise-panel">
         <p className="eyebrow">Accounts</p>
         <h2>Advertiser 360 list</h2>
         <div className="franchise-list">
@@ -88,7 +118,12 @@ async function loadAdvertisers(request: Awaited<ReturnType<typeof requestFromSea
       territoryId: shell.activeContext.territoryId
     });
 
-    return { advertisers };
+    const directory = getDirectory();
+    const territories = shell.activeContext.territoryId
+      ? (await directory.listTerritories()).filter((territory) => territory.id === shell.activeContext.territoryId)
+      : await directory.listTerritories();
+
+    return { advertisers, territories };
   } catch (error) {
     return { error };
   }

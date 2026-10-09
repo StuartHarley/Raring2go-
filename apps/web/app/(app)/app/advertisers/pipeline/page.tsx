@@ -1,6 +1,9 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readPipeline } from "../../../../../lib/advertising-runtime";
 import { AppShell } from "../../../layout";
+import { CrmBanner } from "../CrmBanner";
+import { createOpportunityAction, moveOpportunityStageAction, updateOpportunityAction } from "../actions";
+import { listAdvertiser360Rows } from "../../../../../lib/advertising-runtime";
 import { requestFromSearchParamsAndCookies } from "../../page";
 
 type PageProps = {
@@ -8,7 +11,9 @@ type PageProps = {
 };
 
 export default async function AdvertiserPipelinePage({ searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const params = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(params);
+  const resultCode = Array.isArray(params.result) ? params.result[0] : params.result;
   const result = await loadPipeline(request);
 
   if ("error" in result) {
@@ -17,6 +22,7 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
 
   return (
     <AppShell request={request}>
+      <CrmBanner result={resultCode} />
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Commercial pipeline</p>
         <h2>Opportunities</h2>
@@ -52,9 +58,71 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
       </section>
 
       <section className="app-panel franchise-panel">
+        <p className="eyebrow">New</p>
+        <h2>Add an opportunity</h2>
+        {result.advertisers.length === 0 ? (
+          <p>Create an advertiser first, then add an opportunity for them.</p>
+        ) : (
+          <form action={createOpportunityAction.bind(null, request)} className="franchise-form">
+            <label>
+              Advertiser
+              <select name="advertiserId" required>
+                {result.advertisers.map((row) => <option key={row.advertiser.id} value={row.advertiser.id}>{row.organisation.name}</option>)}
+              </select>
+            </label>
+            <label>
+              Stage
+              <select name="stageId" required>
+                {result.pipeline.stages.filter((stage) => !stage.stage.isClosed).map((stage) => <option key={stage.stage.id} value={stage.stage.id}>{stage.stage.name}</option>)}
+              </select>
+            </label>
+            <label>What are they interested in?<input name="title" required maxLength={160} /></label>
+            <label>Estimated value (£)<input name="value" type="number" min="0" step="0.01" required /></label>
+            <label>Expected close<input name="expectedCloseDate" type="date" /></label>
+            <label>Next action<input name="nextAction" maxLength={160} /></label>
+            <label>Next action date<input name="nextActionDate" type="date" /></label>
+            <button type="submit">Add opportunity</button>
+          </form>
+        )}
+      </section>
+
+      {result.pipeline.stages.map((stage) => (
+        <section key={stage.stage.id} className="app-panel franchise-panel">
+          <p className="eyebrow">{stage.stage.name}</p>
+          <h2>{stage.opportunities.length} open</h2>
+          {stage.opportunities.length === 0 ? <p>Nothing at this stage.</p> : null}
+          <div className="franchise-list">
+            {stage.opportunities.map((view) => (
+              <div key={view.opportunity.id}>
+                <strong>{view.opportunity.title}</strong>
+                <span>{view.organisation.name} - {formatMoney(view.opportunity.estimatedValueMinor)} at {view.opportunity.probability}% - {view.attention.replaceAll("_", " ")}</span>
+                <span>Next: {view.opportunity.nextAction ?? "none set"} {view.opportunity.nextActionDate ? `(${view.opportunity.nextActionDate})` : ""}</span>
+                <form action={moveOpportunityStageAction.bind(null, request, view.opportunity.id)} className="franchise-form">
+                  <label>
+                    Move to
+                    <select name="stageId" defaultValue={view.stage.id}>
+                      {result.stages.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                    </select>
+                  </label>
+                  <label>If lost, why?<input name="lostReason" maxLength={200} /></label>
+                  <button type="submit">Move</button>
+                </form>
+                <form action={updateOpportunityAction.bind(null, request, view.opportunity.id)} className="franchise-form">
+                  <label>Next action<input name="nextAction" defaultValue={view.opportunity.nextAction ?? ""} maxLength={160} /></label>
+                  <label>Next action date<input name="nextActionDate" type="date" defaultValue={view.opportunity.nextActionDate ?? ""} /></label>
+                  <button type="submit">Update</button>
+                </form>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <section className="app-panel franchise-panel">
         <p className="eyebrow">Attention</p>
         <h2>Follow-ups</h2>
         <div className="franchise-list">
+          {result.pipeline.overdueFollowUps.length === 0 ? <p>No overdue follow-ups.</p> : null}
           {result.pipeline.overdueFollowUps.map((view) => (
             <div key={view.opportunity.id}>
               <strong>{view.opportunity.title}</strong>
@@ -74,13 +142,12 @@ async function loadPipeline(request: Awaited<ReturnType<typeof requestFromSearch
       module: "advertiser.opportunity",
       action: "view"
     });
-    const pipeline = await readPipeline({
-      userId: shell.userId,
-      organisationId: shell.activeContext.organisationId,
-      territoryId: shell.activeContext.territoryId
-    });
+    const actor = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
+    const pipeline = await readPipeline(actor);
+    // The form lists whichever advertisers this user can see; a person without that access simply gets an empty list.
+    const advertisers = await listAdvertiser360Rows(actor).catch(() => []);
 
-    return { pipeline };
+    return { pipeline, advertisers, stages: pipeline.stages.map((stage) => stage.stage) };
   } catch (error) {
     return { error };
   }
