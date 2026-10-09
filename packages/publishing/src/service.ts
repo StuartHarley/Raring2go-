@@ -2508,6 +2508,14 @@ function preflightChecks(artifact: Record<string, unknown>): PreflightCheck[] {
       fixable: artifact.allowBleedExtension === true
     });
   }
+  if (typeof artifact.dpiUnverifiedImages === "number" && artifact.dpiUnverifiedImages > 0) {
+    checks.push({
+      code: "unverified_resolution",
+      severity: "warning",
+      message: `${artifact.dpiUnverifiedImages} placed image(s) have no recorded pixel size, so their resolution could not be checked.`,
+      fixable: false
+    });
+  }
   if (artifact.linksChecked !== true) {
     checks.push({
       code: "unchecked_links",

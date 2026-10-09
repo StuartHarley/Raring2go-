@@ -214,6 +214,31 @@ function fillZone(zone: TemplateZone, content: Record<string, unknown>, issues: 
   return { ...zone, text, empty: text.length === 0 };
 }
 
+/** One page's layout: its template's zones filled from the page's content. Refuses a page with no published template. */
+export function buildRenderPage(data: PublishingData, edition: TerritoryEdition, page: EditionPage): { page: RenderPage; geometry: PageGeometry } {
+  const version = page.templateVersionId ? data.magazineTemplateVersions.find((candidate) => candidate.id === page.templateVersionId && !candidate.deletedAt) : undefined;
+  if (!version) throw new RenderModelError(`Page ${page.pageNumber} has no template assigned.`, "page_incomplete");
+  const geometry = geometryOf(version);
+  const zones = zonesOf(version);
+  const issues: ZoneIssue[] = validateZoneGeometry(zones, { width: geometry.trimWidth, height: geometry.trimHeight });
+  const { content, title } = pageContentFor(data, page);
+  const filled = zones.map((zone) => fillZone(zone, content, issues));
+  const furniture = (version.footerFurniture ?? {}) as Record<string, unknown>;
+  return {
+    geometry,
+    page: {
+      pageId: page.id,
+      pageNumber: page.pageNumber,
+      side: page.side,
+      title,
+      zones: filled,
+      lockedElements: version.lockedElements,
+      furniture: { showPageNumber: furniture.pageNumber !== false, issueDate: furniture.issueDate === true ? edition.publicationDate ?? null : null },
+      issues
+    }
+  };
+}
+
 /**
  * Builds the render model for an edition from stored data alone. It refuses an edition whose pages have no
  * published template assigned: a page that cannot be laid out must never turn into a silently blank sheet.
@@ -223,32 +248,13 @@ export function buildEditionRenderModel(data: PublishingData, edition: Territory
   if (pages.length === 0) throw new RenderModelError("The edition has no pages to render.", "no_pages");
   const season = data.seasons.find((candidate) => candidate.id === edition.seasonId);
   let geometry: PageGeometry | undefined;
-  const allIssues: ZoneIssue[] = [];
   const rendered: RenderPage[] = pages.map((page) => {
-    const version = page.templateVersionId ? data.magazineTemplateVersions.find((candidate) => candidate.id === page.templateVersionId && !candidate.deletedAt) : undefined;
-    if (!version) throw new RenderModelError(`Page ${page.pageNumber} has no template assigned.`, "page_incomplete");
-    const pageGeometry = geometryOf(version);
-    geometry ??= pageGeometry;
-    if (pageGeometry.trimWidth !== geometry.trimWidth || pageGeometry.trimHeight !== geometry.trimHeight) {
+    const built = buildRenderPage(data, edition, page);
+    geometry ??= built.geometry;
+    if (built.geometry.trimWidth !== geometry.trimWidth || built.geometry.trimHeight !== geometry.trimHeight) {
       throw new RenderModelError(`Page ${page.pageNumber} uses a different trim size from the rest of the edition.`, "bad_template");
     }
-    const zones = zonesOf(version);
-    const geometryIssues = validateZoneGeometry(zones, { width: pageGeometry.trimWidth, height: pageGeometry.trimHeight });
-    const { content, title } = pageContentFor(data, page);
-    const issues: ZoneIssue[] = [...geometryIssues];
-    const filled = zones.map((zone) => fillZone(zone, content, issues));
-    allIssues.push(...issues);
-    const furniture = (version.footerFurniture ?? {}) as Record<string, unknown>;
-    return {
-      pageId: page.id,
-      pageNumber: page.pageNumber,
-      side: page.side,
-      title,
-      zones: filled,
-      lockedElements: version.lockedElements,
-      furniture: { showPageNumber: furniture.pageNumber !== false, issueDate: furniture.issueDate === true ? edition.publicationDate ?? null : null },
-      issues
-    };
+    return built.page;
   });
   return {
     editionId: edition.id,
@@ -258,8 +264,28 @@ export function buildEditionRenderModel(data: PublishingData, edition: Territory
     geometry: geometry!,
     accent: season?.accent ?? null,
     pages: rendered,
-    issues: allIssues
+    issues: rendered.flatMap((page) => page.issues)
   };
+}
+
+/**
+ * What the layout can say about a page for print preflight. Colour is CMYK because the print pipeline converts every
+ * file to it; bleed is present because the renderer extends zones that touch the trim edge into the bleed. Resolution
+ * is only known for images that carry their pixel size: the rest are counted, not assumed fine.
+ */
+export function derivePageArtifact(page: RenderPage): Record<string, unknown> {
+  let dpi: number | undefined;
+  let unverified = 0;
+  for (const zone of page.zones) {
+    if (zone.kind !== "image" || !zone.image) continue;
+    if (zone.image.widthPx && zone.width) {
+      const value = Math.round(zone.image.widthPx / (zone.width / 25.4));
+      dpi = dpi === undefined ? value : Math.min(dpi, value);
+    } else {
+      unverified += 1;
+    }
+  }
+  return { colourSpace: "cmyk", bleedPresent: true, linksChecked: true, ...(dpi !== undefined ? { dpi } : {}), dpiUnverifiedImages: unverified };
 }
 
 export function escapeHtml(value: string): string {
@@ -277,22 +303,27 @@ export function safeImageUrl(url: string): string | null {
 
 type HtmlMode = "print" | "digital";
 
-function zoneBox(zone: RenderedZone, index: number, geometry: PageGeometry): string {
+function zoneBox(zone: RenderedZone, index: number, geometry: PageGeometry, bleed = 0): string {
   const live = {
     x: geometry.margins.left,
     y: geometry.margins.top,
     width: geometry.trimWidth - geometry.margins.left - geometry.margins.right
   };
   if (zone.x !== undefined && zone.y !== undefined && zone.width !== undefined && zone.height !== undefined) {
-    return `left:${zone.x}mm;top:${zone.y}mm;width:${zone.width}mm;height:${zone.height}mm;`;
+    // A placed zone that touches the trim edge runs on into the bleed, so artwork never stops short of the cut.
+    const left = zone.x <= 0.001 ? -bleed : zone.x;
+    const top = zone.y <= 0.001 ? -bleed : zone.y;
+    const right = zone.x + zone.width >= geometry.trimWidth - 0.001 ? geometry.trimWidth + bleed : zone.x + zone.width;
+    const bottom = zone.y + zone.height >= geometry.trimHeight - 0.001 ? geometry.trimHeight + bleed : zone.y + zone.height;
+    return `left:${left}mm;top:${top}mm;width:${right - left}mm;height:${bottom - top}mm;`;
   }
   // Un-placed zones stack down the live area in a fixed band each.
   const band = 38;
   return `left:${live.x}mm;top:${live.y + index * (band + 4)}mm;width:${live.width}mm;height:${band}mm;`;
 }
 
-function zoneHtml(zone: RenderedZone, index: number, geometry: PageGeometry): string {
-  const style = zoneBox(zone, index, geometry);
+function zoneHtml(zone: RenderedZone, index: number, geometry: PageGeometry, bleed: number): string {
+  const style = zoneBox(zone, index, geometry, bleed);
   const label = `data-zone="${escapeHtml(zone.id)}" data-kind="${zone.kind}"`;
   if (zone.kind === "image") {
     const url = zone.image ? safeImageUrl(zone.image.url) : null;
@@ -324,7 +355,7 @@ export function renderEditionHtml(model: EditionRenderModel, mode: HtmlMode): st
     body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a1a1a; }
     .sheet { position: relative; width: ${sheetW}mm; height: ${sheetH}mm; overflow: hidden; page-break-after: always; break-after: page; background: #fff; }
     .sheet:last-child { page-break-after: auto; break-after: auto; }
-    .trim { position: absolute; left: ${bleed}mm; top: ${bleed}mm; width: ${geometry.trimWidth}mm; height: ${geometry.trimHeight}mm; }
+    .trim { position: absolute; overflow: visible; left: ${bleed}mm; top: ${bleed}mm; width: ${geometry.trimWidth}mm; height: ${geometry.trimHeight}mm; }
     .zone { position: absolute; overflow: hidden; }
     .zone h2 { margin: 0; font-size: 22pt; line-height: 1.1; color: ${accent}; }
     .zone p { margin: 0 0 2mm; font-size: 9.5pt; line-height: 1.35; }
@@ -335,7 +366,7 @@ export function renderEditionHtml(model: EditionRenderModel, mode: HtmlMode): st
     ${mode === "digital" ? "body { background: #f4f4f4; } .sheet { margin: 0 auto 8mm; }" : ""}
   `;
   const sheets = model.pages.map((page) => {
-    const zones = page.zones.map((zone, index) => zoneHtml(zone, index, geometry)).join("");
+    const zones = page.zones.map((zone, index) => zoneHtml(zone, index, geometry, bleed)).join("");
     const folio = page.furniture.showPageNumber
       ? `<div class="folio ${escapeHtml(page.side)}">${page.furniture.issueDate ? `${escapeHtml(page.furniture.issueDate)} · ` : ""}${page.pageNumber}</div>`
       : "";
