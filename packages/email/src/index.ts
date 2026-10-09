@@ -603,6 +603,25 @@ export async function sendInvitationEmail(
   });
 }
 
+export async function sendPaymentLinkEmail(
+  provider: EmailDeliveryProvider,
+  input: { to: string; url: string; invoiceNumber: string; amountText: string; payeeName: string; bank?: { accountName: string; sortCode: string; accountNumber: string } | null; from?: string; idempotencyKey: string }
+) {
+  const intro = `${input.payeeName} has sent you a link to pay invoice ${input.invoiceNumber} (${input.amountText}) online.`;
+  const bankText = input.bank ? ["", "Or pay by bank transfer:", `Account name: ${input.bank.accountName}`, `Sort code: ${input.bank.sortCode}`, `Account number: ${input.bank.accountNumber}`, `Reference: ${input.invoiceNumber}`] : [];
+  const bankHtml = input.bank ? `<p>Or pay by bank transfer: ${escapeHtml(input.bank.accountName)}, sort code ${escapeHtml(input.bank.sortCode)}, account ${escapeHtml(input.bank.accountNumber)}, reference ${escapeHtml(input.invoiceNumber)}.</p>` : "";
+  return provider.send({
+    idempotencyKey: input.idempotencyKey,
+    purpose: "transactional",
+    to: [{ email: input.to }],
+    from: { email: input.from ?? "no-reply@raring2go.local", name: "Raring2go" },
+    subject: `Pay invoice ${input.invoiceNumber}`,
+    text: [intro, "", "Pay online:", input.url, ...bankText, "", "If you were not expecting this, ignore this email."].join("\n"),
+    html: `<p>${escapeHtml(intro)}</p><p><a href="${escapeHtml(input.url)}">Pay online</a></p>${bankHtml}<p>If you were not expecting this, ignore this email.</p>`,
+    metadata: { purpose: "payment_link" }
+  });
+}
+
 export function validateEmailMessage(message: EmailMessage) {
   if (!message.idempotencyKey) {
     throw new Error("Email messages require an idempotency key.");

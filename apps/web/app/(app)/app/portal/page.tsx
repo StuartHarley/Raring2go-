@@ -1,15 +1,17 @@
 import { PortalAccessError } from "@raring2go/advertising";
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { readPortal } from "../../../../lib/portal-runtime";
+import { readPortalPaymentOptions } from "../../../../lib/payments-runtime";
 import { StatusBadge } from "../../../../lib/workflow-ui";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { ArtworkUploadForm } from "./ArtworkUploadForm";
-import { respondToProofAction, respondToProposalAction } from "./actions";
+import { payInvoiceAction, respondToProofAction, respondToProposalAction } from "./actions";
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
+  payment_unavailable: { tone: "error", text: "That way of paying is not available right now. Please use the bank details or contact your account manager." },
   accepted: { tone: "success", text: "Thank you. Your booking is confirmed and we will be in touch about your artwork." },
   rejected: { tone: "success", text: "We have recorded that you are declining this proposal." },
   change_requested: { tone: "success", text: "We have passed on your request for changes." },
@@ -31,7 +33,8 @@ export default async function PortalPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { view } = result;
+  const { view, paymentOptions } = result;
+  const paymentReturn = (Array.isArray(params.payment) ? params.payment[0] : params.payment) as string | undefined;
   const resultParam = Array.isArray(params.result) ? params.result[0] : params.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
   const query = new URLSearchParams();
@@ -197,14 +200,25 @@ export default async function PortalPage({ searchParams }: PageProps) {
                     <td>{money(invoice.totalMinor, invoice.currency)}</td>
                     <td>{money(invoice.amountPaidMinor, invoice.currency)}</td>
                     <td>{money(invoice.balanceMinor, invoice.currency)}</td>
-                    <td><StatusBadge status={invoice.status === "paid" ? "completed" : invoice.overdue ? "failed" : "paused"} /> {invoice.overdue ? "Overdue" : invoice.status.replace("_", " ")}</td>
+                    <td>
+                      <StatusBadge status={invoice.status === "paid" ? "completed" : invoice.overdue ? "failed" : "paused"} /> {invoice.overdue ? "Overdue" : invoice.status.replace("_", " ")}
+                      {paymentOptions[invoice.id] && invoice.balanceMinor > 0 ? (
+                        <div>
+                          {paymentOptions[invoice.id]!.stripe ? <form action={payInvoiceAction.bind(null, request, invoice.id, "stripe")}><button type="submit">Pay {money(invoice.balanceMinor, invoice.currency)} by card or bank</button></form> : null}
+                          {paymentOptions[invoice.id]!.gocardless ? <form action={payInvoiceAction.bind(null, request, invoice.id, "gocardless")}><button type="submit">Pay by bank or Direct Debit</button></form> : null}
+                          {paymentOptions[invoice.id]!.bank ? <small>Or bank transfer to {paymentOptions[invoice.id]!.bank!.accountName}, sort code {paymentOptions[invoice.id]!.bank!.sortCode}, account {paymentOptions[invoice.id]!.bank!.accountNumber}, reference {invoice.invoiceNumber}.</small> : null}
+                        </div>
+                      ) : null}
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-        <p className="journey-builder-step-note">To pay an invoice, quote its number and contact your account manager. Online payment is not available yet.</p>
+        {paymentReturn === "returned" ? <p role="status" className="app-banner">Thank you. We will show your payment here as soon as your bank or card provider confirms it, which can take a few minutes.</p> : null}
+        {paymentReturn === "cancelled" ? <p role="status" className="app-banner">The payment was not completed. You have not been charged.</p> : null}
+        <p className="journey-builder-step-note">Payments are made on your provider&apos;s own secure page. Quote the invoice number if you contact us.</p>
       </section>
 
       {view.renewals.length > 0 ? (
@@ -228,7 +242,8 @@ export default async function PortalPage({ searchParams }: PageProps) {
 async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
   try {
     const shell = await requireShellPermission(request, { module: "portal.advertiser", action: "view" });
-    return await readPortal({ userId: shell.userId, organisationId: shell.activeContext.organisationId });
+    const context = { userId: shell.userId, organisationId: shell.activeContext.organisationId };
+    return { ...(await readPortal(context)), paymentOptions: await readPortalPaymentOptions(context) };
   } catch (error) {
     return { error };
   }

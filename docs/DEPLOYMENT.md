@@ -72,6 +72,7 @@ Operations:
 
 - `CRON_SECRET` (protects `/api/jobs/run` and the detailed `/api/health` view)
 - `ALERT_WEBHOOK_URL` (plain https chat webhook for health alerts; production config check warns when unset)
+- Online payments (see `docs/PAYMENTS.md`): `STRIPE_SECRET_KEY`, `STRIPE_CONNECT_CLIENT_ID`, `STRIPE_WEBHOOK_SECRET`, `GOCARDLESS_CLIENT_ID`, `GOCARDLESS_CLIENT_SECRET`, `GOCARDLESS_REDIRECT_URI`, `GOCARDLESS_WEBHOOK_SECRET`, `GOCARDLESS_ENVIRONMENT`
 - `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, `XERO_OAUTH_REDIRECT_URI=https://app.raring2go.co.uk/api/integrations/xero/callback`, optional `XERO_OAUTH_SCOPES` (see `docs/XERO.md`); `INTEGRATION_SECRET_ENCRYPTION_KEY` (above) protects the stored tokens
 - `ESIGN_WEBHOOK_SECRET`, `ESIGN_WEBHOOK_SECRET_PREVIOUS`, `ESIGN_ARTIFACT_HOSTS` (see `docs/ESIGN_PROVIDER_CONTRACT.md`)
 

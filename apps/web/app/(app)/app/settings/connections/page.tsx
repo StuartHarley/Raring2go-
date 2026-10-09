@@ -21,6 +21,9 @@ export default async function ConnectionsPage({ searchParams }: PageProps) {
   const connection = result.connections[0];
   const outlookConnection = result.outlookConnections[0];
   const xeroConnection = result.xeroConnections[0];
+  const stripeConnections = result.stripeConnections;
+  const goCardlessConnections = result.goCardlessConnections;
+  const bankDetails = result.bankConnections[0]?.providerSafeMetadata as { accountName?: string; sortCode?: string; accountNumber?: string } | undefined;
   const storedMapping = (xeroConnection?.providerSafeMetadata as { mapping?: Partial<typeof defaultXeroMapping> } | undefined)?.mapping;
   const xeroMapping = { salesAccountCode: storedMapping?.salesAccountCode ?? defaultXeroMapping.salesAccountCode, taxTypes: { ...defaultXeroMapping.taxTypes, ...(storedMapping?.taxTypes ?? {}) } };
   const query = new URLSearchParams();
@@ -128,6 +131,44 @@ export default async function ConnectionsPage({ searchParams }: PageProps) {
           </div>
         )}
       </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Getting paid</p>
+        <h2>Online payments</h2>
+        <p>
+          Advertisers pay on the provider&apos;s own secure page: card and bank details never reach Raring2go. Money goes straight to the account you connect here.
+          Stripe is the default; GoCardless suits bank payments and Direct Debit; bank transfer details are shown for anyone who prefers to pay that way.
+        </p>
+        {[
+          { name: "Stripe", slug: "stripe", cards: stripeConnections, about: "Card payments and more, paid into your own Stripe account." },
+          { name: "GoCardless", slug: "gocardless", cards: goCardlessConnections, about: "Bank payments and Direct Debit, paid into your own GoCardless account." }
+        ].map((provider) => (
+          <div key={provider.slug} className="franchise-list">
+            <div>
+              <strong>{provider.name}</strong>
+              {provider.cards[0] ? (
+                <>
+                  <span>{provider.cards[0].externalAccountDisplayName} - {provider.cards[0].status}</span>
+                  <form action={`/api/integrations/${provider.slug}/revoke?connectionId=${encodeURIComponent(provider.cards[0].id)}`} method="post"><button type="submit">Disconnect</button></form>
+                </>
+              ) : (
+                <>
+                  <span>{provider.about}</span>
+                  <a className="button-primary" href={`/api/integrations/${provider.slug}/start?${query.toString()}`}>Connect {provider.name}</a>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        <form action="/api/integrations/bank-details" method="post" className="franchise-form">
+          <h3>Bank transfer details</h3>
+          <label>Account name<input name="accountName" required maxLength={60} defaultValue={bankDetails?.accountName} /></label>
+          <label>Sort code<input name="sortCode" required inputMode="numeric" maxLength={8} placeholder="12-34-56" defaultValue={bankDetails?.sortCode} /></label>
+          <label>Account number<input name="accountNumber" required inputMode="numeric" maxLength={8} defaultValue={bankDetails?.accountNumber} /></label>
+          <button type="submit">Save bank details</button>
+          <p>Shown to your advertisers with the invoice number as the payment reference.</p>
+        </form>
+      </section>
     </AppShell>
   );
 }
@@ -136,15 +177,18 @@ type ConnectionCards = Awaited<ReturnType<typeof listConnectionCards>>["connecti
 
 async function loadConnections(
   request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>
-): Promise<{ connections: ConnectionCards; outlookConnections: ConnectionCards; xeroConnections: ConnectionCards } | { error: ShellAccessError }> {
+): Promise<{ connections: ConnectionCards; outlookConnections: ConnectionCards; xeroConnections: ConnectionCards; stripeConnections: ConnectionCards; goCardlessConnections: ConnectionCards; bankConnections: ConnectionCards } | { error: ShellAccessError }> {
   try {
-    const [meta, outlook, xero] = await Promise.all([
+    const [meta, outlook, xero, stripe, goCardless, bank] = await Promise.all([
       listConnectionCards(request, "meta", "facebook_page"),
       listConnectionCards(request, "microsoft", "outlook_mailbox"),
-      listConnectionCards(request, "xero", "accounting")
+      listConnectionCards(request, "xero", "accounting"),
+      listConnectionCards(request, "stripe", "payments"),
+      listConnectionCards(request, "gocardless", "payments"),
+      listConnectionCards(request, "bank_transfer", "bank_details")
     ]);
 
-    return { connections: meta.connections, outlookConnections: outlook.connections, xeroConnections: xero.connections.filter((connection) => connection.status === "connected") };
+    return { connections: meta.connections, outlookConnections: outlook.connections, xeroConnections: xero.connections.filter((connection) => connection.status === "connected"), stripeConnections: stripe.connections.filter((connection) => connection.status === "connected"), goCardlessConnections: goCardless.connections.filter((connection) => connection.status === "connected"), bankConnections: bank.connections };
   } catch (error) {
     if (error instanceof ShellAccessError) {
       return { error };

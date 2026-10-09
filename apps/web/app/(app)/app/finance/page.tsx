@@ -44,6 +44,7 @@ export default async function FinancePage({ searchParams }: PageProps) {
           Royalty statements are calculated from booked advertiser revenue and are reproducible from the
           underlying invoices and payments. Adjustments always carry a recorded reason.
         </p>
+        <a href={`/app/finance/payments${sessionQuery}`} className="app-link-button">Online payments</a>
         {isNetworkView ? <a href={`/app/finance/accounting${sessionQuery}`} className="app-link-button">Tax rates and accounting hand-off</a> : null}
       </section>
 

@@ -1,4 +1,5 @@
-import { boolean, date, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
 import { users } from "./identity";
 import { editionPages, preflightResults, territoryEditions } from "./publishing";
@@ -834,4 +835,42 @@ export const advertiserTaxRates = pgTable(
     ...timestamps
   },
   (table) => [uniqueIndex("advertiser_tax_rates_code_from_uidx").on(table.code, table.effectiveFrom)]
+);
+
+/**
+ * One online payment attempt for an invoice with an outside provider (Stripe, GoCardless). The provider's answer
+ * arrives by signed webhook and is matched here by `provider_request_id`; nothing is trusted from a redirect back.
+ * Only one open request per invoice and provider can exist, so two clicks cannot create two live links.
+ */
+export const invoicePaymentRequests = pgTable(
+  "invoice_payment_requests",
+  {
+    id,
+    invoiceId: uuid("invoice_id").notNull().references(() => advertiserInvoices.id),
+    issuerOrganisationId: uuid("issuer_organisation_id").notNull().references(() => organisations.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    provider: text("provider").notNull(),
+    providerRequestId: text("provider_request_id").notNull(),
+    providerPaymentId: text("provider_payment_id"),
+    /** The provider's own account the money goes to (Stripe connected account, GoCardless organisation). */
+    providerAccountId: text("provider_account_id"),
+    url: text("url"),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull().default("GBP"),
+    status: text("status").notNull().default("open"),
+    failureReason: text("failure_reason"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("invoice_payment_requests_provider_request_uidx").on(table.provider, table.providerRequestId),
+    uniqueIndex("invoice_payment_requests_idempotency_uidx").on(table.idempotencyKey),
+    uniqueIndex("invoice_payment_requests_one_open_uidx").on(table.invoiceId, table.provider).where(sql`${table.status} = 'open'`),
+    index("invoice_payment_requests_invoice_id_idx").on(table.invoiceId),
+    index("invoice_payment_requests_payment_id_idx").on(table.provider, table.providerPaymentId),
+    index("invoice_payment_requests_status_idx").on(table.status)
+  ]
 );

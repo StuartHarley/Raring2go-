@@ -52,6 +52,24 @@ export function buildHealthChecks(): HealthCheck[] {
       }
     },
     {
+      name: "online_payments",
+      critical: false,
+      async run() {
+        const { db, sql } = createDb();
+        try {
+          const rows = (await db.execute(rawSql`
+            select count(*) filter (where status in ('disputed', 'refunded') or failure_reason like '%needs review%')::int as attention
+            from invoice_payment_requests where created_at > now() - interval '60 days'`)) as unknown as Array<{ attention: number }>;
+          const attention = rows[0]?.attention ?? 0;
+          return attention > 0
+            ? { status: "degraded", detail: `${attention} online payment(s) are disputed, refunded or need review (Finance, Online payments)`, data: { attention } }
+            : { status: "ok", detail: "nothing needs review", data: { attention } };
+        } finally {
+          await sql.end();
+        }
+      }
+    },
+    {
       name: "security_config",
       critical: false,
       async run() {
