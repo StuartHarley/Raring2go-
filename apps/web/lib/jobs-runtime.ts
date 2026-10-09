@@ -36,6 +36,7 @@ import { createPublishSocialHandler, PUBLISH_SOCIAL_KIND, publishSocialIdempoten
 import { createGenerateRenewalsHandler, GENERATE_RENEWALS_KIND, generateRenewalsIdempotencyKey } from "./advertising-jobs";
 import { createOverdueInvoiceScanner, engineHooks, knownHooks, SCAN_OVERDUE_INVOICES_KIND, scanOverdueInvoicesIdempotencyKey } from "./automation-hooks";
 import { createSnapshotMetricsHandler, SNAPSHOT_METRICS_KIND, snapshotMetricsIdempotencyKey } from "./analytics-runtime";
+import { createGenerateOutputHandler, GENERATE_OUTPUT_KIND } from "./edition-output";
 import { appLogger } from "./logger";
 import { createEnforceRetentionHandler, ENFORCE_RETENTION_KIND, enforceRetentionIdempotencyKey } from "./security-runtime";
 import { getPermissionData } from "./permission-source";
@@ -68,7 +69,7 @@ export function hasNetworkJobAccess(permissions: PermissionData, userId: string)
  * decide whether to offer Retry without building a DB-backed registry; a unit test
  * asserts the two never drift apart.
  */
-export const registeredJobKinds: string[] = [PRUNE_JOB_HISTORY_KIND, EXECUTE_RUN_KIND, WORKFLOW_TICK_KIND, SCAN_OVERDUE_INVOICES_KIND, SNAPSHOT_METRICS_KIND, ENFORCE_RETENTION_KIND, GENERATE_RENEWALS_KIND, PUBLISH_SOCIAL_KIND, RUN_JOURNEYS_KIND, COMPLIANCE_DAILY_KIND, SYNC_ACCOUNTING_KIND, HEALTH_ALERT_KIND];
+export const registeredJobKinds: string[] = [PRUNE_JOB_HISTORY_KIND, EXECUTE_RUN_KIND, WORKFLOW_TICK_KIND, SCAN_OVERDUE_INVOICES_KIND, SNAPSHOT_METRICS_KIND, ENFORCE_RETENTION_KIND, GENERATE_RENEWALS_KIND, PUBLISH_SOCIAL_KIND, RUN_JOURNEYS_KIND, COMPLIANCE_DAILY_KIND, SYNC_ACCOUNTING_KIND, HEALTH_ALERT_KIND, GENERATE_OUTPUT_KIND];
 
 /** Handlers need a live DB handle, so the registry is built per request/tick. */
 export function buildJobRegistry(db: WorkflowsDb) {
@@ -84,7 +85,8 @@ export function buildJobRegistry(db: WorkflowsDb) {
     createRunJourneysHandler(),
     createComplianceDailyHandler(),
     createSyncAccountingHandler(),
-    createHealthAlertHandler()
+    createHealthAlertHandler(),
+    createGenerateOutputHandler()
   ]);
 }
 
