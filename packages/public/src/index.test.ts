@@ -7,7 +7,11 @@ import {
   defaultPublicTerritorySlug,
   getPublicDiscovery,
   getPublicHomepage,
+  getPublicBusiness,
+  getPublicContentDetail,
   getPublicMagazine,
+  getPublicMagazineEdition,
+  getPublicMagazinePage,
   getPublicParentHub,
   getPublicRecommendations,
   publicSeoRoutes,
@@ -453,6 +457,115 @@ describe("@raring2go/public commercial discovery", () => {
     ]), defaultPublicTerritorySlug, "businesses");
 
     expect(discovery?.placements.map((placement) => placement.id)).toEqual(["88888888-8888-4888-8888-888888888888"]);
+  });
+});
+
+describe("@raring2go/public detail pages", () => {
+  const itemId = "56565656-5656-4565-8565-565656565656";
+  const withBody = (item: Record<string, unknown>, snapshot: Record<string, unknown>) => {
+    const variant = websiteVariantForContent(item);
+    return dbWithPublicContent([item], { contentChannelVariantVersions: [{ ...websiteVariantVersionForVariant(variant), snapshot }] });
+  };
+
+  it("serves a public event at the address its card links to, with text body and structured data", async () => {
+    const item = publicContent({ id: itemId, title: "Autumn Fun Day", contentType: "event", relevantDates: { startDate: "2099-10-10" } });
+    const db = withBody(item, { webHeadline: "Autumn fun day!", body: "First paragraph.\n\n<script>alert(1)</script>" });
+    const discovery = await getPublicDiscovery(db, defaultPublicTerritorySlug, "whats_on");
+    const href = discovery?.items[0]?.href;
+    expect(href).toBe("/areas/sutton-coldfield/whats-on/autumn-fun-day");
+
+    const detail = await getPublicContentDetail(db, defaultPublicTerritorySlug, "whats-on", "autumn-fun-day", "https://www.raring2go.example");
+    expect(detail).toMatchObject({ headline: "Autumn fun day!", indexable: true, canonicalPath: href });
+    // Rendered as text by the page; the body keeps the characters but is never treated as markup here.
+    expect(detail?.body).toEqual(["First paragraph.", "<script>alert(1)</script>"]);
+    expect(detail?.structuredData).toMatchObject({ "@type": "Event", startDate: "2099-10-10", url: "https://www.raring2go.example/areas/sutton-coldfield/whats-on/autumn-fun-day" });
+  });
+
+  it("is absent for drafts, other territories and the wrong section", async () => {
+    const draft = publicContent({ id: itemId, title: "Secret draft", status: "draft" });
+    expect(await getPublicContentDetail(withBody(draft, {}), defaultPublicTerritorySlug, "whats-on", "secret-draft")).toBeUndefined();
+
+    const live = publicContent({ id: itemId, title: "Live event", contentType: "event" });
+    expect(await getPublicContentDetail(withBody(live, {}), "solihull", "whats-on", "live-event")).toBeUndefined();
+    expect(await getPublicContentDetail(withBody(live, {}), defaultPublicTerritorySlug, "activities", "live-event")).toBeUndefined();
+  });
+
+  it("keeps a page with no body out of search results instead of publishing thin content", async () => {
+    const item = publicContent({ id: itemId, title: "Short note", contentType: "guide" });
+    const detail = await getPublicContentDetail(withBody(item, {}), defaultPublicTerritorySlug, "activities", "short-note");
+    expect(detail).toMatchObject({ indexable: false, body: [] });
+  });
+
+  it("routes offers and competitions to their own sections", async () => {
+    const offer = publicContent({ id: itemId, title: "Soft play deal", contentType: "offer" });
+    const result = await getPublicCommercialDiscovery(dbWithContent([offer]), defaultPublicTerritorySlug, "offers");
+    expect(result?.items[0]?.href).toBe("/areas/sutton-coldfield/offers/soft-play-deal");
+    expect(await getPublicContentDetail(withBody(offer, {}), defaultPublicTerritorySlug, "offers", "soft-play-deal")).toBeDefined();
+  });
+
+  it("lists detail pages in the sitemap only while they are public", async () => {
+    const live = publicContent({ id: itemId, title: "Live event", contentType: "event" });
+    const draft = publicContent({ id: "78787878-7878-4787-8787-787878787878", title: "Draft event", status: "draft" });
+    const routes = await publicSeoRoutesForDb(dbWithPublicContent([live, draft]), "https://www.raring2go.example");
+    const paths = routes.map((route) => route.path);
+    expect(paths).toContain("https://www.raring2go.example/areas/sutton-coldfield/whats-on/live-event");
+    expect(paths.some((path) => path.includes("draft-event"))).toBe(false);
+  });
+
+  it("serves a business page only for a placement fulfilled in this territory", async () => {
+    const sutton = publicAdvertiser({ id: "88888888-8888-4888-8888-888888888888", owningTerritoryId: fixtureIds.territories.suttonColdfield });
+    const solihull = publicAdvertiser({ id: "99999999-9999-4999-8999-999999999999", owningTerritoryId: fixtureIds.territories.solihull });
+    const db = dbWithAdvertisers([sutton, solihull]);
+
+    const found = await getPublicBusiness(db, defaultPublicTerritorySlug, sutton.id as string);
+    expect(found?.label).toBe("Local business");
+    expect(found?.structuredData).toMatchObject({ "@type": "LocalBusiness" });
+    expect(await getPublicBusiness(db, defaultPublicTerritorySlug, solihull.id as string)).toBeUndefined();
+    expect(await getPublicBusiness(db, defaultPublicTerritorySlug, "not-a-real-id")).toBeUndefined();
+  });
+
+  it("labels sponsored businesses as sponsored", async () => {
+    const sponsored = publicAdvertiser({ id: "88888888-8888-4888-8888-888888888888", commercialMetadata: { publicPlacement: "sponsored", publicSummary: "x" } });
+    expect((await getPublicBusiness(dbWithAdvertisers([sponsored]), defaultPublicTerritorySlug, sponsored.id as string))?.label).toBe("Sponsored");
+  });
+
+  describe("magazine edition and page routes", () => {
+    const published = () => dbWithTables({
+      territoryEditions: [{ ...foundationSeed.territoryEditions[0], status: "published", digitalStatus: "generated", pageCount: 2 }],
+      publicationOutputs: [publicMagazineOutput({ sourcePageSnapshot: [{ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }, { id: "dcdcdcdc-dcdc-4cdc-8cdc-dcdcdcdcdcdc" }] })],
+      editionPages: [
+        { ...publicMagazinePage(), pageNumber: 1 },
+        { ...publicMagazinePage(), id: "dcdcdcdc-dcdc-4cdc-8cdc-dcdcdcdcdcdc", pageNumber: 2 }
+      ]
+    });
+
+    it("serves a published edition and its pages with previous/next", async () => {
+      const edition = await getPublicMagazineEdition(published(), defaultPublicTerritorySlug, "autumn-2026-sutton-coldfield");
+      expect(edition?.edition.pages).toHaveLength(2);
+
+      const second = await getPublicMagazinePage(published(), defaultPublicTerritorySlug, "autumn-2026-sutton-coldfield", 2);
+      expect(second).toMatchObject({ page: { pageNumber: 2 }, previous: { pageNumber: 1 } });
+      expect(second?.next).toBeUndefined();
+    });
+
+    it("does not serve unknown editions, unpublished pages or draft output", async () => {
+      expect(await getPublicMagazineEdition(published(), defaultPublicTerritorySlug, "no-such-edition")).toBeUndefined();
+      expect(await getPublicMagazinePage(published(), defaultPublicTerritorySlug, "autumn-2026-sutton-coldfield", 9)).toBeUndefined();
+      expect(await getPublicMagazineEdition(db, defaultPublicTerritorySlug, "autumn-2026-sutton-coldfield")).toBeUndefined();
+    });
+  });
+});
+
+describe("@raring2go/public personalisation switch", () => {
+  it("treats a parent who turned personalisation off like an anonymous visitor", async () => {
+    const db = dbWithPublicContent([publicContent({ id: "abcdabcd-abcd-4abc-8abc-abcdabcdabcd", title: "Unrelated pick", contentType: "guide", tags: ["days-out"] })], {
+      audiencePreferenceProfiles: [{ ...foundationSeed.audiencePreferenceProfiles[0], contactId: fixtureIds.audienceContacts.parentOne, personalisationEnabled: false }]
+    });
+    const result = await getPublicRecommendations(db, defaultPublicTerritorySlug, fixtureIds.audienceContacts.parentOne);
+    expect(result?.personalised).toBe(false);
+    expect(result?.recommendations.map((item) => item.title)).toEqual(["Unrelated pick"]);
+    // Their stored interests ("days-out") are ignored while personalisation is off.
+    expect(result?.recommendations[0]?.reasons.some((reason) => reason.startsWith("Matches"))).toBe(false);
   });
 });
 

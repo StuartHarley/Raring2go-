@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
+import { requestSignInAction } from "../../sign-in/actions";
+import { NewsletterSignup } from "./_components/NewsletterSignup";
+import { Track } from "./_components/Track";
 import { publicTerritoryStructuredData, readPublicHomepage, territoryFromSlug } from "../../../lib/public-runtime";
 
 type PageProps = {
@@ -26,6 +29,7 @@ export default async function TerritoryHomepage({ params }: PageProps) {
 
   return (
     <main className="public-site public-season-autumn">
+      <Track eventType="territory_viewed" territorySlug={homepage.territory.slug} path={`/areas/${homepage.territory.slug}`} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -107,10 +111,7 @@ export default async function TerritoryHomepage({ params }: PageProps) {
           <h2>{homepage.newsletter.heading}</h2>
           <p>{homepage.newsletter.consentText}</p>
         </div>
-        <form>
-          <input aria-label="Email address" placeholder="you@example.com" type="email" />
-          <button type="submit">Subscribe</button>
-        </form>
+        <NewsletterSignup territorySlug={homepage.territory.slug} territoryId={homepage.newsletter.territoryId} action={requestSignInAction} />
       </section>
     </main>
   );

@@ -268,8 +268,21 @@ export function publicSeoRoutes(baseUrl = "http://localhost:3000"): PublicSeoRou
 }
 
 export async function publicSeoRoutesForDb(db: PublicDb, baseUrl = "http://localhost:3000"): Promise<PublicSeoRoute[]> {
-  const publishing = await loadPublishingData(db);
-  return publicSeoRoutesFromTerritories(publishing.territories, baseUrl);
+  const [publishing, advertising] = await Promise.all([loadPublishingData(db), loadAdvertisingData(db)]);
+  const sections = publicSeoRoutesFromTerritories(publishing.territories, baseUrl);
+  // Detail pages are listed only when the record is public today, so the sitemap never
+  // advertises a draft, expired or other-territory page.
+  const details = publishing.territories.filter(isPublicTerritoryRecord).flatMap((record) => {
+    const territory = publicTerritoryFromRecord(record, territorySlug(record.name));
+    if (!territory) return [];
+    const content = publicContentProjections(publishing, territory).map((item) => seoRoute(baseUrl, item.href, "weekly", 0.5));
+    const editions = publishedMagazines(publishing, territory).map((magazine) =>
+      seoRoute(baseUrl, `/areas/${territory.slug}/magazine/${territorySlug(magazine.edition.title)}`, "monthly", 0.6)
+    );
+    const businesses = publicAdvertiserPlacements(advertising, publishing, territory).map((placement) => seoRoute(baseUrl, placement.href, "monthly", 0.4));
+    return [...content, ...editions, ...businesses];
+  });
+  return [...sections, ...details];
 }
 
 function publicSeoRoutesFromTerritories(territories: ReadonlyArray<PublicTerritoryRecord>, baseUrl: string): PublicSeoRoute[] {
@@ -478,6 +491,10 @@ function isWithinPublicDateWindow(relevantDates: Record<string, unknown>, now: D
 }
 
 function latestPublishedMagazine(publishing: PublicProjectionData, territory: PublicTerritory) {
+  return publishedMagazines(publishing, territory)[0];
+}
+
+function publishedMagazines(publishing: PublicProjectionData, territory: PublicTerritory) {
   return publishing.publicationOutputs
     .filter((output) => !output.deletedAt)
     .filter((output) => output.outputType === "digital" && output.status === "generated")
@@ -495,7 +512,7 @@ function latestPublishedMagazine(publishing: PublicProjectionData, territory: Pu
     .sort((left, right) => {
       const dateCompare = (right.edition.publicationDate ?? "").localeCompare(left.edition.publicationDate ?? "");
       return dateCompare === 0 ? right.output.version - left.output.version : dateCompare;
-    })[0];
+    });
 }
 
 function publishedMagazinePages(
@@ -839,7 +856,7 @@ export async function getPublicParentHub(
       savedAt: saved.savedAt,
       href: saved.contentReferenceId
         ? publishableSavedContent.get(saved.contentReferenceId)?.href ?? `/areas/${territory.slug}`
-        : `/areas/${territory.slug}/${saved.contentType === "event" ? "whats-on" : "activities"}/${territorySlug(saved.title)}`
+        : `/areas/${territory.slug}/${contentSection(saved.contentType)}/${territorySlug(saved.title)}`
     }));
 
   return {
@@ -880,9 +897,11 @@ export async function getPublicRecommendations(
     loadPublishingData(db),
     contactId ? loadMarketingData(db) : Promise.resolve(undefined)
   ]);
-  const profile = contactId
+  const storedProfile = contactId
     ? marketing?.preferenceProfiles.find((candidate) => candidate.contactId === contactId && !candidate.deletedAt)
     : undefined;
+  // A parent who turned personalisation off is treated exactly like an anonymous visitor.
+  const profile = storedProfile?.personalisationEnabled ? storedProfile : undefined;
   const preferenceTerms = new Set([
     ...(profile?.interests ?? []),
     ...(profile?.eventCategories ?? []),
@@ -966,15 +985,23 @@ function contentCard(
     summary: item.standfirst ?? "Family inspiration from Raring2go.",
     type: item.contentType,
     source: item.territoryId === territory.id ? "local" : "network",
-    href: item.contentType === "event"
-      ? `/areas/${territory.slug}/whats-on/${territorySlug(item.title)}`
-      : `/areas/${territory.slug}/activities/${territorySlug(item.title)}`,
+    href: `/areas/${territory.slug}/${contentSection(item.contentType)}/${territorySlug(item.title)}`,
     categories: item.categories ?? [],
     tags: item.tags ?? [],
     startDate: stringValue(relevantDates.startDate) ?? stringValue(relevantDates.date),
     endDate: stringValue(relevantDates.endDate),
     location: stringValue(provenance.location) ?? stringValue(provenance.venue)
   };
+}
+
+export type PublicContentSection = "whats-on" | "activities" | "offers" | "competitions";
+
+/** Which public section a content type belongs to; also decides its detail URL. */
+export function contentSection(contentType: string): PublicContentSection {
+  if (contentType === "event") return "whats-on";
+  if (contentType === "offer" || contentType === "advertiser_sponsored") return "offers";
+  if (contentType === "competition") return "competitions";
+  return "activities";
 }
 
 function matchesQuery(item: PublicContentCard, query: string) {
@@ -1061,3 +1088,211 @@ function redactAnalyticsMetadata(metadata: Record<string, unknown>) {
 }
 
 export const defaultPublicTerritorySlug = "sutton-coldfield";
+
+/* ----- Detail pages (PUB-002/003/004/007) ----- */
+
+export type PublicContentDetail = {
+  territory: PublicTerritory;
+  section: PublicContentSection;
+  item: PublicContentCard;
+  headline: string;
+  seoTitle: string;
+  body: string[];
+  related: PublicContentCard[];
+  /** Pages with no real body are kept out of search results rather than shown as thin content. */
+  indexable: boolean;
+  canonicalPath: string;
+  structuredData?: Record<string, unknown>;
+};
+
+/**
+ * One public content page. It exists only if the record is public today in this territory
+ * (approved, in its date window, with an approved website version) and belongs to the section
+ * in the URL, so a draft, expired, other-territory or wrong-section address is simply absent.
+ */
+export async function getPublicContentDetail(
+  db: PublicDb,
+  slug: string,
+  section: PublicContentSection,
+  itemSlug: string,
+  baseUrl = "http://localhost:3000"
+): Promise<PublicContentDetail | undefined> {
+  const territory = await territoryFromSlugForDb(db, slug);
+  if (!territory) return undefined;
+
+  const publishing = await loadPublishingData(db);
+  const inSection = publicContentProjections(publishing, territory).filter((candidate) => contentSection(candidate.type) === section);
+  // Titles can collide; the lowest id wins so the same address always shows the same page.
+  const item = inSection.filter((candidate) => candidate.slug === itemSlug).sort((left, right) => left.id.localeCompare(right.id))[0];
+  if (!item) return undefined;
+
+  const snapshot = websiteSnapshot(publishing, item.id, territory);
+  const body = snapshotParagraphs(snapshot.body);
+  const headline = stringValue(snapshot.webHeadline) ?? item.title;
+  const canonicalPath = item.href;
+
+  return {
+    territory,
+    section,
+    item,
+    headline,
+    seoTitle: stringValue(snapshot.seoTitle) ?? `${headline} | Raring2go! ${territory.name}`,
+    body,
+    related: inSection.filter((candidate) => candidate.id !== item.id).slice(0, 3),
+    indexable: body.length > 0,
+    canonicalPath,
+    structuredData: contentStructuredData(item, headline, territory, `${baseUrl.replace(/\/$/, "")}${canonicalPath}`)
+  };
+}
+
+function websiteSnapshot(publishing: PublicProjectionData, itemId: string, territory: PublicTerritory): Record<string, unknown> {
+  const variant = publishing.contentChannelVariants.find((candidate) =>
+    !candidate.deletedAt &&
+    candidate.contentItemId === itemId &&
+    candidate.channel === "website" &&
+    ["approved", "published"].includes(candidate.status) &&
+    (!candidate.territoryId || candidate.territoryId === territory.id)
+  );
+  const version = variant?.currentVersionId
+    ? publishing.contentChannelVariantVersions.find((candidate) =>
+        !candidate.deletedAt && candidate.id === variant.currentVersionId && ["approved", "published"].includes(candidate.status)
+      )
+    : undefined;
+  return version?.snapshot ?? {};
+}
+
+/** Plain text only: the body is rendered as text, never as markup. */
+function snapshotParagraphs(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/\n{2,}/) : [];
+  return raw
+    .filter((part): part is string => typeof part === "string")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
+function contentStructuredData(item: PublicContentCard, headline: string, territory: PublicTerritory, url: string) {
+  if (item.type === "event" && item.startDate) {
+    return {
+      "@context": "https://schema.org",
+      "@type": "Event",
+      name: headline,
+      description: item.summary,
+      startDate: item.startDate,
+      ...(item.endDate ? { endDate: item.endDate } : {}),
+      ...(item.location ? { location: { "@type": "Place", name: item.location, address: territory.name } } : {}),
+      url
+    };
+  }
+  if (item.type === "article" || item.type === "guide") {
+    return { "@context": "https://schema.org", "@type": "Article", headline, description: item.summary, url, publisher: { "@type": "Organization", name: "Raring2go!" } };
+  }
+  return undefined;
+}
+
+export type PublicMagazineEdition = NonNullable<PublicMagazine["edition"]>;
+
+export type PublicMagazineEditionView = {
+  territory: PublicTerritory;
+  edition: PublicMagazineEdition;
+  otherEditions: Array<{ slug: string; title: string; issueDate?: string | null }>;
+};
+
+function editionView(publishing: PublicProjectionData, territory: PublicTerritory, magazine: NonNullable<ReturnType<typeof latestPublishedMagazine>>): PublicMagazineEdition {
+  return {
+    id: magazine.edition.id,
+    slug: territorySlug(magazine.edition.title),
+    title: magazine.edition.title,
+    issueDate: magazine.edition.publicationDate,
+    pageCount: magazine.edition.pageCount,
+    outputVersion: magazine.output.version,
+    artifact: magazine.output.artifact,
+    pages: publishedMagazinePages(publishing, magazine, territory)
+  };
+}
+
+/** A published edition by its address. Unpublished or ungenerated editions are absent. */
+export async function getPublicMagazineEdition(db: PublicDb, slug: string, editionSlug: string): Promise<PublicMagazineEditionView | undefined> {
+  const territory = await territoryFromSlugForDb(db, slug);
+  if (!territory) return undefined;
+  const publishing = await loadPublishingData(db);
+  const all = publishedMagazines(publishing, territory);
+  const match = all.find((magazine) => territorySlug(magazine.edition.title) === editionSlug);
+  if (!match) return undefined;
+
+  return {
+    territory,
+    edition: editionView(publishing, territory, match),
+    otherEditions: all
+      .filter((magazine) => magazine.edition.id !== match.edition.id)
+      .map((magazine) => ({ slug: territorySlug(magazine.edition.title), title: magazine.edition.title, issueDate: magazine.edition.publicationDate }))
+  };
+}
+
+export type PublicMagazinePageView = {
+  territory: PublicTerritory;
+  edition: Pick<PublicMagazineEdition, "slug" | "title" | "pageCount">;
+  page: { pageNumber: number; title: string };
+  /** The page's article, when it has public content. */
+  content?: PublicContentCard;
+  previous?: { pageNumber: number; title: string };
+  next?: { pageNumber: number; title: string };
+};
+
+export async function getPublicMagazinePage(db: PublicDb, slug: string, editionSlug: string, pageNumber: number): Promise<PublicMagazinePageView | undefined> {
+  const view = await getPublicMagazineEdition(db, slug, editionSlug);
+  if (!view) return undefined;
+
+  const pages = view.edition.pages;
+  const index = pages.findIndex((page) => page.pageNumber === pageNumber);
+  if (index === -1) return undefined;
+
+  const publishing = await loadPublishingData(db);
+  const record = publishing.editionPages.find((candidate) =>
+    !candidate.deletedAt && candidate.territoryEditionId === view.edition.id && candidate.pageNumber === pageNumber
+  );
+  const content = record?.assignedContentId
+    ? publicContentProjections(publishing, view.territory).find((candidate) => candidate.id === record.assignedContentId)
+    : undefined;
+  const page = pages[index]!;
+
+  return {
+    territory: view.territory,
+    edition: { slug: view.edition.slug, title: view.edition.title, pageCount: view.edition.pageCount },
+    page: { pageNumber: page.pageNumber, title: page.title },
+    content,
+    previous: pages[index - 1] ? { pageNumber: pages[index - 1]!.pageNumber, title: pages[index - 1]!.title } : undefined,
+    next: pages[index + 1] ? { pageNumber: pages[index + 1]!.pageNumber, title: pages[index + 1]!.title } : undefined
+  };
+}
+
+export type PublicBusinessDetail = {
+  territory: PublicTerritory;
+  business: PublicPlacement;
+  /** "Sponsored" or "Local business": always shown, never inferred away. */
+  label: PublicPlacement["label"];
+  structuredData: Record<string, unknown>;
+};
+
+/** A business page exists only for an advertiser with a fulfilled, published placement in this territory. */
+export async function getPublicBusiness(db: PublicDb, slug: string, advertiserId: string, baseUrl = "http://localhost:3000"): Promise<PublicBusinessDetail | undefined> {
+  const territory = await territoryFromSlugForDb(db, slug);
+  if (!territory) return undefined;
+  const [publishing, advertising] = await Promise.all([loadPublishingData(db), loadAdvertisingData(db)]);
+  const business = publicAdvertiserPlacements(advertising, publishing, territory).find((placement) => placement.advertiserId === advertiserId);
+  if (!business) return undefined;
+
+  return {
+    territory,
+    business,
+    label: business.label,
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      name: business.title,
+      description: business.summary,
+      areaServed: territory.name,
+      url: `${baseUrl.replace(/\/$/, "")}${business.href}`
+    }
+  };
+}

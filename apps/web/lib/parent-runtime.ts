@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { audienceContacts, createDb } from "@raring2go/db";
+import { audienceContacts, audienceSavedContent, createDb } from "@raring2go/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { hashToken, normalizeEmail } from "@raring2go/auth";
 import { withIdentity } from "./auth-runtime";
@@ -168,41 +168,24 @@ export async function savePublicContentForParent(input: {
       throw new Error("Only public content can be saved.");
     }
 
-    const existing = await sql`
-      select id
-      from audience_saved_content
-      where contact_id = ${parent.contactId}
-        and content_reference_id = ${input.contentId}
-        and deleted_at is null
-      limit 1
-    `;
-    if (existing.length > 0) {
-      return { saved: true, id: existing[0]?.id };
-    }
+    const [existing] = await db
+      .select({ id: audienceSavedContent.id })
+      .from(audienceSavedContent)
+      .where(and(eq(audienceSavedContent.contactId, parent.contactId), eq(audienceSavedContent.contentReferenceId, input.contentId), isNull(audienceSavedContent.deletedAt)))
+      .limit(1);
+    if (existing) return { saved: true, id: existing.id };
 
     const id = randomUUID();
-    await sql`
-      insert into audience_saved_content (
-        id,
-        contact_id,
-        territory_id,
-        content_type,
-        content_reference_id,
-        title,
-        saved_at,
-        metadata
-      )
-      values (
-        ${id},
-        ${parent.contactId},
-        ${territory.id},
-        ${visibleContent.type},
-        ${visibleContent.id},
-        ${visibleContent.title},
-        ${new Date()},
-        ${sql.json({ source: "public_parent_account" })}
-      )
-    `;
+    await db.insert(audienceSavedContent).values({
+      id,
+      contactId: parent.contactId,
+      territoryId: territory.id,
+      contentType: visibleContent.type,
+      contentReferenceId: visibleContent.id,
+      title: visibleContent.title,
+      savedAt: new Date(),
+      metadata: { source: "public_parent_account" }
+    });
     return { saved: true, id };
   } finally {
     await sql.end();
@@ -218,15 +201,12 @@ export async function unsavePublicContentForParent(input: {
     throw new ParentSignInRequiredError();
   }
 
-  const { sql } = createDb();
+  const { db, sql } = createDb();
   try {
-    await sql`
-      update audience_saved_content
-      set deleted_at = ${new Date()}
-      where contact_id = ${parent.contactId}
-        and content_reference_id = ${input.contentId}
-        and deleted_at is null
-    `;
+    await db
+      .update(audienceSavedContent)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(audienceSavedContent.contactId, parent.contactId), eq(audienceSavedContent.contentReferenceId, input.contentId), isNull(audienceSavedContent.deletedAt)));
     return { saved: false };
   } finally {
     await sql.end();
