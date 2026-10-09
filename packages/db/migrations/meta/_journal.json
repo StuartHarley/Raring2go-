@@ -351,6 +351,13 @@
       "when": 1791538053473,
       "tag": "0049_finance_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791541946527,
+      "tag": "0050_audit_append_only",
+      "breakpoints": true
     }
   ]
 }

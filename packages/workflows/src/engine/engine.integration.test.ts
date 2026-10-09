@@ -1,3 +1,4 @@
+import { sql as dsql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
   auditEvents,
@@ -61,7 +62,13 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("workflow engine (postgres)", () => {
       await db.delete(workflowVersions).where(eq(workflowVersions.definitionId, definitionId));
       await db.delete(workflowDefinitions).where(eq(workflowDefinitions.id, definitionId));
     }
-    await db.delete(auditEvents).where(eq(auditEvents.action, action));
+    // The audit trail is append-only (migration 0050); a test removing its own rows has to lift that for the cleanup only.
+    await db.execute(dsql`ALTER TABLE audit_events DISABLE TRIGGER USER`);
+    try {
+      await db.delete(auditEvents).where(eq(auditEvents.action, action));
+    } finally {
+      await db.execute(dsql`ALTER TABLE audit_events ENABLE TRIGGER USER`);
+    }
     await db.delete(workflowEventCursors).where(like(workflowEventCursors.name, `${cursorName}%`));
     await sql.end();
   });

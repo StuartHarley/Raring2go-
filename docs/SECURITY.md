@@ -85,9 +85,40 @@ with expiring links. The development disk backend is blocked outside local devel
 ## Known gaps (not hidden)
 
 1. **Franchisees cannot yet administer their own staff's access.** Access is database-backed and administered at `/app/roles` (see `docs/PERMISSIONS.md`), but only Head Office can assign roles and invite people. The escalation guards already make delegation safe to enable once the Franchise Staff role exists.
-2. **CSP has no `script-src`.** A strict script policy needs per-request nonces with this Next.js version; the
-   present CSP covers framing, base-tag and plugin injection only.
+2. **CSP `style-src` still allows inline styles.** Scripts are strict (see below); React renders `style` attributes, so
+   styles keep `'unsafe-inline'`. Moving to nonce'd styles is a later hardening step.
 3. **Audit redaction is by key name** (`password`, `token`, ...). Free-text fields such as decision notes are
    not scanned; the privacy workflows deliberately keep them out of audit metadata.
 4. **Provider-side controls are outside the repo:** database point-in-time recovery, secret rotation, WAF/DDoS,
    DPA/sub-processor agreements and a penetration test. See the release checklist.
+
+## Content Security Policy (script-src)
+
+`apps/web/proxy.ts` gives every page request a fresh nonce and sets `Content-Security-Policy` from `lib/csp.ts`:
+scripts run only with that nonce (`'strict-dynamic'`), no inline or eval scripts in production, objects and base tags
+are blocked, framing is same-origin only, connections are same-origin. Because a nonce must be new per request,
+all pages are rendered per request (`export const dynamic = "force-dynamic"` in the root layout). Headers are
+checked on a running build by `pnpm --filter @raring2go/web smoke`, which also fails if any emitted script lacks the nonce.
+Do not add inline `<script>` tags (JSON-LD data blocks are fine); do not add `'unsafe-inline'` to `script-src`.
+
+## Audit trail and money guards in the database
+
+`audit_events` rejects UPDATE, DELETE and TRUNCATE for every role (migration 0050); the viewer at `/app/activity`
+filters by action prefix, entity, actor, territory and date, with keyset paging. Issued-invoice, credit-note and
+acceptance guards are described in `docs/FINANCE_WIRING.md`. Tests that must remove their own rows use
+`withFinanceGuardsDisabled` (test support only).
+
+## Server actions that receive a bound context
+
+Some actions receive their acting context from the page that rendered them. Each one first calls `assertBoundActor`
+(`lib/action-actor.ts`), which proves from the request's session cookie that the signed-in user is the user in the
+context and belongs to the organisation and territory named. `lib/page-access.test.ts` fails if a new action file
+accepts a context without doing so, and checks role-by-role page access.
+
+## Account recovery
+
+Sign-in is by emailed link. Recovery paths: request a new link from any email the person controls; if they have lost
+that email, a Head Office administrator re-invites them at the new address; if a device is lost, they sign in and use
+"Sign out of all devices" (`/sign-out`), which ends every session and is audited (`auth.session.revoke_all`).
+The sign-in page never reveals whether an address has an account.
+

@@ -1,5 +1,6 @@
 "use server";
 
+import { assertBoundActor } from "../../../../lib/action-actor";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { renderBlocksToText, sanitizeImportedHtml, sanitizeRichTextHtml, validateBlocks } from "@raring2go/marketing";
@@ -25,6 +26,7 @@ import {
 import type { MarketingActorContext } from "@raring2go/marketing";
 
 export async function composeEmailCampaignAction(context: MarketingActorContext, formData: FormData) {
+  await assertBoundActor(context);
   const segmentId = String(formData.get("segmentId") || "");
 
   if (!segmentId) {
@@ -93,6 +95,7 @@ export async function suggestSubjectLinesAction(
   context: MarketingActorContext,
   input: { draftId: string; campaignTitle: string; bodyPreviewText: string }
 ): Promise<string[]> {
+  await assertBoundActor(context);
   return suggestSubjectLines(context, input);
 }
 
@@ -100,6 +103,7 @@ export async function suggestBlockCopyAction(
   context: MarketingActorContext,
   input: { draftId: string; blockId: string; campaignTitle: string; existingText?: string | null }
 ): Promise<string> {
+  await assertBoundActor(context);
   return suggestBlockCopy(context, input);
 }
 
@@ -107,6 +111,7 @@ export async function generateCampaignDraftAction(
   context: MarketingActorContext,
   input: { draftId: string; prompt: string }
 ): Promise<{ subject: string; blocks: Block[] }> {
+  await assertBoundActor(context);
   if (!input.prompt.trim()) {
     throw new Error("Describe the campaign before generating a draft.");
   }
@@ -130,22 +135,26 @@ export async function acceptAiSuggestionAction(
   context: MarketingActorContext,
   input: { draftId: string; task: "subject_lines" | "block_copy"; blockId?: string; accepted: string }
 ): Promise<void> {
+  await assertBoundActor(context);
   await recordAiSuggestionAccepted(context, input);
 }
 
 export async function approveCampaignAction(context: MarketingActorContext, campaignId: string, versionId: string) {
+  await assertBoundActor(context);
   await approveCampaignVersion(context, campaignId, versionId);
   revalidatePath("/app/newsletters");
   revalidatePath("/app/newsletters/factory");
 }
 
 export async function generateSnapshotAction(context: MarketingActorContext, campaignId: string) {
+  await assertBoundActor(context);
   await generateCampaignRecipientSnapshot(context, campaignId);
   revalidatePath("/app/newsletters");
   revalidatePath("/app/newsletters/factory");
 }
 
 export async function startAbTestAction(context: MarketingActorContext, campaignId: string, formData: FormData) {
+  await assertBoundActor(context);
   const sampleFractionRaw = String(formData.get("sampleFraction") || "");
   const sampleFraction = sampleFractionRaw ? Number(sampleFractionRaw) / 100 : undefined;
   await startAbTest(context, campaignId, sampleFraction);
@@ -153,16 +162,19 @@ export async function startAbTestAction(context: MarketingActorContext, campaign
 }
 
 export async function declareWinnerAction(context: MarketingActorContext, campaignId: string, winningVersionId: string) {
+  await assertBoundActor(context);
   await declareWinner(context, campaignId, winningVersionId);
   revalidatePath("/app/newsletters");
 }
 
 export async function generateWinnerRemainderSnapshotAction(context: MarketingActorContext, campaignId: string) {
+  await assertBoundActor(context);
   await generateWinnerRemainderSnapshot(context, campaignId);
   revalidatePath("/app/newsletters");
 }
 
 export async function scheduleCampaignAction(context: MarketingActorContext, campaignId: string, formData: FormData) {
+  await assertBoundActor(context);
   const scheduledAt = String(formData.get("scheduledAt") || "");
 
   if (!scheduledAt) {
@@ -179,6 +191,7 @@ export async function scheduleWithSendTimeOptimizationAction(
   campaignId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   const scheduledAt = String(formData.get("scheduledAt") || "");
 
   if (!scheduledAt) {
@@ -201,12 +214,14 @@ export async function scheduleWithSendTimeOptimizationAction(
 }
 
 export async function sendCampaignAction(context: MarketingActorContext, campaignId: string) {
+  await assertBoundActor(context);
   await sendCampaignNow(context, campaignId);
   revalidatePath("/app/newsletters");
   revalidatePath("/app/newsletters/factory");
 }
 
 export async function createNewsletterMasterAction(context: MarketingActorContext, formData: FormData) {
+  await assertBoundActor(context);
   await createNewsletterMaster(context, {
     masterId: randomUUID(),
     title: String(formData.get("title") || "Network newsletter"),
@@ -218,11 +233,13 @@ export async function createNewsletterMasterAction(context: MarketingActorContex
 }
 
 export async function approveMasterAction(context: MarketingActorContext, masterId: string) {
+  await assertBoundActor(context);
   await approveNewsletterMaster(context, masterId);
   revalidatePath("/app/newsletters/factory");
 }
 
 export async function generateEditionsAction(context: MarketingActorContext, masterId: string, formData: FormData) {
+  await assertBoundActor(context);
   const territoryIds = formData.getAll("territoryIds").map(String).filter(Boolean);
 
   if (territoryIds.length === 0) {
@@ -234,6 +251,7 @@ export async function generateEditionsAction(context: MarketingActorContext, mas
 }
 
 export async function addEditionOverrideAction(context: MarketingActorContext, editionId: string, formData: FormData) {
+  await assertBoundActor(context);
   const text = String(formData.get("localPicks") || "");
 
   await addNewsletterEditionOverride(context, editionId, {
@@ -253,6 +271,7 @@ export async function createCampaignFromEditionAction(
   segmentId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   if (!segmentId) {
     throw new Error("No audience segment is configured for this territory yet.");
   }

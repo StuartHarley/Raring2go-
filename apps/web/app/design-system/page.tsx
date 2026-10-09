@@ -17,6 +17,7 @@ import {
   seasonalColors,
   semanticColors
 } from "@raring2go/ui";
+import { InteractiveDemo } from "./InteractiveDemo";
 
 const swatches = [
   ["Brand purple", brandColors.purple],
@@ -109,6 +110,11 @@ export default function DesignSystemPage() {
           <ContentCard kind="Offer" title="Advertiser proof ready" meta="Commercial status card" season="summer" />
           <ContentCard kind="Competition" title="Prize draw pending approval" meta="HQ review flow" season="winter" />
         </div>
+      </section>
+
+      <section className="ds-section" aria-labelledby="interactive">
+        <h2 id="interactive">Tables, dialogs and command palette</h2>
+        <InteractiveDemo />
       </section>
 
       <section className="ds-section" aria-labelledby="magazine">

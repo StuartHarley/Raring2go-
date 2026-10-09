@@ -92,7 +92,11 @@ export type AuditEventQuery = {
   entityId?: string;
   organisationId?: string;
   territoryId?: string;
+  /** Matches every action starting with this text, e.g. `advertiser.` */
+  actionPrefix?: string;
   from?: Date;
   to?: Date;
+  /** Keyset paging: only events strictly older than this. `createdAt` is the microsecond-precision `cursor` of the last row of the previous page. */
+  before?: { createdAt: string; id: string };
   limit?: number;
 };

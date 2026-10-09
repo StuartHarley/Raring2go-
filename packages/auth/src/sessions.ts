@@ -73,3 +73,31 @@ export async function revokeSession(
     }
   });
 }
+
+/**
+ * Account recovery from a lost or shared device: ends every session the user has, including this one. The user
+ * is identified only by proving they hold a live session, so nobody can end another person's sessions.
+ */
+export async function revokeAllSessions(
+  repository: AuthRepository,
+  audit: AuditRecorder,
+  input: { token: string; now?: Date }
+) {
+  const now = input.now ?? new Date();
+  const session = await repository.findSessionByTokenHash(hashToken(input.token));
+
+  if (!session || session.revokedAt || session.expiresAt <= now) {
+    throw new Error("Session was not found.");
+  }
+
+  const ended = await repository.revokeAllSessionsForUser({ userId: session.userId, revokedAt: now });
+
+  await audit.record({
+    action: auditActions.authSessionRevokeAll,
+    actor: { type: "human", userId: session.userId },
+    entity: { type: "user", id: session.userId },
+    after: { sessionsEnded: ended }
+  });
+
+  return { sessionsEnded: ended };
+}

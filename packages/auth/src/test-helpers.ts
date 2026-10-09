@@ -137,6 +137,16 @@ export function createMemoryAuthRepository(input?: {
 
       session.revokedAt = revokeInput.revokedAt;
     },
+    async revokeAllSessionsForUser(revokeInput) {
+      let ended = 0;
+      for (const session of sessions) {
+        if (session.userId === revokeInput.userId && !session.revokedAt) {
+          session.revokedAt = revokeInput.revokedAt;
+          ended += 1;
+        }
+      }
+      return ended;
+    },
     async createVerificationToken(tokenInput) {
       const token: AuthVerificationToken = {
         id: `verification_${verificationTokens.length + 1}`,

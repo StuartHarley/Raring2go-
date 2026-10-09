@@ -1,5 +1,6 @@
 "use server";
 
+import { assertBoundActor } from "../../../../lib/action-actor";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import {
@@ -39,6 +40,7 @@ export async function createFranchiseAction(
   context: FranchiseActorContext,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   const franchise: FranchiseRecord = {
     id: randomUUID(),
     franchiseOrganisationId: String(formData.get("organisationId") ?? ""),
@@ -62,6 +64,7 @@ export async function updateFranchiseAction(
   franchiseId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   await updateFranchiseFromInput(context, franchiseId, {
     lifecycleStage: String(
       formData.get("lifecycleStage") ?? "trading"
@@ -78,6 +81,7 @@ export async function generateAgreementAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await generateAgreementForFranchise(context, franchiseId, randomUUID());
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -86,6 +90,7 @@ export async function submitAgreementAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await submitCurrentAgreement(context, franchiseId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -94,6 +99,7 @@ export async function approveAgreementAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await approveCurrentAgreement(context, franchiseId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -102,6 +108,7 @@ export async function voidAgreementAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await voidCurrentAgreement(context, franchiseId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -110,6 +117,7 @@ export async function sendAgreementForSignatureAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await sendCurrentAgreementForSignature(context, franchiseId, randomUUID());
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -118,6 +126,7 @@ export async function resendSignatureAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await resendCurrentSignatureRequest(context, franchiseId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -126,6 +135,7 @@ export async function cancelSignatureAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await cancelCurrentSignatureRequest(context, franchiseId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -134,6 +144,7 @@ export async function completeNextSignerAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await completeNextSignerForCurrentAgreement(context, franchiseId, randomUUID());
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -142,6 +153,7 @@ export async function completeSigningAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await completeCurrentAgreementSigning(context, franchiseId, randomUUID());
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -150,6 +162,7 @@ export async function declineSigningAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await declineCurrentAgreementSigning(context, franchiseId, randomUUID());
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -159,6 +172,7 @@ export async function archiveDocumentAction(
   franchiseId: string,
   documentId: string
 ) {
+  await assertBoundActor(context);
   await archiveDocumentForFranchise(context, franchiseId, documentId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -168,6 +182,7 @@ export async function upsertInsuranceAction(
   franchiseId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   await upsertInsuranceForFranchise(context, franchiseId, {
     policyId: String(formData.get("policyId") || "") || randomUUID(),
     provider: String(formData.get("provider") || "Unknown provider"),
@@ -188,6 +203,7 @@ export async function verifyInsuranceAction(
   franchiseId: string,
   policyId: string
 ) {
+  await assertBoundActor(context);
   await verifyInsuranceForFranchise(context, franchiseId, policyId, "verified");
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -197,6 +213,7 @@ export async function rejectInsuranceAction(
   franchiseId: string,
   policyId: string
 ) {
+  await assertBoundActor(context);
   await verifyInsuranceForFranchise(context, franchiseId, policyId, "rejected");
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -207,6 +224,7 @@ export async function submitComplianceEvidenceAction(
   requirementId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   await submitComplianceEvidenceForFranchise(context, franchiseId, {
     recordId: String(formData.get("recordId") || "") || randomUUID(),
     requirementId,
@@ -221,6 +239,7 @@ export async function verifyComplianceAction(
   franchiseId: string,
   recordId: string
 ) {
+  await assertBoundActor(context);
   await verifyComplianceForFranchise(context, franchiseId, recordId, "complete");
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -230,6 +249,7 @@ export async function rejectComplianceAction(
   franchiseId: string,
   recordId: string
 ) {
+  await assertBoundActor(context);
   await verifyComplianceForFranchise(context, franchiseId, recordId, "rejected");
   revalidatePath(`/app/franchisees/${franchiseId}`);
 }
@@ -238,6 +258,7 @@ export async function ensureComplianceActionsAction(
   context: FranchiseActorContext,
   franchiseId: string
 ) {
+  await assertBoundActor(context);
   await ensureComplianceActionsForFranchise(context, franchiseId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
   revalidatePath("/app/franchisees");
@@ -248,6 +269,7 @@ export async function resolveComplianceActionAction(
   franchiseId: string,
   actionId: string
 ) {
+  await assertBoundActor(context);
   await resolveComplianceActionForFranchise(context, franchiseId, actionId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
   revalidatePath("/app/franchisees");
@@ -258,6 +280,7 @@ export async function startOnboardingAction(
   franchiseId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   await startOnboardingForFranchise(
     context,
     franchiseId,
@@ -272,6 +295,7 @@ export async function completeOnboardingTaskAction(
   franchiseId: string,
   taskId: string
 ) {
+  await assertBoundActor(context);
   await completeOnboardingTaskForFranchise(context, franchiseId, taskId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
   revalidatePath("/app/franchisees/onboarding");
@@ -282,6 +306,7 @@ export async function approveOnboardingTaskAction(
   franchiseId: string,
   taskId: string
 ) {
+  await assertBoundActor(context);
   await approveOnboardingTaskForFranchise(context, franchiseId, taskId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
   revalidatePath("/app/franchisees/onboarding");
@@ -293,6 +318,7 @@ export async function raiseOnboardingBlockerAction(
   taskId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   await raiseOnboardingBlockerForFranchise(context, franchiseId, taskId, {
     title: String(formData.get("title") || "Launch blocker"),
     notes: String(formData.get("notes") || "")
@@ -306,6 +332,7 @@ export async function resolveOnboardingBlockerAction(
   franchiseId: string,
   blockerId: string
 ) {
+  await assertBoundActor(context);
   await resolveOnboardingBlockerForFranchise(context, franchiseId, blockerId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
   revalidatePath("/app/franchisees/onboarding");
@@ -317,6 +344,7 @@ export async function changeOnboardingTargetAction(
   programmeId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   await changeOnboardingTargetForFranchise(
     context,
     franchiseId,
@@ -332,6 +360,7 @@ export async function approveLaunchAction(
   franchiseId: string,
   programmeId: string
 ) {
+  await assertBoundActor(context);
   await approveLaunchForFranchise(context, franchiseId, programmeId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
   revalidatePath("/app/franchisees/onboarding");
@@ -342,6 +371,7 @@ export async function markLaunchedAction(
   franchiseId: string,
   programmeId: string
 ) {
+  await assertBoundActor(context);
   await markLaunchedForFranchise(context, franchiseId, programmeId);
   revalidatePath(`/app/franchisees/${franchiseId}`);
   revalidatePath("/app/franchisees/onboarding");

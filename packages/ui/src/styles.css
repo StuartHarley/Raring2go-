@@ -257,3 +257,27 @@
 .r2-alert--success { border-color: var(--r2-status-success); background: #f0faf4; }
 .r2-alert--warning { border-color: var(--r2-status-warning); background: #fff8eb; }
 .r2-alert--danger { border-color: var(--r2-status-danger); background: #fff2f4; }
+
+/* Overlays: modal, drawer, command palette */
+.r2-overlay { position: fixed; inset: 0; z-index: 50; display: grid; background: rgb(20 20 30 / 0.5); }
+.r2-overlay--modal { place-items: center; padding: 1rem; }
+.r2-overlay--drawer { justify-items: end; }
+.r2-overlay__panel { background: var(--r2-surface, #fff); color: var(--r2-text, #1c1c28); border-radius: 12px; max-width: 32rem; width: 100%; max-height: 90vh; overflow: auto; padding: 1rem 1.25rem; box-shadow: 0 12px 40px rgb(0 0 0 / 0.25); }
+.r2-overlay--drawer .r2-overlay__panel { height: 100%; max-height: none; border-radius: 12px 0 0 12px; max-width: 28rem; }
+.r2-overlay__panel:focus-visible, .r2-table-wrap:focus-visible { outline: 3px solid var(--r2-focus, #1a56db); outline-offset: 2px; }
+.r2-overlay__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.r2-overlay__close { min-width: 2.75rem; min-height: 2.75rem; border: 0; background: transparent; font-size: 1.5rem; cursor: pointer; }
+.r2-overlay__footer { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+.r2-palette ul { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.r2-palette li { display: flex; justify-content: space-between; padding: 0.6rem 0.75rem; border-radius: 8px; cursor: pointer; }
+.r2-palette li[aria-selected="true"] { background: var(--r2-focus, #1a56db); color: #fff; }
+.r2-palette input { width: 100%; padding: 0.7rem; font-size: 1rem; }
+
+/* Data table */
+.r2-table-wrap { overflow-x: auto; }
+.r2-table { border-collapse: collapse; width: 100%; }
+.r2-table caption { text-align: left; font-weight: 600; padding: 0.5rem 0; }
+.r2-table th, .r2-table td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--r2-border, #d8d8e0); }
+.r2-table th button { background: transparent; border: 0; font: inherit; font-weight: 600; cursor: pointer; padding: 0; min-height: 2.75rem; }
+.r2-table th[aria-sort="ascending"] button::after { content: " ▲"; }
+.r2-table th[aria-sort="descending"] button::after { content: " ▼"; }

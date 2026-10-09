@@ -103,6 +103,8 @@ export type AuthRepository = {
   }): Promise<AuthSession>;
   findSessionByTokenHash(tokenHash: string): Promise<AuthSession | null>;
   revokeSession(input: { sessionId: string; revokedAt: Date }): Promise<void>;
+  /** Revokes every still-active session the user has; returns how many were ended. */
+  revokeAllSessionsForUser(input: { userId: string; revokedAt: Date }): Promise<number>;
 };
 
 export type AuthTokenRepository = {

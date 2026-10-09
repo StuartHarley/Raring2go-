@@ -10,7 +10,8 @@ import {
   requestSignIn,
   safeReturnTo,
   sessionCookieName,
-  signOut
+  signOut,
+  signOutEverywhere
 } from "../../lib/auth-runtime";
 import { clientIp, firstRateLimitRefusal } from "../../lib/rate-limit-runtime";
 
@@ -68,6 +69,22 @@ export async function requestSignInAction(formData: FormData) {
   });
 
   redirect(`/sign-in?${params.toString()}` as Route);
+}
+
+export async function signOutEverywhereAction() {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get(sessionCookieName)?.value;
+
+  if (sessionToken) {
+    try {
+      await signOutEverywhere({ sessionToken });
+    } catch {
+      // A session that is already gone has nothing left to end; the cookie is cleared either way.
+    }
+  }
+
+  cookieStore.delete(sessionCookieName);
+  redirect("/sign-in?recovered=1" as Route);
 }
 
 export async function signOutAction() {

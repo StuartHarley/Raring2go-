@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { validateSegmentDefinition } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
+import { assertBoundActor } from "../../../../../lib/action-actor";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { sessionCookieName } from "../../../../../lib/auth-runtime";
 import { createAudienceSegment, previewSegmentAudience, updateAudienceSegment } from "../../../../../lib/marketing-runtime";
@@ -28,6 +29,7 @@ export async function previewSegmentAudienceAction(input: { territoryId: string 
 }
 
 export async function createSegmentAction(context: MarketingActorContext, formData: FormData) {
+  await assertBoundActor(context);
   const key = String(formData.get("key") || "").trim();
   const name = String(formData.get("name") || "").trim();
   const territoryId = String(formData.get("territoryId") || "") || null;
@@ -50,6 +52,7 @@ export async function createSegmentAction(context: MarketingActorContext, formDa
 }
 
 export async function updateSegmentAction(context: MarketingActorContext, segmentId: string, formData: FormData) {
+  await assertBoundActor(context);
   const name = String(formData.get("name") || "").trim() || undefined;
   const definitionJson = String(formData.get("definitionJson") || "");
   let definition: unknown;
