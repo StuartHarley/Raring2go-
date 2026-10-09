@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PermissionData } from "@raring2go/permissions";
-import { acceptProposalCommercially, describePayableInvoice, respondToProposal, submitArtworkVersion, updateArtworkStatus } from "./service";
+import { SIGNATURE_LAPSED, acceptProposalCommercially, describePayableInvoice, respondToProposal, submitArtworkVersion, updateArtworkStatus } from "./service";
 import type { AdvertisingData, ArtworkRequirement, ArtworkVersion } from "./types";
 
 type AuditRecorder = Parameters<typeof respondToProposal>[2];
@@ -53,6 +53,8 @@ export type PortalProposal = {
   /** True only while the advertiser can still accept, decline or ask for changes. */
   canRespond: boolean;
   response: string | null;
+  /** The advertiser has accepted and the signature has not been completed yet. */
+  awaitingSignature: boolean;
 };
 
 export type PortalArtworkVersion = { id: string; versionNumber: number; status: string; submittedAt: string | null; fileName: string | null; notes: string | null };
@@ -131,7 +133,8 @@ export function buildPortalView(identity: PortalIdentity, data: AdvertisingData,
 
   const proposals = data.proposals.filter(live).filter((proposal) => mine.has(proposal.advertiserId)).filter((proposal) => proposal.status !== "draft");
   const proposalViews: PortalProposal[] = proposals.map((proposal) => {
-    const acceptance = data.acceptances.find((candidate) => candidate.proposalId === proposal.id && !candidate.deletedAt);
+    // A lapsed signing is not an answer: the advertiser can accept again.
+    const acceptance = data.acceptances.find((candidate) => candidate.proposalId === proposal.id && !candidate.deletedAt && candidate.status !== SIGNATURE_LAPSED);
     return {
       id: proposal.id,
       title: proposal.title,
@@ -143,7 +146,8 @@ export function buildPortalView(identity: PortalIdentity, data: AdvertisingData,
       sentOn: proposal.sentOn ?? null,
       items: data.proposalItems.filter(live).filter((item) => item.proposalId === proposal.id).map((item) => ({ description: item.description, quantity: item.quantity, totalPriceMinor: item.totalPriceMinor })),
       canRespond: proposal.status === "sent" && !acceptance && !(proposal.validUntil && proposal.validUntil < today) && proposal.metadata.current !== false && !proposal.metadata.supersededBy,
-      response: acceptance ? acceptance.status : null
+      response: acceptance ? acceptance.status : null,
+      awaitingSignature: acceptance?.status === "pending_signature"
     };
   });
 
@@ -329,7 +333,7 @@ export async function portalRespondToProposal(
   permissions: PermissionData,
   audit: AuditRecorder,
   data: AdvertisingData,
-  input: { proposalId: string; response: "accepted" | "rejected" | "change_requested"; respondedAt: string; requestMetadata: Record<string, unknown>; ids: { acceptanceId: string; bookingId: string; domainEventId: string } }
+  input: { proposalId: string; response: "accepted" | "rejected" | "change_requested"; respondedAt: string; requestMetadata: Record<string, unknown>; ids: { acceptanceId: string; bookingId: string; domainEventId: string }; /** When set, acceptance waits for the advertiser's signature instead of booking at once. */ signature?: { attempt: number; providerMetadata?: Record<string, unknown> } }
 ) {
   const proposal = data.proposals.find((candidate) => candidate.id === input.proposalId && !candidate.deletedAt);
   if (!proposal || !identity.advertiserIds.includes(proposal.advertiserId)) throw new PortalAccessError("Proposal not found.");
@@ -341,7 +345,7 @@ export async function portalRespondToProposal(
   if (!terms) throw new PortalStateError("There are no approved terms to respond against yet.");
 
   const context = { userId: identity.userId, organisationId: identity.organisationId };
-  const idempotencyKey = `portal:proposal:${proposal.id}:${input.response}`;
+  const idempotencyKey = `portal:proposal:${proposal.id}:${input.response}${input.signature && input.signature.attempt > 1 ? `:${input.signature.attempt}` : ""}`;
   const common = { acceptanceId: input.ids.acceptanceId, proposalId: proposal.id, termsId: terms.id, acceptedByContactId: contact.id, idempotencyKey, requestMetadata: { ...input.requestMetadata, via: "advertiser_portal" }, domainEventId: input.ids.domainEventId };
 
   if (input.response === "accepted") {
@@ -352,7 +356,8 @@ export async function portalRespondToProposal(
       bookingItemIdPrefix: `${input.ids.bookingId}:item`,
       reservationIdPrefix: `${input.ids.bookingId}:reservation`,
       productionRequestIdPrefix: `${input.ids.bookingId}:production`,
-      newId: randomUUID
+      newId: randomUUID,
+      ...(input.signature ? { method: "signature_required" as const, providerMetadata: input.signature.providerMetadata ?? {} } : {})
     });
   }
 

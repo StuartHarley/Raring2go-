@@ -18,6 +18,7 @@ import { allowedArtifactHosts } from "./esign-artifacts";
 import { esignWebhookSecrets, processESignWebhook } from "./esign-runtime";
 import type { ESignWebhookOutcome } from "./esign-runtime";
 import type { FileProviders } from "./franchise-files";
+import { handleAdvertiserSigningEvent } from "./advertiser-signing";
 import { appLogger } from "./logger";
 
 /**
@@ -26,9 +27,7 @@ import { appLogger } from "./logger";
  * events. Nothing a callback says is believed until SignWell's own API confirms it.
  */
 
-export const signWellConfigured = (env: Record<string, string | undefined> = process.env) => Boolean(env.SIGNWELL_API_KEY);
-/** Documents are test documents (watermarked, not legally binding) unless this is explicitly turned off. */
-export const signWellTestMode = (env: Record<string, string | undefined> = process.env) => env.SIGNWELL_TEST_MODE !== "false";
+export { signWellConfigured, signWellTestMode } from "./signwell-config";
 const apiKey = () => process.env.SIGNWELL_API_KEY ?? "";
 const webhookIds = () => [process.env.SIGNWELL_WEBHOOK_ID, process.env.SIGNWELL_WEBHOOK_ID_PREVIOUS].filter((id): id is string => Boolean(id));
 
@@ -124,7 +123,11 @@ export async function processSignWellWebhook(rawBody: string, deps: TranslatorDe
   }
   if (document.id !== parsed.documentId) return { outcome: "ignored", reason: "document_mismatch" };
 
-  // Only a document we sent, for an agreement we know, is of any interest.
+  // An advertiser's proposal acceptance is signed with SignWell too; it has its own handler.
+  const advertiser = await handleAdvertiserSigningEvent({ kind: parsed.kind, documentId: parsed.documentId }, document, { fetch: deps.fetch, providers: deps.providers, hosts: deps.hosts });
+  if (advertiser) return advertiser;
+
+  // Otherwise only a document we sent, for an agreement we know, is of any interest.
   const { db, sql } = createDb();
   let signerOrder: Array<{ order: number; email: string; completed: boolean }>;
   try {

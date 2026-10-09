@@ -1006,6 +1006,86 @@ export async function acceptProposalCommercially(
   return acceptance;
 }
 
+export const SIGNATURE_LAPSED = "signature_lapsed";
+
+/**
+ * An advertiser's signature arrived (confirmed by the e-signature provider): the acceptance becomes final and the
+ * booking, reservations and production requests are made, exactly as for a simple acceptance. Safe to repeat.
+ * The proposal must still be sendable-and-valid on the signing day; if it is not, this throws and the caller lapses it.
+ */
+export async function finaliseSignedAcceptance(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: { acceptanceId: string; signedOn: string; bookingId: string; domainEventId: string; providerMetadata?: Record<string, unknown>; newId: () => string }
+) {
+  const acceptance = data.acceptances.find((candidate) => candidate.id === input.acceptanceId && !candidate.deletedAt);
+  if (!acceptance) throw new Error("Acceptance was not found.");
+  if (acceptance.status === "accepted") return acceptance;
+  if (acceptance.status !== "pending_signature") throw new Error("Only an acceptance awaiting signature can be completed.");
+  const proposal = requireProposal(data, acceptance.proposalId);
+  const advertiser = requireAdvertiser(data, proposal.advertiserId);
+  if (proposal.validUntil && proposal.validUntil < input.signedOn) throw new Error("The proposal expired before it was signed.");
+
+  const booking = await acceptProposalAsBooking(context, permissions, audit, data, {
+    proposalId: proposal.id,
+    bookingId: input.bookingId,
+    bookingItemIdPrefix: `${input.bookingId}:item`,
+    reservationIdPrefix: `${input.bookingId}:reservation`,
+    productionRequestIdPrefix: `${input.bookingId}:production`,
+    acceptedOn: input.signedOn,
+    newId: input.newId
+  });
+  acceptance.status = "accepted";
+  acceptance.acceptedAt = input.signedOn;
+  acceptance.bookingId = booking.id;
+  acceptance.providerMetadata = { ...acceptance.providerMetadata, ...(input.providerMetadata ?? {}), signedOn: input.signedOn };
+  emitAdvertiserEvent(data, {
+    id: input.domainEventId,
+    eventType: "advertiser.proposal.accepted",
+    entityType: "commercial_proposal",
+    entityId: proposal.id,
+    advertiserId: advertiser.id,
+    territoryId: proposal.territoryId,
+    payload: { acceptanceId: acceptance.id, bookingId: booking.id, method: acceptance.method },
+    idempotencyKey: `advertiser.proposal.accepted:${acceptance.id}`
+  });
+  emitAdvertiserEvent(data, {
+    id: input.newId(),
+    eventType: "advertiser.booking.confirmed",
+    entityType: "commercial_booking",
+    entityId: booking.id,
+    advertiserId: advertiser.id,
+    territoryId: proposal.territoryId,
+    payload: { proposalId: proposal.id, acceptanceId: acceptance.id },
+    idempotencyKey: `advertiser.booking.confirmed:${booking.id}`
+  });
+  await audit.record(auditEvent(context, auditActions.advertiserProposalAccept, advertiser, { proposalId: proposal.id, acceptanceId: acceptance.id, method: acceptance.method, status: acceptance.status }));
+  await audit.record(auditEvent(context, auditActions.advertiserBookingConfirm, advertiser, { proposalId: proposal.id, bookingId: booking.id }));
+  return acceptance;
+}
+
+/**
+ * The signing did not complete. A decline is the advertiser's answer (`rejected`); anything else (expired, cancelled,
+ * could not be sent, proposal no longer acceptable) is `signature_lapsed`, which lets them try again.
+ */
+export async function closePendingAcceptance(
+  context: AdvertisingActorContext,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: { acceptanceId: string; outcome: "declined" | "lapsed"; reason: string; on: string }
+) {
+  const acceptance = data.acceptances.find((candidate) => candidate.id === input.acceptanceId && !candidate.deletedAt);
+  if (!acceptance || acceptance.status !== "pending_signature") return acceptance;
+  const advertiser = requireAdvertiser(data, acceptance.advertiserId);
+  acceptance.status = input.outcome === "declined" ? "rejected" : SIGNATURE_LAPSED;
+  if (input.outcome === "declined") acceptance.rejectedAt = input.on;
+  acceptance.providerMetadata = { ...acceptance.providerMetadata, closedOn: input.on, closedBecause: input.reason.slice(0, 300) };
+  await audit.record(auditEvent(context, auditActions.advertiserProposalAccept, advertiser, { proposalId: acceptance.proposalId, acceptanceId: acceptance.id, method: acceptance.method, status: acceptance.status, reason: input.reason.slice(0, 300) }));
+  return acceptance;
+}
+
 export async function respondToProposal(
   context: AdvertisingActorContext,
   permissions: PermissionData,
@@ -2078,7 +2158,8 @@ function ensureProposalAcceptable(
   if (terms.status !== "approved") {
     throw new Error("Only approved terms can be accepted.");
   }
-  if (data.acceptances.some((candidate) => candidate.proposalId === proposal.id && !candidate.deletedAt)) {
+  // A signing that lapsed (expired, cancelled or could not be sent) does not count as a response: the advertiser may try again.
+  if (data.acceptances.some((candidate) => candidate.proposalId === proposal.id && !candidate.deletedAt && candidate.status !== SIGNATURE_LAPSED)) {
     throw new Error("Proposal already has an acceptance response.");
   }
 }

@@ -21,7 +21,7 @@ describe("SignWell client", () => {
   it("creates a document with an ordered signature page, the right recipients, test mode and our reference", async () => {
     const { calls, fetchImpl } = fake(() => json({ id: "doc-1", status: "Created", recipients: [{ id: "1", email: "fran@example.test", name: "Fran Chisee", status: "created" }] }, 201));
     const document = await createSignWellDocument({ ...base, fetch: fetchImpl });
-    expect(document).toMatchObject({ id: "doc-1", status: "Created" });
+    expect(document).toMatchObject({ id: "doc-1", status: "Created", recipients: [{ signingUrl: null }] });
     expect(calls[0]!.url).toBe("https://www.signwell.com/api/v1/documents");
     expect(calls[0]!.headers["x-api-key"]).toBe("key");
     expect(calls[0]!.body).toMatchObject({ test_mode: true, with_signature_page: true, apply_signing_order: true, allow_reassign: false, draft: false, expires_in: 30, metadata: { agreement_id: "ag-1" }, files: [{ name: "agreement.pdf", file_base64: "JVBERi0=" }] });

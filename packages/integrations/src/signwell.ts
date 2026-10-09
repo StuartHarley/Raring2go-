@@ -21,7 +21,7 @@ export type SignWellDocument = {
   status: string;
   name?: string;
   metadata: Record<string, string>;
-  recipients: Array<{ id: string; email: string; name: string; status: string | null }>;
+  recipients: Array<{ id: string; email: string; name: string; status: string | null; signingUrl: string | null }>;
 };
 
 type Json = Record<string, unknown>;
@@ -56,7 +56,7 @@ const toDocument = (body: Json): SignWellDocument => {
     status: String(body.status ?? ""),
     name: typeof body.name === "string" ? body.name : undefined,
     metadata: (body.metadata && typeof body.metadata === "object" ? body.metadata : {}) as Record<string, string>,
-    recipients: recipients.map((recipient) => ({ id: String(recipient.id ?? ""), email: String(recipient.email ?? ""), name: String(recipient.name ?? ""), status: typeof recipient.status === "string" ? recipient.status : null }))
+    recipients: recipients.map((recipient) => ({ id: String(recipient.id ?? ""), email: String(recipient.email ?? ""), name: String(recipient.name ?? ""), status: typeof recipient.status === "string" ? recipient.status : null, signingUrl: typeof recipient.signing_url === "string" ? recipient.signing_url : null }))
   };
 };
 
@@ -74,6 +74,9 @@ export async function createSignWellDocument(input: {
   recipients: SignWellRecipient[];
   metadata: Record<string, string>;
   expiresInDays: number;
+  /** Where the signer is sent after signing or declining. */
+  redirectUrl?: string;
+  declineRedirectUrl?: string;
   fetch?: typeof fetch;
 }): Promise<SignWellDocument> {
   if (input.recipients.length === 0) throw new SignWellError("A document needs at least one signer.", false);
@@ -97,7 +100,9 @@ export async function createSignWellDocument(input: {
       reminders: true,
       expires_in: input.expiresInDays,
       draft: false,
-      metadata: input.metadata
+      metadata: input.metadata,
+      ...(input.redirectUrl ? { redirect_url: input.redirectUrl } : {}),
+      ...(input.declineRedirectUrl ? { decline_redirect_url: input.declineRedirectUrl } : {})
     }
   });
   const document = toDocument(body);

@@ -26,7 +26,7 @@ export type PortalActorContext = { userId: string; organisationId: string };
  * The portal runtime checks the grant itself rather than trusting its caller: being a member of an
  * advertiser organisation (as a staff test fixture can be) is not the same as having portal access.
  */
-function requirePortalAccess(permissions: PermissionData, context: PortalActorContext) {
+export function requirePortalAccess(permissions: PermissionData, context: PortalActorContext) {
   requirePermission({ userId: context.userId, module: "portal.advertiser", action: "view", context: { organisationId: context.organisationId } }, permissions);
 }
 
@@ -48,7 +48,7 @@ export async function readPortal(context: PortalActorContext) {
  * domain function changed. Identity is re-derived from the session's organisation here, never
  * taken from the caller.
  */
-async function mutate<T>(
+export async function mutateAsAdvertiser<T>(
   context: PortalActorContext,
   work: (identity: PortalIdentity, data: Awaited<ReturnType<typeof loadAdvertisingData>>, audit: ReturnType<typeof advertisingAuditFor>, permissions: PermissionData) => Promise<T>
 ) {
@@ -86,7 +86,7 @@ export async function submitArtworkAsAdvertiser(
 
   const file = await uploadAdvertiserArtwork({ userId: context.userId, organisationId: context.organisationId }, { fileName: input.fileName, contentType: input.contentType, bytes: input.bytes });
 
-  const version = await mutate(context, (identity, data, audit, permissions) =>
+  const version = await mutateAsAdvertiser(context, (identity, data, audit, permissions) =>
     portalSubmitArtwork(identity, permissions, audit, data, {
       requirementId: input.requirementId,
       versionId: randomUUID(),
@@ -101,7 +101,7 @@ export async function submitArtworkAsAdvertiser(
 }
 
 export const respondToProofAsAdvertiser = (context: PortalActorContext, input: { requirementId: string; decision: "approved" | "changes_requested" }) =>
-  mutate(context, (identity, data, audit, permissions) =>
+  mutateAsAdvertiser(context, (identity, data, audit, permissions) =>
     portalRespondToProof(identity, permissions, audit, data, { ...input, actorDate: new Date().toISOString().slice(0, 10), domainEventId: randomUUID() })
   );
 
@@ -109,7 +109,7 @@ export const respondToProposalAsAdvertiser = (
   context: PortalActorContext,
   input: { proposalId: string; response: "accepted" | "rejected" | "change_requested"; requestMetadata?: Record<string, unknown> }
 ) =>
-  mutate(context, (identity, data, audit, permissions) =>
+  mutateAsAdvertiser(context, (identity, data, audit, permissions) =>
     portalRespondToProposal(identity, permissions, audit, data, {
       proposalId: input.proposalId,
       response: input.response,

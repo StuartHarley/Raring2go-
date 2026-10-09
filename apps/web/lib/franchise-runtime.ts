@@ -82,7 +82,8 @@ import type {
 } from "@raring2go/franchise";
 import type { PermissionData } from "@raring2go/permissions";
 import { getPermissionData, invalidatePermissionData } from "./permission-source";
-import { signWellConfigured, signWellProvider, signWellTestMode } from "./signwell-runtime";
+import { signWellConfigured, signWellTestMode } from "./signwell-config";
+import { signWellProvider } from "./signwell-runtime";
 
 export async function listFranchiseSummaries(context: FranchiseActorContext) {
   const franchisePermissionData = await getPermissionData();
