@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { createDb, emailCampaigns, emailSendJobs } from "@raring2go/db";
+import { createDb, emailCampaignVersions, emailCampaigns, emailRecipientSnapshots, emailSendJobs, fixtureIds } from "@raring2go/db";
 import { eq } from "drizzle-orm";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDrizzleLegacyJobReader } from "./legacy";
 
 /**
@@ -12,21 +12,26 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("legacy job reader (postgres)", () =>
   const { db, sql } = createDb();
   const reader = createDrizzleLegacyJobReader(db);
   const insertedJobIds: string[] = [];
+  // Own parent records, so the test needs no particular data in the database (CI starts from a fresh seed).
+  const ids = { campaign: randomUUID(), version: randomUUID(), snapshot: randomUUID() };
+
+  beforeAll(async () => {
+    await db.insert(emailCampaigns).values({ id: ids.campaign, territoryId: fixtureIds.territories.suttonColdfield, title: `Legacy reader ${ids.campaign.slice(0, 8)}`, subject: "s" });
+    await db.insert(emailCampaignVersions).values({ id: ids.version, campaignId: ids.campaign, versionNumber: 1, subject: "s" });
+    await db.insert(emailRecipientSnapshots).values({ id: ids.snapshot, campaignId: ids.campaign, campaignVersionId: ids.version, generatedAt: new Date(), idempotencyKey: `legacy-${ids.snapshot}` });
+  });
 
   afterAll(async () => {
     for (const id of insertedJobIds) {
       await db.delete(emailSendJobs).where(eq(emailSendJobs.id, id));
     }
+    await db.delete(emailRecipientSnapshots).where(eq(emailRecipientSnapshots.id, ids.snapshot));
+    await db.delete(emailCampaignVersions).where(eq(emailCampaignVersions.id, ids.version));
+    await db.delete(emailCampaigns).where(eq(emailCampaigns.id, ids.campaign));
     await sql.end();
   });
 
-  async function templateJob() {
-    const [existing] = await db.select().from(emailSendJobs).limit(1);
-    if (!existing) {
-      throw new Error("Seed data needed: run pnpm db:seed (and a UAT seed) so an email_send_job exists to clone parents from.");
-    }
-    return existing;
-  }
+  const templateJob = () => ({ campaignId: ids.campaign, campaignVersionId: ids.version, recipientSnapshotId: ids.snapshot });
 
   it("lists every legacy source without SQL errors and normalises statuses", async () => {
     const jobs = await reader.list({});
@@ -35,7 +40,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("legacy job reader (postgres)", () =>
   });
 
   it("carries the campaign's territory onto an email send job and scopes by it", async () => {
-    const template = await templateJob();
+    const template = templateJob();
     const [campaign] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, template.campaignId));
     const id = randomUUID();
     insertedJobIds.push(id);
@@ -54,12 +59,10 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("legacy job reader (postgres)", () =>
     const found = await reader.get("email_send", id);
     expect(found).toMatchObject({ source: "email_send", status: "dead", rawStatus: "failed", territoryId: campaign?.territoryId ?? null, lastError: "integration failure" });
 
-    if (campaign?.territoryId) {
-      const scoped = await reader.list({ territoryId: campaign.territoryId });
-      expect(scoped.some((job) => job.id === id)).toBe(true);
-      const other = await reader.list({ territoryId: randomUUID() });
-      expect(other.some((job) => job.id === id)).toBe(false);
-    }
+    const scoped = await reader.list({ territoryId: fixtureIds.territories.suttonColdfield });
+    expect(scoped.some((job) => job.id === id)).toBe(true);
+    const other = await reader.list({ territoryId: randomUUID() });
+    expect(other.some((job) => job.id === id)).toBe(false);
   });
 
   it("retries only a failed email send job, resets the budget, and is a no-op the second time", async () => {

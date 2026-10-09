@@ -3,6 +3,13 @@
 A release is blocked until the automated gate passes and every manual item is either ticked or has a written,
 dated exception from the accountable owner.
 
+## What CI runs
+
+Every pull request: secret scan, lint, a check that the schema has no uncommitted migration, migrate and seed a fresh
+Postgres, typecheck, **all tests including the Postgres integration tests** (`RUN_DB_TESTS=1`, passed through turbo via
+`globalEnv`), and a production build. Integration tests must not depend on data that only exists in a developer's
+database: they create and remove their own rows, and are checked against a freshly seeded database.
+
 ## Automated (must be green)
 
 ```bash
