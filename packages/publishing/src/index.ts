@@ -11,3 +11,4 @@ export * from "./persist-social";
 export * from "./render";
 export * from "./render-provider";
 export * from "./persist-editions";
+export * from "./template-spec";

@@ -33,7 +33,7 @@ import type {
   TerritoryEdition,
   TerritoryEditionContent
 } from "./types";
-import { blockingRenderIssues, buildEditionRenderModel } from "./render";
+import { blockingRenderIssues, buildEditionRenderModel, geometryOf, validateZoneGeometry, zonesOf } from "./render";
 
 type PublishingAuditRecorder = {
   record(event: {
@@ -2413,6 +2413,11 @@ function validateTemplateVersion(version: MagazineTemplateVersion) {
   }
   if (version.lockedElements.length === 0 || version.editableZones.length === 0) {
     throw new Error("Template versions require locked elements and editable zones.");
+  }
+  const geometry = geometryOf(version);
+  const problem = validateZoneGeometry(zonesOf(version), { width: geometry.trimWidth, height: geometry.trimHeight })[0];
+  if (problem) {
+    throw new Error(`Template zone "${problem.zoneId}": ${problem.message}`);
   }
 }
 
