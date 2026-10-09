@@ -32,6 +32,15 @@ logic and its in-memory tests exist, but nothing in the web app calls the mutati
 - Draft invoices were all numbered "DRAFT" and the database allows one number per issuer, so a second draft invoice could not be
   saved. Drafts now carry their own id in the number.
 
+- The invoice tax rate was a hard-coded 20% on every line, whatever the product's tax code. Rates now come from
+  `advertiser_tax_rates` by code and date (migration 0048 seeds the UK standard, zero and exempt rates); a code with no rate in
+  force refuses to invoice.
+- The seed script rewound the invoice number counter on every run, which would reissue used numbers. It now sets the counter
+  only when the row is first created.
+- A proposal could be booked after its valid-until date.
+- Two public items with the same title shared one address, so one page was unreachable and the sitemap listed it twice.
+- `apps/web/lib/raw-sql-guard.test.ts` now fails if a Date is interpolated into a raw postgres.js template (the analytics bug).
+
 ## What only the business can do (not planned as code)
 
 UAT-001 to 005: provider accounts and credentials, named testers and owners, restore rehearsals on the hosted database,

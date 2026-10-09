@@ -6,6 +6,7 @@ import {
   advertiserCreditNotes,
   advertiserInvoiceLines,
   advertiserInvoiceSequences,
+  advertiserTaxRates,
   advertiserInvoices,
   advertiserMetricSnapshots,
   advertiserPaymentAllocations,
@@ -66,6 +67,7 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     acceptanceRows,
     domainEventRows,
     invoiceSequenceRows,
+    taxRateRows,
     invoiceRows,
     invoiceLineRows,
     creditNoteRows,
@@ -102,6 +104,7 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     db.select().from(advertiserProposalAcceptances),
     db.select().from(advertiserDomainEvents),
     db.select().from(advertiserInvoiceSequences),
+    db.select().from(advertiserTaxRates),
     db.select().from(advertiserInvoices),
     db.select().from(advertiserInvoiceLines),
     db.select().from(advertiserCreditNotes),
@@ -178,6 +181,7 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
       processedAt: dateString(row.processedAt)
     })) as AdvertisingData["domainEvents"],
     invoiceSequences: invoiceSequenceRows as AdvertisingData["invoiceSequences"],
+    taxRates: taxRateRows as AdvertisingData["taxRates"],
     invoices: invoiceRows.map((row) => ({
       ...row,
       issueDate: dateString(row.issueDate),

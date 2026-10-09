@@ -727,6 +727,10 @@ export async function acceptProposalAsBooking(
     }
     throw new Error("Only draft or sent proposals can be accepted into bookings.");
   }
+  // A proposal's price is only held until its valid-until date; a lapsed one has to be re-quoted.
+  if (proposal.validUntil && proposal.validUntil < input.acceptedOn) {
+    throw new Error("Expired proposals cannot be accepted.");
+  }
 
   const proposalItems = data.proposalItems.filter((item) => item.proposalId === proposal.id && !item.deletedAt);
   if (proposalItems.length === 0) {
@@ -1029,7 +1033,6 @@ export async function createInvoiceFromBooking(
     dueDate: string;
     billingSnapshot: Record<string, unknown>;
     paymentTermsSnapshot: Record<string, unknown>;
-    taxRateBps?: number;
     domainEventId: string;
     /** Real persistence needs UUIDs for line ids; without it ids are `${lineIdPrefix}_${n}`. */
     newId?: () => string;
@@ -1043,7 +1046,11 @@ export async function createInvoiceFromBooking(
   if (bookingItems.length === 0) {
     throw new Error("Cannot invoice booking without items.");
   }
-  const lines: AdvertiserInvoiceLine[] = bookingItems.map((item, index) => invoiceLineFromBookingItem(input.invoiceId, input.newId ? input.newId() : `${input.lineIdPrefix}_${index + 1}`, item, input.taxRateBps ?? 2000));
+  const onDate = today();
+  const lines: AdvertiserInvoiceLine[] = bookingItems.map((item, index) => {
+    const taxCode = requireProduct(data, item.productId).taxCode;
+    return invoiceLineFromBookingItem(input.invoiceId, input.newId ? input.newId() : `${input.lineIdPrefix}_${index + 1}`, item, taxCode, taxRateFor(data, taxCode, onDate));
+  });
   const subtotalMinor = lines.reduce((sum, line) => sum + line.netMinor, 0);
   const taxMinor = lines.reduce((sum, line) => sum + line.taxMinor, 0);
   const totalMinor = lines.reduce((sum, line) => sum + line.grossMinor, 0);
@@ -1808,7 +1815,18 @@ function formatInvoiceNumber(sequence: { prefix: string; nextNumber: number; pad
   return `${sequence.prefix}-${String(sequence.nextNumber).padStart(sequence.padding, "0")}`;
 }
 
-function invoiceLineFromBookingItem(invoiceId: string, id: string, item: CommercialBookingItem, taxRateBps: number): AdvertiserInvoiceLine {
+/** The rate for a tax code on a date. A code with no rate in force is an error, never a guess. */
+export function taxRateFor(data: AdvertisingData, taxCode: string, onDate: string) {
+  const rate = data.taxRates
+    .filter((candidate) => candidate.code === taxCode && candidate.effectiveFrom <= onDate && (!candidate.effectiveTo || candidate.effectiveTo >= onDate))
+    .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
+  if (!rate) {
+    throw new Error(`No tax rate is configured for "${taxCode}".`);
+  }
+  return rate.rateBps;
+}
+
+function invoiceLineFromBookingItem(invoiceId: string, id: string, item: CommercialBookingItem, taxCode: string, taxRateBps: number): AdvertiserInvoiceLine {
   const netMinor = item.totalPriceMinor;
   const taxMinor = Math.round((netMinor * taxRateBps) / 10000);
   return {
@@ -1822,7 +1840,7 @@ function invoiceLineFromBookingItem(invoiceId: string, id: string, item: Commerc
     taxRateBps,
     taxMinor,
     grossMinor: netMinor + taxMinor,
-    taxCode: "standard_vat"
+    taxCode
   };
 }
 

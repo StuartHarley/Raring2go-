@@ -12,6 +12,7 @@ import {
   createOpportunity,
   createPricedProposal,
   deriveAdvertiserMetrics,
+  taxRateFor,
   priceProposalLine,
   sendProposal,
   refreshAdvertiserMetrics,
@@ -178,6 +179,46 @@ beforeAll(() => {
   vi.setSystemTime(new Date("2026-08-11T09:00:00.000Z"));
 });
 afterAll(() => vi.useRealTimers());
+
+describe("tax rates", () => {
+  const data = (rates: Array<{ code: string; rateBps: number; effectiveFrom: string; effectiveTo?: string | null }>) => ({
+    ...emptyData(),
+    taxRates: rates.map((rate, index) => ({ id: `r${index}`, description: "", effectiveTo: null, ...rate }))
+  });
+
+  it("uses the rate in force on the date, so a later change does not touch earlier dates", () => {
+    const rates = data([{ code: "standard_vat", rateBps: 1500, effectiveFrom: "2011-01-04", effectiveTo: "2026-12-31" }, { code: "standard_vat", rateBps: 2200, effectiveFrom: "2027-01-01" }]);
+    expect(taxRateFor(rates, "standard_vat", "2026-10-09")).toBe(1500);
+    expect(taxRateFor(rates, "standard_vat", "2027-03-01")).toBe(2200);
+  });
+
+  it("refuses a code with no rate in force instead of guessing one", () => {
+    expect(() => taxRateFor(data([{ code: "standard_vat", rateBps: 2000, effectiveFrom: "2011-01-04" }]), "reduced", "2026-10-09")).toThrow(/No tax rate is configured/);
+    expect(() => taxRateFor(data([{ code: "standard_vat", rateBps: 2000, effectiveFrom: "2030-01-01" }]), "standard_vat", "2026-10-09")).toThrow(/No tax rate/);
+  });
+
+  it("charges no tax on a zero-rated product when invoicing", async () => {
+    const base = seededData();
+    seedAcceptedBooking(base);
+    base.products[0]!.taxCode = "zero_rated";
+    const invoice = await createInvoiceFromBooking(localContext(), permissions, audit(), base, {
+      invoiceId: "invoice_zero", lineIdPrefix: "zero_line", bookingId: "booking_autumn", issuerOrganisationId: ids.organisations.franchise,
+      dueDate: "2026-09-10", billingSnapshot: {}, paymentTermsSnapshot: {}, domainEventId: "event_zero"
+    });
+    expect(invoice).toMatchObject({ taxMinor: 0, totalMinor: invoice.subtotalMinor });
+    expect(base.invoiceLines.find((line) => line.invoiceId === "invoice_zero")).toMatchObject({ taxCode: "zero_rated", taxRateBps: 0 });
+  });
+
+  it("will not invoice a product whose tax code has no rate", async () => {
+    const base = seededData();
+    seedAcceptedBooking(base);
+    base.products[0]!.taxCode = "mystery";
+    await expect(createInvoiceFromBooking(localContext(), permissions, audit(), base, {
+      invoiceId: "invoice_x", lineIdPrefix: "x", bookingId: "booking_autumn", issuerOrganisationId: ids.organisations.franchise,
+      dueDate: "2026-09-10", billingSnapshot: {}, paymentTermsSnapshot: {}, domainEventId: "e"
+    })).rejects.toThrow(/No tax rate/);
+  });
+});
 
 describe("proposal pricing and sending", () => {
   const withCatalogue = (overrides: { requiresInventory?: boolean; bookStatus?: string; bookTerritory?: string | null; effectiveTo?: string } = {}) => ({
@@ -517,6 +558,18 @@ describe("advertiser CRM foundation", () => {
     ]);
   });
 
+  it("will not book a proposal after its valid-until date", async () => {
+    const data = seededData();
+    seedProposal(data);
+    const proposal = data.proposals.find((candidate) => candidate.id === "proposal_autumn")!;
+    proposal.validUntil = "2026-08-10";
+    await expect(acceptProposalAsBooking(localContext(), permissions, audit(), data, {
+      proposalId: proposal.id, bookingId: "booking_late", bookingItemIdPrefix: "bi", reservationIdPrefix: "r", productionRequestIdPrefix: "p", acceptedOn: "2026-08-11"
+    })).rejects.toThrow(/Expired/);
+    expect(data.bookings).toHaveLength(0);
+    expect(data.inventoryReservations).toHaveLength(0);
+  });
+
   it("records simple commercial acceptance with immutable snapshot, events and idempotent booking confirmation", async () => {
     const data = seededData();
     seedProposal(data);
@@ -679,7 +732,6 @@ describe("advertiser CRM foundation", () => {
       dueDate: "2026-09-10",
       billingSnapshot: { customer: "Example Advertiser" },
       paymentTermsSnapshot: { days: 30 },
-      taxRateBps: 2000,
       domainEventId: "event_invoice_created"
     });
     const issued = await issueInvoice(localContext(), permissions, recorder, data, {
@@ -1274,6 +1326,10 @@ function emptyData(): AdvertisingData {
     acceptances: [],
     domainEvents: [],
     invoiceSequences: [],
+    taxRates: [
+      { id: "rate_std", code: "standard_vat", description: "Standard", rateBps: 2000, effectiveFrom: "2011-01-04", effectiveTo: null },
+      { id: "rate_zero", code: "zero_rated", description: "Zero", rateBps: 0, effectiveFrom: "2011-01-04", effectiveTo: null }
+    ],
     invoices: [],
     invoiceLines: [],
     creditNotes: [],

@@ -107,13 +107,14 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("parent self-service (postgres)", () 
     await expect(updateParentPreferences(db, parent, { ...base, followedTerritoryIds: [randomUUID()] })).rejects.toMatchObject({ code: "unknown_territory" });
   });
 
-  it("never reads or changes another parent's record", async () => {
+  it("only ever reads and changes the contact it is given", async () => {
     const otherId = randomUUID();
     const otherEmail = `other-${tag}@example.test`;
     await db.insert(audienceContacts).values({ id: otherId, email: otherEmail, emailNormalised: otherEmail, emailStatus: "subscribed", tags: [], metadata: {} });
     try {
       await setEmailSubscription(db, { userId, contactId: otherId }, { territoryId: sutton, subscribed: true });
-      // The first parent's view only ever contains their own contact.
+      // These functions trust the contact id they are handed; the web runtime derives it from the session
+      // (see apps/web/lib/parent-runtime.test.ts for the two-parent isolation proof).
       expect((await loadParentAccount(db, parent)).contact.id).toBe(contactId);
       expect((await loadParentAccount(db, { userId, contactId: otherId })).contact.email).toBe(otherEmail);
     } finally {

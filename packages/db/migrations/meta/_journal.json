@@ -337,6 +337,13 @@
       "when": 1791525644525,
       "tag": "0047_acoustic_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791531344220,
+      "tag": "0048_eminent_stingray",
+      "breakpoints": true
     }
   ]
 }

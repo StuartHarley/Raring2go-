@@ -456,9 +456,32 @@ export function projectPublicContent(
 }
 
 function publicContentProjections(data: PublicProjectionData, territory: PublicTerritory, now = new Date()) {
-  return data.contentItems
+  const cards = data.contentItems
     .map((item) => projectPublicContent(data, item, territory, now))
     .filter((item): item is PublicContentCard => Boolean(item));
+  return uniqueSlugs(cards, territory);
+}
+
+/**
+ * Titles are not unique, but an address must be. Within a section the lowest id keeps the plain
+ * slug and any other item sharing it gets its own id fragment, so each public page has exactly one
+ * address and every card links to the page it describes.
+ */
+function uniqueSlugs(cards: PublicContentCard[], territory: PublicTerritory) {
+  const claimed = new Set<string>();
+  const slugById = new Map<string, string>();
+  for (const card of [...cards].sort((left, right) => left.id.localeCompare(right.id))) {
+    const section = contentSection(card.type);
+    let slug = card.slug;
+    if (claimed.has(`${section}/${slug}`)) slug = `${card.slug}-${card.id.replaceAll("-", "").slice(0, 8)}`;
+    claimed.add(`${section}/${slug}`);
+    slugById.set(card.id, slug);
+  }
+  // Keep the original order; only the address of a colliding item changes.
+  return cards.map((card) => {
+    const slug = slugById.get(card.id)!;
+    return slug === card.slug ? card : { ...card, slug, href: `/areas/${territory.slug}/${contentSection(card.type)}/${slug}` };
+  });
 }
 
 function isPublishableContentItem(

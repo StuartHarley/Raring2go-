@@ -12,6 +12,7 @@ import {
   advertiserActivityEvents,
   advertiserContacts,
   advertiserInvoiceSequences,
+  advertiserTaxRates,
   advertiserTerms,
   advertiserMetricSnapshots,
   advertisers,
@@ -560,17 +561,20 @@ export async function seedDatabase(databaseUrl?: string) {
       }
     });
 
+    // Re-seeding must never rewind invoice numbering (that would reissue numbers already used), so
+    // the counter is only ever set when the row is first created.
     await db.insert(advertiserInvoiceSequences).values([...foundationSeed.advertiserInvoiceSequences]).onConflictDoUpdate({
       target: advertiserInvoiceSequences.id,
       set: {
         issuerOrganisationId: sql`excluded.issuer_organisation_id`,
         key: sql`excluded.key`,
         prefix: sql`excluded.prefix`,
-        nextNumber: sql`excluded.next_number`,
         padding: sql`excluded.padding`,
         updatedAt: sql`now()`
       }
     });
+
+    await db.insert(advertiserTaxRates).values([...foundationSeed.advertiserTaxRates]).onConflictDoNothing();
 
     await db.insert(audienceContacts).values(foundationSeed.audienceContacts.map((contact) => ({
       ...contact,
