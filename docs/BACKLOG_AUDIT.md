@@ -58,6 +58,19 @@ logic and its in-memory tests exist, but nothing in the web app calls the mutati
 - Social domain events were keyed by a running count, so two simultaneous actions on one post could collide. They now carry a
   unique key.
 
+- **The welcome journey never fired for real subscribers.** Only a script called the "subscribe and trigger journeys" path, so
+  parents who subscribed through their preferences (or any other route) were never entered. The journey engine now also
+  scans for new subscribers, with the same idempotency key as the direct path so nobody is welcomed twice.
+- A journey's conditions were stored but never evaluated at entry. They are now, and a contact who does not meet them is not entered.
+- Journey frequency caps were stored in several shapes and never read. One shape is now defined and enforced, with a protective
+  default (3 emails per 7 days) when a journey sets none; a parent's chosen email frequency is respected for everything except
+  a transactional step such as the welcome email.
+- Compliance reminders were created but never delivered, and actions only appeared when someone pressed a button.
+- The Postgres test suites share one database and the journey engine now scans it for new subscribers, which made suites
+  interfere with each other. DB suites now run one at a time (`turbo --concurrency=1`, and web test files serially under
+  `RUN_DB_TESTS`); the whole serial run takes about half a minute. Tests that create contacts clean up through
+  `deleteAudienceContactsForTests`.
+
 ## What only the business can do (not planned as code)
 
 UAT-001 to 005: provider accounts and credentials, named testers and owners, restore rehearsals on the hosted database,
@@ -77,7 +90,7 @@ One PR per work package, merged in order. Sizes: S under a day, M a few days, L 
 | 3 ✅ | **Public site completion.** Detail routes, per-edition and per-article routes, canonical URLs, Event/Article structured data, visible Sponsored labels, personalisation flag gating | PUB-001 to 004, 006, 007 | M |
 | 4 ✅ | **Advertiser CRM staff UI.** *(Part 1 done: advertiser create/edit, contacts, activity, derived metrics, opportunities and stage changes. Part 2 done: server-priced proposals, send, book, invoice, issue, record and apply payments. Part 3 done: artwork requested at booking, guarded sign-off with production exceptions, fulfilment tied to published output, proof packs, renewal engine and prompts.)* Create/edit advertiser, pipeline actions, proposals and booking, invoices and payments, artwork status, fulfilment and renewals; runtime wrappers with audit and Postgres tests | ADV-001 to 008 | L |
 | 5 ✅ | **Social publishing wired.** Runtime wrappers, queue/approve/schedule UI, calendar, job handler registered in the worker, retry/failure surfacing | MKT-005 | M |
-| 6 | **Journeys and compliance jobs.** Enforce frequency caps, define the named journeys, move the journey and compliance cron work into the durable job runtime, deliver compliance reminders | MKT-006, FRN-006 | M |
+| 6 ✅ | **Journeys and compliance jobs.** Enforce frequency caps, define the named journeys, move the journey and compliance cron work into the durable job runtime, deliver compliance reminders | MKT-006, FRN-006 | M |
 | 7 | **Audience import (dry-run first).** Import service with dry-run, reject report, idempotency, consent provenance, tenancy checks, rollback; mapping doc; audience management UI | MKT-001, UAT-003 | L |
 | 8 | **Franchise documents and e-sign boundary.** Real upload/download through storage, agreement artefact adoption, provider-neutral e-sign webhook route with idempotency (provider chosen by you); franchise staff delegation | FRN-003, FRN-004 | M |
 | 9 | **Finance wiring.** Accounting sync adapter wired, tax configuration, database-level payment idempotency, DB-level immutability for issued invoices and acceptances | ADV-005, ADV-006 | M |

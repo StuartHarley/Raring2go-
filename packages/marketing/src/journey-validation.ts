@@ -2,7 +2,7 @@ import { isRecord, validateBlocks } from "./blocks";
 import { looksLikeCondition } from "./segment-rules";
 import type { JourneyCondition, JourneyStep, JourneyTrigger } from "./types";
 
-const JOURNEY_TRIGGER_TYPES = new Set(["contact_subscribed_to_territory"]);
+const JOURNEY_TRIGGER_TYPES = new Set(["contact_subscribed_to_territory", "contact_inactive", "digital_edition_published"]);
 const JOURNEY_STEP_ACTION_TYPES = new Set(["send_email"]);
 
 /**
@@ -13,7 +13,14 @@ export function validateJourneyTrigger(raw: unknown): JourneyTrigger {
   if (!isRecord(raw) || typeof raw.type !== "string" || !JOURNEY_TRIGGER_TYPES.has(raw.type)) {
     throw new Error("Journey trigger is malformed.");
   }
-  return { type: raw.type as JourneyTrigger["type"] };
+  if (raw.type === "contact_inactive") {
+    const days = raw.days;
+    if (typeof days !== "number" || !Number.isInteger(days) || days < 14 || days > 365) {
+      throw new Error("A re-engagement trigger needs a whole number of days between 14 and 365.");
+    }
+    return { type: "contact_inactive", days };
+  }
+  return { type: raw.type } as JourneyTrigger;
 }
 
 /**
@@ -58,6 +65,7 @@ export function validateJourneySteps(raw: unknown): JourneyStep[] {
       key: entry.key,
       actionType: "send_email",
       delayMinutes: entry.delayMinutes,
+      ...(entry.transactional === true ? { transactional: true } : {}),
       email: {
         subject: entry.email.subject,
         blocks: validateBlocks(entry.email.blocks)

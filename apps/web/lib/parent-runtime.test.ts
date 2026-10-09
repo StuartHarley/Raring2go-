@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { contentChannelVariantVersions, contentChannelVariants, contentItems, audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions, authSessions, createDb, fixtureIds, users } from "@raring2go/db";
+import { deleteAudienceContactsForTests, contentChannelVariantVersions, contentChannelVariants, contentItems, audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions, authSessions, createDb, fixtureIds, users } from "@raring2go/db";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDevelopmentSession, createFixtureIdentity, setIdentityForTests } from "./auth-runtime";
@@ -43,14 +43,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("parent self-service runtime (postgre
     for (const email of emails) {
       const [user] = await db.select().from(users).where(eq(users.email, email));
       const [contact] = await db.select().from(audienceContacts).where(eq(audienceContacts.emailNormalised, email));
-      if (contact) {
-        await db.delete(audienceConsentEvents).where(eq(audienceConsentEvents.contactId, contact.id));
-        await db.delete(audienceSavedContent).where(eq(audienceSavedContent.contactId, contact.id));
-        await db.delete(audiencePreferenceProfiles).where(eq(audiencePreferenceProfiles.contactId, contact.id));
-        await db.delete(audienceSuppressions).where(eq(audienceSuppressions.contactId, contact.id));
-        await db.delete(audienceTerritorySubscriptions).where(eq(audienceTerritorySubscriptions.contactId, contact.id));
-        await db.delete(audienceContacts).where(eq(audienceContacts.id, contact.id));
-      }
+      if (contact) await deleteAudienceContactsForTests(db, [contact.id]);
       if (user) await db.delete(authSessions).where(eq(authSessions.userId, user.id));
     }
     await sql.end();

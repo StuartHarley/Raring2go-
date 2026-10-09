@@ -415,7 +415,12 @@ export type MarketingJourney = {
  * Deliberately narrow for v1 - one variant, structured as a discriminated
  * union so later trigger types can be added without a breaking change.
  */
-export type JourneyTrigger = { type: "contact_subscribed_to_territory" };
+export type JourneyTrigger =
+  | { type: "contact_subscribed_to_territory" }
+  /** A subscribed contact with no email engagement for `days`: the re-engagement journey. Found by the daily scan. */
+  | { type: "contact_inactive"; days: number }
+  /** A territory's digital magazine has just been published. Found by the daily scan, once per edition. */
+  | { type: "digital_edition_published" };
 
 /**
  * Reused directly from segment-rules.ts rather than a parallel type -
@@ -431,6 +436,8 @@ export type JourneyStepSendEmail = {
   actionType: "send_email";
   /** Delay before this step runs, relative to the previous step (or entry for the first step). */
   delayMinutes: number;
+  /** A welcome or confirmation the contact is expecting. It ignores the parent's email-frequency preference, never a journey cap or suppression. */
+  transactional?: boolean;
   email: { subject: string; blocks: Block[] };
 };
 

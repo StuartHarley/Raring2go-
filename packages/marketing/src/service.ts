@@ -1864,6 +1864,13 @@ export async function updateJourneyDraft(
   return { journey, version };
 }
 
+/** The contact does not meet the journey's conditions. Expected, not a fault: callers skip them. */
+export class JourneyEntryNotEligibleError extends Error {
+  constructor() {
+    super("The contact does not meet this journey's conditions.");
+  }
+}
+
 export async function enterJourneyFromEvent(
   context: MarketingActorContext,
   permissions: PermissionData,
@@ -1896,6 +1903,11 @@ export async function enterJourneyFromEvent(
     .filter((candidate) => candidate.journeyId === journey.id && candidate.status === "approved" && !candidate.deletedAt)
     .sort((left, right) => right.versionNumber - left.versionNumber)[0];
   if (!version) throw new Error("Active journey has no approved version.");
+  // The journey's conditions decide who may enter at all; before this they were stored but never evaluated.
+  if (version.conditions.length > 0) {
+    const view = assembleContactView(data, contact, null);
+    if (!evaluateSegmentRules(view, { kind: "group", match: "all", children: version.conditions })) throw new JourneyEntryNotEligibleError();
+  }
   const entry: MarketingJourneyAudienceEntry = {
     id: crypto.randomUUID(),
     journeyId: journey.id,
@@ -1977,17 +1989,19 @@ export async function executeJourneyStep(
     }
   }
 
-  const output = await sendJourneyStepEmail(context, permissions, audit, data, entry, version, step);
+  const journey = requireJourney(data, execution.journeyId);
+  const decision = evaluateSendFrequency(data, { contactId: entry.contactId, journey, step, at: new Date(completedAt) });
+  const output: Record<string, unknown> = decision.allowed ? await sendJourneyStepEmail(context, permissions, audit, data, entry, version, step) : { skipped: true, reason: decision.reason, detail: decision.detail };
 
   data.journeyStepExecutions.push({
     id: crypto.randomUUID(),
     executionId: execution.id,
     stepKey,
     actionType: step.actionType,
-    status: "completed",
+    status: decision.allowed ? "completed" : "skipped",
     scheduledFor: null,
     completedAt,
-    failureReason: null,
+    failureReason: decision.allowed ? null : decision.reason,
     output,
     idempotencyKey: stepIdempotencyKey
   });
@@ -2009,7 +2023,8 @@ export async function executeJourneyStep(
   await audit.record(marketingAuditEvent(context, auditActions.marketingJourneyStepExecute, "marketing_journey_execution", execution.id, {
     stepKey,
     actionType: step.actionType,
-    hasNextStep: Boolean(nextStep)
+    hasNextStep: Boolean(nextStep),
+    ...(decision.allowed ? {} : { skipped: true, reason: decision.reason })
   }, entry.territoryId));
 
   return execution;
@@ -2102,6 +2117,96 @@ async function sendJourneyStepEmail(
 function deterministicJourneyId(...parts: string[]): string {
   const hex = createHash("sha256").update(parts.join(":")).digest("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * Subscribed, contactable people with no engagement for `days`: their last activity (or, if they have
+ * none, their subscription) is older than that. Suppressed contacts are never returned.
+ */
+export function findInactiveContactIds(data: MarketingData, input: { days: number; territoryId?: string | null; at: Date }) {
+  const cutoff = input.at.getTime() - input.days * 86_400_000;
+  const out: Array<{ contactId: string; territoryId: string }> = [];
+
+  for (const contact of data.contacts.filter((candidate) => !candidate.deletedAt && candidate.emailStatus !== "suppressed")) {
+    if (data.suppressions.some((suppression) => suppression.contactId === contact.id && suppression.active)) continue;
+    const subscriptions = data.subscriptions.filter((subscription) =>
+      subscription.contactId === contact.id && subscription.status === "subscribed" && !subscription.deletedAt && (!input.territoryId || subscription.territoryId === input.territoryId)
+    );
+    const subscription = subscriptions[0];
+    if (!subscription) continue;
+
+    const subscribedAt = Math.max(...subscriptions.map((item) => (item.subscribedAt ? Date.parse(item.subscribedAt) : 0)));
+    const lastActivity = data.activityEvents
+      .filter((event) => event.contactId === contact.id && !event.deletedAt)
+      .reduce((max, event) => Math.max(max, Date.parse(event.occurredAt)), 0);
+    if (Math.max(subscribedAt, lastActivity) < cutoff) out.push({ contactId: contact.id, territoryId: subscription.territoryId });
+  }
+  return out;
+}
+
+export type JourneyFrequencyCap = { maxPerContact: number; window: "lifetime" | "24h" | "7d" | "30d" };
+
+/** Applied when a journey sets no cap of its own, so no journey is ever uncapped by omission. */
+export const defaultJourneyFrequencyCap: JourneyFrequencyCap = { maxPerContact: 3, window: "7d" };
+
+const windowMs: Record<Exclude<JourneyFrequencyCap["window"], "lifetime">, number> = { "24h": 86_400_000, "7d": 7 * 86_400_000, "30d": 30 * 86_400_000 };
+
+/** The minimum days between marketing emails a parent asked for. School-holiday-only parents are held to the longest gap. */
+const preferenceGapDays: Record<string, number> = { weekly: 7, fortnightly: 14, monthly: 30, school_holidays_only: 30 };
+
+export function readJourneyFrequencyCap(journey: Pick<MarketingJourney, "frequencyCap">): JourneyFrequencyCap {
+  const raw = journey.frequencyCap ?? {};
+  const max = raw.maxPerContact;
+  const window = raw.window;
+  if (typeof max === "number" && Number.isInteger(max) && max >= 1 && (window === "lifetime" || window === "24h" || window === "7d" || window === "30d")) {
+    return { maxPerContact: max, window };
+  }
+  return defaultJourneyFrequencyCap;
+}
+
+export type SendFrequencyDecision =
+  | { allowed: true }
+  | { allowed: false; reason: "journey_cap" | "preference_gap"; detail: string };
+
+/**
+ * Whether a journey may email this contact right now.
+ *  - The journey's cap (its own, or the default) limits how often that journey emails one contact. It always applies.
+ *  - The parent's chosen email frequency limits marketing email of any kind (newsletters included) to one per
+ *    that many days. It does not apply to a step marked transactional, such as the welcome email.
+ * Counts come from recipient snapshots (what was actually queued for the contact), not from guesses.
+ */
+export function evaluateSendFrequency(
+  data: MarketingData,
+  input: { contactId: string; journey: MarketingJourney; step: JourneyStepSendEmail; at: Date }
+): SendFrequencyDecision {
+  const sends = data.emailRecipientSnapshots
+    .filter((snapshot) => snapshot.recipients.some((recipient) => recipient.contactId === input.contactId))
+    .filter((snapshot) => !data.emailSendJobs.some((job) => job.recipientSnapshotId === snapshot.id && job.status === "failed"))
+    .map((snapshot) => ({ at: Date.parse(snapshot.generatedAt), campaignId: snapshot.campaignId }));
+
+  const journeyVersionIds = new Set(data.journeyVersions.filter((version) => version.journeyId === input.journey.id).map((version) => version.id));
+  const journeyCampaignIds = new Set(
+    data.emailCampaigns.filter((campaign) => typeof campaign.metadata.journeyVersionId === "string" && journeyVersionIds.has(campaign.metadata.journeyVersionId)).map((campaign) => campaign.id)
+  );
+
+  const cap = readJourneyFrequencyCap(input.journey);
+  const since = cap.window === "lifetime" ? Number.NEGATIVE_INFINITY : input.at.getTime() - windowMs[cap.window];
+  const fromThisJourney = sends.filter((send) => journeyCampaignIds.has(send.campaignId) && send.at > since).length;
+  if (fromThisJourney >= cap.maxPerContact) {
+    return { allowed: false, reason: "journey_cap", detail: `${fromThisJourney} of ${cap.maxPerContact} emails already sent in this journey's ${cap.window} window` };
+  }
+
+  if (!input.step.transactional) {
+    const profile = data.preferenceProfiles.find((candidate) => candidate.contactId === input.contactId && !candidate.deletedAt);
+    const gapDays = profile ? preferenceGapDays[profile.newsletterFrequency] : undefined;
+    if (gapDays) {
+      const latest = sends.reduce((max, send) => Math.max(max, send.at), Number.NEGATIVE_INFINITY);
+      if (latest > input.at.getTime() - gapDays * 86_400_000) {
+        return { allowed: false, reason: "preference_gap", detail: `emailed within the last ${gapDays} days and asked for ${profile!.newsletterFrequency.replaceAll("_", " ")} email` };
+      }
+    }
+  }
+  return { allowed: true };
 }
 
 export function findActiveJourneysForTrigger(data: MarketingData, trigger: JourneyTrigger) {
