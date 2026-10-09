@@ -33,6 +33,7 @@ import type {
   TerritoryEdition,
   TerritoryEditionContent
 } from "./types";
+import { blockingRenderIssues, buildEditionRenderModel } from "./render";
 
 type PublishingAuditRecorder = {
   record(event: {
@@ -1694,6 +1695,30 @@ export async function applySafePreflightFixes(
     unfixableCount: result.unfixableIssues.length
   }, edition.territoryId));
   return result;
+}
+
+/**
+ * Everything that must hold before an output is rendered: the actor may generate it, the edition is theirs and
+ * approved, every page is ready (and preflighted for print), and the layout has no blocking problems. Rendering
+ * is slow and outside any transaction, so this runs first and nothing is rendered for an edition that would be refused.
+ */
+export function prepareEditionOutput(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  data: PublishingData,
+  territoryEditionId: string,
+  kind: "print" | "digital"
+) {
+  requirePublishingPermission(context, permissions, kind === "print" ? "generatePrint" : "generateDigital");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  assertEditionReadyForOutput(data, edition, kind);
+  const model = buildEditionRenderModel(data, edition);
+  const blocking = kind === "print" ? blockingRenderIssues(model) : model.issues.filter((issue) => issue.code === "bad_geometry");
+  if (blocking.length > 0) {
+    throw new Error(`The layout has ${blocking.length} problem${blocking.length === 1 ? "" : "s"} to fix before output: ${blocking.slice(0, 3).map((issue) => issue.message).join(" ")}`);
+  }
+  return { edition, model };
 }
 
 export async function generatePrintOutput(

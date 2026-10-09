@@ -4,10 +4,12 @@ import type { Column } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import type { PublishingData } from "./types";
 
-type CollectionKey = "socialAccounts" | "socialPublications" | "socialPublishJobs" | "socialProviderEvents" | "contentDomainEvents";
+type CollectionKey = keyof PublishingData;
 
 /** Parents before children, so inserts satisfy foreign keys in this order. */
-export const socialCollections: Array<[CollectionKey, PgTable]> = [
+export type CollectionList = Array<[CollectionKey, PgTable]>;
+
+export const socialCollections: CollectionList = [
   ["socialAccounts", socialAccounts],
   ["socialPublications", socialPublications],
   ["socialPublishJobs", socialPublishJobs],
@@ -36,8 +38,13 @@ export type SocialPlannedChange = { collection: CollectionKey; table: PgTable; i
 
 /** Minimal writes between the data as loaded and as a domain function left it. Vanishing rows are a bug, so they throw. */
 export function planSocialChanges(before: PublishingData, after: PublishingData): SocialPlannedChange[] {
+  return planCollectionChanges(socialCollections, before, after, "Social");
+}
+
+/** The same diff for any list of collections, so every persisted slice of the publishing data shares one tested planner. */
+export function planCollectionChanges(collections: CollectionList, before: PublishingData, after: PublishingData, label: string): SocialPlannedChange[] {
   const plan: SocialPlannedChange[] = [];
-  for (const [collection, table] of socialCollections) {
+  for (const [collection, table] of collections) {
     const previous = new Map((before[collection] as unknown as Row[]).map((row) => [String(row.id), row]));
     const change: SocialPlannedChange = { collection, table, inserts: [], updates: [] };
 
@@ -58,7 +65,7 @@ export function planSocialChanges(before: PublishingData, after: PublishingData)
       if (Object.keys(changes).length > 0) change.updates.push({ id, changes });
     }
 
-    if (previous.size > 0) throw new Error(`Social ${collection} rows were removed by a domain function (${[...previous.keys()].join(", ")}).`);
+    if (previous.size > 0) throw new Error(`${label} ${collection} rows were removed by a domain function (${[...previous.keys()].join(", ")}).`);
     if (change.inserts.length > 0 || change.updates.length > 0) plan.push(change);
   }
   return plan;
@@ -74,9 +81,13 @@ export function snapshotPublishingData(data: PublishingData): PublishingData {
 }
 
 export async function persistSocialChanges(db: WriteDb, before: PublishingData, after: PublishingData, now: Date = new Date()) {
+  return persistPlan(db, planSocialChanges(before, after), "Social", now);
+}
+
+export async function persistPlan(db: WriteDb, plan: SocialPlannedChange[], label: string, now: Date = new Date()) {
   let inserted = 0;
   let updated = 0;
-  for (const change of planSocialChanges(before, after)) {
+  for (const change of plan) {
     for (const row of change.inserts) {
       await db.insert(change.table).values(row);
       inserted += 1;
@@ -86,7 +97,7 @@ export async function persistSocialChanges(db: WriteDb, before: PublishingData, 
     const hasUpdatedAt = "updatedAt" in columns;
     for (const update of change.updates) {
       const result = await db.update(change.table).set({ ...update.changes, ...(hasUpdatedAt ? { updatedAt: now } : {}) }).where(eq(idColumn, update.id)).returning();
-      if (result.length === 0) throw new Error(`Social ${change.collection} row ${update.id} no longer exists.`);
+      if (result.length === 0) throw new Error(`${label} ${change.collection} row ${update.id} no longer exists.`);
       updated += 1;
     }
   }

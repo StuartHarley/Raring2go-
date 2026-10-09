@@ -1,7 +1,8 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readPreflightPanel, readTerritoryEdition } from "../../../../../lib/publishing-runtime";
 import { AiPreparedNote, AssistantBanner, fixabilityLabels } from "../../../../../lib/assistant-ui";
-import { explainPreflightAction } from "./actions";
+import { explainPreflightAction, generateOutputAction } from "./actions";
+import { readOutputReadiness } from "../../../../../lib/edition-output";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -156,22 +157,48 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
         )}
       </section>
 
-      <section className="app-panel franchise-panel">
+      <section id="outputs" className="app-panel franchise-panel" aria-label="Outputs">
         <p className="eyebrow">Outputs</p>
         <h2>Print and digital artefacts</h2>
+        {resultCode === "output_queued" ? <p role="status">Queued. The file is rendered in the background and appears below when it is ready; progress is in Jobs.</p> : null}
+        {resultCode === "output_not_ready" ? <p role="alert">That output could not be queued. See what is blocking it below.</p> : null}
         <div className="franchise-list">
+          {(["print", "digital"] as const).map((kind) => {
+            const state = result.readiness[kind];
+            return (
+              <div key={kind}>
+                <strong>{kind === "print" ? "Press-ready print PDF" : "Digital edition PDF"}</strong>
+                {state.allowed ? (
+                  <form action={generateOutputAction.bind(null, request, id, kind)}>
+                    <button type="submit">Generate {kind}</button>
+                  </form>
+                ) : (
+                  <span className="muted">Not available: {state.blocker}</span>
+                )}
+              </div>
+            );
+          })}
           {result.outputs.length === 0 ? (
             <div>
               <strong>No outputs generated yet</strong>
-              <span>Final generation remains gated by approval and successful preflight.</span>
+              <span>Generation is gated by approval and, for print, a successful preflight on every page.</span>
             </div>
           ) : (
-            result.outputs.map((output) => (
-              <div key={output.id}>
-                <strong>{output.outputType} v{output.version}</strong>
-                <span>{output.status} - generated {output.generatedAt ?? "date not set"}</span>
-              </div>
-            ))
+            result.outputs.map((output) => {
+              const proofOnly = output.artifact.proofOnly === true;
+              const hasFile = typeof output.artifact.fileId === "string";
+              const query = new URLSearchParams();
+              if (request.sessionKey) query.set("session", request.sessionKey);
+              if (request.organisationId) query.set("organisationId", request.organisationId);
+              if (request.territoryId) query.set("territoryId", request.territoryId);
+              return (
+                <div key={output.id}>
+                  <strong>{output.outputType} v{output.version}{proofOnly ? " - proof only, not press-ready" : ""}</strong>
+                  <span>{output.status} - generated {output.generatedAt ?? "date not set"}{typeof output.artifact.pageCount === "number" ? ` - ${output.artifact.pageCount} pages` : ""}</span>
+                  {hasFile ? <a href={`/app/editions/${id}/outputs/${output.id}${query.size ? `?${query.toString()}` : ""}`}>Download PDF</a> : null}
+                </div>
+              );
+            })
           )}
         </div>
       </section>
@@ -190,7 +217,7 @@ async function loadEdition(
     });
     const actor = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     const edition = await readTerritoryEdition(actor, territoryEditionId);
-    return { ...edition, preflight: await readPreflightPanel(actor, territoryEditionId) };
+    return { ...edition, preflight: await readPreflightPanel(actor, territoryEditionId), readiness: await readOutputReadiness(actor, territoryEditionId) };
   } catch (error) {
     return { error };
   }
