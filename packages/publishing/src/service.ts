@@ -1429,6 +1429,123 @@ export async function propagateMasterContentCorrection(
   return { updatedCount, skippedOverrides };
 }
 
+export async function approveMasterEdition(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  masterEditionId: string
+) {
+  requirePublishingPermission(context, permissions, "editionApprove");
+  const master = requireMasterEdition(data, masterEditionId);
+  if (master.status !== "draft") {
+    throw new Error("Only a draft master edition can be approved.");
+  }
+  master.status = "approved";
+  master.readiness = "ready";
+  await audit.record(auditEvent(context, auditActions.publishingEditionApprove, "master_edition", master.id, { version: master.version }));
+  return master;
+}
+
+/** Local editing is done: the edition needs a flatplan, then goes to review. */
+export async function submitEditionForReview(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string
+) {
+  requirePublishingPermission(context, permissions, "editionEdit");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  if (edition.status !== "draft" && edition.status !== "localising") {
+    throw new Error("Only a draft or localising edition can be submitted for review.");
+  }
+  const pages = data.editionPages.filter((page) => page.territoryEditionId === edition.id && !page.deletedAt);
+  if (pages.length !== edition.pageCount) {
+    throw new Error("Create the flatplan before submitting the edition for review.");
+  }
+  edition.status = "review";
+  await audit.record(auditEvent(context, auditActions.publishingEditionUpdate, "territory_edition", edition.id, { action: "submit_for_review" }, edition.territoryId));
+  return edition;
+}
+
+export async function approveTerritoryEdition(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string
+) {
+  requirePublishingPermission(context, permissions, "editionApprove");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  if (edition.status !== "review") {
+    throw new Error("Only an edition in review can be approved.");
+  }
+  const pages = data.editionPages.filter((page) => page.territoryEditionId === edition.id && !page.deletedAt);
+  if (pages.length !== edition.pageCount || pages.some((page) => page.readiness !== "ready" || page.issues.length > 0)) {
+    throw new Error("Every page must be ready and clear of issues before the edition is approved.");
+  }
+  edition.status = "approved";
+  edition.readiness = "ready";
+  await audit.record(auditEvent(context, auditActions.publishingEditionApprove, "territory_edition", edition.id, { pageCount: pages.length }, edition.territoryId));
+  return edition;
+}
+
+/** Sends an edition back for changes. A published edition is public, so it cannot be reopened. */
+export async function reopenTerritoryEdition(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string,
+  reason: string
+) {
+  requirePublishingPermission(context, permissions, "editionApprove");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  if (edition.status !== "review" && edition.status !== "approved") {
+    throw new Error("Only an edition in review or approved can be reopened.");
+  }
+  if (!reason.trim()) {
+    throw new Error("Say why the edition is being reopened.");
+  }
+  edition.status = "localising";
+  edition.readiness = "in_progress";
+  await audit.record(auditEvent(context, auditActions.publishingEditionUpdate, "territory_edition", edition.id, { action: "reopen", reason: reason.trim().slice(0, 500) }, edition.territoryId));
+  return edition;
+}
+
+/** Makes the approved edition public. It needs a generated digital output to publish. */
+export async function releaseTerritoryEdition(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string
+) {
+  requirePublishingPermission(context, permissions, "editionRelease");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  if (edition.status !== "approved") {
+    throw new Error("Only an approved edition can be published.");
+  }
+  const digital = data.publicationOutputs.find(
+    (output) => output.territoryEditionId === edition.id && output.outputType === "digital" && output.status === "generated" && !output.deletedAt
+  );
+  if (!digital || edition.digitalStatus !== "generated") {
+    throw new Error("Generate the digital edition before publishing.");
+  }
+  edition.status = "published";
+  edition.publicationDate = edition.publicationDate ?? today();
+  for (const page of data.editionPages.filter((candidate) => candidate.territoryEditionId === edition.id && !candidate.deletedAt)) {
+    page.status = "published";
+  }
+  await audit.record(auditEvent(context, auditActions.publishingEditionPublish, "territory_edition", edition.id, { digitalOutputId: digital.id, version: digital.version }, edition.territoryId));
+  return edition;
+}
+
 export async function createEditionFlatplan(
   context: PublishingActorContext,
   permissions: PermissionData,

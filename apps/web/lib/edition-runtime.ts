@@ -1,6 +1,15 @@
 import { createDb } from "@raring2go/db";
 import {
+  approveMasterEdition,
   approveTemplateVersion,
+  approveTerritoryEdition,
+  buildSeasonAndMaster,
+  createEditionFlatplan,
+  createSeasonWithMasterEdition,
+  generateTerritoryEditions,
+  releaseTerritoryEdition,
+  reopenTerritoryEdition,
+  submitEditionForReview,
   buildTemplateSpec,
   createMagazineTemplate,
   createTemplateRevision,
@@ -13,11 +22,13 @@ import {
   TemplateSpecError,
   zonesOf
 } from "@raring2go/publishing";
+import type { SeasonFormInput } from "@raring2go/publishing";
 import type { MagazineTemplate, MagazineTemplateVersion, PublishingActorContext, PublishingData, TemplateSpecInput } from "@raring2go/publishing";
 import type { PermissionData } from "@raring2go/permissions";
 import { randomUUID } from "node:crypto";
 import { editionAuditFor } from "./edition-output";
 import { getPermissionData } from "./permission-source";
+import { evaluatePermission } from "@raring2go/permissions";
 
 type Audit = ReturnType<typeof editionAuditFor>;
 
@@ -88,3 +99,70 @@ export const approveTemplateVersionAsActor = (context: PublishingActorContext, v
 
 export const publishTemplateVersionAsActor = (context: PublishingActorContext, versionId: string) =>
   mutateEditions((data, audit, permissions) => publishTemplateVersion(context, permissions, audit, data, versionId));
+
+export async function readSeasonPlanner(context: PublishingActorContext) {
+  const permissions = await getPermissionData();
+  const { db, sql } = createDb();
+  try {
+    const data = await loadPublishingData(db);
+    // Reading the planner is an edition-creation concern: the same grant as making a season.
+    requireEditionCreateGrant(context, permissions);
+    const territories = data.territories.filter((territory) => territory.status === "active");
+    return data.seasons
+      .filter((season) => !season.deletedAt)
+      .map((season) => {
+        const masters = data.masterEditions.filter((master) => master.seasonId === season.id && !master.deletedAt);
+        const editions = data.territoryEditions.filter((edition) => edition.seasonId === season.id && !edition.deletedAt);
+        return {
+          season,
+          masters: masters.map((master) => ({
+            master,
+            editions: editions.filter((edition) => edition.masterEditionId === master.id).map((edition) => ({ edition, territoryName: territories.find((t) => t.id === edition.territoryId)?.name ?? "Territory" })),
+            missing: territories.filter((territory) => !editions.some((edition) => edition.territoryId === territory.id))
+          }))
+        };
+      })
+      .sort((a, b) => b.season.year - a.season.year || a.season.name.localeCompare(b.season.name));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function createSeasonAsActor(context: PublishingActorContext, input: SeasonFormInput) {
+  if (!context.organisationId) throw new Error("A season is created within an organisation.");
+  const built = buildSeasonAndMaster(input, { seasonId: randomUUID(), masterId: randomUUID(), organisationId: context.organisationId, userId: context.userId });
+  await mutateEditions((data, audit, permissions) => createSeasonWithMasterEdition(context, permissions, audit, data, built));
+  return built.season.id;
+}
+
+export const approveMasterAsActor = (context: PublishingActorContext, masterId: string) =>
+  mutateEditions((data, audit, permissions) => approveMasterEdition(context, permissions, audit, data, masterId));
+
+export async function generateEditionsAsActor(context: PublishingActorContext, masterId: string, territoryIds: string[]) {
+  if (territoryIds.length === 0) throw new Error("Choose at least one territory.");
+  return mutateEditions(async (data, audit, permissions) => {
+    const master = data.masterEditions.find((candidate) => candidate.id === masterId && !candidate.deletedAt);
+    if (!master || master.status !== "approved") throw new Error("Approve the master edition before generating territory editions.");
+    return generateTerritoryEditions(context, permissions, audit, data, masterId, territoryIds);
+  });
+}
+
+export const createFlatplanAsActor = (context: PublishingActorContext, editionId: string) =>
+  mutateEditions((data, audit, permissions) => createEditionFlatplan(context, permissions, audit, data, editionId));
+
+export const submitEditionAsActor = (context: PublishingActorContext, editionId: string) =>
+  mutateEditions((data, audit, permissions) => submitEditionForReview(context, permissions, audit, data, editionId));
+
+export const approveEditionAsActor = (context: PublishingActorContext, editionId: string) =>
+  mutateEditions((data, audit, permissions) => approveTerritoryEdition(context, permissions, audit, data, editionId));
+
+export const reopenEditionAsActor = (context: PublishingActorContext, editionId: string, reason: string) =>
+  mutateEditions((data, audit, permissions) => reopenTerritoryEdition(context, permissions, audit, data, editionId, reason));
+
+export const releaseEditionAsActor = (context: PublishingActorContext, editionId: string) =>
+  mutateEditions((data, audit, permissions) => releaseTerritoryEdition(context, permissions, audit, data, editionId));
+
+function requireEditionCreateGrant(context: PublishingActorContext, permissions: PermissionData) {
+  const decision = evaluatePermission({ userId: context.userId, module: "edition", action: "create", context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } }, permissions);
+  if (!decision.allowed) throw new Error("No permission grant matched this request.");
+}

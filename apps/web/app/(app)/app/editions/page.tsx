@@ -32,7 +32,7 @@ export default async function EditionsPage({ searchParams }: PageProps) {
           Network-wide production status for seasonal territory editions, built
           from the same canonical edition records that feed print and digital output.
         </p>
-        {result.canTemplates ? <p><Link href={"/app/editions/templates" as Route}>Template library</Link></p> : null}
+        {result.canTemplates ? <p><Link href={"/app/editions/templates" as Route}>Template library</Link> - <Link href={"/app/editions/seasons" as Route}>Seasons and masters</Link></p> : null}
         <div className="franchise-metrics">
           <article>
             <span>Territory editions</span>
