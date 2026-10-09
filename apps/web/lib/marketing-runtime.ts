@@ -58,7 +58,8 @@ import {
   upsertTerritoryNewsletterEditionRecord
 } from "@raring2go/marketing";
 import { recordAuditEvent } from "@raring2go/audit";
-import { createDb, fixtureIds } from "@raring2go/db";
+import { createDb, emailTemplates } from "@raring2go/db";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { createDrizzleProviderConnectionRepository } from "@raring2go/integrations";
 import type {
   Block,
@@ -430,7 +431,22 @@ export async function subscribeContactAndTriggerJourneys(
   }
 }
 
-export async function readPreferenceCentre(context: MarketingActorContext, contactId = fixtureIds.audienceContacts.parentOne) {
+/**
+ * The approved newsletter template new campaigns and masters start from. Looked up
+ * from the database rather than assumed, so a database without one fails loudly.
+ */
+async function defaultNewsletterTemplateId(db: Pick<ReturnType<typeof createDb>["db"], "select">) {
+  const [template] = await db
+    .select({ id: emailTemplates.id })
+    .from(emailTemplates)
+    .where(and(eq(emailTemplates.templateType, "newsletter"), eq(emailTemplates.status, "approved"), isNull(emailTemplates.deletedAt)))
+    .orderBy(asc(emailTemplates.key))
+    .limit(1);
+  if (!template) throw new Error("No approved newsletter template is configured.");
+  return template.id;
+}
+
+export async function readPreferenceCentre(context: MarketingActorContext, contactId: string) {
   const marketingPermissionData = await getPermissionData();
   const { db, sql } = createDb();
 
@@ -518,7 +534,7 @@ export async function composeEmailCampaign(
       const campaign = {
         id: input.campaignId,
         territoryId: segment.territoryId ?? null,
-        templateId: fixtureIds.emailTemplates.standardNewsletter,
+        templateId: await defaultNewsletterTemplateId(tx),
         segmentId: input.segmentId,
         campaignType: "newsletter",
         status: "draft" as const,
@@ -788,7 +804,7 @@ export async function createNewsletterMaster(
       const data = await loadMarketingData(tx);
       const master = {
         id: input.masterId,
-        templateId: fixtureIds.emailTemplates.standardNewsletter,
+        templateId: await defaultNewsletterTemplateId(tx),
         title: input.title,
         status: "draft" as const,
         seasonKey: input.seasonKey,

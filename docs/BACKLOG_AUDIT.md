@@ -38,7 +38,7 @@ One PR per work package, merged in order. Sizes: S under a day, M a few days, L 
 | # | Work package | Closes | Size |
 |---|---|---|---|
 | 0 | **Make tests honest.** Add `RUN_DB_TESTS` to turbo `globalEnv`, set it in CI, run `security:gate` in CI, fix whatever the integration tests then reveal | FND-001 | S |
-| 1 | **Remove fixtures from production paths.** Real contact/template lookup, parent-session preference centre scaffold, database-driven sitemap, franchise signers from real contacts; make dev-only providers fail closed outside development | audit finding 3 | S–M |
+| 1 ✅ | **Remove fixtures from production paths.** Real contact/template lookup, parent-session preference centre scaffold, database-driven sitemap, franchise signers from real contacts; make dev-only providers fail closed outside development | audit finding 3 | S–M |
 | 2 | **Parent self-service.** Parent-session preference centre (consent, territories, age bands), newsletter signup, save/follow/unsave, consent-withdrawal-removes-eligibility test, analytics emission from pages | EXT-002, MKT-007, PUB-005, PUB-008 | M |
 | 3 | **Public site completion.** Detail routes, per-edition and per-article routes, canonical URLs, Event/Article structured data, visible Sponsored labels, personalisation flag gating | PUB-001 to 004, 006, 007 | M |
 | 4 | **Advertiser CRM staff UI.** Create/edit advertiser, pipeline actions, proposals and booking, invoices and payments, artwork status, fulfilment and renewals; runtime wrappers with audit and Postgres tests | ADV-001 to 008 | L |

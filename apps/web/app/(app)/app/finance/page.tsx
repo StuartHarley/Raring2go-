@@ -5,7 +5,6 @@ import {
   readNetworkRoyaltyStatements,
   readOwnFranchiseRoyaltyStatements
 } from "../../../../lib/finance-runtime";
-import { fixtureIds } from "@raring2go/db";
 import { readRoyaltyPanel } from "../../../../lib/assistants-finance";
 import { RoyaltyReviewPanel } from "./RoyaltyReviewPanel";
 import { AppShell } from "../../layout";
@@ -108,7 +107,7 @@ export default async function FinancePage({ searchParams }: PageProps) {
             <p className="eyebrow">Generate</p>
             <h2>Generate a royalty statement</h2>
             <form
-              action={generateStatementAction.bind(null, context, fixtureIds.organisations.hq)}
+              action={generateStatementAction.bind(null, context)}
               className="franchise-form"
             >
               <label>
