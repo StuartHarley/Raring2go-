@@ -52,6 +52,24 @@ export function buildHealthChecks(): HealthCheck[] {
       }
     },
     {
+      name: "advertiser_signatures",
+      critical: false,
+      async run() {
+        const { db, sql } = createDb();
+        try {
+          const rows = (await db.execute(rawSql`
+            select count(*)::int as n from advertiser_proposal_acceptances
+            where deleted_at is null and status = 'signature_lapsed' and provider_metadata->>'needsFollowUp' = 'true'`)) as unknown as Array<{ n: number }>;
+          const n = rows[0]?.n ?? 0;
+          return n > 0
+            ? { status: "degraded", detail: `${n} advertiser(s) signed a proposal that could not be booked and need a call`, data: { n } }
+            : { status: "ok", detail: "no signed proposals waiting for follow-up", data: { n } };
+        } finally {
+          await sql.end();
+        }
+      }
+    },
+    {
       name: "online_payments",
       critical: false,
       async run() {

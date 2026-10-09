@@ -35,6 +35,7 @@ run "Accounting provider absent in production: fails closed, nothing marked sync
 run "Xero down, rejecting, or revoked: retried, kept waiting for a person, never marked synced; token refreshed once" @raring2go/web lib/xero-runtime.test.ts ""
 run "Stripe/GoCardless: duplicate or forged events, refunds, disputes, wrong account or currency: money recorded once, nothing reversed automatically" @raring2go/web lib/payments-runtime.test.ts ""
 run "SignWell: forged/stale/tampered events, unconfirmed completion, replay: nothing executes until SignWell itself confirms; executed once" @raring2go/web lib/signwell-runtime.test.ts ""
+run "Advertiser signs a proposal: nothing booked until SignWell confirms; lapsed/unbookable signatures handled, booked once" @raring2go/web lib/advertiser-signing.test.ts ""
 run "E-sign document fetch fails: no claim recorded, provider retry succeeds"      @raring2go/web   lib/esign-runtime.test.ts   ""
 run "E-sign untrusted host, bad checksum, not a PDF, or failed scan: refused"      @raring2go/web   lib/esign-runtime.test.ts   ""
 run "E-sign webhook delivered twice or out of order: applied once"                 @raring2go/web   lib/esign-runtime.test.ts   "applies each signer once"

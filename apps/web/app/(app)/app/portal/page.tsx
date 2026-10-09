@@ -6,11 +6,16 @@ import { StatusBadge } from "../../../../lib/workflow-ui";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { ArtworkUploadForm } from "./ArtworkUploadForm";
-import { payInvoiceAction, respondToProofAction, respondToProposalAction } from "./actions";
+import { payInvoiceAction, respondToProofAction, respondToProposalAction, signProposalAction } from "./actions";
+import { advertiserSigningEnabled } from "../../../../lib/advertiser-signing";
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
+  awaiting_signature: { tone: "success", text: "Your signing request has been sent. Your booking is confirmed once your signature is complete." },
+  signing_returned: { tone: "success", text: "Thank you. We will confirm your booking here as soon as your signature is verified, which can take a few minutes." },
+  signing_declined: { tone: "success", text: "You declined to sign, so nothing has been booked." },
+  signing_unavailable: { tone: "error", text: "We could not start the signing just now. Please try again in a few minutes, or contact your account manager." },
   payment_unavailable: { tone: "error", text: "That way of paying is not available right now. Please use the bank details or contact your account manager." },
   accepted: { tone: "success", text: "Thank you. Your booking is confirmed and we will be in touch about your artwork." },
   rejected: { tone: "success", text: "We have recorded that you are declining this proposal." },
@@ -106,9 +111,14 @@ export default async function PortalPage({ searchParams }: PageProps) {
                 ))}
                 {proposal.canRespond ? (
                   <div className="franchise-actions">
-                    <form action={respondToProposalAction.bind(null, request, proposal.id, "accepted")}><button type="submit">Accept and book</button></form>
+                    <form action={respondToProposalAction.bind(null, request, proposal.id, "accepted")}><button type="submit">{advertiserSigningEnabled() ? "Accept and sign" : "Accept and book"}</button></form>
                     <form action={respondToProposalAction.bind(null, request, proposal.id, "change_requested")}><button type="submit">Ask for changes</button></form>
                     <form action={respondToProposalAction.bind(null, request, proposal.id, "rejected")}><button type="submit">Decline</button></form>
+                  </div>
+                ) : proposal.awaitingSignature ? (
+                  <div className="franchise-actions">
+                    <span>You have accepted. Your booking is confirmed once your signature is complete.</span>
+                    <form action={signProposalAction.bind(null, request, proposal.id)}><button type="submit">Continue to sign</button></form>
                   </div>
                 ) : proposal.response ? (
                   <span>Your response: {proposal.response.replace("_", " ")}</span>
