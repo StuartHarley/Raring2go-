@@ -50,6 +50,7 @@ import { assistantsConfigured, latestAssistantOutput, runAssistant } from "./ass
 import { AiRunFailedError } from "@raring2go/ai";
 import { getDirectory } from "./directory";
 import { getPermissionData } from "./permission-source";
+import { queueableSocialVariants } from "./social-runtime";
 
 export async function listEditionFactoryRows(
   context: PublishingActorContext
@@ -150,9 +151,13 @@ export async function readContentWorkspaceView(
 export async function readSocialQueue(context: PublishingActorContext) {
   const publishingPermissionData = await getPermissionData();
   const data = await readPublishingData();
+  const allowed = (action: string) =>
+    evaluatePermission({ userId: context.userId, module: "social", action, context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } }, publishingPermissionData).allowed;
   return {
     queue: listSocialQueue(context, publishingPermissionData, data),
-    gaps: socialContentGaps(data)
+    gaps: socialContentGaps(data),
+    queueable: allowed("create") ? queueableSocialVariants(data, context.territoryId) : [],
+    access: { create: allowed("create"), approve: allowed("approve"), schedule: allowed("schedule"), cancel: allowed("cancel"), publish: allowed("publish") }
   };
 }
 

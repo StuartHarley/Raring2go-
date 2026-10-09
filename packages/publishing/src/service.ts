@@ -1043,6 +1043,13 @@ export async function scheduleSocialPublication(
   if (publication.publishState !== "approved" && publication.publishState !== "scheduled") {
     throw new Error("Only approved or scheduled social publications can be scheduled.");
   }
+  const scheduledTime = Date.parse(scheduledAt);
+  if (Number.isNaN(scheduledTime)) {
+    throw new Error("Choose a valid date and time to publish.");
+  }
+  if (scheduledTime < Date.now() - 5 * 60 * 1000) {
+    throw new Error("A post cannot be scheduled in the past.");
+  }
   publication.scheduledAt = scheduledAt;
   publication.timezone = timezone;
   publication.publishState = "scheduled";
@@ -1087,37 +1094,188 @@ export async function publishDueSocialJob(
   if (job.status === "completed") return requireSocialPublication(data, job.publicationId);
   const publication = requireSocialPublication(data, job.publicationId);
   ensureContextCanAccessTerritory(context, publication.territoryId);
-  const account = requireSocialAccount(data, publication.socialAccountId);
-  if (publication.publishState !== "scheduled" && publication.publishState !== "failed") {
-    throw new Error("Only scheduled or retryable failed publications can be published.");
+  if (publication.publishState !== "scheduled") {
+    throw new Error("Only scheduled publications can be published.");
   }
-  publication.publishState = "publishing";
+
+  // Same two phases the worker uses, run back to back for a single in-process call.
   job.status = "running";
   job.attempts += 1;
   job.lockedAt = now();
-  await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublishStarted, publication, { jobId: job.id });
-  const result = await provider.publish({ publication, account });
+  const started = await beginSocialPublish(data, audit, job.id);
+  if (!started) return publication;
+  const result = await provider.publish({ publication: started.publication, account: started.account });
+  return completeSocialPublish(data, audit, job.id, result);
+}
+
+const SYSTEM_PUBLISHER: PublishingActorContext = { userId: "" };
+const staleSocialJobMinutes = 15;
+
+/** Wait before retrying a failed publish: 5, 10, 20 minutes. */
+export function socialRetryDelayMinutes(attempts: number) {
+  return 5 * 2 ** Math.max(0, attempts - 1);
+}
+
+/**
+ * Phase one of publishing, run once a job has been claimed. It moves the publication to "publishing" and
+ * that is committed *before* the provider is called, so a crash mid-publish leaves a visible "publishing"
+ * post that is reviewed by a person, never a silent retry that could post the same thing twice.
+ * Returns undefined (and cancels the job) when the post is no longer scheduled, e.g. it was cancelled.
+ */
+export async function beginSocialPublish(data: PublishingData, audit: PublishingAuditRecorder, jobId: string) {
+  const job = data.socialPublishJobs.find((candidate) => candidate.id === jobId);
+  if (!job) throw new Error("Social publish job was not found.");
+  const publication = requireSocialPublication(data, job.publicationId);
+  const account = requireSocialAccount(data, publication.socialAccountId);
+
+  if (publication.publishState !== "scheduled") {
+    job.status = "cancelled";
+    job.completedAt = now();
+    return undefined;
+  }
+  publication.publishState = "publishing";
+  await recordSocialAuditAndEvent(SYSTEM_PUBLISHER, audit, data, auditActions.socialPublishStarted, publication, { jobId: job.id, attempt: job.attempts });
+  return { job, publication, account };
+}
+
+/**
+ * Phase two: record what the provider said. A recoverable failure schedules a retry with backoff while
+ * attempts remain; an unrecoverable one (bad credentials, wrong account) or the last attempt fails the
+ * post for a person to look at. Provider detail is stripped of tokens before it is stored.
+ */
+export async function completeSocialPublish(
+  data: PublishingData,
+  audit: PublishingAuditRecorder,
+  jobId: string,
+  result: { status: "published" | "failed"; externalReference?: string | null; metadata?: Record<string, unknown> }
+) {
+  const job = data.socialPublishJobs.find((candidate) => candidate.id === jobId);
+  if (!job) throw new Error("Social publish job was not found.");
+  const publication = requireSocialPublication(data, job.publicationId);
+  if (job.status === "completed") return publication;
+  if (publication.publishState !== "publishing") {
+    throw new Error("This post is not being published.");
+  }
+
   job.providerResponse = sanitizeProviderMetadata(result.metadata ?? {});
-  job.completedAt = now();
   if (result.status === "published") {
     job.status = "completed";
+    job.completedAt = now();
+    job.lastError = null;
+    publication.publishState = "published";
+    publication.publishedAt = now();
+    publication.publishedExternalReference = result.externalReference ?? null;
+    publication.failureMetadata = {};
+    await recordSocialAuditAndEvent(SYSTEM_PUBLISHER, audit, data, auditActions.socialPublished, publication, { externalReference: publication.publishedExternalReference });
+    return publication;
+  }
+
+  const recoverable = result.metadata?.recoverable !== false;
+  const reason = String(result.metadata?.reason ?? "provider_failure");
+  job.lastError = reason;
+  publication.retryCount += 1;
+  publication.failureMetadata = sanitizeProviderMetadata({ ...(result.metadata ?? {}), reason, attempts: job.attempts });
+
+  if (recoverable && job.attempts < job.maxAttempts) {
+    job.status = "queued";
+    job.runAfter = new Date(Date.now() + socialRetryDelayMinutes(job.attempts) * 60_000).toISOString();
+    job.lockedAt = null;
+    publication.publishState = "scheduled";
+  } else {
+    job.status = "failed";
+    job.completedAt = now();
+    publication.publishState = "failed";
+  }
+  await recordSocialAuditAndEvent(SYSTEM_PUBLISHER, audit, data, auditActions.socialPublishFailed, publication, { attempts: job.attempts, reason, willRetry: job.status === "queued" });
+  return publication;
+}
+
+/**
+ * A job that has been "running" for too long means the worker died somewhere between asking the provider
+ * and recording the answer, so nobody knows if it posted. It is failed as "outcome unknown", never retried
+ * automatically, and a person checks the page and resolves it.
+ */
+export async function reapStaleSocialJobs(data: PublishingData, audit: PublishingAuditRecorder, nowIso: string = now()) {
+  const cutoff = Date.parse(nowIso) - staleSocialJobMinutes * 60_000;
+  const reaped: SocialPublication[] = [];
+  for (const job of data.socialPublishJobs.filter((candidate) => candidate.status === "running" && candidate.lockedAt && Date.parse(candidate.lockedAt) < cutoff)) {
+    const publication = requireSocialPublication(data, job.publicationId);
+    job.status = "failed";
+    job.completedAt = nowIso;
+    job.lastError = "outcome_unknown";
+    if (publication.publishState === "publishing") {
+      publication.publishState = "failed";
+      publication.failureMetadata = { reason: "outcome_unknown", recoverable: false, attempts: job.attempts };
+      await recordSocialAuditAndEvent(SYSTEM_PUBLISHER, audit, data, auditActions.socialPublishFailed, publication, { reason: "outcome_unknown", jobId: job.id });
+      reaped.push(publication);
+    }
+  }
+  return reaped;
+}
+
+/** Staff put a failed post back in the queue. Not for an unknown outcome: that must be checked on the platform first. */
+export async function retrySocialPublication(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  publicationId: string
+) {
+  requirePublishingPermission(context, permissions, "socialSchedule");
+  const publication = requireSocialPublication(data, publicationId);
+  ensureContextCanAccessTerritory(context, publication.territoryId);
+  if (publication.publishState !== "failed") throw new Error("Only a failed post can be retried.");
+  if (publication.failureMetadata.reason === "outcome_unknown") {
+    throw new Error("Check whether this post went out before retrying it.");
+  }
+  requeueSocialPublication(data, publication);
+  await recordSocialAuditAndEvent(context, audit, data, auditActions.socialScheduled, publication, { retried: true });
+  return publication;
+}
+
+/** After a person checks the platform: it did go out (record it), or it did not (queue it again). */
+export async function resolveUnknownSocialOutcome(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  publicationId: string,
+  outcome: { posted: boolean; externalReference?: string | null }
+) {
+  requirePublishingPermission(context, permissions, "socialPublish");
+  const publication = requireSocialPublication(data, publicationId);
+  ensureContextCanAccessTerritory(context, publication.territoryId);
+  if (publication.publishState !== "failed" || publication.failureMetadata.reason !== "outcome_unknown") {
+    throw new Error("Only a post with an unknown outcome can be resolved this way.");
+  }
+  if (outcome.posted) {
     publication.publishState = "published";
     publication.publishedAt = now();
     publication.publishedByUserId = context.userId;
-    publication.publishedExternalReference = result.externalReference ?? `dev-${publication.id}`;
-    await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublished, publication, {
-      externalReference: publication.publishedExternalReference
-    });
-  } else {
-    job.status = job.attempts >= job.maxAttempts ? "failed" : "queued";
-    publication.publishState = "failed";
-    publication.retryCount += 1;
-    publication.failureMetadata = sanitizeProviderMetadata(result.metadata ?? { reason: "provider_failure" });
-    await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublishFailed, publication, {
-      attempts: job.attempts
-    });
+    publication.publishedExternalReference = outcome.externalReference?.trim() || "confirmed-manually";
+    publication.failureMetadata = {};
+    await recordSocialAuditAndEvent(context, audit, data, auditActions.socialPublished, publication, { confirmedManually: true });
+    return publication;
   }
+  requeueSocialPublication(data, publication);
+  await recordSocialAuditAndEvent(context, audit, data, auditActions.socialScheduled, publication, { confirmedNotPosted: true });
   return publication;
+}
+
+function requeueSocialPublication(data: PublishingData, publication: SocialPublication) {
+  publication.publishState = "scheduled";
+  publication.failureMetadata = {};
+  const job = data.socialPublishJobs.find((candidate) => candidate.publicationId === publication.id && candidate.status !== "completed");
+  if (job) {
+    job.status = "queued";
+    job.attempts = 0;
+    job.runAfter = now();
+    job.lockedAt = null;
+    job.completedAt = null;
+    job.lastError = null;
+  } else {
+    upsertSocialPublishJob(data, publication);
+  }
 }
 
 function sanitizeProviderMetadata(value: Record<string, unknown>): Record<string, unknown> {
@@ -1781,7 +1939,7 @@ async function recordSocialAuditAndEvent(
     territoryId: publication.territoryId,
     payload: { publicationId: publication.id, ...payload },
     occurredAt: today(),
-    idempotencyKey: `${action}:${publication.id}:${data.contentDomainEvents.length + 1}`,
+    idempotencyKey: `${action}:${publication.id}:${crypto.randomUUID()}`,
     processedAt: null
   });
 }
