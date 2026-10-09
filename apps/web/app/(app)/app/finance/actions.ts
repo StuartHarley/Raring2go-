@@ -32,13 +32,13 @@ export async function createRoyaltyRuleAction(
 
 export async function generateStatementAction(
   context: FinanceActorContext,
-  issuerOrganisationId: string,
   formData: FormData
 ) {
   await generateStatement(context, {
     id: randomUUID(),
     franchiseId: String(formData.get("franchiseId") || ""),
-    issuerOrganisationId,
+    // The statement is issued by the organisation the (authorised) actor is acting for.
+    issuerOrganisationId: context.organisationId,
     periodStart: String(formData.get("periodStart") || ""),
     periodEnd: String(formData.get("periodEnd") || "")
   });

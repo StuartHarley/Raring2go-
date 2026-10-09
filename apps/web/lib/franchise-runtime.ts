@@ -58,7 +58,8 @@ import {
 } from "@raring2go/franchise";
 import { recordAuditEvent } from "@raring2go/audit";
 import { evaluatePermission } from "@raring2go/permissions";
-import { createDb, fixtureIds } from "@raring2go/db";
+import { createDb, users } from "@raring2go/db";
+import { eq } from "drizzle-orm";
 import { createFileReference } from "@raring2go/storage";
 import type {
   AgreementSigner,
@@ -270,11 +271,11 @@ export async function sendCurrentAgreementForSignature(
         franchisePermissionData,
         auditFor(tx),
         data,
-        developmentESignProvider,
+        eSignProvider(),
         {
           requestId,
           agreementId: current.id,
-          signers: defaultSigners(requestId, view)
+          signers: await defaultSigners(tx, requestId, view, context.userId)
         }
       );
       await updateFranchiseAgreementState(tx, data.franchiseAgreements!.find((agreement) => agreement.id === current.id)!);
@@ -298,7 +299,7 @@ export async function resendCurrentSignatureRequest(
       franchisePermissionData,
       auditFor(tx),
       data,
-      developmentESignProvider,
+      eSignProvider(),
       requestId
     )
   );
@@ -315,7 +316,7 @@ export async function cancelCurrentSignatureRequest(
       franchisePermissionData,
       auditFor(tx),
       data,
-      developmentESignProvider,
+      eSignProvider(),
       requestId
     )
   );
@@ -393,7 +394,8 @@ export async function uploadDocumentForFranchise(
         franchiseId,
         territoryIdForFranchise(data, franchiseId),
         input.documentId,
-        input.title
+        input.title,
+        context.userId
       );
       const uploaded = await uploadFranchiseDocument(
         context,
@@ -435,7 +437,7 @@ export async function addDocumentVersionForFranchise(
         uploadedByUserId: context.userId,
         uploadedAt: today()
       };
-      const artifact = documentArtifact(artifactId, franchiseId, territoryIdForFranchise(data, franchiseId), documentId, "Document version");
+      const artifact = documentArtifact(artifactId, franchiseId, territoryIdForFranchise(data, franchiseId), documentId, "Document version", context.userId);
       const document = await addFranchiseDocumentVersion(
         context,
         franchisePermissionData,
@@ -879,9 +881,9 @@ async function recordCurrentSignatureEvent(
         requestId,
         eventType,
         signedAgreementArtifact:
-          eventType === "completed" ? signedArtifact(franchiseId, territoryIdForFranchise(data, franchiseId), eventId) : undefined,
+          eventType === "completed" ? signedArtifact(franchiseId, territoryIdForFranchise(data, franchiseId), eventId, agreementIdForRequest(data, requestId)) : undefined,
         completionCertificateArtifact:
-          eventType === "completed" ? certificateArtifact(franchiseId, territoryIdForFranchise(data, franchiseId), eventId) : undefined,
+          eventType === "completed" ? certificateArtifact(franchiseId, territoryIdForFranchise(data, franchiseId), eventId, agreementIdForRequest(data, requestId)) : undefined,
         payload: {
           source: "development_esign_provider"
         }
@@ -964,6 +966,18 @@ function auditFor(db: Parameters<typeof recordAuditEvent>[0]) {
   };
 }
 
+/**
+ * No real e-signature provider is wired yet (UAT-002 chooses one). The development
+ * provider only records requests locally, so it must never run against production:
+ * outside development this fails closed instead of pretending documents were sent.
+ */
+export function eSignProvider(): ESignProvider {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("No e-signature provider is configured; the development provider is not available in production.");
+  }
+  return developmentESignProvider;
+}
+
 const developmentESignProvider: ESignProvider = {
   key: "development",
   async send(input) {
@@ -982,33 +996,49 @@ const developmentESignProvider: ESignProvider = {
   }
 };
 
-function defaultSigners(
+async function defaultSigners(
+  db: Pick<ReturnType<typeof createDb>["db"], "select">,
   requestId: string,
-  view: Franchise360
-): Array<Omit<AgreementSigner, "signatureRequestId" | "status">> {
+  view: Franchise360,
+  franchisorUserId: string
+): Promise<Array<Omit<AgreementSigner, "signatureRequestId" | "status">>> {
+  if (!view.owner?.email) {
+    throw new Error("The franchise has no owner with an email address to sign the agreement.");
+  }
+  const [franchisor] = await db.select().from(users).where(eq(users.id, franchisorUserId)).limit(1);
+  if (!franchisor?.email) {
+    throw new Error("The sending user has no email address to sign for the franchisor.");
+  }
+
   return [
     {
       id: `${requestId}-franchisee`,
       role: "franchisee",
-      userId: view.owner?.id,
-      name: view.owner?.displayName ?? "Franchisee",
-      email: view.owner?.email ?? "franchisee@example.raring2go.test",
+      userId: view.owner.id,
+      name: view.owner.displayName ?? view.owner.email,
+      email: view.owner.email,
       signingOrder: 1,
       required: true
     },
     {
       id: `${requestId}-franchisor`,
       role: "franchisor",
-      userId: fixtureIds.users.superAdmin,
-      name: "Raring2go Head Office",
-      email: "superadmin@example.raring2go.test",
+      userId: franchisor.id,
+      name: franchisor.displayName ?? franchisor.email,
+      email: franchisor.email,
       signingOrder: 2,
       required: true
     }
   ];
 }
 
-function signedArtifact(franchiseId: string, territoryId: string | null, eventId: string) {
+function agreementIdForRequest(data: Awaited<ReturnType<typeof loadFranchiseData>>, requestId: string) {
+  const request = (data.signatureRequests ?? []).find((candidate) => candidate.id === requestId);
+  if (!request) throw new Error("The signature request was not found.");
+  return request.franchiseAgreementId;
+}
+
+function signedArtifact(franchiseId: string, territoryId: string | null, eventId: string, agreementId: string) {
   const file = createFileReference({
     id: `${eventId}-signed-file`,
     storageKey: `development/franchise-agreements/${eventId}/signed.pdf`,
@@ -1023,7 +1053,7 @@ function signedArtifact(franchiseId: string, territoryId: string | null, eventId
     id: `${eventId}-signed`,
     franchiseId,
     entityType: "franchise_agreement",
-    entityId: fixtureIds.franchiseAgreements.suttonDraft,
+    entityId: agreementId,
     category: "signed_agreement" as const,
     label: "Signed franchise agreement",
     storageKey: file.storageKey,
@@ -1035,7 +1065,7 @@ function signedArtifact(franchiseId: string, territoryId: string | null, eventId
   };
 }
 
-function certificateArtifact(franchiseId: string, territoryId: string | null, eventId: string) {
+function certificateArtifact(franchiseId: string, territoryId: string | null, eventId: string, agreementId: string) {
   const file = createFileReference({
     id: `${eventId}-certificate-file`,
     storageKey: `development/franchise-agreements/${eventId}/certificate.pdf`,
@@ -1050,7 +1080,7 @@ function certificateArtifact(franchiseId: string, territoryId: string | null, ev
     id: `${eventId}-certificate`,
     franchiseId,
     entityType: "franchise_agreement",
-    entityId: fixtureIds.franchiseAgreements.suttonDraft,
+    entityId: agreementId,
     category: "completion_certificate" as const,
     label: "Completion certificate",
     storageKey: file.storageKey,
@@ -1067,7 +1097,8 @@ function documentArtifact(
   franchiseId: string,
   territoryId: string | null,
   documentId: string,
-  title: string
+  title: string,
+  ownerUserId: string
 ): FranchiseArtifactReference {
   const file = createFileReference({
     id: `${artifactId}-file`,
@@ -1076,7 +1107,7 @@ function documentArtifact(
     contentType: "application/pdf",
     accessScope: "territory",
     territoryId,
-    ownerUserId: fixtureIds.users.superAdmin
+    ownerUserId
   });
 
   return {

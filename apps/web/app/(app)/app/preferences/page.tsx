@@ -1,5 +1,5 @@
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
-import { readPreferenceCentre } from "../../../../lib/marketing-runtime";
+import { readAudienceOverview, readPreferenceCentre } from "../../../../lib/marketing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
@@ -8,13 +8,42 @@ type PageProps = {
 };
 
 export default async function PreferencesPage({ searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
-  const result = await loadPreferences(request);
+  const params = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(params);
+  const contactParam = params.contact;
+  const contactId = Array.isArray(contactParam) ? contactParam[0] : contactParam;
+  const result = await loadPreferences(request, contactId);
 
   if ("error" in result) {
     return protectedOutcome(result.error);
   }
 
+  if ("contacts" in result && result.contacts) {
+    return (
+      <AppShell request={request}>
+        <section className="app-panel franchise-panel">
+          <p className="eyebrow">Parent preferences</p>
+          <h2>Choose a contact</h2>
+          {result.contacts.length === 0 ? (
+            <p>No audience contacts are visible in your territories yet.</p>
+          ) : (
+            <div className="franchise-list">
+              {result.contacts.map((view) => (
+                <div key={view.contact.id}>
+                  <strong>{view.contact.email}</strong>
+                  <a href={`?${new URLSearchParams({ ...(request.sessionKey ? { session: request.sessionKey } : {}), contact: view.contact.id }).toString()}`}>
+                    View preferences
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </AppShell>
+    );
+  }
+
+  if (!("preferences" in result) || !result.preferences) return protectedOutcome(new Error("Preferences are unavailable."));
   const profile = result.preferences.profile;
 
   return (
@@ -97,19 +126,20 @@ export default async function PreferencesPage({ searchParams }: PageProps) {
   );
 }
 
-async function loadPreferences(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
+async function loadPreferences(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>, contactId: string | undefined) {
   try {
     const shell = await requireShellPermission(request, {
       module: "marketing.audience",
       action: "view"
     });
-    const preferences = await readPreferenceCentre({
+    const context = {
       userId: shell.userId,
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
-    });
+    };
+    if (!contactId) return { contacts: (await readAudienceOverview(context)).contacts };
 
-    return { preferences };
+    return { preferences: await readPreferenceCentre(context, contactId) };
   } catch (error) {
     return { error };
   }
