@@ -1,0 +1,1 @@
+ALTER TABLE "roles" ADD COLUMN "franchise_delegable" boolean DEFAULT false NOT NULL;

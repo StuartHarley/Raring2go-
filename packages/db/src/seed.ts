@@ -117,6 +117,7 @@ export async function seedDatabase(databaseUrl?: string) {
         name: sql`excluded.name`,
         description: sql`excluded.description`,
         isSystem: sql`excluded.is_system`,
+        franchiseDelegable: sql`excluded.franchise_delegable`,
         updatedAt: sql`now()`,
         deletedAt: sql`null`
       }

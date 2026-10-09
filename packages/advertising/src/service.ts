@@ -714,7 +714,7 @@ export async function sendProposal(
   data: AdvertisingData,
   proposalId: string
 ) {
-  requireAdvertisingPermission(context, permissions, "proposalCreate");
+  requireAdvertisingPermission(context, permissions, "proposalSend");
   const proposal = requireProposal(data, proposalId);
   const advertiser = requireAdvertiser(data, proposal.advertiserId);
   ensureContextCanAccessAdvertiser(context, advertiser, data);

@@ -12,6 +12,7 @@ export const advertisingCapabilities = {
   inventoryReserve: { module: "advertiser.inventory", action: "reserve" },
   proposalView: { module: "advertiser.proposal", action: "view" },
   proposalCreate: { module: "advertiser.proposal", action: "create" },
+  proposalSend: { module: "advertiser.proposal", action: "send" },
   bookingAccept: { module: "advertiser.booking", action: "accept" },
   proposalAccept: { module: "advertiser.proposal", action: "accept" },
   proposalRespond: { module: "advertiser.proposal", action: "respond" },

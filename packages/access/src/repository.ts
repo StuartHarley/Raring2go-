@@ -1,7 +1,7 @@
 import { authInvitations, memberships, organisations, permissions, rolePermissions, roles, territories, userRoleAssignments, users } from "@raring2go/db";
 import type { createDb } from "@raring2go/db";
 import { loadPermissionData } from "@raring2go/permissions";
-import { and, asc, count, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { AccessStore, AssignmentRow, InvitationRow, RoleDetail, RoleSummary } from "./types";
 
 type Db = ReturnType<typeof createDb>["db"];
@@ -76,7 +76,7 @@ export function createDrizzleAccessStore(db: Db): AccessStore {
       ]);
       const grantsBy = new Map(grantCounts.map((row) => [row.roleId, row.n]));
       const assignmentsBy = new Map(assignmentCounts.map((row) => [row.roleId, row.n]));
-      return rows.map((row): RoleSummary => ({ id: row.id, key: row.key, name: row.name, description: row.description, isSystem: row.isSystem, grantCount: grantsBy.get(row.id) ?? 0, assignmentCount: assignmentsBy.get(row.id) ?? 0 }));
+      return rows.map((row): RoleSummary => ({ id: row.id, key: row.key, name: row.name, description: row.description, isSystem: row.isSystem, franchiseDelegable: row.franchiseDelegable, grantCount: grantsBy.get(row.id) ?? 0, assignmentCount: assignmentsBy.get(row.id) ?? 0 }));
     },
 
     async getRole(roleId) {
@@ -87,7 +87,7 @@ export function createDrizzleAccessStore(db: Db): AccessStore {
         .select({ n: count() })
         .from(userRoleAssignments)
         .where(and(eq(userRoleAssignments.roleId, roleId), or(isNull(userRoleAssignments.endsAt), gt(userRoleAssignments.endsAt, new Date()))));
-      return { id: row.id, key: row.key, name: row.name, description: row.description, isSystem: row.isSystem, grantCount: grants.length, assignmentCount: assignments?.n ?? 0, grants } satisfies RoleDetail;
+      return { id: row.id, key: row.key, name: row.name, description: row.description, isSystem: row.isSystem, franchiseDelegable: row.franchiseDelegable, grantCount: grants.length, assignmentCount: assignments?.n ?? 0, grants } satisfies RoleDetail;
     },
 
     async listPermissions() {
@@ -111,6 +111,36 @@ export function createDrizzleAccessStore(db: Db): AccessStore {
       return orgRows.map((org) => ({ ...org, territories: territoryRows.filter((territory) => territory.franchiseOrganisationId === org.id).map(({ id, name }) => ({ id, name })) }));
     },
 
+    async listDelegableRoles() {
+      const rows = await db.select().from(roles).where(and(eq(roles.franchiseDelegable, true), isNull(roles.deletedAt))).orderBy(asc(roles.name));
+      return rows.map((row): RoleSummary => ({ id: row.id, key: row.key, name: row.name, description: row.description, isSystem: row.isSystem, franchiseDelegable: true, grantCount: 0, assignmentCount: 0 }));
+    },
+
+    async listTeamAssignments(input, now) {
+      if (input.roleIds.length === 0) return [];
+      return assignmentRows(
+        and(
+          eq(userRoleAssignments.organisationId, input.organisationId),
+          eq(userRoleAssignments.territoryId, input.territoryId),
+          inArray(userRoleAssignments.roleId, input.roleIds),
+          or(isNull(userRoleAssignments.endsAt), gt(userRoleAssignments.endsAt, now))
+        ) as ReturnType<typeof eq>
+      );
+    },
+
+    async listTeamInvitations(input, now) {
+      if (input.roleIds.length === 0) return [];
+      return invitationRows(
+        and(
+          eq(authInvitations.organisationId, input.organisationId),
+          eq(authInvitations.territoryId, input.territoryId),
+          inArray(authInvitations.roleId, input.roleIds),
+          eq(authInvitations.status, "pending"),
+          gt(authInvitations.expiresAt, now)
+        ) as ReturnType<typeof eq>
+      );
+    },
+
     async roleKeyExists(key) {
       const [row] = await db.select({ id: roles.id }).from(roles).where(eq(roles.key, key)).limit(1);
       return Boolean(row);
@@ -118,7 +148,7 @@ export function createDrizzleAccessStore(db: Db): AccessStore {
 
     async insertRole(input) {
       const [row] = await db.insert(roles).values({ key: input.key, name: input.name, description: input.description, isSystem: false }).returning();
-      return { id: row!.id, key: row!.key, name: row!.name, description: row!.description, isSystem: false, grantCount: 0, assignmentCount: 0, grants: [] };
+      return { id: row!.id, key: row!.key, name: row!.name, description: row!.description, isSystem: false, franchiseDelegable: false, grantCount: 0, assignmentCount: 0, grants: [] };
     },
 
     async softDeleteRole(roleId, now) {

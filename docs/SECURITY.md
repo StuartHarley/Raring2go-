@@ -84,7 +84,7 @@ with expiring links. The development disk backend is blocked outside local devel
 
 ## Known gaps (not hidden)
 
-1. **Franchisees cannot yet administer their own staff's access.** Access is database-backed and administered at `/app/roles` (see `docs/PERMISSIONS.md`), but only Head Office can assign roles and invite people. The escalation guards already make delegation safe to enable once the Franchise Staff role exists.
+1. **Staff delegation is limited to one role.** Franchisees manage their own team at `/app/team` for the Franchise Staff role only (`docs/FRANCHISE_STAFF.md`); everything else is Head Office through `/app/roles`.
 2. **CSP `style-src` still allows inline styles.** Scripts are strict (see below); React renders `style` attributes, so
    styles keep `'unsafe-inline'`. Moving to nonce'd styles is a later hardening step.
 3. **Audit redaction is by key name** (`password`, `token`, ...). Free-text fields such as decision notes are

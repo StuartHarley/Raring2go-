@@ -85,6 +85,17 @@ export const shellNavigation: NavigationDescriptor[] = [
     group: "today"
   },
   {
+    id: "team",
+    label: "My team",
+    href: "/app/team",
+    capability: {
+      module: "franchise.team",
+      action: "view"
+    },
+    contextLevel: "territory",
+    group: "franchise"
+  },
+  {
     id: "territory",
     label: "Territory Dashboard",
     href: "/app/territory",

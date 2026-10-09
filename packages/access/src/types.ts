@@ -4,6 +4,8 @@ export type RoleSummary = {
   name: string;
   description: string | null;
   isSystem: boolean;
+  /** A franchisee may give this role to their own team. */
+  franchiseDelegable: boolean;
   grantCount: number;
   assignmentCount: number;
 };
@@ -70,6 +72,13 @@ export type AccessStore = {
   listInvitations(): Promise<InvitationRow[]>;
   getInvitation(invitationId: string): Promise<InvitationRow | undefined>;
   listOrganisations(): Promise<OrganisationOption[]>;
+
+  /** Roles flagged as something a franchisee may give to their own team. */
+  listDelegableRoles(): Promise<RoleSummary[]>;
+  /** Live assignments of the given roles at exactly this organisation and territory. */
+  listTeamAssignments(input: { organisationId: string; territoryId: string; roleIds: string[] }, now: Date): Promise<AssignmentRow[]>;
+  /** Pending, unexpired invitations for the given roles at exactly this organisation and territory. */
+  listTeamInvitations(input: { organisationId: string; territoryId: string; roleIds: string[] }, now: Date): Promise<InvitationRow[]>;
 
   roleKeyExists(key: string): Promise<boolean>;
   insertRole(input: { key: string; name: string; description: string | null }): Promise<RoleDetail>;
