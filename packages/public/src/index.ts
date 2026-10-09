@@ -152,6 +152,7 @@ export type PublicParentHub = {
   };
   followedTerritories: Array<{ id: string; slug: string; name: string }>;
   savedContent: Array<{
+    contentId?: string | null;
     id: string;
     title: string;
     contentType: string;
@@ -832,6 +833,7 @@ export async function getPublicParentHub(
     .filter((saved) => !saved.contentReferenceId || publishableSavedContent.has(saved.contentReferenceId))
     .map((saved) => ({
       id: saved.id,
+      contentId: saved.contentReferenceId ?? null,
       title: saved.contentReferenceId ? publishableSavedContent.get(saved.contentReferenceId)?.title ?? saved.title : saved.title,
       contentType: saved.contentReferenceId ? publishableSavedContent.get(saved.contentReferenceId)?.type ?? saved.contentType : saved.contentType,
       savedAt: saved.savedAt,

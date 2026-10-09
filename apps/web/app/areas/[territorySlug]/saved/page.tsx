@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { sessionCookieName } from "../../../../lib/auth-runtime";
 import { readSessionBackedParentHub } from "../../../../lib/parent-runtime";
 import { territoryFromSlug } from "../../../../lib/public-runtime";
+import { toggleSavedContentAction } from "../preferences/actions";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -41,6 +42,7 @@ export default async function SavedPage({ params }: PageProps) {
           <Link href={`/areas/${hub.territory.slug}/activities` as Route}>Activities</Link>
           <Link href={`/areas/${hub.territory.slug}/offers` as Route}>Offers</Link>
           <Link href={`/areas/${hub.territory.slug}/saved` as Route}>Saved</Link>
+          <Link href={`/areas/${hub.territory.slug}/preferences` as Route}>Preferences</Link>
         </nav>
       </header>
       <section className="public-hero public-hero-compact">
@@ -81,11 +83,18 @@ export default async function SavedPage({ params }: PageProps) {
         </div>
         <div className="public-card-grid">
           {hub.savedContent.map((item) => (
-            <Link key={item.id} href={item.href as Route} className="public-card">
-              <span>{item.contentType}</span>
-              <h3>{item.title}</h3>
-              <p>Saved {item.savedAt.slice(0, 10)}</p>
-            </Link>
+            <article key={item.id} className="public-card">
+              <Link href={item.href as Route}>
+                <span>{item.contentType}</span>
+                <h3>{item.title}</h3>
+                <p>Saved {item.savedAt.slice(0, 10)}</p>
+              </Link>
+              {item.contentId ? (
+                <form action={toggleSavedContentAction.bind(null, hub.territory.slug, item.contentId, false, `/areas/${hub.territory.slug}/saved`)}>
+                  <button type="submit">Remove from saved</button>
+                </form>
+              ) : null}
+            </article>
           ))}
           {hub.authenticated && hub.emptyState ? <p className="public-empty">{hub.emptyState}</p> : null}
         </div>

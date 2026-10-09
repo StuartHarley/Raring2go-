@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
+import { toggleSavedContentAction } from "../preferences/actions";
 import { readPublicDiscovery, territoryFromSlug } from "../../../../lib/public-runtime";
 
 type PageProps = {
@@ -57,12 +58,17 @@ export default async function WhatsOnPage({ params, searchParams }: PageProps) {
         <div className="public-card-grid">
           {discovery.emptyState ? <p className="public-empty">{discovery.emptyState}</p> : null}
           {discovery.items.map((item) => (
-            <Link key={item.id} href={item.href as Route} className="public-card">
-              <span>{item.source} event</span>
-              <h3>{item.title}</h3>
-              <p>{item.summary}</p>
-              <small>{item.startDate ?? "Date to be confirmed"}{item.location ? ` · ${item.location}` : ""}</small>
-            </Link>
+            <article key={item.id} className="public-card">
+              <Link href={item.href as Route}>
+                <span>{item.source} event</span>
+                <h3>{item.title}</h3>
+                <p>{item.summary}</p>
+                <small>{item.startDate ?? "Date to be confirmed"}{item.location ? ` · ${item.location}` : ""}</small>
+              </Link>
+              <form action={toggleSavedContentAction.bind(null, discovery.territory.slug, item.id, true, `/areas/${discovery.territory.slug}/whats-on`)}>
+                <button type="submit">Save</button>
+              </form>
+            </article>
           ))}
         </div>
       </section>
