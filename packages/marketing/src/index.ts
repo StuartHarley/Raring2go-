@@ -8,3 +8,4 @@ export * from "./repository";
 export * from "./segment-rules";
 export * from "./service";
 export type * from "./types";
+export * from "./journey-templates";

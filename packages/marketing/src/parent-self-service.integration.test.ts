@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions, createDb, fixtureIds, users } from "@raring2go/db";
+import { deleteAudienceContactsForTests, audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions, createDb, fixtureIds, users } from "@raring2go/db";
 import { loadPermissionData } from "@raring2go/permissions";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -25,12 +25,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("parent self-service (postgres)", () 
   });
 
   afterAll(async () => {
-    await db.delete(audienceConsentEvents).where(eq(audienceConsentEvents.contactId, contactId));
-    await db.delete(audienceSavedContent).where(eq(audienceSavedContent.contactId, contactId));
-    await db.delete(audiencePreferenceProfiles).where(eq(audiencePreferenceProfiles.contactId, contactId));
-    await db.delete(audienceSuppressions).where(eq(audienceSuppressions.contactId, contactId));
-    await db.delete(audienceTerritorySubscriptions).where(eq(audienceTerritorySubscriptions.contactId, contactId));
-    await db.delete(audienceContacts).where(eq(audienceContacts.id, contactId));
+    await deleteAudienceContactsForTests(db, [contactId]);
     await sql.end();
   });
 
@@ -118,9 +113,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("parent self-service (postgres)", () 
       expect((await loadParentAccount(db, parent)).contact.id).toBe(contactId);
       expect((await loadParentAccount(db, { userId, contactId: otherId })).contact.email).toBe(otherEmail);
     } finally {
-      await db.delete(audienceConsentEvents).where(eq(audienceConsentEvents.contactId, otherId));
-      await db.delete(audienceTerritorySubscriptions).where(eq(audienceTerritorySubscriptions.contactId, otherId));
-      await db.delete(audienceContacts).where(eq(audienceContacts.id, otherId));
+      await deleteAudienceContactsForTests(db, [otherId]);
     }
   });
 });

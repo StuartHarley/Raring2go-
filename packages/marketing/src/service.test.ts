@@ -21,6 +21,10 @@ import {
   enqueueSendTimeOptimizedSend,
   generateUnsubscribeToken,
   enterJourneyFromEvent,
+  evaluateSendFrequency,
+  findInactiveContactIds,
+  JourneyEntryNotEligibleError,
+  readJourneyFrequencyCap,
   executeJourneyStep,
   findActiveJourneysForTrigger,
   generateTerritoryNewsletterEditions,
@@ -2535,3 +2539,135 @@ function audit() {
     }
   };
 }
+
+
+describe("journey frequency caps and entry conditions", () => {
+  const at = new Date("2026-08-11T10:00:00.000Z");
+  const hours = (n: number) => new Date(at.getTime() - n * 3_600_000).toISOString();
+  const step = (transactional = false) => ({ key: "welcome-email", actionType: "send_email" as const, delayMinutes: 0, transactional, email: { subject: "s", blocks: [] } });
+
+  /** A journey with one of its own emails already sent to the contact `hoursAgo`, plus any newsletter sends given. */
+  function withSends(options: { journeySends?: number[]; newsletterSends?: number[]; cap?: Record<string, unknown>; frequency?: string; failedSend?: boolean }) {
+    const data = seededData();
+    data.journeys.push({ ...journey(), status: "active", frequencyCap: options.cap ?? { maxPerContact: 2, window: "7d" } } as never);
+    data.journeyVersions.push({ ...journeyVersion(), status: "approved" });
+    data.emailCampaigns.push(
+      { id: "c_journey", metadata: { journeyVersionId: "journey_welcome_v1" } } as never,
+      { id: "c_news", metadata: {} } as never
+    );
+    const snapshot = (id: string, campaignId: string, hoursAgo: number) => ({ id, campaignId, campaignVersionId: "v", status: "created", generatedAt: hours(hoursAgo), recipientCount: 1, excludedCount: 0, recipients: [{ contactId: ids.contact }], exclusions: [], idempotencyKey: id });
+    (options.journeySends ?? []).forEach((h, i) => data.emailRecipientSnapshots.push(snapshot(`js${i}`, "c_journey", h) as never));
+    (options.newsletterSends ?? []).forEach((h, i) => data.emailRecipientSnapshots.push(snapshot(`ns${i}`, "c_news", h) as never));
+    if (options.failedSend) data.emailSendJobs.push({ id: "job_f", campaignId: "c_journey", campaignVersionId: "v", recipientSnapshotId: "js0", status: "failed" } as never);
+    if (options.frequency) data.preferenceProfiles.push({ id: "pp", contactId: ids.contact, followedTerritoryIds: [], childAgeBands: [], interests: [], eventCategories: [], offerPreferences: [], competitionPreferences: [], newsletterFrequency: options.frequency, communicationPreferences: {}, personalisationEnabled: true, privacyMetadata: {} } as never);
+    return data;
+  };
+  const decide = (data: MarketingData, transactional = false) => evaluateSendFrequency(data, { contactId: ids.contact, journey: data.journeys[0]!, step: step(transactional), at });
+
+  it("allows a first email and enforces the journey's own cap within its window", () => {
+    expect(decide(withSends({}))).toEqual({ allowed: true });
+    expect(decide(withSends({ journeySends: [1] }))).toEqual({ allowed: true });
+    expect(decide(withSends({ journeySends: [1, 30] }))).toMatchObject({ allowed: false, reason: "journey_cap" });
+    // Older than the window no longer counts.
+    expect(decide(withSends({ journeySends: [1, 24 * 8] }))).toEqual({ allowed: true });
+  });
+
+  it("applies a lifetime cap forever and ignores sends that failed", () => {
+    expect(decide(withSends({ cap: { maxPerContact: 1, window: "lifetime" }, journeySends: [24 * 400] }))).toMatchObject({ reason: "journey_cap" });
+    expect(decide(withSends({ cap: { maxPerContact: 1, window: "lifetime" }, journeySends: [5], failedSend: true }))).toEqual({ allowed: true });
+  });
+
+  it("falls back to a protective default cap when a journey sets none or a malformed one", () => {
+    expect(readJourneyFrequencyCap({ frequencyCap: {} })).toEqual({ maxPerContact: 3, window: "7d" });
+    expect(readJourneyFrequencyCap({ frequencyCap: { maxPerContact: 0, window: "7d" } })).toEqual({ maxPerContact: 3, window: "7d" });
+    expect(readJourneyFrequencyCap({ frequencyCap: { maxPerContactPerDays: 1 } })).toEqual({ maxPerContact: 3, window: "7d" });
+    expect(readJourneyFrequencyCap({ frequencyCap: { maxPerContact: 5, window: "24h" } })).toEqual({ maxPerContact: 5, window: "24h" });
+  });
+
+  it("holds back email to a parent who asked for less, counting newsletters too, except for a transactional step", () => {
+    const weekly = withSends({ newsletterSends: [24 * 3], frequency: "weekly" });
+    expect(decide(weekly)).toMatchObject({ allowed: false, reason: "preference_gap" });
+    expect(decide(weekly, true)).toEqual({ allowed: true });
+    expect(decide(withSends({ newsletterSends: [24 * 8], frequency: "weekly" }))).toEqual({ allowed: true });
+    expect(decide(withSends({ newsletterSends: [24 * 20], frequency: "monthly" }))).toMatchObject({ reason: "preference_gap" });
+    expect(decide(withSends({ newsletterSends: [24 * 3] }))).toEqual({ allowed: true });
+  });
+
+  it("a transactional step still respects the journey cap", () => {
+    expect(decide(withSends({ journeySends: [1, 2] }), true)).toMatchObject({ allowed: false, reason: "journey_cap" });
+  });
+
+  it("finds subscribers who have gone quiet, and never suppressed ones", () => {
+    const at = new Date("2026-08-11T10:00:00.000Z");
+    const data = seededData();
+    const subscription = data.subscriptions.find((item) => item.contactId === ids.contact)!;
+    subscription.status = "subscribed";
+    subscription.subscribedAt = "2026-01-01T00:00:00.000Z";
+    data.activityEvents = [];
+    expect(findInactiveContactIds(data, { days: 90, at })).toEqual([{ contactId: ids.contact, territoryId: subscription.territoryId }]);
+
+    // Recent activity or a recent subscription both count as engagement.
+    data.activityEvents.push({ id: "a", contactId: ids.contact, activityType: "email_open", title: "", metadata: {}, occurredAt: "2026-08-01T00:00:00.000Z" } as never);
+    expect(findInactiveContactIds(data, { days: 90, at })).toEqual([]);
+    data.activityEvents = [];
+    subscription.subscribedAt = "2026-07-20T00:00:00.000Z";
+    expect(findInactiveContactIds(data, { days: 90, at })).toEqual([]);
+
+    subscription.subscribedAt = "2026-01-01T00:00:00.000Z";
+    expect(findInactiveContactIds(data, { days: 90, territoryId: "other_territory", at })).toEqual([]);
+    data.suppressions.push({ id: "s", contactId: ids.contact, emailNormalised: "x", reason: "unsubscribe", source: "t", active: true, suppressedAt: "2026-08-01T00:00:00.000Z", metadata: {} } as never);
+    expect(findInactiveContactIds(data, { days: 90, at })).toEqual([]);
+  });
+
+  async function activeJourneyWith(conditions: MarketingJourneyVersion["conditions"]) {
+    const data = seededData();
+    const recorder = audit();
+    await createJourney(hqContext(), permissions, recorder, data, journey(), { ...journeyVersion(), conditions });
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_welcome", "journey_welcome_v1", "2026-08-11T09:00:00.000Z");
+    await activateJourney(hqContext(), permissions, recorder, data, "journey_welcome", "2026-08-11T09:05:00.000Z");
+    const enter = () => enterJourneyFromEvent(localContext(), permissions, recorder, data, {
+      journeyId: "journey_welcome", contactId: ids.contact, territoryId: ids.territories.own, sourceEventType: "audience.subscribed", sourceEventId: "e", enteredAt: "2026-08-11T09:10:00.000Z", idempotencyKey: "e1"
+    });
+    return { data, enter };
+  }
+
+  it("only lets contacts who meet the journey's conditions enter it", async () => {
+    const matching = await activeJourneyWith([{ kind: "condition", field: "tag", operator: "equals", value: "vip-only" } as never]);
+    // The seeded contact has no such tag, so they are not eligible.
+    await expect(matching.enter()).rejects.toBeInstanceOf(JourneyEntryNotEligibleError);
+    expect(matching.data.journeyAudienceEntries).toHaveLength(0);
+
+    matching.data.contacts.find((contact) => contact.id === ids.contact)!.tags.push("vip-only");
+    await expect(matching.enter()).resolves.toMatchObject({ contactId: ids.contact });
+
+    const open = await activeJourneyWith([]);
+    await expect(open.enter()).resolves.toBeDefined();
+  });
+
+  it("skips a capped step instead of sending, and still moves the journey on", async () => {
+    const data = seededData();
+    const recorder = audit();
+    const version: MarketingJourneyVersion = {
+      ...journeyVersion(),
+      steps: [
+        { key: "a", actionType: "send_email", delayMinutes: 0, email: { subject: "A", blocks: [{ id: "b1", type: "text", html: "<p>A</p>" }] } },
+        { key: "b", actionType: "send_email", delayMinutes: 10, email: { subject: "B", blocks: [{ id: "b2", type: "text", html: "<p>B</p>" }] } }
+      ]
+    };
+    await createJourney(hqContext(), permissions, recorder, data, { ...journey(), frequencyCap: { maxPerContact: 1, window: "7d" } }, version);
+    await approveJourneyVersion(hqContext(), permissions, recorder, data, "journey_welcome", "journey_welcome_v1", "2026-08-11T09:00:00.000Z");
+    await activateJourney(hqContext(), permissions, recorder, data, "journey_welcome", "2026-08-11T09:05:00.000Z");
+    const entry = await enterJourneyFromEvent(localContext(), permissions, recorder, data, { journeyId: "journey_welcome", contactId: ids.contact, territoryId: ids.territories.own, sourceEventType: "audience.subscribed", sourceEventId: "e", enteredAt: "2026-08-11T09:10:00.000Z", idempotencyKey: "e1" });
+    const executionId = data.journeyExecutions.find((execution) => execution.entryId === entry.id)!.id;
+
+    await executeJourneyStep(localContext(), permissions, recorder, data, executionId, "a", "2026-08-11T09:11:00.000Z");
+    const second = await executeJourneyStep(localContext(), permissions, recorder, data, executionId, "b", "2026-08-11T09:21:00.000Z");
+
+    const steps = data.journeyStepExecutions.filter((candidate) => candidate.executionId === executionId);
+    expect(steps.map((item) => item.status)).toEqual(["completed", "skipped"]);
+    expect(steps[1]).toMatchObject({ failureReason: "journey_cap", output: { skipped: true, reason: "journey_cap" } });
+    expect(second.status).toBe("completed");
+    // Only the first step created an email.
+    expect(data.emailSendJobs).toHaveLength(1);
+  });
+});

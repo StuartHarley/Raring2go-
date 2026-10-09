@@ -61,6 +61,8 @@ export const auditActions = {
   franchiseComplianceActionCreate: "franchise.compliance.action.create",
   franchiseComplianceActionResolve: "franchise.compliance.action.resolve",
   franchiseComplianceReminderSchedule: "franchise.compliance.reminder.schedule",
+  franchiseComplianceReminderSend: "franchise.compliance.reminder.send",
+  franchiseComplianceReminderCancel: "franchise.compliance.reminder.cancel",
   franchiseOnboardingStart: "franchise.onboarding.start",
   franchiseOnboardingTaskAssign: "franchise.onboarding.task.assign",
   franchiseOnboardingTaskComplete: "franchise.onboarding.task.complete",

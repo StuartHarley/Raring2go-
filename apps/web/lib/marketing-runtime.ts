@@ -17,6 +17,7 @@ import {
   enqueueEmailSend,
   enqueueSendTimeOptimizedSend,
   enterJourneyFromEvent,
+  JourneyEntryNotEligibleError,
   findActiveJourneysForTrigger,
   generateTerritoryNewsletterEditions,
   getJourneyDetail,
@@ -408,15 +409,22 @@ export async function subscribeContactAndTriggerJourneys(
       const matches = findActiveJourneysForTrigger(data, { type: "contact_subscribed_to_territory" });
       const entries = [];
       for (const { journey } of matches) {
-        const entry = await enterJourneyFromEvent(context, marketingPermissionData, auditFor(tx), data, {
-          journeyId: journey.id,
-          contactId: input.contactId,
-          territoryId: input.territoryId,
-          sourceEventType: "audience.subscribed",
-          sourceEventId: subscription.id,
-          enteredAt: new Date().toISOString(),
-          idempotencyKey: `audience.subscribed:${subscription.id}:${journey.id}`
-        });
+        let entry;
+        try {
+          entry = await enterJourneyFromEvent(context, marketingPermissionData, auditFor(tx), data, {
+            journeyId: journey.id,
+            contactId: input.contactId,
+            territoryId: input.territoryId,
+            sourceEventType: "audience.subscribed",
+            sourceEventId: subscription.id,
+            enteredAt: new Date().toISOString(),
+            idempotencyKey: `audience.subscribed:${subscription.id}:${journey.id}`
+          });
+        } catch (error) {
+          // A contact outside this journey's conditions is simply not entered; anything else is a real fault.
+          if (error instanceof JourneyEntryNotEligibleError) continue;
+          throw error;
+        }
         await insertJourneyAudienceEntryRecord(tx, entry);
         const execution = data.journeyExecutions.find((candidate) => candidate.entryId === entry.id);
         if (execution) {

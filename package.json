@@ -15,7 +15,7 @@
     "db:seed:uat": "pnpm --filter @raring2go/db db:seed:uat",
     "dev": "turbo run dev --filter=@raring2go/web",
     "lint": "turbo run lint",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=1",
     "typecheck": "turbo run typecheck",
     "uat:check": "pnpm --filter @raring2go/db uat:check",
     "uat:db:setup": "pnpm --filter @raring2go/db uat:db:setup",

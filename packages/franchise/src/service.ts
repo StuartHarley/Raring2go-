@@ -770,6 +770,72 @@ export async function verifyComplianceRecord(
   return record;
 }
 
+const OVERDUE_REMINDER_AFTER_DAYS = 7;
+const UNDELIVERABLE_AFTER_DAYS = 14;
+
+const daysBetween = (from: string, to: string) => Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * A second, firmer reminder for a requirement that is still open a week past its due date. One per action
+ * (keyed on the action), so running this daily never adds another. System work, so no permission check.
+ */
+export function scheduleOverdueComplianceReminders(data: FranchiseData, asOf: string, newId: () => string = randomUUID): FranchiseComplianceReminder[] {
+  data.complianceReminders ??= [];
+  const created: FranchiseComplianceReminder[] = [];
+  for (const action of (data.complianceActions ?? []).filter((candidate) => candidate.status === "open" && !candidate.deletedAt && candidate.dueDate)) {
+    if (daysBetween(action.dueDate!, asOf) < OVERDUE_REMINDER_AFTER_DAYS) continue;
+    const key = `${action.idempotencyKey}:overdue`;
+    if (data.complianceReminders.some((candidate) => candidate.idempotencyKey === key && !candidate.deletedAt)) continue;
+    const reminder: FranchiseComplianceReminder = {
+      id: newId(),
+      franchiseId: action.franchiseId,
+      complianceActionId: action.id,
+      reminderType: "overdue",
+      scheduledFor: asOf,
+      status: "scheduled",
+      idempotencyKey: key
+    };
+    data.complianceReminders.push(reminder);
+    created.push(reminder);
+  }
+  return created;
+}
+
+export type ComplianceReminderDelivery = {
+  reminder: FranchiseComplianceReminder;
+  action: FranchiseComplianceAction;
+  franchise: FranchiseRecord;
+  recipient?: { email: string; name?: string | null };
+  /** Why this reminder should not be sent: the requirement was resolved, or there is nobody to send it to. */
+  skip?: "action_resolved" | "no_recipient";
+};
+
+/**
+ * Reminders that are due. A reminder whose action has been resolved is cancelled rather than sent, and one
+ * with no one to send to is flagged so the gap is visible instead of silently ignored. The recipient is the
+ * franchise's primary owner.
+ */
+export function dueComplianceReminders(data: FranchiseData, asOf: string): ComplianceReminderDelivery[] {
+  const out: ComplianceReminderDelivery[] = [];
+  for (const reminder of (data.complianceReminders ?? []).filter((candidate) => candidate.status === "scheduled" && !candidate.deletedAt && candidate.scheduledFor <= asOf)) {
+    const action = (data.complianceActions ?? []).find((candidate) => candidate.id === reminder.complianceActionId && !candidate.deletedAt);
+    const franchise = data.franchises.find((candidate) => candidate.id === reminder.franchiseId);
+    if (!action || !franchise) continue;
+    const owner = franchise.primaryOwnerUserId ? data.users.find((user) => user.id === franchise.primaryOwnerUserId) : undefined;
+    out.push({
+      reminder, action, franchise,
+      recipient: owner?.email ? { email: owner.email, name: owner.displayName ?? null } : undefined,
+      skip: action.status !== "open" ? "action_resolved" : owner?.email ? undefined : "no_recipient"
+    });
+  }
+  return out;
+}
+
+/** Past this age a reminder that still cannot be delivered is cancelled, so a bad address is not retried forever. */
+export function isReminderUndeliverable(reminder: FranchiseComplianceReminder, asOf: string) {
+  return daysBetween(reminder.scheduledFor, asOf) >= UNDELIVERABLE_AFTER_DAYS;
+}
+
 export async function ensureComplianceActions(
   context: FranchiseActorContext,
   permissions: PermissionData,

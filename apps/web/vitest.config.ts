@@ -15,6 +15,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    // The Postgres suites share one database and the journey engine scans it for new subscribers, so with a real
+    // database the files run one after another. Without one they are pure and stay parallel.
+    fileParallelism: !process.env.RUN_DB_TESTS,
     setupFiles: ["./vitest.setup.ts"]
   }
 });
