@@ -17,6 +17,27 @@ Territory and network figures come out of the same queries (`collect.ts`):
 `DEFINITIONS_VERSION` is stored with every snapshot. Bump it whenever a definition's meaning changes, so a trend
 line is never silently stitched across two meanings.
 
+## Definitions version history
+
+| Version | Change |
+| --- | --- |
+| 2026.10.1 | First catalogue (ANL-001). |
+| 2026.10.2 | Added advertiser churn and sales mix: `commercial.customer_base_12m_ago`, `commercial.churned_12m`, `commercial.churn_rate_12m`, `commercial.sold_value_90d`, `commercial.package_value_90d`, `commercial.digital_value_90d`, `commercial.package_share_90d`, `commercial.digital_share_90d`. New windows `rolling_90_days` and `rolling_12_months`. |
+
+### Churn and mix (ADV-009)
+
+- **Churn (12 months)** = advertisers who had booked before 12 months ago and had not already lapsed, who have since lapsed (no booking for more than 12 months, per the lapse date derived from booking history), divided by that base. No figure when there was no base.
+- **Package share** = sold line value on proposal lines that belong to a commercial package, divided by all sold line value in the last 90 days. **Digital share** = sold line value on products whose channel is not `magazine`, divided by the same total. Archived advertisers are excluded everywhere.
+- The HQ commercial command centre computes churn and mix from the same rules (`advertiserChurn`, `commercialMix` in `packages/advertising`), and a database test asserts the command centre and `collectMetrics` agree. The command centre also lists lost-deal reasons.
+
+## Marketing insight (MKT-008, MKT-009)
+
+Derived only from records that exist; a metric with no source is shown as "Not tracked yet" or listed under "Not measured", never as zero or an estimate.
+
+- **Content engagement** (`/app/marketing-analytics`): from `public_analytics_events` over 30 days: area views, content views, content clicks, sponsored clicks, newsletter sign-ups, top content, and visits credited to campaign tags (`utm_source`, read from the landing URL by the public tracker and stored without any personal data). Clicks are recorded by `TrackedLink` on public cards. Impressions are not tracked, so no click-through rate is reported.
+- **Command centre extras** (`/app/marketing-command`): send exceptions (failed, overdue-scheduled, or bouncing newsletters), content gaps (no content published in 30 days), top content, advertiser obligations (outstanding artwork and fulfilment, counts only, shown to people who hold advertiser analytics), and optimisation opportunities. Opportunities are rule-based suggestions; nothing is generated or published without a person starting it and approving the result.
+- Scope: territory users receive only their territory's rows (tested); the network sees everything.
+
 ## Who sees what
 
 | Grant | Sees |

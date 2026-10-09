@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackedLink } from "../_components/TrackedLink";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
@@ -59,12 +60,12 @@ export default async function WhatsOnPage({ params, searchParams }: PageProps) {
           {discovery.emptyState ? <p className="public-empty">{discovery.emptyState}</p> : null}
           {discovery.items.map((item) => (
             <article key={item.id} className="public-card">
-              <Link href={item.href as Route}>
+              <TrackedLink territorySlug={discovery.territory.slug} path={`/areas/${discovery.territory.slug}/whats-on`} eventType="discovery_item_clicked" entityType="content" entityId={item.id} component="whats_on_card" href={item.href}>
                 <span>{item.source} event</span>
                 <h3>{item.title}</h3>
                 <p>{item.summary}</p>
                 <small>{item.startDate ?? "Date to be confirmed"}{item.location ? ` · ${item.location}` : ""}</small>
-              </Link>
+              </TrackedLink>
               <form action={toggleSavedContentAction.bind(null, discovery.territory.slug, item.id, true, `/areas/${discovery.territory.slug}/whats-on`)}>
                 <button type="submit">Save</button>
               </form>

@@ -1,5 +1,6 @@
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { readMarketingCommandCentre } from "../../../../lib/marketing-runtime";
+import { readMarketingExtras } from "../../../../lib/marketing-insights";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
@@ -16,6 +17,7 @@ export default async function MarketingCommandPage({ searchParams }: PageProps) 
   }
 
   const command = result.command;
+  const extras = result.extras;
 
   return (
     <AppShell request={request}>
@@ -81,6 +83,65 @@ export default async function MarketingCommandPage({ searchParams }: PageProps) 
           ))}
         </div>
       </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Send exceptions</p>
+        <h2>Newsletters that need attention</h2>
+        {extras.sendExceptions.length === 0 ? <p>No failed, overdue or bouncing sends.</p> : (
+          <div className="franchise-list">
+            {extras.sendExceptions.map((item) => (
+              <div key={item.campaignId}><strong>{item.title}</strong><span>{item.problem} - {item.territoryId ?? "network"}</span></div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Content</p>
+        <h2>Gaps and top content</h2>
+        {extras.contentGaps.length === 0 ? <p>Every territory has published in the last 30 days.</p> : (
+          <div className="franchise-list">
+            {extras.contentGaps.map((gap) => (
+              <div key={gap.territoryId}><strong>{gap.territoryName}</strong><span>Nothing published in the last 30 days</span></div>
+            ))}
+          </div>
+        )}
+        <h3>Top content (30 days)</h3>
+        {extras.topContent.length === 0 ? <p>No content activity recorded yet.</p> : (
+          <div className="franchise-list">
+            {extras.topContent.map((item) => (
+              <div key={item.contentId}><strong>{item.title}</strong><span>{item.views} views - {item.clicks} clicks</span></div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {extras.advertiserObligations ? (
+        <section className="app-panel franchise-panel">
+          <p className="eyebrow">Advertiser obligations</p>
+          <h2>Booked work still to deliver</h2>
+          {extras.advertiserObligations.length === 0 ? <p>No outstanding artwork or fulfilment.</p> : (
+            <div className="franchise-list">
+              {extras.advertiserObligations.map((row) => (
+                <div key={row.territoryId}><strong>{row.territoryName}</strong><span>{row.artworkOutstanding} artwork outstanding - {row.fulfilmentOutstanding} fulfilments open</span></div>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Optimisation opportunities</p>
+        <h2>Suggestions, not actions</h2>
+        <p>These come from the gaps above. Nothing is generated or published until a person starts it and approves the result.</p>
+        {extras.aiOpportunities.length === 0 ? <p>No opportunities right now.</p> : (
+          <div className="franchise-list">
+            {extras.aiOpportunities.map((item) => (
+              <div key={item.id}><strong>{item.title}</strong><span>{item.reason}</span></div>
+            ))}
+          </div>
+        )}
+      </section>
     </AppShell>
   );
 }
@@ -97,7 +158,13 @@ async function loadCommandCentre(request: Awaited<ReturnType<typeof requestFromS
       territoryId: shell.activeContext.territoryId
     });
 
-    return { command };
+    const extras = await readMarketingExtras({
+      userId: shell.userId,
+      organisationId: shell.activeContext.organisationId,
+      territoryId: shell.activeContext.territoryId
+    });
+
+    return { command, extras };
   } catch (error) {
     return { error };
   }

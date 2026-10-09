@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackedLink } from "../_components/TrackedLink";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
@@ -53,18 +54,18 @@ export default async function CompetitionsPage({ params }: PageProps) {
         <div className="public-card-grid">
           {discovery.emptyState ? <p className="public-empty">{discovery.emptyState}</p> : null}
           {discovery.items.map((item) => (
-            <Link key={item.id} href={item.href as Route} className="public-card public-sponsored">
+            <TrackedLink key={item.id} territorySlug={discovery.territory.slug} path={`/areas/${discovery.territory.slug}/competitions`} eventType="discovery_item_clicked" entityType="content" entityId={item.id} component="competitions_card" href={item.href} className="public-card public-sponsored">
               <span>Sponsored competition</span>
               <h3>{item.title}</h3>
               <p>{item.summary}</p>
-            </Link>
+            </TrackedLink>
           ))}
           {discovery.placements.map((placement) => (
-            <Link key={placement.id} href={placement.href as Route} className="public-card public-sponsored">
+            <TrackedLink key={placement.id} territorySlug={discovery.territory.slug} path={`/areas/${discovery.territory.slug}/competitions`} eventType="commercial_placement_clicked" entityType="advertiser" entityId={placement.advertiserId} component="competitions_placement" href={placement.href} className="public-card public-sponsored">
               <span>{placement.label}</span>
               <h3>{placement.title}</h3>
               <p>{placement.summary}</p>
-            </Link>
+            </TrackedLink>
           ))}
         </div>
       </section>

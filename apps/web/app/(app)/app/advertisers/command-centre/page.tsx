@@ -85,6 +85,37 @@ export default async function CommercialCommandCentrePage({ searchParams }: Page
       </section>
 
       <section className="app-panel franchise-panel">
+        <p className="eyebrow">Retention and mix</p>
+        <h2>Churn and what is being sold</h2>
+        <div className="franchise-metrics">
+          <article>
+            <span>Churn (12 months)</span>
+            <strong>{commandCentre.churn.ratePercent == null ? "No data" : `${commandCentre.churn.ratePercent}%`}</strong>
+            <small>{commandCentre.churn.lost} of {commandCentre.churn.baseAYearAgo} advertisers lost</small>
+          </article>
+          <article>
+            <span>Package share (90 days)</span>
+            <strong>{commandCentre.mix.packageSharePercent == null ? "No data" : `${commandCentre.mix.packageSharePercent}%`}</strong>
+            <small>{formatMoney(commandCentre.mix.packageMinor)} of {formatMoney(commandCentre.mix.soldMinor)}</small>
+          </article>
+          <article>
+            <span>Digital share (90 days)</span>
+            <strong>{commandCentre.mix.digitalSharePercent == null ? "No data" : `${commandCentre.mix.digitalSharePercent}%`}</strong>
+            <small>{formatMoney(commandCentre.mix.digitalMinor)} of {formatMoney(commandCentre.mix.soldMinor)}</small>
+          </article>
+        </div>
+        <p>{commandCentre.definitionsNote}</p>
+        <h3>Why deals were lost</h3>
+        {commandCentre.lostReasons.length === 0 ? <p>No lost deals recorded.</p> : (
+          <div className="franchise-list">
+            {commandCentre.lostReasons.map((entry) => (
+              <div key={entry.reason}><strong>{entry.reason}</strong><span>{entry.count}</span></div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="app-panel franchise-panel">
         <p className="eyebrow">Attention</p>
         <h2>Commercial exceptions</h2>
         <div className="franchise-facts">

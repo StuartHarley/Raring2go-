@@ -22,7 +22,9 @@ import type {
   ArtworkVersion,
   CampaignFulfilment,
   CatalogueView,
+  AdvertiserChurn,
   CommercialCommandCentreView,
+  CommercialMix,
   CommercialBooking,
   CommercialBookingItem,
   CommercialProductionRequest,
@@ -108,12 +110,25 @@ export function getCommercialCommandCentre(
           .reduce((sum, invoice) => sum + invoice.balanceMinor, 0),
         conversionRate: territoryClosed.length === 0 ? 0 : Math.round((territoryWon.length / territoryClosed.length) * 100),
         retentionRate: percentage(territoryAdvertisers.filter((advertiser) => advertiser.relationshipState === "retained").length, territoryAdvertisers.length),
-        openRenewals: renewals.filter((renewal) => renewal.territoryId === territoryId && renewal.status === "open").length
+        openRenewals: renewals.filter((renewal) => renewal.territoryId === territoryId && renewal.status === "open").length,
+        mix: commercialMix(data, bookings.filter((booking) => territoryAdvertiserIds.has(booking.advertiserId))),
+        churn: advertiserChurn(territoryAdvertisers)
       };
     });
 
+  const lostReasonCounts = new Map<string, number>();
+  for (const opportunity of opportunities) {
+    if (data.pipelineStages.find((stage) => stage.id === opportunity.stageId)?.outcome !== "lost") continue;
+    const reason = opportunity.lostReason?.trim() || "No reason recorded";
+    lostReasonCounts.set(reason, (lostReasonCounts.get(reason) ?? 0) + 1);
+  }
+
   return {
     scope: context.territoryId ? "territory" : "network",
+    definitionsNote: "Churn and mix follow the analytics metric catalogue: churn is advertisers lapsed in the last 12 months over those who had booked before then; mix is the last 90 days of sold line value.",
+    mix: commercialMix(data, bookings),
+    churn: advertiserChurn(visibleAdvertisers),
+    lostReasons: [...lostReasonCounts].map(([reason, count]) => ({ reason, count })).sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason)),
     totals: {
       advertisers: visibleAdvertisers.length,
       activeAdvertisers: visibleAdvertisers.filter((advertiser) => advertiser.status === "active").length,
@@ -2277,6 +2292,32 @@ function financeSummary(data: AdvertisingData, advertiserId: string) {
       .reduce((sum, invoice) => sum + invoice.balanceMinor, 0),
     unallocatedPaymentsMinor: payments.reduce((sum, payment) => sum + payment.unallocatedMinor, 0)
   };
+}
+
+/** Last 90 days of sold line value, split by package and digital. Mirrors catalogue metrics commercial.*_90d. */
+export function commercialMix(data: AdvertisingData, bookings: CommercialBooking[], asOf: string = today()): CommercialMix {
+  const since = new Date(Date.parse(`${asOf}T00:00:00Z`) - 90 * dayMs).toISOString().slice(0, 10);
+  const bookingIds = new Set(bookings.filter((booking) => booking.status === "booked" && !booking.deletedAt && booking.bookedOn >= since).map((booking) => booking.id));
+  let soldMinor = 0;
+  let packageMinor = 0;
+  let digitalMinor = 0;
+  for (const item of data.bookingItems) {
+    if (item.deletedAt || !bookingIds.has(item.bookingId)) continue;
+    soldMinor += item.totalPriceMinor;
+    if (data.proposalItems.find((candidate) => candidate.id === item.proposalItemId)?.packageId) packageMinor += item.totalPriceMinor;
+    const product = data.products.find((candidate) => candidate.id === item.productId);
+    if (product && product.channel !== "magazine") digitalMinor += item.totalPriceMinor;
+  }
+  const share = (part: number) => (soldMinor <= 0 ? null : Math.round((part / soldMinor) * 1000) / 10);
+  return { soldMinor, packageMinor, digitalMinor, packageSharePercent: share(packageMinor), digitalSharePercent: share(digitalMinor) };
+}
+
+/** Advertisers who had booked before a year ago and not lapsed then, and how many of them have lapsed since. Mirrors catalogue metrics commercial.churn_rate_12m. */
+export function advertiserChurn(advertisers: AdvertiserRecord[], asOf: string = today()): AdvertiserChurn {
+  const start = new Date(Date.parse(`${asOf}T00:00:00Z`) - 365 * dayMs).toISOString().slice(0, 10);
+  const base = advertisers.filter((advertiser) => !advertiser.deletedAt && advertiser.firstBookedOn && advertiser.firstBookedOn <= start && (!advertiser.lapsedOn || advertiser.lapsedOn > start));
+  const lost = base.filter((advertiser) => advertiser.lapsedOn && advertiser.lapsedOn > start && advertiser.lapsedOn <= asOf).length;
+  return { baseAYearAgo: base.length, lost, ratePercent: base.length === 0 ? null : Math.round((lost / base.length) * 1000) / 10 };
 }
 
 function average(values: number[]) {

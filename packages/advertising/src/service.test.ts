@@ -26,6 +26,8 @@ import {
   createRenewalPromptFromProofPack,
   editDraftInvoice,
   getAdvertiser360,
+  advertiserChurn,
+  commercialMix,
   getCommercialCommandCentre,
   issueCreditNote,
   issueInvoice,
@@ -1429,6 +1431,44 @@ describe("advertiser CRM foundation", () => {
     });
     expect(local.territoryBenchmarks).toHaveLength(1);
     expect(() => getCommercialCommandCentre(localContext(), noAnalyticsPermission, data)).toThrow("No permission grant");
+  });
+});
+
+describe("advertiser churn and sales mix", () => {
+  const advertiser = (id: string, firstBookedOn: string | null, lapsedOn: string | null) => ({ id, firstBookedOn, lapsedOn } as unknown as Parameters<typeof advertiserChurn>[0][number]);
+
+  it("counts churn against the base a year ago, ignoring newcomers and those already lapsed", () => {
+    const asOf = "2026-10-09";
+    const result = advertiserChurn([
+      advertiser("a", "2024-01-01", null),
+      advertiser("b", "2024-01-01", "2026-03-01"),
+      advertiser("c", "2024-01-01", "2025-01-01"),
+      advertiser("d", "2026-06-01", null),
+      advertiser("e", null, null)
+    ], asOf);
+    expect(result).toEqual({ baseAYearAgo: 2, lost: 1, ratePercent: 50 });
+    expect(advertiserChurn([], asOf).ratePercent).toBeNull();
+  });
+
+  it("splits the last 90 days of sold value into package and digital, and has no share when nothing sold", () => {
+    const data = {
+      bookingItems: [
+        { id: "i1", bookingId: "b1", proposalItemId: "p1", productId: "print", totalPriceMinor: 60_000 },
+        { id: "i2", bookingId: "b1", proposalItemId: "p2", productId: "web", totalPriceMinor: 30_000 },
+        { id: "i3", bookingId: "b2", proposalItemId: "p3", productId: "web", totalPriceMinor: 10_000 },
+        { id: "i4", bookingId: "old", proposalItemId: "p3", productId: "web", totalPriceMinor: 999_999 }
+      ],
+      proposalItems: [{ id: "p1", packageId: "pk" }, { id: "p2", packageId: "pk" }, { id: "p3", packageId: null }],
+      products: [{ id: "print", channel: "magazine" }, { id: "web", channel: "website" }]
+    } as unknown as AdvertisingData;
+    const bookings = [
+      { id: "b1", status: "booked", bookedOn: "2026-09-01" },
+      { id: "b2", status: "booked", bookedOn: "2026-10-01" },
+      { id: "old", status: "booked", bookedOn: "2025-01-01" },
+      { id: "x", status: "cancelled", bookedOn: "2026-10-01" }
+    ] as unknown as Parameters<typeof commercialMix>[1];
+    expect(commercialMix(data, bookings, "2026-10-09")).toEqual({ soldMinor: 100_000, packageMinor: 90_000, digitalMinor: 40_000, packageSharePercent: 90, digitalSharePercent: 40 });
+    expect(commercialMix(data, [], "2026-10-09")).toMatchObject({ soldMinor: 0, packageSharePercent: null, digitalSharePercent: null });
   });
 });
 
