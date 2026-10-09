@@ -10,6 +10,7 @@ import { SalesAssistantPanel } from "./SalesAssistantPanel";
 import { CrmBanner } from "../CrmBanner";
 import { CrmPanels } from "./CrmPanels";
 import { SalesPanels } from "./SalesPanels";
+import { FulfilmentPanels } from "./FulfilmentPanels";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -138,6 +139,8 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
       />
 
       <SalesPanels request={request} view={result} catalogue={result.catalogue} access={result.salesAccess} />
+
+      <FulfilmentPanels request={request} view={result} access={result.fulfilmentAccess} />
 
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Contacts</p>
@@ -406,7 +409,14 @@ async function loadAdvertiser(
     };
     // Only needed to build the proposal form; a person who cannot see the catalogue just does not get one.
     const catalogue = salesAccess.proposalCreate ? await readCatalogue(actor).catch(() => undefined) : undefined;
-    return { ...view, sales, crmAccess, salesAccess, catalogue };
+    const fulfilmentAccess = {
+      artworkManage: allowed("advertiser.artwork", "manage"),
+      artworkApprove: allowed("advertiser.artwork", "approve"),
+      fulfilmentManage: allowed("advertiser.fulfilment", "manage"),
+      proofCreate: allowed("advertiser.proof", "create"),
+      renewalManage: allowed("advertiser.renewal", "manage")
+    };
+    return { ...view, sales, crmAccess, salesAccess, catalogue, fulfilmentAccess };
   } catch (error) {
     return { error };
   }

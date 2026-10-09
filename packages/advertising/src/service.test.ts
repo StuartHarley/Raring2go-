@@ -11,7 +11,12 @@ import {
   createArtworkRequirement,
   createOpportunity,
   createPricedProposal,
+  artworkExceptions,
+  convertRenewalToOpportunity,
   deriveAdvertiserMetrics,
+  deriveRenewalPrompts,
+  dismissRenewalPrompt,
+  openArtworkExceptions,
   taxRateFor,
   priceProposalLine,
   sendProposal,
@@ -36,7 +41,7 @@ import {
   updateArtworkStatus,
   updateAdvertiser
 } from "./service";
-import type { AdvertisingData } from "./types";
+import type { AdvertisingData, CampaignFulfilment } from "./types";
 import type { PermissionData } from "@raring2go/permissions";
 
 const ids = {
@@ -180,6 +185,130 @@ beforeAll(() => {
 });
 afterAll(() => vi.useRealTimers());
 
+describe("artwork sign-off guards", () => {
+  const requirementIn = (status: string, extra: Record<string, unknown> = {}) => {
+    const data = seededData();
+    data.artworkRequirements.push({ id: "aw", productionRequestId: "pr", bookingItemId: "bi", advertiserId: ids.advertiser, territoryId: ids.territories.own, sourceType: "advertiser_supplied", status, specification: {}, dimensions: {}, contentFields: {}, proofReference: {}, ...extra } as never);
+    data.artworkVersions.push({ id: "v1", artworkRequirementId: "aw", versionNumber: 1, assetReference: {}, status: "submitted" } as never);
+    return { data, requirement: data.artworkRequirements[0]! };
+  };
+  const move = (data: AdvertisingData, input: Record<string, unknown>) =>
+    updateArtworkStatus(localContext(), permissions, audit(), data, "aw", { actorDate: "2026-08-14", domainEventId: "e", ...input } as never);
+
+  it("refuses moves the workflow does not allow", async () => {
+    const { data } = requirementIn("requested");
+    await expect(move(data, { status: "production_ready" })).rejects.toThrow(/cannot move from requested to production ready/);
+    const done = requirementIn("production_ready");
+    await expect(move(done.data, { status: "approved", approvedVersionId: "v1" })).rejects.toThrow(/cannot move/);
+  });
+
+  it("needs a real, passing version to approve or sign off", async () => {
+    const { data } = requirementIn("in_review");
+    await expect(move(data, { status: "approved" })).rejects.toThrow(/submitted version/);
+    await expect(move(data, { status: "approved", approvedVersionId: "nope" })).rejects.toThrow(/belong to the requirement/);
+    data.artworkVersions[0]!.status = "rejected";
+    await expect(move(data, { status: "approved", approvedVersionId: "v1" })).rejects.toThrow(/failed preflight/);
+  });
+
+  it("will not sign off for production with an open production exception, or a page that is not ready", async () => {
+    const { data, requirement } = requirementIn("approved", { approvedVersionId: "v1", editionPageId: "page_3", proofReference: { exceptions: [{ versionId: "v0", preflightResultId: null, raisedAt: "2026-08-10", resolvedAt: null }] } });
+    await expect(move(data, { status: "production_ready", pageReadiness: "ready" })).rejects.toThrow(/open production exception/);
+    requirement.proofReference = { exceptions: [] };
+    await expect(move(data, { status: "production_ready", pageReadiness: "blocked" })).rejects.toThrow(/page is not ready/);
+    await expect(move(data, { status: "production_ready" })).rejects.toThrow(/page is not ready/);
+    await move(data, { status: "production_ready", pageReadiness: "ready" });
+    expect(requirement.status).toBe("production_ready");
+  });
+
+  it("raises an exception when preflight fails and clears it when a later version passes", async () => {
+    const { data, requirement } = requirementIn("requested");
+    const submit = (id: string, status: string) => submitArtworkVersion(localContext(), permissions, audit(), data, "aw", { id, artworkRequirementId: "aw", versionNumber: 2, assetReference: {}, status, preflightResultId: status === "rejected" ? "pf1" : null, submittedAt: "2026-08-12" } as never, `e_${id}`);
+    await submit("bad", "rejected");
+    expect(openArtworkExceptions(requirement)).toHaveLength(1);
+    expect(requirement.status).toBe("rejected");
+
+    await submit("good", "submitted");
+    expect(openArtworkExceptions(requirement)).toHaveLength(0);
+    expect(artworkExceptions(requirement)[0]).toMatchObject({ versionId: "bad", resolvedAt: "2026-08-11" });
+  });
+});
+
+describe("fulfilment evidence", () => {
+  const base = { id: "f1", bookingId: "booking_autumn", bookingItemId: "booking_item_autumn_1", advertiserId: ids.advertiser, territoryId: ids.territories.own, territoryEditionId: "edition_autumn", editionPageId: "page_3", status: "fulfilled", channel: "print", fulfilledOn: null, placementReference: {}, performanceReference: {}, metadata: {} } as CampaignFulfilment;
+
+  function booked() {
+    const data = seededData();
+    seedAcceptedBooking(data);
+    return data;
+  }
+
+  it("will not mark an edition placement fulfilled without a published output", async () => {
+    await expect(recordCampaignFulfilment(localContext(), permissions, audit(), booked(), base, "e")).rejects.toThrow(/published edition output/);
+    await expect(recordCampaignFulfilment(localContext(), permissions, audit(), booked(), base, "e", { publishedEvidence: { territoryEditionId: "other_edition", outputId: "o" } })).rejects.toThrow(/published edition output/);
+    await expect(recordCampaignFulfilment(localContext(), permissions, audit(), booked(), base, "e", { publishedEvidence: { territoryEditionId: "edition_autumn", editionPageId: "page_9", outputId: "o" } })).rejects.toThrow(/published edition output/);
+  });
+
+  it("records the published output on the fulfilment and stamps the date", async () => {
+    const data = booked();
+    const fulfilment = await recordCampaignFulfilment(localContext(), permissions, audit(), data, base, "e", { publishedEvidence: { territoryEditionId: "edition_autumn", editionPageId: "page_3", outputId: "out_1", publishedOn: "2026-09-10" } });
+    expect(fulfilment).toMatchObject({ fulfilledOn: "2026-08-11", placementReference: { publishedOutputId: "out_1", publishedOn: "2026-09-10" } });
+  });
+
+  it("lets a scheduled placement be recorded before it is published", async () => {
+    const scheduled = await recordCampaignFulfilment(localContext(), permissions, audit(), booked(), { ...base, status: "scheduled" }, "e");
+    expect(scheduled.status).toBe("scheduled");
+  });
+});
+
+describe("renewal engine", () => {
+  const withCampaign = (fulfilledOn: string, extra: { bookingsAfter?: string; openPrompt?: boolean; aav?: number; status?: string } = {}) => {
+    const data = seededData();
+    seedAcceptedBooking(data);
+    const advertiser = data.advertisers.find((candidate) => candidate.id === ids.advertiser)!;
+    advertiser.annualAdvertiserValueMinor = extra.aav ?? 100000;
+    advertiser.status = extra.status ?? "active";
+    data.campaignFulfilments.push({ id: "ful", bookingId: "booking_autumn", bookingItemId: "booking_item_autumn_1", advertiserId: ids.advertiser, territoryId: ids.territories.own, status: "fulfilled", channel: "print", fulfilledOn, placementReference: {}, performanceReference: {}, metadata: {} } as never);
+    if (extra.bookingsAfter) data.bookings.push({ id: "booking_later", proposalId: "p2", advertiserId: ids.advertiser, territoryId: ids.territories.own, status: "booked", bookedOn: extra.bookingsAfter, totalValueMinor: 1, currency: "GBP", metadata: {} } as never);
+    if (extra.openPrompt) data.renewalPrompts.push({ id: "r0", advertiserId: ids.advertiser, territoryId: ids.territories.own, status: "open", renewalSnapshot: {}, metadata: {} } as never);
+    return data;
+  };
+
+  it("waits two weeks after a campaign finishes, then prompts, due a month after it ended", () => {
+    expect(deriveRenewalPrompts(withCampaign("2026-08-01"), "2026-08-10")).toEqual([]);
+    const [prompt] = deriveRenewalPrompts(withCampaign("2026-08-01"), "2026-08-15");
+    expect(prompt).toMatchObject({ advertiserId: ids.advertiser, sourceBookingId: "booking_autumn", dueOn: "2026-08-31", renewalSnapshot: { lastFulfilledOn: "2026-08-01", priority: "normal" } });
+  });
+
+  it("ranks high-value advertisers first and uses their value", () => {
+    const [prompt] = deriveRenewalPrompts(withCampaign("2026-08-01", { aav: 250000 }), "2026-08-20");
+    expect(prompt?.renewalSnapshot).toMatchObject({ priority: "high", annualAdvertiserValueMinor: 250000 });
+  });
+
+  it("does not prompt someone who already booked again, has an open prompt, or is not a live account", () => {
+    expect(deriveRenewalPrompts(withCampaign("2026-08-01", { bookingsAfter: "2026-08-05" }), "2026-08-20")).toEqual([]);
+    expect(deriveRenewalPrompts(withCampaign("2026-08-01", { openPrompt: true }), "2026-08-20")).toEqual([]);
+    expect(deriveRenewalPrompts(withCampaign("2026-08-01", { status: "archived" }), "2026-08-20")).toEqual([]);
+  });
+
+  it("never prompts twice for the same campaign, even after the first was dismissed", () => {
+    const data = withCampaign("2026-08-01");
+    data.renewalPrompts.push({ id: "r1", advertiserId: ids.advertiser, territoryId: ids.territories.own, sourceBookingId: "booking_autumn", status: "dismissed", renewalSnapshot: {}, metadata: {} } as never);
+    expect(deriveRenewalPrompts(data, "2026-09-30")).toEqual([]);
+  });
+
+  it("dismisses with a reason and converts to an opportunity once", async () => {
+    const data = withCampaign("2026-08-01");
+    data.renewalPrompts.push({ id: "r1", advertiserId: ids.advertiser, territoryId: ids.territories.own, status: "open", dueOn: "2026-08-31", renewalSnapshot: { lastCampaignValueMinor: 52500, lastFulfilledOn: "2026-08-01" }, metadata: {} } as never);
+    await expect(dismissRenewalPrompt(localContext(), permissions, audit(), data, "r1", "  ")).rejects.toThrow(/why/);
+
+    const opportunity = await convertRenewalToOpportunity(localContext(), permissions, audit(), data, { renewalId: "r1", opportunityId: "opp_r", stageId: ids.stages.lead, title: "Renew autumn" });
+    expect(opportunity).toMatchObject({ estimatedValueMinor: 52500, source: "renewal", expectedCloseDate: "2026-08-31" });
+    expect(data.renewalPrompts[0]).toMatchObject({ status: "converted", opportunityId: "opp_r" });
+    await expect(convertRenewalToOpportunity(localContext(), permissions, audit(), data, { renewalId: "r1", opportunityId: "opp_2", stageId: ids.stages.lead, title: "again" })).rejects.toThrow(/open renewal/);
+    await expect(dismissRenewalPrompt(localContext(), permissions, audit(), data, "r1", "no")).rejects.toThrow(/open renewal/);
+  });
+});
+
 describe("tax rates", () => {
   const data = (rates: Array<{ code: string; rateBps: number; effectiveFrom: string; effectiveTo?: string | null }>) => ({
     ...emptyData(),
@@ -271,6 +400,16 @@ describe("proposal pricing and sending", () => {
   it("refuses an expired validity date and an empty proposal", async () => {
     await expect(createPricedProposal(localContext(), permissions, audit(), withCatalogue(), { proposalId: "p", advertiserId: ids.advertiser, title: "x", validUntil: "2020-01-01", lines: [{ productId: "prod_page", quantity: 1 }], newId })).rejects.toThrow(/past/);
     await expect(createPricedProposal(localContext(), permissions, audit(), withCatalogue(), { proposalId: "p", advertiserId: ids.advertiser, title: "x", validUntil: "2026-12-01", lines: [], newId })).rejects.toThrow(/at least one/);
+  });
+});
+
+describe("advertiser status", () => {
+  it("accepts only the known statuses, whatever a form posts", async () => {
+    const data = seededData();
+    await updateAdvertiser(localContext(), permissions, audit(), data, ids.advertiser, { status: "paused" });
+    expect(data.advertisers.find((a) => a.id === ids.advertiser)?.status).toBe("paused");
+    await expect(updateAdvertiser(localContext(), permissions, audit(), data, ids.advertiser, { status: "fulfilled" })).rejects.toThrow(/not a valid advertiser status/);
+    expect(data.advertisers.find((a) => a.id === ids.advertiser)?.status).toBe("paused");
   });
 });
 
@@ -616,10 +755,14 @@ describe("advertiser CRM foundation", () => {
       terms: { version: "2026.1" }
     });
     expect(data.bookings).toHaveLength(1);
-    expect(data.domainEvents.map((event) => event.eventType)).toEqual([
-      "advertiser.proposal.accepted",
-      "advertiser.booking.confirmed"
+    expect(data.domainEvents.map((event) => event.eventType).sort()).toEqual([
+      "advertiser.artwork.requested",
+      "advertiser.booking.confirmed",
+      "advertiser.proposal.accepted"
     ]);
+    // Booking hands off to production straight away: artwork is requested, placed on the slot's edition page.
+    expect(data.artworkRequirements).toHaveLength(1);
+    expect(data.artworkRequirements[0]).toMatchObject({ status: "requested", sourceType: "advertiser_supplied", bookingItemId: data.bookingItems[0]!.id });
     expect(getAdvertiser360(localContext(), permissions, data, ids.advertiser).acceptances).toHaveLength(1);
     expect(recorder.events.map((event) => event.action)).toEqual([
       auditActions.advertiserProposalAccept,
@@ -966,7 +1109,8 @@ describe("advertiser CRM foundation", () => {
     await updateArtworkStatus(localContext(), permissions, recorder, data, requirement.id, {
       status: "production_ready",
       actorDate: "2026-08-15",
-      domainEventId: "event_ready"
+      domainEventId: "event_ready",
+      pageReadiness: "ready"
     });
 
     expect(requirement).toMatchObject({
@@ -1049,7 +1193,7 @@ describe("advertiser CRM foundation", () => {
       placementReference: { page: 3, slot: "full-page" },
       performanceReference: { outputId: "publication_output_1" },
       metadata: {}
-    }, "event_fulfilment");
+    }, "event_fulfilment", { publishedEvidence: { territoryEditionId: "edition_autumn", editionPageId: "page_3", outputId: "publication_output_1", publishedOn: "2026-09-10" } });
     const proofPack = await createProofPack(localContext(), permissions, recorder, data, {
       id: "proof_pack_1",
       fulfilmentId: fulfilment.id,

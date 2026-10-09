@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   advertiserActivityEvents, advertiserDomainEvents, advertiserInvoiceLines, advertiserInvoiceSequences, advertiserInvoices, advertiserPaymentAllocations, advertiserPayments,
   advertisers, auditEvents, commercialBookingItems, commercialBookings, commercialProductionRequests, commercialProposalItems, commercialProposals, createDb, fixtureIds,
-  inventoryReservations, inventorySlots, organisations
+  inventoryReservations, inventorySlots, organisations, artworkRequirements, artworkVersions
 } from "@raring2go/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
@@ -48,6 +48,9 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("advertiser sales and billing (postgr
       await db.delete(advertiserDomainEvents).where(inArray(advertiserDomainEvents.advertiserId, advertiserIds));
       await db.delete(advertiserPayments).where(inArray(advertiserPayments.advertiserId, advertiserIds));
       await db.delete(advertiserInvoices).where(inArray(advertiserInvoices.advertiserId, advertiserIds));
+      const requirements = await db.select({ id: artworkRequirements.id }).from(artworkRequirements).where(inArray(artworkRequirements.advertiserId, advertiserIds));
+      if (requirements.length) await db.delete(artworkVersions).where(inArray(artworkVersions.artworkRequirementId, requirements.map((row) => row.id)));
+      await db.delete(artworkRequirements).where(inArray(artworkRequirements.advertiserId, advertiserIds));
       await db.delete(commercialProductionRequests).where(inArray(commercialProductionRequests.advertiserId, advertiserIds));
     }
     if (bookings.length) await db.delete(commercialBookingItems).where(inArray(commercialBookingItems.bookingId, ids(bookings)));

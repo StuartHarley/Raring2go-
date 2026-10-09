@@ -41,6 +41,17 @@ logic and its in-memory tests exist, but nothing in the web app calls the mutati
 - Two public items with the same title shared one address, so one page was unreachable and the sitemap listed it twice.
 - `apps/web/lib/raw-sql-guard.test.ts` now fails if a Date is interpolated into a raw postgres.js template (the analytics bug).
 
+- Booking created production requests but nothing ever created the artwork requirement, so the artwork flow could not start
+  from a real booking. Booking now requests the artwork, placed on the slot's edition page.
+- Any artwork status could jump to any other (requested straight to production-ready), and production sign-off ignored failed
+  preflight and page readiness. Moves are now a defined set, and sign-off needs a passing version, no open production
+  exception and a page Edition Factory marks ready.
+- A staff proof could be issued with no artwork version behind it, and the advertiser could then "approve" nothing.
+- Advertiser status accepted any string the form posted. It is now a closed set, checked in the domain.
+- "Fulfilled" was a typed assertion; it now needs a published edition, a generated output and a published page.
+- Domain events are keyed `type:entity`, so a second event of the same type for the same record (for example changes requested
+  twice on one artwork) is silently dropped. Not changed here; worth a follow-up.
+
 ## What only the business can do (not planned as code)
 
 UAT-001 to 005: provider accounts and credentials, named testers and owners, restore rehearsals on the hosted database,
@@ -58,7 +69,7 @@ One PR per work package, merged in order. Sizes: S under a day, M a few days, L 
 | 1 ✅ | **Remove fixtures from production paths.** Real contact/template lookup, parent-session preference centre scaffold, database-driven sitemap, franchise signers from real contacts; make dev-only providers fail closed outside development | audit finding 3 | S–M |
 | 2 ✅ | **Parent self-service.** Parent-session preference centre (consent, territories, age bands), newsletter signup, save/follow/unsave, consent-withdrawal-removes-eligibility test, analytics emission from pages | EXT-002, MKT-007, PUB-005, PUB-008 | M |
 | 3 ✅ | **Public site completion.** Detail routes, per-edition and per-article routes, canonical URLs, Event/Article structured data, visible Sponsored labels, personalisation flag gating | PUB-001 to 004, 006, 007 | M |
-| 4 ◐ | **Advertiser CRM staff UI.** *(Part 1 done: advertiser create/edit, contacts, activity, derived metrics, opportunities and stage changes. Part 2 done: server-priced proposals, send, book, invoice, issue, record and apply payments. Still to do: artwork, fulfilment, proof packs, renewals.)* Create/edit advertiser, pipeline actions, proposals and booking, invoices and payments, artwork status, fulfilment and renewals; runtime wrappers with audit and Postgres tests | ADV-001 to 008 | L |
+| 4 ✅ | **Advertiser CRM staff UI.** *(Part 1 done: advertiser create/edit, contacts, activity, derived metrics, opportunities and stage changes. Part 2 done: server-priced proposals, send, book, invoice, issue, record and apply payments. Part 3 done: artwork requested at booking, guarded sign-off with production exceptions, fulfilment tied to published output, proof packs, renewal engine and prompts.)* Create/edit advertiser, pipeline actions, proposals and booking, invoices and payments, artwork status, fulfilment and renewals; runtime wrappers with audit and Postgres tests | ADV-001 to 008 | L |
 | 5 | **Social publishing wired.** Runtime wrappers, queue/approve/schedule UI, calendar, job handler registered in the worker, retry/failure surfacing | MKT-005 | M |
 | 6 | **Journeys and compliance jobs.** Enforce frequency caps, define the named journeys, move the journey and compliance cron work into the durable job runtime, deliver compliance reminders | MKT-006, FRN-006 | M |
 | 7 | **Audience import (dry-run first).** Import service with dry-run, reject report, idempotency, consent provenance, tenancy checks, rollback; mapping doc; audience management UI | MKT-001, UAT-003 | L |

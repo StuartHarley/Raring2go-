@@ -25,13 +25,21 @@ import {
   recordPaymentRecord,
   sendProposalRecord
 } from "../../../../lib/advertising-sales";
+import {
+  actOnArtwork,
+  convertRenewalRecord,
+  createProofPackRecord,
+  dismissRenewalRecord,
+  recordFulfilmentRecord
+} from "../../../../lib/advertising-fulfilment";
+import type { ArtworkStaffAction } from "../../../../lib/advertising-fulfilment";
 
 /**
  * Staff advertiser CRM actions. The signed-in actor is resolved here on the server; the domain then
  * checks the exact permission and territory scope. Result codes are fixed, so banner text is looked
  * up on the page and never reflected from the URL.
  */
-export type CrmResult = "created" | "saved" | "duplicate" | "not_allowed" | "invalid" | "below_minimum" | "needs_approval" | "slot_taken" | "no_price" | "already_done";
+export type CrmResult = "created" | "saved" | "duplicate" | "not_allowed" | "invalid" | "below_minimum" | "needs_approval" | "slot_taken" | "no_price" | "already_done" | "exception_open" | "page_not_ready" | "not_published" | "step_not_allowed" | "artwork_not_ready";
 
 async function actorFor(request: RequestedShellContext) {
   const shell = await requireShellPermission(request, { module: "advertiser", action: "view" });
@@ -48,7 +56,12 @@ function resultFor(error: unknown): CrmResult | undefined {
   if (/needs approval/i.test(error.message)) return "needs_approval";
   if (/already reserved/i.test(error.message)) return "slot_taken";
   if (/no price for/i.test(error.message)) return "no_price";
-  if (/already has an invoice|Only a draft|Only draft/i.test(error.message)) return "already_done";
+  if (/already has an invoice|Only a draft|Only draft|Only an open renewal/i.test(error.message)) return "already_done";
+  if (/open production exception/i.test(error.message)) return "exception_open";
+  if (/page is not ready/i.test(error.message)) return "page_not_ready";
+  if (/production-ready artwork/i.test(error.message)) return "artwork_not_ready";
+  if (/published edition output/i.test(error.message)) return "not_published";
+  if (/cannot move from|submitted version|failed preflight/i.test(error.message)) return "step_not_allowed";
   if (/Missing permission|outside|not permitted|cannot access|scope/i.test(error.message)) return "not_allowed";
   // Rule violations thrown by the domain read as plain messages; infrastructure failures must still surface.
   if (/^(Failed query|connect|read ECONN|Connection)/.test(error.message)) return undefined;
@@ -214,4 +227,33 @@ export async function allocatePaymentAction(request: RequestedShellContext, adve
   await perform(request, `/app/advertisers/${advertiserId}`, "saved", (actor) =>
     allocatePaymentRecord(actor, { paymentId: text(formData, "paymentId"), invoiceId: text(formData, "invoiceId"), amountMinor: pounds(formData, "amount") })
   );
+}
+
+// ----- Artwork, fulfilment, proof packs, renewals -----
+
+const artworkActions: ArtworkStaffAction[] = ["issue_proof", "request_changes", "approve_for_advertiser", "production_ready"];
+
+export async function artworkAction(request: RequestedShellContext, advertiserId: string, requirementId: string, action: ArtworkStaffAction) {
+  if (!artworkActions.includes(action)) throw new Error("Unknown artwork action.");
+  await perform(request, `/app/advertisers/${advertiserId}`, "saved", (actor) => actOnArtwork(actor, requirementId, action));
+}
+
+export async function recordFulfilmentAction(request: RequestedShellContext, advertiserId: string, bookingItemId: string, formData: FormData) {
+  const status = text(formData, "status");
+  if (!["scheduled", "in_progress", "fulfilled", "cancelled"].includes(status)) throw new Error("Unknown status.");
+  await perform(request, `/app/advertisers/${advertiserId}`, "saved", (actor) =>
+    recordFulfilmentRecord(actor, { bookingItemId, status: status as "scheduled" | "in_progress" | "fulfilled" | "cancelled", scheduledOn: text(formData, "scheduledOn") })
+  );
+}
+
+export async function createProofPackAction(request: RequestedShellContext, advertiserId: string, fulfilmentId: string, formData: FormData) {
+  await perform(request, `/app/advertisers/${advertiserId}`, "created", (actor) => createProofPackRecord(actor, fulfilmentId, { deliver: formData.get("deliver") === "on" }));
+}
+
+export async function convertRenewalAction(request: RequestedShellContext, advertiserId: string, renewalId: string) {
+  await perform(request, `/app/advertisers/${advertiserId}`, "created", (actor) => convertRenewalRecord(actor, renewalId));
+}
+
+export async function dismissRenewalAction(request: RequestedShellContext, advertiserId: string, renewalId: string, formData: FormData) {
+  await perform(request, `/app/advertisers/${advertiserId}`, "saved", (actor) => dismissRenewalRecord(actor, renewalId, text(formData, "reason")));
 }
