@@ -52,6 +52,12 @@ logic and its in-memory tests exist, but nothing in the web app calls the mutati
 - Domain events are keyed `type:entity`, so a second event of the same type for the same record (for example changes requested
   twice on one artwork) is silently dropped. Not changed here; worth a follow-up.
 
+- Scheduling accepted a time in the past or text that is not a date, and a failed post showed as "failed" while it was actually
+  queued to retry. A retry now waits 5, 10 then 20 minutes and shows as retrying; only a post out of attempts, or with an
+  unrecoverable error such as bad credentials, shows as failed.
+- Social domain events were keyed by a running count, so two simultaneous actions on one post could collide. They now carry a
+  unique key.
+
 ## What only the business can do (not planned as code)
 
 UAT-001 to 005: provider accounts and credentials, named testers and owners, restore rehearsals on the hosted database,
@@ -70,7 +76,7 @@ One PR per work package, merged in order. Sizes: S under a day, M a few days, L 
 | 2 ✅ | **Parent self-service.** Parent-session preference centre (consent, territories, age bands), newsletter signup, save/follow/unsave, consent-withdrawal-removes-eligibility test, analytics emission from pages | EXT-002, MKT-007, PUB-005, PUB-008 | M |
 | 3 ✅ | **Public site completion.** Detail routes, per-edition and per-article routes, canonical URLs, Event/Article structured data, visible Sponsored labels, personalisation flag gating | PUB-001 to 004, 006, 007 | M |
 | 4 ✅ | **Advertiser CRM staff UI.** *(Part 1 done: advertiser create/edit, contacts, activity, derived metrics, opportunities and stage changes. Part 2 done: server-priced proposals, send, book, invoice, issue, record and apply payments. Part 3 done: artwork requested at booking, guarded sign-off with production exceptions, fulfilment tied to published output, proof packs, renewal engine and prompts.)* Create/edit advertiser, pipeline actions, proposals and booking, invoices and payments, artwork status, fulfilment and renewals; runtime wrappers with audit and Postgres tests | ADV-001 to 008 | L |
-| 5 | **Social publishing wired.** Runtime wrappers, queue/approve/schedule UI, calendar, job handler registered in the worker, retry/failure surfacing | MKT-005 | M |
+| 5 ✅ | **Social publishing wired.** Runtime wrappers, queue/approve/schedule UI, calendar, job handler registered in the worker, retry/failure surfacing | MKT-005 | M |
 | 6 | **Journeys and compliance jobs.** Enforce frequency caps, define the named journeys, move the journey and compliance cron work into the durable job runtime, deliver compliance reminders | MKT-006, FRN-006 | M |
 | 7 | **Audience import (dry-run first).** Import service with dry-run, reject report, idempotency, consent provenance, tenancy checks, rollback; mapping doc; audience management UI | MKT-001, UAT-003 | L |
 | 8 | **Franchise documents and e-sign boundary.** Real upload/download through storage, agreement artefact adoption, provider-neutral e-sign webhook route with idempotency (provider chosen by you); franchise staff delegation | FRN-003, FRN-004 | M |

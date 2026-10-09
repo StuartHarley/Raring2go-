@@ -1,5 +1,5 @@
 import { auditActions } from "@raring2go/audit";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createSeasonWithMasterEdition,
   approveContentVariant,
@@ -27,7 +27,13 @@ import {
   listEditionSummaries,
   localiseContentForTerritory,
   prepareWebsitePublishing,
+  beginSocialPublish,
+  completeSocialPublish,
   publishDueSocialJob,
+  reapStaleSocialJobs,
+  resolveUnknownSocialOutcome,
+  retrySocialPublication,
+  socialRetryDelayMinutes,
   publishTemplateVersion,
   queueSocialPublication,
   applySafePreflightFixes,
@@ -149,6 +155,13 @@ const permissions: PermissionData = {
     }
   ]
 };
+
+// Fixtures are dated around 2026-08-11 and scheduling refuses the past, so the clock is pinned for this file.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-08-11T09:00:00.000Z"));
+});
+afterAll(() => vi.useRealTimers());
 
 describe("publishing edition model", () => {
   it("creates the canonical season and master edition with audit", async () => {
@@ -808,8 +821,10 @@ describe("publishing edition model", () => {
     await scheduleSocialPublication(hqContext(), permissions, recorder, publishingData, publication.id, "2026-08-12T09:00:00.000Z");
     await publishDueSocialJob(hqContext(), permissions, recorder, publishingData, failingSocialProvider(), publishingData.socialPublishJobs[0]!.id);
 
-    expect(publication).toMatchObject({ publishState: "failed", retryCount: 1 });
+    // A recoverable failure goes back in the queue with a delay rather than showing as failed.
+    expect(publication).toMatchObject({ publishState: "scheduled", retryCount: 1 });
     expect(publishingData.socialPublishJobs[0]!.status).toBe("queued");
+    expect(Date.parse(publishingData.socialPublishJobs[0]!.runAfter)).toBeGreaterThan(Date.now());
     expect(JSON.stringify(publishingData.socialPublishJobs[0]!.providerResponse)).not.toContain("secret-token");
     expect(JSON.stringify(publication.failureMetadata)).not.toContain("secret-token");
     await cancelSocialPublication(hqContext(), permissions, recorder, publishingData, publication.id);
@@ -818,6 +833,119 @@ describe("publishing edition model", () => {
     const suggestions = await createNetworkSocialQueueSuggestions(hqContext(), permissions, recorder, publishingData, "variant_facebook", [ids.territories.own, ids.territories.other]);
     expect(suggestions.map((suggestion) => suggestion.territoryId)).toEqual([ids.territories.own, ids.territories.other]);
     expect(socialContentGaps(publishingData, "2026-08-11T00:00:00.000Z").some((gap) => gap.signals.includes("no_social_scheduled_next_7_days"))).toBe(true);
+  });
+});
+
+describe("social publishing worker phases", () => {
+  async function scheduled(at = "2026-08-12T09:00:00.000Z") {
+    const data = socialData();
+    const recorder = audit();
+    const publication = await queueSocialPublication(hqContext(), permissions, recorder, data, { id: "p1", variantId: "variant_facebook", territoryId: ids.territories.own, socialAccountId: "account_facebook", idempotencyKey: "queue:p1" });
+    await approveSocialPublication(hqContext(), permissions, recorder, data, publication.id);
+    await scheduleSocialPublication(hqContext(), permissions, recorder, data, publication.id, at);
+    const job = data.socialPublishJobs[0]!;
+    // What the worker's SQL claim does before calling the domain.
+    const claim = () => { job.status = "running"; job.attempts += 1; job.lockedAt = new Date().toISOString(); };
+    return { data, recorder, publication, job, claim };
+  }
+
+  it("refuses to schedule in the past or at nonsense times", async () => {
+    await expect(scheduled("2026-08-01T09:00:00.000Z")).rejects.toThrow(/past/);
+    await expect(scheduled("not a date")).rejects.toThrow(/valid date/);
+  });
+
+  it("moves the post to publishing before the provider is called, and to published after", async () => {
+    const { data, recorder, publication, job, claim } = await scheduled();
+    claim();
+    const started = await beginSocialPublish(data, recorder, job.id);
+    expect(started?.publication.publishState).toBe("publishing");
+
+    await completeSocialPublish(data, recorder, job.id, { status: "published", externalReference: "fb_123", metadata: { access_token: "secret-token", ok: true } });
+    expect(publication).toMatchObject({ publishState: "published", publishedExternalReference: "fb_123" });
+    expect(job.status).toBe("completed");
+    expect(JSON.stringify(job.providerResponse)).not.toContain("secret-token");
+    await expect(completeSocialPublish(data, recorder, job.id, { status: "failed" })).resolves.toBe(publication);
+  });
+
+  it("does not publish a post that was cancelled after it was claimed", async () => {
+    const { data, recorder, publication, job, claim } = await scheduled();
+    await cancelSocialPublication(hqContext(), permissions, recorder, data, publication.id);
+    claim();
+    await expect(beginSocialPublish(data, recorder, job.id)).resolves.toBeUndefined();
+    expect(job.status).toBe("cancelled");
+    expect(publication.publishState).toBe("cancelled");
+  });
+
+  it("retries a recoverable failure with growing delays, then fails the post when attempts run out", async () => {
+    const { data, recorder, publication, job, claim } = await scheduled();
+    expect([1, 2, 3].map(socialRetryDelayMinutes)).toEqual([5, 10, 20]);
+    for (let attempt = 1; attempt <= job.maxAttempts; attempt += 1) {
+      claim();
+      await beginSocialPublish(data, recorder, job.id);
+      await completeSocialPublish(data, recorder, job.id, { status: "failed", metadata: { reason: "provider_error", recoverable: true } });
+      if (attempt < job.maxAttempts) {
+        expect(publication.publishState).toBe("scheduled");
+        expect(job.status).toBe("queued");
+        expect(Date.parse(job.runAfter) - Date.now()).toBeGreaterThanOrEqual(socialRetryDelayMinutes(attempt) * 60_000 - 1000);
+      }
+    }
+    expect(publication).toMatchObject({ publishState: "failed", retryCount: job.maxAttempts });
+    expect(job.status).toBe("failed");
+  });
+
+  it("fails an unrecoverable error straight away instead of retrying it", async () => {
+    const { data, recorder, publication, job, claim } = await scheduled();
+    claim();
+    await beginSocialPublish(data, recorder, job.id);
+    await completeSocialPublish(data, recorder, job.id, { status: "failed", metadata: { reason: "authentication_failed", recoverable: false } });
+    expect(publication.publishState).toBe("failed");
+    expect(job.status).toBe("failed");
+    expect(job.attempts).toBe(1);
+  });
+
+  it("flags a worker that died mid-publish as outcome unknown, never retrying it automatically", async () => {
+    const { data, recorder, publication, job, claim } = await scheduled();
+    claim();
+    await beginSocialPublish(data, recorder, job.id);
+    expect(await reapStaleSocialJobs(data, recorder, new Date(Date.now() + 5 * 60_000).toISOString())).toHaveLength(0);
+
+    const reaped = await reapStaleSocialJobs(data, recorder, new Date(Date.now() + 20 * 60_000).toISOString());
+    expect(reaped).toHaveLength(1);
+    expect(publication).toMatchObject({ publishState: "failed", failureMetadata: { reason: "outcome_unknown" } });
+    expect(job.status).toBe("failed");
+
+    await expect(retrySocialPublication(hqContext(), permissions, recorder, data, publication.id)).rejects.toThrow(/Check whether this post went out/);
+  });
+
+  it("lets a person resolve an unknown outcome either way", async () => {
+    const mark = async (posted: boolean) => {
+      const ctx = await scheduled();
+      ctx.claim();
+      await beginSocialPublish(ctx.data, ctx.recorder, ctx.job.id);
+      await reapStaleSocialJobs(ctx.data, ctx.recorder, new Date(Date.now() + 30 * 60_000).toISOString());
+      await resolveUnknownSocialOutcome(hqContext(), permissions, ctx.recorder, ctx.data, ctx.publication.id, { posted, externalReference: "fb_999" });
+      return ctx;
+    };
+    const posted = await mark(true);
+    expect(posted.publication).toMatchObject({ publishState: "published", publishedExternalReference: "fb_999" });
+
+    const notPosted = await mark(false);
+    expect(notPosted.publication.publishState).toBe("scheduled");
+    expect(notPosted.job).toMatchObject({ status: "queued", attempts: 0 });
+    await expect(resolveUnknownSocialOutcome(hqContext(), permissions, notPosted.recorder, notPosted.data, notPosted.publication.id, { posted: true })).rejects.toThrow(/unknown outcome/);
+  });
+
+  it("lets staff retry an ordinary failure, but only their own territory's", async () => {
+    const { data, recorder, publication, job, claim } = await scheduled();
+    claim();
+    await beginSocialPublish(data, recorder, job.id);
+    await completeSocialPublish(data, recorder, job.id, { status: "failed", metadata: { reason: "authentication_failed", recoverable: false } });
+
+    await expect(retrySocialPublication(otherLocalContext(), permissions, recorder, data, publication.id)).rejects.toThrow();
+    await retrySocialPublication(hqContext(), permissions, recorder, data, publication.id);
+    expect(publication.publishState).toBe("scheduled");
+    expect(job).toMatchObject({ status: "queued", attempts: 0 });
+    await expect(retrySocialPublication(hqContext(), permissions, recorder, data, publication.id)).rejects.toThrow(/Only a failed post/);
   });
 });
 
@@ -1028,6 +1156,10 @@ function hqContext() {
     userId: ids.users.hq,
     organisationId: ids.organisations.hq
   };
+}
+
+function otherLocalContext() {
+  return { ...localContext(), territoryId: ids.territories.other };
 }
 
 function localContext() {
