@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { auditEvents, createDb, editionPages, fixtureIds, magazineTemplateVersions, magazineTemplates, masterEditions, publicationOutputs, seasons, territoryEditions } from "@raring2go/db";
+import { auditEvents, createDb, editionPages, fixtureIds, editionContentItems, territoryEditionContent, magazineTemplateVersions, magazineTemplates, masterEditions, publicationOutputs, seasons, territoryEditions } from "@raring2go/db";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
-import { approveEditionAsActor, approveMasterAsActor, createFlatplanAsActor, createSeasonAsActor, generateEditionsAsActor, readSeasonPlanner, releaseEditionAsActor, reopenEditionAsActor, submitEditionAsActor, approveTemplateVersionAsActor, createTemplateAsActor, publishTemplateVersionAsActor, readTemplateLibrary, reviseTemplateAsActor } from "./edition-runtime";
+import { assignPageAsActor, createLocalContentAsActor, movePageAsActor, readFlatplan, approveEditionAsActor, approveMasterAsActor, createFlatplanAsActor, createSeasonAsActor, generateEditionsAsActor, readSeasonPlanner, releaseEditionAsActor, reopenEditionAsActor, submitEditionAsActor, approveTemplateVersionAsActor, createTemplateAsActor, publishTemplateVersionAsActor, readTemplateLibrary, reviseTemplateAsActor } from "./edition-runtime";
 import { withFinanceGuardsDisabled } from "./finance-test-support";
 
 const spec = {
@@ -121,5 +121,73 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("season to publication lifecycle (pos
   it("refuses a franchisee at every step", async () => {
     await expect(createSeasonAsActor(franchisee, { key: `fr-${tag}`, name: "No", year: "2099", season: "autumn", accent: "#aa3300", pageCount: "8" })).rejects.toThrow(/permission/);
     await expect(readSeasonPlanner(franchisee)).rejects.toThrow(/permission/);
+  });
+});
+
+describe.skipIf(!process.env.RUN_DB_TESTS)("flatplan editing (postgres)", () => {
+  const { db, sql } = createDb();
+  const hq = { userId: fixtureIds.users.superAdmin, organisationId: fixtureIds.organisations.hq, territoryId: null };
+  const sutton = { userId: fixtureIds.users.franchisee, organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
+  const solihull = { ...sutton, territoryId: fixtureIds.territories.solihull };
+  const tag = randomUUID().slice(0, 8);
+  let seasonId = "";
+  let templateId = "";
+
+  afterAll(async () => {
+    const editions = seasonId ? await db.select({ id: territoryEditions.id }).from(territoryEditions).where(eq(territoryEditions.seasonId, seasonId)) : [];
+    const editionIds = editions.map((e) => e.id);
+    const masters = seasonId ? await db.select({ id: masterEditions.id }).from(masterEditions).where(eq(masterEditions.seasonId, seasonId)) : [];
+    const versions = templateId ? await db.select({ id: magazineTemplateVersions.id }).from(magazineTemplateVersions).where(eq(magazineTemplateVersions.templateId, templateId)) : [];
+    const contents = editionIds.length ? await db.select().from(territoryEditionContent).where(inArray(territoryEditionContent.territoryEditionId, editionIds)) : [];
+    const pageRows = editionIds.length ? await db.select({ id: editionPages.id }).from(editionPages).where(inArray(editionPages.territoryEditionId, editionIds)) : [];
+    await withFinanceGuardsDisabled(db, async () => {
+      await db.delete(auditEvents).where(inArray(auditEvents.entityId, [...editionIds, ...masters.map((m) => m.id), ...versions.map((v) => v.id), ...contents.map((c) => c.id), ...contents.map((c) => c.sourceContentItemId), ...pageRows.map((p) => p.id), ...(templateId ? [templateId] : [])]));
+    });
+    if (editionIds.length) {
+      await db.delete(editionPages).where(inArray(editionPages.territoryEditionId, editionIds));
+      await db.delete(territoryEditionContent).where(inArray(territoryEditionContent.territoryEditionId, editionIds));
+      await db.delete(territoryEditions).where(inArray(territoryEditions.id, editionIds));
+    }
+    if (contents.length) await db.delete(editionContentItems).where(inArray(editionContentItems.id, contents.map((c) => c.sourceContentItemId)));
+    await db.delete(masterEditions).where(eq(masterEditions.seasonId, seasonId));
+    if (seasonId) await db.delete(seasons).where(eq(seasons.id, seasonId));
+    if (templateId) {
+      await db.delete(magazineTemplateVersions).where(eq(magazineTemplateVersions.templateId, templateId));
+      await db.delete(magazineTemplates).where(eq(magazineTemplates.id, templateId));
+    }
+    await sql.end();
+  });
+
+  it("assigns a template and local content, reorders pages, and keeps the locked cover and other territories out", async () => {
+    templateId = await createTemplateAsActor(hq, { key: `fp-${tag}`, name: "Flat", category: "article", spec });
+    const version = (await readTemplateLibrary(hq)).find((t) => t.template.id === templateId)!.versions[0]!.version.id;
+    await approveTemplateVersionAsActor(hq, version);
+    await publishTemplateVersionAsActor(hq, version);
+    seasonId = await createSeasonAsActor(hq, { key: `fp-${tag}`, name: `FP ${tag}`, year: "2099", season: "autumn", accent: "#aa3300", pageCount: "8" });
+    const master = (await readSeasonPlanner(hq)).find((e) => e.season.id === seasonId)!.masters[0]!.master;
+    await approveMasterAsActor(hq, master.id);
+    const [edition] = await generateEditionsAsActor(hq, master.id, [fixtureIds.territories.suttonColdfield]);
+    await createFlatplanAsActor(hq, edition!.id);
+
+    let plan = await readFlatplan(sutton, edition!.id);
+    expect(plan.pages).toHaveLength(8);
+    expect(plan.templates.map((t) => t.id)).toContain(version);
+    const { content } = await createLocalContentAsActor(sutton, edition!.id, { title: "Local feature", contentType: "article", headline: "Hello", body: "Body text" });
+    const page3 = plan.pages.find((p) => p.page.pageNumber === 3)!.page;
+    await assignPageAsActor(sutton, page3.id, { templateVersionId: version, assignedContentId: content.id });
+    plan = await readFlatplan(sutton, edition!.id);
+    expect(plan.pages.find((p) => p.page.id === page3.id)).toMatchObject({ templateName: expect.stringContaining("Flat v1"), contentTitle: "Local feature" });
+    expect(plan.content[0]).toMatchObject({ title: "Local feature", usedOnPage: 3 });
+
+    await movePageAsActor(sutton, edition!.id, page3.id, "down");
+    plan = await readFlatplan(sutton, edition!.id);
+    expect(plan.pages.find((p) => p.page.id === page3.id)!.page.pageNumber).toBe(4);
+    const cover = plan.pages.find((p) => p.page.pageNumber === 1)!.page;
+    await expect(movePageAsActor(sutton, edition!.id, cover.id, "down")).rejects.toThrow(/Locked/);
+    await expect(assignPageAsActor(sutton, cover.id, { templateVersionId: version })).rejects.toThrow(/Locked/);
+
+    await expect(readFlatplan(solihull, edition!.id)).rejects.toThrow();
+    await expect(assignPageAsActor(solihull, page3.id, { templateVersionId: version })).rejects.toThrow();
+    await expect(createLocalContentAsActor(solihull, edition!.id, { title: "x", contentType: "article", headline: "", body: "" })).rejects.toThrow();
   });
 });

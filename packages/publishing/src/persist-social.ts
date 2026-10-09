@@ -95,6 +95,13 @@ export async function persistPlan(db: WriteDb, plan: SocialPlannedChange[], labe
     const columns = getTableColumns(change.table) as Record<string, Column>;
     const idColumn = columns.id!;
     const hasUpdatedAt = "updatedAt" in columns;
+    // Page numbers are unique per edition, so a swap or reorder would collide row by row. Park the moving pages on
+    // negative numbers first, then give them their final ones.
+    if (change.collection === "editionPages") {
+      for (const update of change.updates.filter((candidate) => typeof candidate.changes.pageNumber === "number")) {
+        await db.update(change.table).set({ pageNumber: -(update.changes.pageNumber as number) }).where(eq(idColumn, update.id)).returning();
+      }
+    }
     for (const update of change.updates) {
       const result = await db.update(change.table).set({ ...update.changes, ...(hasUpdatedAt ? { updatedAt: now } : {}) }).where(eq(idColumn, update.id)).returning();
       if (result.length === 0) throw new Error(`${label} ${change.collection} row ${update.id} no longer exists.`);

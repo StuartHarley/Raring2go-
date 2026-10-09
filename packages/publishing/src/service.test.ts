@@ -52,7 +52,8 @@ import {
   submitEditionForReview,
   approveTerritoryEdition,
   reopenTerritoryEdition,
-  releaseTerritoryEdition
+  releaseTerritoryEdition,
+  createEditionLocalContent
 } from "./service";
 import type { PublishingData } from "./types";
 import { contentDraftTask, normaliseContentDraft } from "./ai-tasks";
@@ -1531,6 +1532,27 @@ describe("edition lifecycle", () => {
     edition.status = "review";
     await expect(approveTerritoryEdition(localContext(), permissions, audit(), data, edition.id)).rejects.toThrow(/permission/);
     await expect(submitEditionForReview(otherLocalContext(), permissions, audit(), data, edition.id)).rejects.toThrow();
+  });
+});
+
+describe("flatplan editing is territory-scoped", () => {
+  it("lets a local editor work on their own edition and refuses another territory's editor", async () => {
+    const data = await editableFlatplanData(8);
+    const edition = data.territoryEditions[0]!;
+    const page = data.editionPages.find((candidate) => candidate.pageNumber === 3)!;
+    const { content } = await createEditionLocalContent(localContext(), permissions, audit(), data, edition.id, { title: "Local feature", contentType: "article", body: { headline: "Hello" } });
+    expect(content).toMatchObject({ territoryEditionId: edition.id, inheritanceState: "detached", effectiveContent: { headline: "Hello" } });
+    const item = data.editionContentItems.find((candidate) => candidate.id === content.sourceContentItemId)!;
+    expect(item).toMatchObject({ sourceLevel: "territory", locked: false, targeting: { territoryIds: [ids.territories.own] } });
+    await assignPageTemplateAndContent(localContext(), permissions, audit(), data, page.id, { assignedContentId: content.id });
+    expect(page.assignedContentId).toBe(content.id);
+
+    const other = otherLocalContext();
+    await expect(createEditionLocalContent(other, permissions, audit(), data, edition.id, { title: "x", contentType: "article", body: {} })).rejects.toThrow(/outside/);
+    await expect(assignPageTemplateAndContent(other, permissions, audit(), data, page.id, { assignedContentId: content.id })).rejects.toThrow(/outside/);
+    await expect(reorderEditionPages(other, permissions, audit(), data, edition.id, data.editionPages.map((candidate) => candidate.id))).rejects.toThrow(/outside/);
+    await expect(submitPageForReview(other, permissions, audit(), data, page.id)).rejects.toThrow(/outside/);
+    await expect(createEditionLocalContent(localContext(), permissions, audit(), data, edition.id, { title: " ", contentType: "article", body: {} })).rejects.toThrow(/title/);
   });
 });
 

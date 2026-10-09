@@ -1,5 +1,8 @@
 import { createDb } from "@raring2go/db";
 import {
+  assignPageTemplateAndContent,
+  createEditionLocalContent,
+  reorderEditionPages,
   approveMasterEdition,
   approveTemplateVersion,
   approveTerritoryEdition,
@@ -28,6 +31,7 @@ import type { PermissionData } from "@raring2go/permissions";
 import { randomUUID } from "node:crypto";
 import { editionAuditFor } from "./edition-output";
 import { getPermissionData } from "./permission-source";
+import { readTerritoryEdition } from "./publishing-runtime";
 import { evaluatePermission } from "@raring2go/permissions";
 
 type Audit = ReturnType<typeof editionAuditFor>;
@@ -165,4 +169,56 @@ export const releaseEditionAsActor = (context: PublishingActorContext, editionId
 function requireEditionCreateGrant(context: PublishingActorContext, permissions: PermissionData) {
   const decision = evaluatePermission({ userId: context.userId, module: "edition", action: "create", context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } }, permissions);
   if (!decision.allowed) throw new Error("No permission grant matched this request.");
+}
+
+/** Everything the flatplan editor shows. Reading goes through the edition read, which proves the edition is in the actor's scope. */
+export async function readFlatplan(context: PublishingActorContext, territoryEditionId: string) {
+  const { row, pages, content } = await readTerritoryEdition(context, territoryEditionId);
+  const { db, sql } = createDb();
+  try {
+    const data = await loadPublishingData(db);
+    const versions = data.magazineTemplateVersions.filter((version) => version.status === "published" && !version.deletedAt);
+    const templateName = (versionId: string | null | undefined) => {
+      const version = data.magazineTemplateVersions.find((candidate) => candidate.id === versionId);
+      const template = version ? data.magazineTemplates.find((candidate) => candidate.id === version.templateId) : undefined;
+      return version && template ? `${template.name} v${version.version}` : null;
+    };
+    const contentTitle = (contentId: string | null | undefined) => {
+      const entry = content.find((candidate) => candidate.id === contentId);
+      return entry ? data.editionContentItems.find((item) => item.id === entry.sourceContentItemId)?.title ?? "Content" : null;
+    };
+    return {
+      edition: row.territoryEdition,
+      season: row.season,
+      pages: pages.map((page) => ({ page, templateName: templateName(page.templateVersionId), contentTitle: contentTitle(page.assignedContentId) })),
+      templates: versions.map((version) => ({ id: version.id, label: templateName(version.id) ?? version.id, category: data.magazineTemplates.find((t) => t.id === version.templateId)?.category ?? "" })).sort((a, b) => a.label.localeCompare(b.label)),
+      content: content.map((entry) => ({ id: entry.id, title: contentTitle(entry.id) ?? "Content", state: entry.inheritanceState, locked: entry.locked, usedOnPage: pages.find((page) => page.assignedContentId === entry.id)?.pageNumber ?? null })),
+      locked: pages.some((page) => page.locked)
+    };
+  } finally {
+    await sql.end();
+  }
+}
+
+export const assignPageAsActor = (context: PublishingActorContext, pageId: string, input: { templateVersionId?: string | null; assignedContentId?: string | null }) =>
+  mutateEditions((data, audit, permissions) => assignPageTemplateAndContent(context, permissions, audit, data, pageId, input));
+
+/** Moves a page one place earlier or later by swapping its position with its neighbour, through the same reorder rules (locked pages stay put). */
+export const movePageAsActor = (context: PublishingActorContext, territoryEditionId: string, pageId: string, direction: "up" | "down") =>
+  mutateEditions(async (data, audit, permissions) => {
+    const ordered = data.editionPages.filter((page) => page.territoryEditionId === territoryEditionId && !page.deletedAt).sort((a, b) => a.pageNumber - b.pageNumber).map((page) => page.id);
+    const index = ordered.indexOf(pageId);
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (index === -1 || target < 0 || target >= ordered.length) throw new Error("That page cannot move any further.");
+    [ordered[index], ordered[target]] = [ordered[target]!, ordered[index]!];
+    return reorderEditionPages(context, permissions, audit, data, territoryEditionId, ordered);
+  });
+
+export async function createLocalContentAsActor(context: PublishingActorContext, territoryEditionId: string, input: { title: string; contentType: string; headline: string; body: string }) {
+  const allowed = ["article", "event", "offer", "competition", "advertorial", "house_page"];
+  if (!allowed.includes(input.contentType)) throw new Error("Choose a content type.");
+  const body: Record<string, unknown> = {};
+  if (input.headline.trim()) body.headline = input.headline.trim().slice(0, 300);
+  if (input.body.trim()) body.body = input.body.trim().slice(0, 20000);
+  return mutateEditions((data, audit, permissions) => createEditionLocalContent(context, permissions, audit, data, territoryEditionId, { title: input.title, contentType: input.contentType, body }));
 }
