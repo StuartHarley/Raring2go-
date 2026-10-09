@@ -157,38 +157,45 @@ export async function completeProviderConnection(input: {
   providerSafeMetadata?: Record<string, unknown>;
 }) {
   requireIntegrationPermission(input.context, input.permissions, "connect", input.context);
-  const connectionId = randomUUID();
-  const storedSecret = await input.secretStore.set({
-    providerConnectionId: connectionId,
-    value: input.token,
-    additionalAuthenticatedData: connectionId
-  });
   const now = new Date();
-  const connection = await input.repository.upsertConnection({
-    id: connectionId,
+  const base = {
     provider: input.provider,
     connectionType: input.connectionType,
     organisationId: input.context.organisationId,
     territoryId: input.context.territoryId,
     externalAccountId: input.externalAccountId,
     externalAccountDisplayName: input.externalAccountDisplayName,
-    status: "connected",
     grantedScopes: input.grantedScopes,
-    tokenExpiryAt: input.tokenExpiryAt,
-    lastHealthCheckAt: now,
-    lastHealthStatus: "healthy",
+    tokenExpiryAt: input.tokenExpiryAt
+  };
+
+  // The connection row has to exist before a secret can point at it, and a reconnect reuses the existing row, so the
+  // secret is encrypted for the connection's real id (it is bound to it as authenticated data and read back with it).
+  const previous = (await input.repository.listConnections({ provider: input.provider, connectionType: input.connectionType, organisationId: input.context.organisationId, territoryId: input.context.territoryId }))
+    .find((candidate) => candidate.externalAccountId === input.externalAccountId);
+  const pending = await input.repository.upsertConnection({
+    id: randomUUID(),
+    ...base,
+    status: "pending",
+    lastHealthStatus: "unknown",
     lastFailureCode: null,
     lastFailureSummary: null,
     connectedByUserId: input.context.userId,
+    revokedAt: null,
+    secretRef: null,
+    providerSafeMetadata: input.providerSafeMetadata ?? {}
+  });
+  const storedSecret = await input.secretStore.set({ providerConnectionId: pending.id, value: input.token, additionalAuthenticatedData: pending.id });
+  const connection = await input.repository.updateConnection(pending.id, {
+    status: "connected",
+    lastHealthCheckAt: now,
+    lastHealthStatus: "healthy",
     connectedAt: now,
     refreshedAt: now,
-    revokedAt: null,
     secretRef: storedSecret.secretRef,
-    providerSafeMetadata: {
-      ...(input.providerSafeMetadata ?? {}),
-      keyVersion: storedSecret.keyVersion
-    }
+    providerSafeMetadata: { ...(input.providerSafeMetadata ?? {}), keyVersion: storedSecret.keyVersion }
   });
+  if (previous?.secretRef && previous.secretRef !== storedSecret.secretRef) await input.secretStore.delete(previous.secretRef);
 
   await input.audit.record({
     action: auditActions.integrationConnected,

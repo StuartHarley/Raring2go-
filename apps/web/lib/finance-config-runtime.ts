@@ -27,7 +27,7 @@ export async function readFinanceConfig(context: AdvertisingActorContext) {
     for (const reference of references) counts[(reference.status === "synced" ? "synced" : reference.status === "failed" ? "failed" : "pending")] += 1;
     const attention = references
       .filter((reference) => reference.status !== "synced")
-      .map((reference) => ({ id: reference.id, entityType: reference.entityType, status: reference.status, attempts: Number((reference.metadata as { attempts?: number }).attempts ?? 0), lastError: (reference.metadata as { lastError?: string }).lastError ?? null }));
+      .map((reference) => ({ id: reference.id, entityType: reference.entityType, status: reference.status, attempts: Number((reference.metadata as { attempts?: number }).attempts ?? 0), lastError: (reference.metadata as { lastError?: string }).lastError ?? null, waitingFor: (reference.metadata as { waitingFor?: string }).waitingFor ?? null }));
     const rates = [...data.taxRates].sort((left, right) => left.code.localeCompare(right.code) || right.effectiveFrom.localeCompare(left.effectiveFrom));
     return { rates, counts, attention };
   } finally {

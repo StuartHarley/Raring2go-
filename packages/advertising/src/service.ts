@@ -2140,11 +2140,18 @@ export function queueAccountingSync(data: AdvertisingData, entityType: "advertis
 export function applyAccountingSyncResult(
   data: AdvertisingData,
   referenceId: string,
-  result: { status: "synced" | "failed"; providerEntityId?: string | null; error?: string; nextAttemptAt?: string; today: string }
+  result: { status: "synced" | "failed" | "waiting"; providerEntityId?: string | null; error?: string; nextAttemptAt?: string; today: string }
 ) {
   const reference = data.providerSyncReferences.find((candidate) => candidate.id === referenceId && candidate.providerType === ACCOUNTING_PROVIDER_TYPE);
   if (!reference) throw new Error("Accounting sync reference was not found.");
   if (reference.status === "synced") return reference;
+  // "Waiting" is not a failed attempt: nothing was wrong with the document (no accounting connection yet, the invoice
+  // it credits has not arrived, the connection needs reconnecting). It keeps its place and tells a person why.
+  if (result.status === "waiting") {
+    reference.status = "pending";
+    reference.metadata = { attempts: Number(reference.metadata.attempts ?? 0), waitingFor: (result.error ?? "Waiting").slice(0, 300), nextAttemptAt: result.nextAttemptAt ?? null };
+    return reference;
+  }
   const attempts = Number(reference.metadata.attempts ?? 0) + 1;
   if (result.status === "synced") {
     reference.status = "synced";
