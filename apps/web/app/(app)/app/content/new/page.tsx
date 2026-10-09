@@ -1,5 +1,5 @@
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { hasContentAiCapability } from "../../../../../lib/publishing-runtime";
 import { Breadcrumbs } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
@@ -7,6 +7,9 @@ import { requestFromSearchParamsAndCookies } from "../../page";
 import { generateContentDraftAction } from "../actions";
 import { ContentDraftForm } from "../ContentDraftForm";
 import { getPermissionData } from "../../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Draft content with AI" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -20,7 +23,7 @@ export default async function NewAiContentPage({ searchParams }: PageProps) {
     const shell = await requireShellPermission(request, { module: "content", action: "view" });
     canUseAi = hasContentAiCapability(await getPermissionData(), { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId });
   } catch (error) {
-    return protectedOutcome(error);
+    return protectedOutcome(error, request);
   }
 
   if (!canUseAi) {
@@ -49,19 +52,4 @@ export default async function NewAiContentPage({ searchParams }: PageProps) {
       </section>
     </AppShell>
   );
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

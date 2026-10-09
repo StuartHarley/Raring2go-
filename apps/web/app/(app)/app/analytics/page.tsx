@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { MIN_PEER_COHORT, metricCatalogue } from "@raring2go/analytics";
 import type { ScorecardMetric } from "@raring2go/analytics";
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasAnalyticsCapability, readScorecardForActor } from "../../../../lib/analytics-runtime";
 import type { AnalyticsActorContext } from "../../../../lib/analytics-runtime";
 import { AppShell } from "../../layout";
@@ -10,6 +10,9 @@ import { requestFromSearchParamsAndCookies } from "../page";
 import { generateSnapshotAction } from "./actions";
 import { bandLabels, benchmarkLabels, formatChange, formatMetric } from "./format";
 import { getPermissionData } from "../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Scorecard" };
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   snapshot_generated: { tone: "success", text: "Snapshot generated for today." },
@@ -36,7 +39,7 @@ export default async function ScorecardPage({ searchParams }: PageProps) {
     const context: AnalyticsActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     loaded = { context, ...(await readScorecardForActor(context)) };
   } catch (error) {
-    return protectedOutcome(error);
+    return protectedOutcome(error, request);
   }
 
   const { context, view, history } = loaded;
@@ -259,19 +262,4 @@ function withContext(request: Awaited<ReturnType<typeof requestFromSearchParamsA
   if (request.territoryId) query.set("territoryId", request.territoryId);
   const text = query.toString();
   return text ? `?${text}` : "";
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

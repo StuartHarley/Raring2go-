@@ -1,11 +1,14 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../../lib/app-shell";
 import { readAudienceImport } from "../../../../../../lib/audience-import-runtime";
 import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { commitImportAction, rollbackImportAction } from "../actions";
 import type { ImportResult } from "../actions";
+import { recordOutcome } from "../../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Audience import" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -39,7 +42,7 @@ export default async function AudienceImportDetailPage({ params, searchParams }:
   const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const { id } = await params;
   const result = await load(request, id);
-  if ("error" in result) return protectedOutcome(result.error);
+  if ("error" in result) return recordOutcome(result.error, request);
 
   const { record, summary, sample, hasReport } = result.detail;
   const query = new URLSearchParams();
@@ -134,26 +137,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  return (
-    <main className="app-outcome">
-      <section>
-        <h1>Import not found</h1>
-        <p>It may belong to another territory, or no longer exist.</p>
-      </section>
-    </main>
-  );
 }

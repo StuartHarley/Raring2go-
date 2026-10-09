@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasMarketingCapability, listNetworkTerritories, readJourneyOverview } from "../../../../lib/marketing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
@@ -10,7 +10,9 @@ import { activateJourneyAction, createJourneyAction, createJourneyFromTemplateAc
 import { StatusBadge } from "../../../../lib/workflow-ui";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { getPermissionData } from "../../../../lib/permission-source";
-import { evaluatePermission } from "@raring2go/permissions";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Journeys" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -21,7 +23,7 @@ export default async function JourneysPage({ searchParams }: PageProps) {
   const result = await loadJourneys(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { context, overview, territoryOptions, canCreate, canActivate, canPause, canHolidays } = result;
@@ -181,20 +183,4 @@ async function loadJourneys(request: Awaited<ReturnType<typeof requestFromSearch
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

@@ -5,6 +5,8 @@ import { ProtectedOutcome } from "../../../../../lib/protected-outcome";
 import { ShellAccessError } from "../../../../../lib/app-shell";
 import { defaultXeroMapping } from "@raring2go/integrations";
 
+export const metadata = { title: "Connections" };
+
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };

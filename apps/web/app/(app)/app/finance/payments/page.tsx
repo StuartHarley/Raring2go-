@@ -7,6 +7,8 @@ import { requestFromSearchParamsAndCookies } from "../../page";
 import { createPaymentLinkAction, emailPaymentLinkAction } from "./actions";
 import type { PaymentsResult } from "./actions";
 
+export const metadata = { title: "Payments" };
+
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 const banners: Record<PaymentsResult, string> = {

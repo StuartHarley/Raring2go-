@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readAdvertiser360, readCatalogue } from "../../../../../lib/advertising-runtime";
 import { readSalesPanel } from "../../../../../lib/assistants-sales";
 import { getPermissionData } from "../../../../../lib/permission-source";
@@ -16,6 +16,9 @@ import { FulfilmentPanels } from "./FulfilmentPanels";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Advertiser" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -30,7 +33,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
   const result = await loadAdvertiser(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   return (
@@ -433,20 +436,4 @@ function formatMoney(valueMinor: number) {
     currency: "GBP",
     maximumFractionDigits: 0
   }).format(valueMinor / 100);
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

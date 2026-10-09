@@ -1,4 +1,4 @@
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readPipeline } from "../../../../../lib/advertising-runtime";
 import { AppShell } from "../../../layout";
 import { CrmBanner } from "../CrmBanner";
@@ -6,6 +6,9 @@ import { ScoreBadge } from "../ScoreBadge";
 import { createOpportunityAction, moveOpportunityStageAction, updateOpportunityAction } from "../actions";
 import { listAdvertiser360Rows } from "../../../../../lib/advertising-runtime";
 import { requestFromSearchParamsAndCookies } from "../../page";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Commercial pipeline" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -18,7 +21,7 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
   const result = await loadPipeline(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const ranked = result.pipeline.stages
@@ -182,20 +185,4 @@ function formatMoney(valueMinor: number) {
     currency: "GBP",
     maximumFractionDigits: 0
   }).format(valueMinor / 100);
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

@@ -1,10 +1,13 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { readSocialQueue } from "../../../../lib/publishing-runtime";
 import { formatLondon } from "../../../../lib/london-time";
 import { AppShell } from "../../layout";
 import { approveSocialAction, cancelSocialAction, queueSocialAction, resolveSocialAction, retrySocialAction, scheduleSocialAction } from "./actions";
 import type { SocialResult } from "./actions";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Social queue" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -17,7 +20,7 @@ export default async function SocialQueuePage({ searchParams }: PageProps) {
   const result = await loadSocial(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const scheduled = result.queue.filter((item) => item.publication.publishState === "scheduled").length;
@@ -176,22 +179,6 @@ async function loadSocial(request: Awaited<ReturnType<typeof requestFromSearchPa
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }
 
 const label = (value: string) => value.replaceAll("_", " ");

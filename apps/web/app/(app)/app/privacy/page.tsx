@@ -1,12 +1,15 @@
 import type { PermissionData } from "@raring2go/permissions";
 import type { PrivacyRequestRecord } from "@raring2go/security";
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { can, readPrivacyRequests } from "../../../../lib/privacy-runtime";
 import type { PrivacyActorContext } from "../../../../lib/privacy-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { decideAction, openRequestAction } from "./actions";
 import { getPermissionData } from "../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Privacy requests" };
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   opened: { tone: "success", text: "Request opened. The one-month deadline is shown below." },
@@ -34,7 +37,7 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
     const context: PrivacyActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     loaded = { context, permissions: await getPermissionData(), ...(await readPrivacyRequests(context)) };
   } catch (error) {
-    return protectedOutcome(error);
+    return protectedOutcome(error, request);
   }
 
   const { context, permissions, requests, checkedAt } = loaded;
@@ -180,19 +183,4 @@ function contextQuery(request: Awaited<ReturnType<typeof requestFromSearchParams
   if (request.territoryId) query.set("territoryId", request.territoryId);
   const text = query.toString();
   return text ? `?${text}` : "";
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

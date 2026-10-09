@@ -1,12 +1,15 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { explainAccessAsActor, readAccessOverview } from "../../../../lib/access-runtime";
 import type { AccessActorContext } from "../../../../lib/access-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { assignRoleAction, createRoleAction, inviteAction, revokeAssignmentAction, revokeInvitationAction } from "./actions";
 import { resultMessages } from "./messages";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Roles & permissions" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -34,7 +37,7 @@ export default async function RolesPage({ searchParams }: PageProps) {
     }
     loaded = { overview, explanation, subject, capability, at: first(params.at) };
   } catch (error) {
-    return protectedOutcome(error);
+    return protectedOutcome(error, request);
   }
 
   const { overview, explanation } = loaded;
@@ -323,19 +326,4 @@ function contextQuery(request: Awaited<ReturnType<typeof requestFromSearchParams
   if (request.territoryId) query.set("territoryId", request.territoryId);
   const text = query.toString();
   return text ? `?${text}` : "";
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

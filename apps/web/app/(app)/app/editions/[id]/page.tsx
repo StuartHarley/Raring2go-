@@ -1,6 +1,4 @@
-import Link from "next/link";
-import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readPreflightPanel, readTerritoryEdition } from "../../../../../lib/publishing-runtime";
 import { AiPreparedNote, AssistantBanner, fixabilityLabels } from "../../../../../lib/assistant-ui";
 import { explainPreflightAction, generateOutputAction, lifecycleAction } from "./actions";
@@ -8,6 +6,9 @@ import { readOutputReadiness } from "../../../../../lib/edition-output";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Edition" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -22,7 +23,7 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
   const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   return (
@@ -254,28 +255,4 @@ async function loadEdition(
   } catch (error) {
     return { error };
   }
-}
-
-async function lifecycleCan(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
-  const check = (module: string, action: string) => requireShellPermission(request, { module, action }).then(() => true, (error) => {
-    if (error instanceof ShellAccessError) return false;
-    throw error;
-  });
-  return { flatplan: await check("edition.page", "edit"), submit: await check("edition", "edit"), approve: await check("edition", "approve"), release: await check("edition", "release") };
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

@@ -7,6 +7,8 @@ import { requestFromSearchParamsAndCookies } from "../page";
 import { inviteStaffAction, removeStaffAction, revokeStaffInvitationAction } from "./actions";
 import type { TeamResult } from "./actions";
 
+export const metadata = { title: "My team" };
+
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 const banners: Record<TeamResult, { tone: "success" | "error"; text: string }> = {
@@ -30,7 +32,7 @@ export default async function TeamPage({ searchParams }: PageProps) {
   try {
     shell = await requireShellPermission(request, { module: "franchise.team", action: "view" });
   } catch (error) {
-    return protectedOutcome(error);
+    return protectedOutcome(error, request);
   }
   let team;
   try {

@@ -1,18 +1,21 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { listAudienceImports } from "../../../../../lib/audience-import-runtime";
 import { getDirectory } from "../../../../../lib/directory";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { ImportUploadForm } from "./ImportUploadForm";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Import contacts" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 export default async function AudienceImportPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(await searchParams);
   const result = await load(request);
-  if ("error" in result) return protectedOutcome(result.error);
+  if ("error" in result) return protectedOutcome(result.error, request);
 
   const query = new URLSearchParams();
   if (request.sessionKey) query.set("session", request.sessionKey);
@@ -67,19 +70,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

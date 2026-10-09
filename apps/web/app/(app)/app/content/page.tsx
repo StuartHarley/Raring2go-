@@ -1,10 +1,14 @@
-import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
+import { formatCount, formatLabel, formatLabels } from "../../../../lib/format";
+import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
 import { hasContentAiCapability, listContentLibraryItems } from "../../../../lib/publishing-runtime";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { getPermissionData } from "../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Content Studio" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -15,61 +19,56 @@ export default async function ContentLibraryPage({ searchParams }: PageProps) {
   const result = await loadContent(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const needsAttention = result.items.filter((item) => item.health.length > 0).length;
   const sponsored = result.items.filter((item) => item.item.advertiserId || item.item.commercialBookingId).length;
+  const localised = result.items.filter((item) => item.localisations.length > 0).length;
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Content Studio</p>
-        <h2>Canonical content library</h2>
-        {result.canHomepage ? <p><Link href={"/app/content/homepage" as Route}>Website homepage layout</Link></p> : null}
-        <p>
-          Create once, localise, repurpose and review channel variants while
-          keeping source provenance intact.
-        </p>
-        {result.canUseAi ? (
-          <div className="franchise-actions">
-            <Link href={"/app/content/new" as Route}>Draft new content with AI</Link>
-          </div>
-        ) : null}
-        <div className="franchise-metrics">
-          <article>
-            <span>Items</span>
-            <strong>{result.items.length}</strong>
-          </article>
-          <article>
-            <span>Needs attention</span>
-            <strong>{needsAttention}</strong>
-          </article>
-          <article>
-            <span>Sponsored</span>
-            <strong>{sponsored}</strong>
-          </article>
-          <article>
-            <span>Localised</span>
-            <strong>{result.items.filter((item) => item.localisations.length > 0).length}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Publishing"
+        title="Content Studio"
+        intro="Write a story once, then localise it, repurpose it for each channel and review the variants, with the original always traceable."
+        actions={result.canUseAi ? <LinkButton href={"/app/content/new" as Route}>Draft with AI</LinkButton> : undefined}
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Library</p>
-        <h2>Reusable source content</h2>
-        <div className="franchise-list">
-          {result.items.map((item) => (
-            <Link key={item.item.id} href={`/app/content/${item.item.id}` as Route}>
-              <strong>{item.item.title}</strong>
-              <span>{item.item.contentType} - {item.item.ownerLevel} - {item.item.status}</span>
-              <span>{item.variants.length} channel variant(s) - edition {item.editionStatus.replace("_", " ")}</span>
-              <span>{item.health.length === 0 ? "Healthy" : item.health.join(", ")}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Items", value: result.items.length },
+            { label: "Needs attention", value: needsAttention, tone: needsAttention > 0 ? "warning" : "success" },
+            { label: "Sponsored", value: sponsored },
+            { label: "Localised", value: localised }
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="Library" title="Source content">
+        {result.items.length === 0 ? (
+          <EmptyState title="No content yet" action={result.canUseAi ? <LinkButton href={"/app/content/new" as Route} variant="secondary">Draft the first piece with AI</LinkButton> : undefined}>
+            Stories, events, offers and competitions you create will appear here.
+          </EmptyState>
+        ) : (
+          <RecordList>
+            {result.items.map((item) => (
+              <RecordLink
+                key={item.item.id}
+                href={`/app/content/${item.item.id}` as Route}
+                title={item.item.title}
+                status={item.item.status}
+                lines={[
+                  `${formatLabel(item.item.contentType)} · ${item.item.ownerLevel === "network" ? "Network content" : "Local content"}`,
+                  `${formatCount(item.variants.length, "channel variant")} · Edition: ${formatLabel(item.editionStatus)}`,
+                  item.health.length === 0 ? "Healthy" : `Needs attention: ${formatLabels(item.health)}`
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
     </AppShell>
   );
 }
@@ -96,20 +95,4 @@ async function loadContent(request: Awaited<ReturnType<typeof requestFromSearchP
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

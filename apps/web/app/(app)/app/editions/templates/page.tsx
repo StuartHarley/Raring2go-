@@ -8,6 +8,9 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { approveTemplateVersionAction, publishTemplateVersionAction } from "./actions";
 import { ZonePreview } from "./zone-preview";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Template library" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -23,7 +26,7 @@ export default async function TemplateLibraryPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(search);
   const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const loaded = await load(request);
-  if ("error" in loaded) return protectedOutcome(loaded.error);
+  if ("error" in loaded) return protectedOutcome(loaded.error, request);
 
   const query = new URLSearchParams();
   if (request.sessionKey) query.set("session", request.sessionKey);
@@ -91,19 +94,4 @@ async function allowed(request: Awaited<ReturnType<typeof requestFromSearchParam
     if (error instanceof ShellAccessError) return false;
     throw error;
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

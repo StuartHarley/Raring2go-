@@ -4,6 +4,8 @@ import { protectedOutcome } from "../../../../lib/protected-outcome";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
+export const metadata = { title: "Audit activity" };
+
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -18,7 +20,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
       action: "administer"
     });
   } catch (error) {
-    return protectedOutcome(error);
+    return protectedOutcome(error, request);
   }
 
   const filters = parseAuditFilters(search);

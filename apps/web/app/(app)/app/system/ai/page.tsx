@@ -1,11 +1,14 @@
 import Link from "next/link";
 import type { Route } from "next";
 import type { AiApprovalState } from "@raring2go/ai";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readAiRuns } from "../../../../../lib/ai-runtime";
 import { StatusBadge } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "AI runs" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -21,7 +24,7 @@ export default async function AiRunsPage({ searchParams }: PageProps) {
   const result = await load(request, state);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { runs } = result;
@@ -122,19 +125,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

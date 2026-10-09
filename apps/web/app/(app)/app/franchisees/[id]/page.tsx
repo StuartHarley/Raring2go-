@@ -1,4 +1,4 @@
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { canEditFranchise, readFranchise360 } from "../../../../../lib/franchise-runtime";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
@@ -37,6 +37,9 @@ import {
   voidAgreementAction
 } from "../actions";
 import { getPermissionData } from "../../../../../lib/permission-source";
+import { recordOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Franchisee" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -51,7 +54,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
   const result = await loadFranchise360(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return recordOutcome(result.error, request);
   }
 
   // The session is carried by cookie; these only repeat any explicit context the page was opened with.
@@ -764,30 +767,6 @@ async function loadFranchise360(
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className="app-outcome app-outcome-unauthorised">
-      <section>
-        <p className="eyebrow">Access denied</p>
-        <h1>Franchise not available</h1>
-        <p>{error instanceof Error ? error.message : "This franchise is not available."}</p>
-      </section>
-    </main>
-  );
 }
 
 function title(value: string) {

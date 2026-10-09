@@ -95,17 +95,8 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory",
     group: "franchise"
   },
-  {
-    id: "territory",
-    label: "Territory Dashboard",
-    href: "/app/territory",
-    capability: {
-      module: "territory",
-      action: "view"
-    },
-    contextLevel: "territory",
-    group: "today"
-  },
+  // "/app/territory" is deliberately not a destination: My Today is the territory view, and the
+  // route only redirects there. It returns to the nav when it has its own content to show.
   {
     id: "search",
     label: "Search",

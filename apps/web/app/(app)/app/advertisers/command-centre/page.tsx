@@ -1,9 +1,12 @@
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readCommercialCommandCentre } from "../../../../../lib/advertising-runtime";
 import { readDebtPanel } from "../../../../../lib/assistants-finance";
 import { DebtAssistantPanel } from "./DebtAssistantPanel";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Commercial command centre" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -16,7 +19,7 @@ export default async function CommercialCommandCentrePage({ searchParams }: Page
   const result = await loadCommandCentre(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { commandCentre, debt } = result;
@@ -168,20 +171,4 @@ function formatMoney(valueMinor: number) {
     currency: "GBP",
     maximumFractionDigits: 0
   }).format(valueMinor / 100);
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

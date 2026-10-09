@@ -33,3 +33,24 @@ The system supports comfortable and compact density modes from the same componen
 ## FND-002 Scope
 
 This ticket provides presentational primitives only. Command palette behaviour, drag-and-drop magazine editing, permission enforcement and domain workflows belong to later tickets.
+
+## Shell and page anatomy (shell sprint, October 2026)
+
+The operator app consumes the design system through two layers:
+
+- `packages/ui` holds the presentational primitives (`Button`, `Badge`, `Card`, `KpiCard`, `Tabs`, `DataTable`, overlays, `CommandPalette`) and the token stylesheet.
+- `apps/web/lib/page-ui.tsx` composes them into the page anatomy every operator screen shares: `PageHeader` (eyebrow, one `h1`, intro, right-aligned actions), `Panel` (a `Card` with the `app-panel` layout), `Metrics` (a grid of `KpiCard`s coloured by meaning), `RecordList` / `RecordLink`, `StatusBadge`, `EmptyState` and `LinkButton`.
+
+Rules that follow from it:
+
+- Pages never render a status, date or identifier directly. `apps/web/lib/format.ts` turns machine values into words (`formatLabel`, `formatDate`, `formatCount`, `displayName`), and names come from the directory, never from a UUID.
+- One primary button per page, in the page header. Secondary actions use the `secondary` or `quiet` variants.
+- KPI tiles carry a tone (`danger` for blocked or failed work, `warning` for watch items, `success` when clear) so a number that needs attention looks different from a healthy one.
+- Refusals render inside the shell through `ProtectedOutcome` so navigation and the context switcher stay available; `recordOutcome` sends a missing record to the branded not-found page.
+- Every page exports a `metadata.title`; the root layout templates it as `<title> · Raring2go!`.
+
+The shell itself (`apps/web/app/(app)/layout.tsx`) provides the brand mark, grouped collapsible navigation with group icons (`SidebarNav`), the working-context switcher and account menu (`Disclosure`, native `<details>` with outside-click and Escape handling), and ⌘K quick navigation over the permission-filtered destinations (`ShellCommandPalette`, built on the ui package's `CommandPalette`).
+
+Pages migrated to the anatomy so far: My Today, Action Centre, Tasks & approvals, Search, Franchisees, Advertisers, Content Studio, System. The remaining pages keep their earlier `app-panel` / `franchise-*` markup and inherit the global focus ring and link colour; migrate them vertical by vertical using the same components.
+
+Brand assets: no production logo vector has been supplied yet. `BrandMark` and `app/icon.svg` are interim marks set in the brand colours and type stack; replace both when the logo files arrive, without touching pages.

@@ -1,13 +1,16 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { metricCatalogue } from "@raring2go/analytics";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readHealthConfigsForActor } from "../../../../../lib/analytics-runtime";
 import type { AnalyticsActorContext } from "../../../../../lib/analytics-runtime";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { activateAction, saveDraftAction } from "./actions";
 import { ConfigEditor } from "./ConfigEditor";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Franchise health settings" };
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   draft_created: { tone: "success", text: "Draft created. Review it, then activate it when you are ready." },
@@ -31,7 +34,7 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
     const context: AnalyticsActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     configs = await readHealthConfigsForActor(context);
   } catch (error) {
-    return protectedOutcome(error);
+    return protectedOutcome(error, request);
   }
 
   const resultParam = Array.isArray(params.result) ? params.result[0] : params.result;
@@ -133,19 +136,4 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
       </section>
     </AppShell>
   );
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

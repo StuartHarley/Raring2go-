@@ -7,6 +7,8 @@ import { requestFromSearchParamsAndCookies } from "../../page";
 import { retryAccountingSyncAction, setTaxRateAction } from "./actions";
 import type { AccountingResult } from "./actions";
 
+export const metadata = { title: "Accounting" };
+
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 const banners: Record<AccountingResult, string> = {

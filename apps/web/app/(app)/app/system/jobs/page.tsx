@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { hasJobCapability, hasNetworkJobAccess, readJobConsole } from "../../../../../lib/jobs-runtime";
 import type { JobActorContext } from "../../../../../lib/jobs-runtime";
 import { readSystemHealth } from "../../../../../lib/health-runtime";
@@ -11,6 +11,9 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { cancelJobAction, retryJobAction } from "./actions";
 import { getPermissionData } from "../../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Job console" };
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   retried: { tone: "success", text: "Job re-queued. It will run on the next worker tick." },
@@ -46,7 +49,7 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
   const result = await loadConsole(request, status);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { context, permissions, jobs, counts, registeredKinds, health } = result;
@@ -209,20 +212,4 @@ function detailHref(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   if (request.territoryId) query.set("territoryId", request.territoryId);
   const suffix = query.toString();
   return `/app/system/jobs/${id}${suffix ? `?${suffix}` : ""}` as Route;
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

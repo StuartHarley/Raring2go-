@@ -1,4 +1,4 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasAiAssistCapability } from "../../../../lib/ai-runtime";
 import { listConnectionCards } from "../../../../lib/integrations-runtime";
 import { readEmailCampaignOverview, readSegments, readSubjectLineComparison } from "../../../../lib/marketing-runtime";
@@ -25,6 +25,9 @@ import { normalizeContentSnapshot } from "@raring2go/marketing";
 import type { AudienceSegment, EmailCampaignOverview, EmailSendJob } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { getPermissionData } from "../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Newsletters" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -35,7 +38,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
   const result = await loadNewsletters(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { context, email, composableSegments, outlookMailboxes, aiAssistAvailable, lastNewsletter, comparisons } = result;
@@ -350,22 +353,6 @@ async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSea
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }
 
 function findLastNewsletter(campaigns: EmailCampaignOverview["campaigns"]) {

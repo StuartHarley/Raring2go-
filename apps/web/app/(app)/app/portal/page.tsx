@@ -1,5 +1,5 @@
 import { PortalAccessError } from "@raring2go/advertising";
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { readPortal } from "../../../../lib/portal-runtime";
 import { readPortalPaymentOptions } from "../../../../lib/payments-runtime";
 import { StatusBadge } from "../../../../lib/workflow-ui";
@@ -8,6 +8,9 @@ import { requestFromSearchParamsAndCookies } from "../page";
 import { ArtworkUploadForm } from "./ArtworkUploadForm";
 import { payInvoiceAction, respondToProofAction, respondToProposalAction, signProposalAction } from "./actions";
 import { advertiserSigningEnabled } from "../../../../lib/advertiser-signing";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "My campaigns" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -35,7 +38,7 @@ export default async function PortalPage({ searchParams }: PageProps) {
   const result = await load(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { view, paymentOptions } = result;
@@ -257,20 +260,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError || error instanceof PortalAccessError) {
-    const kind = error instanceof ShellAccessError ? error.kind : "unauthorised";
-    return (
-      <main className={`app-outcome app-outcome-${kind}`}>
-        <section>
-          <p className="eyebrow">{kind.replace("_", " ")}</p>
-          <h1>{kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

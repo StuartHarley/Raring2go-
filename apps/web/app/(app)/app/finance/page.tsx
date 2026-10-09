@@ -1,4 +1,4 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { listFranchiseSummaries } from "../../../../lib/franchise-runtime";
 import {
   readActiveRoyaltyRules,
@@ -17,6 +17,9 @@ import {
   submitStatementAction
 } from "./actions";
 import type { RoyaltyRule, RoyaltyStatement } from "@raring2go/finance";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Royalties" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -29,7 +32,7 @@ export default async function FinancePage({ searchParams }: PageProps) {
   const result = await loadFinance(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { context, isNetworkView, franchises, rules, networkStatements, ownFranchise, ownStatements } = result;
@@ -282,20 +285,4 @@ async function loadFinance(request: Awaited<ReturnType<typeof requestFromSearchP
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

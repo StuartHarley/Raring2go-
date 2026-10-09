@@ -6,8 +6,12 @@ import "./globals.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Raring2go Business-in-a-Box",
-  description: "Foundation bootstrap for the Raring2go operating system."
+  title: {
+    default: "Raring2go! Business-in-a-Box",
+    template: "%s · Raring2go!"
+  },
+  description: "The Raring2go! franchise and publishing operating system.",
+  applicationName: "Raring2go! Business-in-a-Box"
 };
 
 export default function RootLayout({

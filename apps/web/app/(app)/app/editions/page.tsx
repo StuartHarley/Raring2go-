@@ -7,6 +7,9 @@ import { listEditionFactoryRows } from "../../../../lib/publishing-runtime";
 import { bulkEditionAction } from "./actions";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Edition Factory" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -19,7 +22,7 @@ export default async function EditionsPage({ searchParams }: PageProps) {
   const param = (name: string) => (Array.isArray(search[name]) ? search[name]![0] : search[name]) as string | undefined;
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const allRows = result.rows;
@@ -153,20 +156,4 @@ async function loadEditions(request: Awaited<ReturnType<typeof requestFromSearch
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

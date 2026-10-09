@@ -1,11 +1,14 @@
 import type { Route } from "next";
 import { AiRunAccessError } from "@raring2go/ai";
-import { ShellAccessError, requireShellPermission } from "../../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../../lib/app-shell";
 import { readContentDraftRun } from "../../../../../../lib/publishing-runtime";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
 import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { acceptContentDraftAction, rejectContentDraftAction } from "../../actions";
+import { protectedOutcome } from "../../../../../../lib/protected-outcome";
+
+export const metadata = { title: "AI draft" };
 
 type PageProps = {
   params: Promise<{ runId: string }>;
@@ -26,7 +29,7 @@ export default async function ContentDraftReviewPage({ params, searchParams }: P
   const result = await load(request, runId);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { run } = result;
@@ -85,20 +88,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError || error instanceof AiRunAccessError) {
-    const kind = error instanceof ShellAccessError ? error.kind : "unauthorised";
-    return (
-      <main className={`app-outcome app-outcome-${kind}`}>
-        <section>
-          <p className="eyebrow">{kind.replace("_", " ")}</p>
-          <h1>{kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

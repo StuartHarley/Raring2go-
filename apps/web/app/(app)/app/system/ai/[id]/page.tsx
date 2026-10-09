@@ -7,6 +7,9 @@ import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { decideAiRunAction } from "../actions";
 import { getPermissionData } from "../../../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../../../lib/protected-outcome";
+
+export const metadata = { title: "AI run" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -27,7 +30,8 @@ export default async function AiRunPage({ params, searchParams }: PageProps) {
   const result = await load(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    // A AiRunAccessError means the record exists but is outside this actor's scope: shown as a denial, not a crash.
+    return protectedOutcome(result.error instanceof AiRunAccessError ? new ShellAccessError("unauthorised", result.error.message) : result.error, request);
   }
 
   const { run, canDecide } = result;
@@ -136,20 +140,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError || error instanceof AiRunAccessError) {
-    const kind = error instanceof ShellAccessError ? error.kind : "unauthorised";
-    return (
-      <main className={`app-outcome app-outcome-${kind}`}>
-        <section>
-          <p className="eyebrow">{kind.replace("_", " ")}</p>
-          <h1>{kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

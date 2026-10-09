@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { hasEventCapability, listDiscoverableTerritories, readEventSuggestions } from "../../../../../lib/publishing-runtime";
 import { Breadcrumbs, StatusBadge } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
@@ -8,6 +8,9 @@ import { requestFromSearchParamsAndCookies } from "../../page";
 import { approveSuggestionAction, discoverEventsAction, rejectSuggestionAction } from "./actions";
 import { DiscoverForm } from "./DiscoverForm";
 import { getPermissionData } from "../../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Event discovery" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -29,7 +32,7 @@ export default async function EventDiscoveryPage({ searchParams }: PageProps) {
   const result = await load(request, status);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { suggestions, canDiscover, territories, canDecide } = result;
@@ -127,19 +130,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

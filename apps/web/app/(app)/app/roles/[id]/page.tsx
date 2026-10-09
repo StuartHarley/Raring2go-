@@ -1,12 +1,15 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AccessStateError, grantableScopes } from "@raring2go/access";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readRoleDetail } from "../../../../../lib/access-runtime";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { addGrantAction, deleteRoleAction, removeGrantAction } from "../actions";
 import { resultMessages } from "../messages";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Role" };
 
 type PageProps = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -40,7 +43,7 @@ export default async function RoleDetailPage({ params, searchParams }: PageProps
         </AppShell>
       );
     }
-    return protectedOutcome(error);
+    return protectedOutcome(error, request);
   }
 
   const { role, catalogue, canManage } = loaded;
@@ -148,19 +151,4 @@ export default async function RoleDetailPage({ params, searchParams }: PageProps
       ) : null}
     </AppShell>
   );
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

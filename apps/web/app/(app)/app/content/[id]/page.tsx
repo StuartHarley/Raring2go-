@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { hasContentAiCapability, readContentWorkspaceView } from "../../../../../lib/publishing-runtime";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
@@ -10,6 +10,9 @@ import { RepurposeForm } from "../RepurposeForm";
 import { CompetitionPanel } from "./CompetitionPanel";
 import { ContentDraftForm } from "../ContentDraftForm";
 import { getPermissionData } from "../../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Content" };
 
 const channels = ["magazine", "website", "newsletter", "facebook", "instagram", "linkedin"];
 
@@ -26,7 +29,7 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
   const result = await loadWorkspace(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return protectedOutcome(result.error, request);
   }
 
   const { libraryItem, versions, variantVersions, aiTasks, websiteJobs } = result.workspace;
@@ -237,20 +240,4 @@ async function loadWorkspace(
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

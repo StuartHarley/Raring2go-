@@ -1,4 +1,4 @@
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { hasMarketingCapability, listNetworkTerritories, readJourneyDetail } from "../../../../../lib/marketing-runtime";
 import { Breadcrumbs, StatusBadge } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
@@ -7,6 +7,9 @@ import { JourneyBuilderFields } from "../JourneyBuilderFields";
 import { activateJourneyAction, approveJourneyAction, pauseJourneyAction, updateJourneyDraftAction } from "../actions";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { getPermissionData } from "../../../../../lib/permission-source";
+import { recordOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Journey" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -19,7 +22,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
   const result = await loadJourney(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return recordOutcome(result.error, request);
   }
 
   const { context, detail, territoryOptions, canEdit, canApprove, canActivate, canPause } = result;
@@ -150,28 +153,4 @@ async function loadJourney(request: Awaited<ReturnType<typeof requestFromSearchP
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className="app-outcome app-outcome-unauthorised">
-      <section>
-        <p className="eyebrow">Access denied</p>
-        <h1>Journey not available</h1>
-        <p>{error instanceof Error ? error.message : "This journey is not available."}</p>
-      </section>
-    </main>
-  );
 }
