@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { createDb } from "@raring2go/db";
+import { audienceContacts, createDb } from "@raring2go/db";
+import { and, eq, isNull } from "drizzle-orm";
 import { hashToken, normalizeEmail } from "@raring2go/auth";
 import { withIdentity } from "./auth-runtime";
 import {
+  loadParentAccount,
+  setEmailOptOut,
+  setEmailSubscription,
+  updateParentPreferences,
+  type ParentPreferenceInput
+} from "@raring2go/marketing";
+import {
+  getPublicDiscovery,
   getPublicHomepage,
   getPublicParentHub,
   getPublicRecommendations,
@@ -46,6 +55,53 @@ export async function resolveParentSession(sessionToken?: string | null): Promis
   };
 }
 
+export class ParentSignInRequiredError extends Error {
+  constructor() {
+    super("Parent sign-in is required.");
+  }
+}
+
+/**
+ * Runs a self-service change as the signed-in parent. The contact comes from the
+ * session, never from the request, so a parent can only ever touch their own record;
+ * the change and its consent/audit rows commit or fail together.
+ */
+async function asParent<T>(
+  sessionToken: string | null | undefined,
+  work: (db: Parameters<typeof loadParentAccount>[0], parent: { userId: string; contactId: string }) => Promise<T>
+): Promise<T> {
+  const resolved = await resolveParentSession(sessionToken);
+  if (!resolved.authenticated) throw new ParentSignInRequiredError();
+
+  const { db, sql } = createDb();
+  try {
+    return await db.transaction((tx) => work(tx, { userId: resolved.userId, contactId: resolved.contactId }));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readParentAccount(sessionToken?: string | null) {
+  const resolved = await resolveParentSession(sessionToken);
+  if (!resolved.authenticated) return undefined;
+
+  const { db, sql } = createDb();
+  try {
+    return await loadParentAccount(db, { userId: resolved.userId, contactId: resolved.contactId });
+  } finally {
+    await sql.end();
+  }
+}
+
+export const saveParentPreferences = (sessionToken: string | null | undefined, input: ParentPreferenceInput) =>
+  asParent(sessionToken, (db, parent) => updateParentPreferences(db, parent, input));
+
+export const changeParentEmailSubscription = (sessionToken: string | null | undefined, input: { territoryId: string; subscribed: boolean }) =>
+  asParent(sessionToken, (db, parent) => setEmailSubscription(db, parent, input));
+
+export const changeParentEmailOptOut = (sessionToken: string | null | undefined, optOut: boolean) =>
+  asParent(sessionToken, (db, parent) => setEmailOptOut(db, parent, optOut));
+
 export async function parentHasInternalAccess(sessionToken?: string | null) {
   if (!sessionToken) return false;
   return withIdentity(async ({ repository }) => {
@@ -87,7 +143,7 @@ export async function savePublicContentForParent(input: {
 }) {
   const parent = await resolveParentSession(input.sessionToken);
   if (!parent.authenticated) {
-    throw new Error("Parent sign-in is required to save content.");
+    throw new ParentSignInRequiredError();
   }
 
   const { db, sql } = createDb();
@@ -97,10 +153,16 @@ export async function savePublicContentForParent(input: {
       throw new Error("Unknown public territory.");
     }
     const homepage = await getPublicHomepage(db, input.territorySlug);
+    const [whatsOn, activities] = await Promise.all([
+      getPublicDiscovery(db, input.territorySlug, "whats_on"),
+      getPublicDiscovery(db, input.territorySlug, "activities")
+    ]);
     const visibleContent = [
       ...(homepage?.stories ?? []),
       ...(homepage?.whatsOn ?? []),
-      ...(homepage?.thingsToDo ?? [])
+      ...(homepage?.thingsToDo ?? []),
+      ...(whatsOn?.items ?? []),
+      ...(activities?.items ?? [])
     ].find((item) => item.id === input.contentId);
     if (!visibleContent) {
       throw new Error("Only public content can be saved.");
@@ -153,7 +215,7 @@ export async function unsavePublicContentForParent(input: {
 }) {
   const parent = await resolveParentSession(input.sessionToken);
   if (!parent.authenticated) {
-    throw new Error("Parent sign-in is required to unsave content.");
+    throw new ParentSignInRequiredError();
   }
 
   const { sql } = createDb();
@@ -171,45 +233,26 @@ export async function unsavePublicContentForParent(input: {
   }
 }
 
+/**
+ * Finds or creates the parent's audience contact. Creating one grants no consent: the
+ * contact has no subscriptions until the parent chooses some. One statement, so two
+ * simultaneous first visits cannot create two contacts (the email index is unique).
+ */
 async function ensureAudienceContactForUser(email: string) {
   const emailNormalised = normalizeEmail(email);
-  const { sql } = createDb();
+  const { db, sql } = createDb();
 
   try {
-    const existing = await sql`
-      select id, email, email_normalised
-      from audience_contacts
-      where email_normalised = ${emailNormalised}
-        and deleted_at is null
-      limit 1
-    `;
-    if (existing[0]) {
-      return existing[0];
-    }
-
-    const id = randomUUID();
-    const [contact] = await sql`
-      insert into audience_contacts (
-        id,
-        email,
-        email_normalised,
-        email_status,
-        tags,
-        metadata
-      )
-      values (
-        ${id},
-        ${email},
-        ${emailNormalised},
-        'active',
-        ${sql.json([])},
-        ${sql.json({ source: "parent_account", consentCreated: false })}
-      )
-      returning id, email, email_normalised
-    `;
-    if (!contact) {
-      throw new Error("Unable to create parent audience contact.");
-    }
+    await db
+      .insert(audienceContacts)
+      .values({ id: randomUUID(), email, emailNormalised, tags: [], metadata: { source: "parent_account", consentCreated: false } })
+      .onConflictDoNothing({ target: audienceContacts.emailNormalised });
+    const [contact] = await db
+      .select({ id: audienceContacts.id, email: audienceContacts.email, emailNormalised: audienceContacts.emailNormalised })
+      .from(audienceContacts)
+      .where(and(eq(audienceContacts.emailNormalised, emailNormalised), isNull(audienceContacts.deletedAt)))
+      .limit(1);
+    if (!contact) throw new Error("Unable to create parent audience contact.");
     return contact;
   } finally {
     await sql.end();
