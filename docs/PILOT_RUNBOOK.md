@@ -72,7 +72,7 @@ which must be filled in before the controlled pilot.
 ## 8. Known pilot limitations
 
 - No real accounting or e-signature provider yet: development providers only; production fails closed.
-- Franchise staff delegation is not built: only Head Office assigns roles.
+- Franchisees manage their own team (Franchise Staff role only) at `/app/team`; every other role is assigned by Head Office.
 - No administrator screen to disable a user or end another person's sessions (section 5).
 - Impressions, email opens and clicks where a provider does not report them, and social reach are not measured.
 - Real-browser accessibility (colour contrast, screen reader) is a manual pass; automated checks cover the server-rendered pages.

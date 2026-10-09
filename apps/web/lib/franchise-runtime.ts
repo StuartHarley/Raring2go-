@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createDrizzleAccessStore, endFranchiseStaffAccess } from "@raring2go/access";
 import {
   activeAgreementForFranchise,
   addFranchiseDocumentVersion,
@@ -80,7 +81,7 @@ import type {
   FranchiseRecord
 } from "@raring2go/franchise";
 import type { PermissionData } from "@raring2go/permissions";
-import { getPermissionData } from "./permission-source";
+import { getPermissionData, invalidatePermissionData } from "./permission-source";
 
 export async function listFranchiseSummaries(context: FranchiseActorContext) {
   const franchisePermissionData = await getPermissionData();
@@ -193,6 +194,17 @@ export async function updateFranchiseFromInput(
         patch
       });
       await updateFranchiseRecord(tx, franchiseId, patch);
+      // A franchise that is suspended or leaves takes its team's access with it, in the same transaction.
+      if (patch.status && patch.status !== "active") {
+        await endFranchiseStaffAccess(
+          auditFor(tx),
+          createDrizzleAccessStore(tx as unknown as typeof db),
+          { organisationId: updated.franchiseOrganisationId, territoryId: updated.primaryTerritoryId },
+          `franchise ${patch.status}`,
+          { type: "human", userId: context.userId }
+        );
+        invalidatePermissionData();
+      }
       return updated;
     });
   } finally {

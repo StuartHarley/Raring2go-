@@ -96,8 +96,9 @@ describe("role by role, denied pages are denied by the server, not just hidden",
   it("lets Super Admin into every staff page", async () => {
     const allowed = await allowedFor("superadmin");
     const missing = [...unique.map((c) => `${c.module}.${c.action}`)].filter((key) => !allowed.has(key));
-    // The advertiser portal belongs to advertisers, and the territory page needs a territory context to be chosen first.
-    expect(missing.sort()).toEqual(["portal.advertiser.view", "territory.view"]);
+    // The advertiser portal belongs to advertisers, the territory page needs a territory context chosen first, and a
+    // franchise's own team is run by that franchise (Head Office manages people at /app/roles).
+    expect(missing.sort()).toEqual(["franchise.team.view", "portal.advertiser.view", "territory.view"]);
   });
 
   it("keeps a franchisee out of network, system and finance-configuration pages", async () => {
@@ -110,6 +111,11 @@ describe("role by role, denied pages are denied by the server, not just hidden",
     expect(allowed.has("system.administer")).toBe(false);
   });
 
+  it("gives a franchisee their team page, and keeps team management away from everyone else's staff", async () => {
+    expect((await allowedFor("franchisee")).has("franchise.team.view")).toBe(true);
+    expect((await allowedFor("advertiser")).has("franchise.team.view")).toBe(false);
+  });
+
   it("gives an advertiser user the advertiser portal and no staff page at all", async () => {
     const allowed = await allowedFor("advertiser");
     expect([...allowed]).toEqual(["portal.advertiser.view"]);
@@ -118,7 +124,7 @@ describe("role by role, denied pages are denied by the server, not just hidden",
   it("records what each role may open, so a permission change shows up in review", async () => {
     const summary: Record<string, number> = {};
     for (const role of roles) summary[role] = (await allowedFor(role)).size;
-    expect(summary.superadmin).toBe(unique.length - 2);
+    expect(summary.superadmin).toBe(unique.length - 3);
     expect(summary.advertiser).toBe(1);
     expect(summary.franchisee).toBeGreaterThan(0);
     expect(summary.franchisee).toBeLessThan(unique.length);

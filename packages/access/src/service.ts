@@ -253,13 +253,28 @@ export async function inviteUser(
   input: { email: string; organisationId: string; territoryId?: string | null; roleId?: string | null },
   now: Date = new Date()
 ): Promise<{ invitation: InvitationRow; token: string }> {
+  if (input.territoryId && !(await store.territoryBelongsTo(input.territoryId, input.organisationId))) throw new AccessInputError("That territory does not belong to this organisation.");
+  require(actor, permissions, "invite", { organisationId: input.organisationId, territoryId: input.territoryId ?? null });
+  return createInvitation(actor, permissions, audit, store, input, now);
+}
+
+/**
+ * Creates the invitation. The caller has ALREADY authorised the actor (roles.invite, or franchise.team.manage for
+ * a franchise's own staff); this still enforces the "cannot grant what you do not hold" rule for the role.
+ */
+export async function createInvitation(
+  actor: AccessActorContext,
+  permissions: PermissionData,
+  audit: AccessAuditRecorder,
+  store: AccessStore,
+  input: { email: string; organisationId: string; territoryId?: string | null; roleId?: string | null },
+  now: Date = new Date()
+): Promise<{ invitation: InvitationRow; token: string }> {
   const email = input.email.trim().toLowerCase();
   const territoryId = input.territoryId ?? null;
   const roleId = input.roleId ?? null;
   if (!EMAIL_PATTERN.test(email) || email.length > 254) throw new AccessInputError("Enter a valid email address.");
   if (territoryId && !(await store.territoryBelongsTo(territoryId, input.organisationId))) throw new AccessInputError("That territory does not belong to this organisation.");
-  require(actor, permissions, "invite", { organisationId: input.organisationId, territoryId });
-
   if (roleId) {
     const role = await store.getRole(roleId);
     if (!role) throw new AccessStateError("That role was not found.");

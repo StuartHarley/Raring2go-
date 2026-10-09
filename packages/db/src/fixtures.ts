@@ -19,7 +19,8 @@ export const fixtureIds = {
     hqAdmin: "00000000-0000-4000-8000-000000000302",
     franchisee: "00000000-0000-4000-8000-000000000303",
     automation: "00000000-0000-4000-8000-000000000304",
-    advertiser: "00000000-0000-4000-8000-000000000305"
+    advertiser: "00000000-0000-4000-8000-000000000305",
+    franchiseStaff: "00000000-0000-4000-8000-000000000306"
   },
   permissions: {
     systemAdminister: "00000000-0000-4000-8000-000000000401",
@@ -114,6 +115,9 @@ export const fixtureIds = {
     segmentManage: "00000000-0000-4000-8000-000000000490",
     audienceImportManage: "00000000-0000-4000-8000-000000000491",
     taxRateManage: "00000000-0000-4000-8000-000000000573",
+    proposalSend: "00000000-0000-4000-8000-000000000574",
+    franchiseTeamView: "00000000-0000-4000-8000-000000000575",
+    franchiseTeamManage: "00000000-0000-4000-8000-000000000576",
     emailView: "00000000-0000-4000-8000-000000000492",
     emailCreate: "00000000-0000-4000-8000-000000000493",
     emailApprove: "00000000-0000-4000-8000-000000000494",
@@ -496,6 +500,14 @@ export const foundationSeed = {
       name: "Workflow Automation",
       description: "Service principal for workflow engine actions. Holds only the grants those actions need.",
       isSystem: true
+    },
+    {
+      id: fixtureIds.roles.franchiseStaff,
+      key: "franchise_staff",
+      name: "Franchise Staff",
+      description: "A franchise's own team member: works on advertisers, drafts content, newsletters and social posts, and sees obligations, in their franchise's territory only. Cannot book, send, approve, invoice or manage people.",
+      isSystem: true,
+      franchiseDelegable: true
     },
     {
       id: fixtureIds.roles.advertiser,
@@ -1051,6 +1063,24 @@ export const foundationSeed = {
       module: "advertiser.tax_rate",
       action: "manage",
       description: "Configure the tax rates advertiser invoices are priced with."
+    },
+    {
+      id: fixtureIds.permissions.proposalSend,
+      module: "advertiser.proposal",
+      action: "send",
+      description: "Send a drafted proposal to an advertiser."
+    },
+    {
+      id: fixtureIds.permissions.franchiseTeamView,
+      module: "franchise.team",
+      action: "view",
+      description: "See the people who work for a franchise and their pending invitations."
+    },
+    {
+      id: fixtureIds.permissions.franchiseTeamManage,
+      module: "franchise.team",
+      action: "manage",
+      description: "Invite and remove the franchise's own staff (delegable roles only)."
     },
     {
       id: fixtureIds.permissions.audienceImportManage,
@@ -3030,6 +3060,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     fixtureIds.permissions.segmentView,
     fixtureIds.permissions.segmentManage,
     fixtureIds.permissions.taxRateManage,
+    fixtureIds.permissions.proposalSend,
     fixtureIds.permissions.audienceImportManage,
     fixtureIds.permissions.emailView,
     fixtureIds.permissions.emailCreate,
@@ -3429,7 +3460,55 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
   { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.journeyApprove, scope: "own_territory", constraints: {} },
   { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.journeyActivate, scope: "own_territory", constraints: {} },
   { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.journeyPause, scope: "own_territory", constraints: {} },
-  { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.contentAiApprove, scope: "own_territory", constraints: {} }
+  { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.contentAiApprove, scope: "own_territory", constraints: {} },
+  ...[fixtureIds.permissions.proposalSend, fixtureIds.permissions.franchiseTeamView, fixtureIds.permissions.franchiseTeamManage].map((permissionId) => ({
+    roleId: fixtureIds.roles.franchisee,
+    permissionId,
+    scope: "own_territory" as const,
+    constraints: {}
+  })),
+  // Franchise Staff: least privilege, own territory only (docs/FRANCHISE_STAFF.md).
+  ...[
+    fixtureIds.permissions.advertiserView,
+    fixtureIds.permissions.advertiserEdit,
+    fixtureIds.permissions.advertiserContactManage,
+    fixtureIds.permissions.advertiserActivityRecord,
+    fixtureIds.permissions.opportunityView,
+    fixtureIds.permissions.opportunityCreate,
+    fixtureIds.permissions.opportunityEdit,
+    fixtureIds.permissions.catalogueView,
+    fixtureIds.permissions.artworkView,
+    fixtureIds.permissions.fulfilmentView,
+    fixtureIds.permissions.proofView,
+    fixtureIds.permissions.renewalView,
+    fixtureIds.permissions.proposalView,
+    fixtureIds.permissions.proposalCreate,
+    fixtureIds.permissions.contentView,
+    fixtureIds.permissions.contentCreate,
+    fixtureIds.permissions.contentEdit,
+    fixtureIds.permissions.filesUpload,
+    fixtureIds.permissions.editionView,
+    fixtureIds.permissions.audienceView,
+    fixtureIds.permissions.segmentView,
+    fixtureIds.permissions.emailView,
+    fixtureIds.permissions.emailCreate,
+    fixtureIds.permissions.newsletterFactoryView,
+    fixtureIds.permissions.newsletterFactoryContribute,
+    fixtureIds.permissions.socialView,
+    fixtureIds.permissions.socialCreate,
+    fixtureIds.permissions.socialEdit,
+    fixtureIds.permissions.franchiseView,
+    fixtureIds.permissions.complianceView,
+    fixtureIds.permissions.onboardingView,
+    fixtureIds.permissions.territoryView,
+    fixtureIds.permissions.taskView,
+    fixtureIds.permissions.taskComplete
+  ].map((permissionId) => ({
+    roleId: fixtureIds.roles.franchiseStaff,
+    permissionId,
+    scope: "own_territory" as const,
+    constraints: {}
+  }))
 ];
 
 export const fixtureRoleAssignments: Array<{ id: string; userId: string; roleId: string; organisationId: string; territoryId?: string }> = [

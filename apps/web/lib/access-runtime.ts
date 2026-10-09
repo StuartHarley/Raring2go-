@@ -8,9 +8,13 @@ import {
   createRole,
   deleteRole,
   explainAccess,
+  inviteFranchiseStaff,
   inviteUser,
   listAccessOverview,
+  readFranchiseTeam,
   readRole,
+  removeFranchiseStaff,
+  revokeFranchiseStaffInvitation,
   removeRoleGrant,
   revokeAssignment,
   revokeInvitationById
@@ -130,3 +134,43 @@ export async function inviteUserAsActor(actor: AccessActorContext, input: { emai
   appLogger.info("invitation created", { invitationId: invitation.id, emailSent, actorUserId: actor.userId });
   return { invitation, emailSent };
 }
+
+// ---- A franchisee's own team (docs/FRANCHISE_STAFF.md) ---------------------------------------------
+
+/** The franchise team's seat limit. One place to change it; a per-franchise override can read from here later. */
+export const FRANCHISE_SEAT_LIMIT = Number(process.env.FRANCHISE_TEAM_SEAT_LIMIT) > 0 ? Number(process.env.FRANCHISE_TEAM_SEAT_LIMIT) : undefined;
+
+export async function readFranchiseTeamAsActor(actor: AccessActorContext) {
+  return inTransaction(({ permissions, store }) => readFranchiseTeam(actor, permissions, store, new Date(), { seatLimit: FRANCHISE_SEAT_LIMIT }));
+}
+
+/** Same shape as the Head Office invitation: committed first, then the email; a failed email leaves a resendable invitation. */
+export async function inviteFranchiseStaffAsActor(actor: AccessActorContext, input: { email: string; roleId?: string | null }) {
+  const { invitation, token } = await inTransaction(({ permissions, audit, store }) => inviteFranchiseStaff(actor, permissions, audit, store, input, new Date(), { seatLimit: FRANCHISE_SEAT_LIMIT }));
+  const directory = getDirectory();
+  const url = `${publicBaseUrl()}/invite/accept?token=${encodeURIComponent(token)}&email=${encodeURIComponent(invitation.email)}`;
+  let emailSent = false;
+  try {
+    const result = await sendInvitationEmail(createEmailProviderFromEnv(), {
+      to: invitation.email,
+      url,
+      organisationName: invitation.organisationName ?? (await directory.organisationName(invitation.organisationId)) ?? "Raring2go",
+      roleName: invitation.roleName,
+      invitedByName: await directory.userName(actor.userId),
+      expiresAt: invitation.expiresAt,
+      from: process.env.EMAIL_FROM,
+      idempotencyKey: `invitation:${invitation.id}`
+    });
+    emailSent = result.status !== "failed";
+  } catch (error) {
+    appLogger.error("team invitation email failed", { invitationId: invitation.id, error });
+  }
+  appLogger.info("team invitation created", { invitationId: invitation.id, emailSent, actorUserId: actor.userId });
+  return { invitation, emailSent };
+}
+
+export const removeFranchiseStaffAsActor = (actor: AccessActorContext, assignmentId: string) =>
+  changed(inTransaction(({ permissions, audit, store }) => removeFranchiseStaff(actor, permissions, audit, store, assignmentId)));
+
+export const revokeFranchiseStaffInvitationAsActor = (actor: AccessActorContext, invitationId: string) =>
+  inTransaction(({ permissions, audit, store }) => revokeFranchiseStaffInvitation(actor, permissions, audit, store, invitationId));

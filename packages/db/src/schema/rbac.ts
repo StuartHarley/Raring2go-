@@ -11,6 +11,8 @@ export const roles = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     isSystem: boolean("is_system").notNull().default(false),
+    /** A franchisee may give this role to their own team (see franchise.team). Only roles flagged here can be delegated. */
+    franchiseDelegable: boolean("franchise_delegable").notNull().default(false),
     ...timestamps,
     ...softDelete
   },

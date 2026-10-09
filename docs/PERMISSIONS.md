@@ -56,6 +56,6 @@ Safety rules, enforced by the service (not the page) and covered by unit and Pos
 
 The page also has a **"why can or can't they?"** checker that shows the evaluator's own explanation for a person, capability and place.
 
-### Not built yet
+### Franchise staff
 
-Franchisees cannot yet manage their own staff's access (the matrix allows it for local staff). That needs a "Franchise Staff" role and a decision about which roles a franchisee may delegate; the escalation rules above already make it safe to switch on.
+Franchisees manage their own team through `/app/team` using the built-in Franchise Staff role: see `docs/FRANCHISE_STAFF.md`.
