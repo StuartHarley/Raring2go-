@@ -1,3 +1,5 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readPreflightPanel, readTerritoryEdition } from "../../../../../lib/publishing-runtime";
 import { AiPreparedNote, AssistantBanner, fixabilityLabels } from "../../../../../lib/assistant-ui";
@@ -118,6 +120,7 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Flatplan</p>
         <h2>Page assembly</h2>
+        {result.pages.length > 0 ? <p><Link href={`/app/editions/${id}/flatplan` as Route}>Edit the flatplan</Link></p> : null}
         <div className="edition-flatplan">
           {result.pages.map((page) => (
             <article key={page.id} className={`edition-page-tile edition-page-${page.readiness}`}>

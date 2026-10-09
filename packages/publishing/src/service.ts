@@ -1546,6 +1546,59 @@ export async function releaseTerritoryEdition(
   return edition;
 }
 
+/**
+ * Writes content that belongs to one territory edition: a territory-only content item and its edition copy, in
+ * one step, so a local editor can fill pages without touching network content or any other territory.
+ */
+export async function createEditionLocalContent(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  territoryEditionId: string,
+  input: { title: string; contentType: string; body: Record<string, unknown> }
+) {
+  requirePublishingPermission(context, permissions, "localContentEdit");
+  const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  if (!input.title.trim()) {
+    throw new Error("Give the content a title.");
+  }
+  const item: EditionContentItem = {
+    id: crypto.randomUUID(),
+    sourceLevel: "territory",
+    title: input.title.trim().slice(0, 200),
+    contentType: input.contentType,
+    status: "approved",
+    inheritanceMode: "territory_only",
+    locked: false,
+    localisable: true,
+    advertiserSpecific: false,
+    body: input.body,
+    targeting: { territoryIds: [edition.territoryId] },
+    createdByUserId: context.userId
+  };
+  const content: TerritoryEditionContent = {
+    id: crypto.randomUUID(),
+    territoryEditionId: edition.id,
+    sourceContentItemId: item.id,
+    sourceVersion: 1,
+    inheritanceState: "detached",
+    localOverride: {},
+    effectiveContent: { ...input.body },
+    locked: false,
+    localisedByUserId: context.userId,
+    localisedAt: today()
+  };
+  data.editionContentItems.push(item);
+  data.territoryEditionContent.push(content);
+  await audit.record(auditEvent(context, auditActions.publishingContentOverride, "territory_edition_content", content.id, {
+    action: "create_local",
+    sourceContentItemId: item.id
+  }, edition.territoryId));
+  return { item, content };
+}
+
 export async function createEditionFlatplan(
   context: PublishingActorContext,
   permissions: PermissionData,
@@ -1555,6 +1608,7 @@ export async function createEditionFlatplan(
 ) {
   requirePublishingPermission(context, permissions, "pageEdit");
   const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
   if (data.editionPages.some((page) => page.territoryEditionId === edition.id && !page.deletedAt)) {
     throw new Error("Edition flatplan already exists.");
   }
@@ -1600,6 +1654,7 @@ export async function assignPageTemplateAndContent(
   requirePublishingPermission(context, permissions, "pageEdit");
   const page = requireEditionPage(data, pageId);
   const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
   if (page.locked && context.territoryId) {
     throw new Error("Locked pages cannot be changed from local context.");
   }
@@ -1637,6 +1692,7 @@ export async function reorderEditionPages(
 ) {
   requirePublishingPermission(context, permissions, "pageEdit");
   const edition = requireTerritoryEdition(data, territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
   const pages = data.editionPages.filter((page) => page.territoryEditionId === edition.id && !page.deletedAt);
   if (orderedPageIds.length !== pages.length || new Set(orderedPageIds).size !== pages.length) {
     throw new Error("Reorder request must include every page exactly once.");
@@ -1704,6 +1760,7 @@ export async function submitPageForReview(
   requirePublishingPermission(context, permissions, "localContentEdit");
   const page = requireEditionPage(data, pageId);
   const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
   if (page.readiness === "blocked" || page.issues.length > 0) {
     throw new Error("Page cannot be submitted while warnings or issues remain.");
   }
