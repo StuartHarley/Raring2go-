@@ -116,6 +116,7 @@ export const fixtureIds = {
     audienceImportManage: "00000000-0000-4000-8000-000000000491",
     taxRateManage: "00000000-0000-4000-8000-000000000573",
     proposalSend: "00000000-0000-4000-8000-000000000574",
+    paymentRequest: "00000000-0000-4000-8000-000000000577",
     franchiseTeamView: "00000000-0000-4000-8000-000000000575",
     franchiseTeamManage: "00000000-0000-4000-8000-000000000576",
     emailView: "00000000-0000-4000-8000-000000000492",
@@ -1069,6 +1070,12 @@ export const foundationSeed = {
       module: "advertiser.proposal",
       action: "send",
       description: "Send a drafted proposal to an advertiser."
+    },
+    {
+      id: fixtureIds.permissions.paymentRequest,
+      module: "advertiser.payment",
+      action: "request",
+      description: "Create an online payment link for an issued invoice."
     },
     {
       id: fixtureIds.permissions.franchiseTeamView,
@@ -3061,6 +3068,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     fixtureIds.permissions.segmentManage,
     fixtureIds.permissions.taxRateManage,
     fixtureIds.permissions.proposalSend,
+    fixtureIds.permissions.paymentRequest,
     fixtureIds.permissions.audienceImportManage,
     fixtureIds.permissions.emailView,
     fixtureIds.permissions.emailCreate,
@@ -3461,7 +3469,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
   { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.journeyActivate, scope: "own_territory", constraints: {} },
   { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.journeyPause, scope: "own_territory", constraints: {} },
   { roleId: fixtureIds.roles.franchisee, permissionId: fixtureIds.permissions.contentAiApprove, scope: "own_territory", constraints: {} },
-  ...[fixtureIds.permissions.proposalSend, fixtureIds.permissions.franchiseTeamView, fixtureIds.permissions.franchiseTeamManage].map((permissionId) => ({
+  ...[fixtureIds.permissions.proposalSend, fixtureIds.permissions.paymentRequest, fixtureIds.permissions.franchiseTeamView, fixtureIds.permissions.franchiseTeamManage].map((permissionId) => ({
     roleId: fixtureIds.roles.franchisee,
     permissionId,
     scope: "own_territory" as const,

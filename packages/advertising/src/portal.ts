@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PermissionData } from "@raring2go/permissions";
-import { acceptProposalCommercially, respondToProposal, submitArtworkVersion, updateArtworkStatus } from "./service";
+import { acceptProposalCommercially, describePayableInvoice, respondToProposal, submitArtworkVersion, updateArtworkStatus } from "./service";
 import type { AdvertisingData, ArtworkRequirement, ArtworkVersion } from "./types";
 
 type AuditRecorder = Parameters<typeof respondToProposal>[2];
@@ -237,6 +237,16 @@ export function buildPortalView(identity: PortalIdentity, data: AdvertisingData,
       metrics
     }
   };
+}
+
+/** An advertiser paying their own invoice online: ownership comes from the server-derived identity, never the request. */
+export function portalAuthorisePayment(identity: PortalIdentity, data: AdvertisingData, invoiceId: string) {
+  const invoice = data.invoices.find((candidate) => candidate.id === invoiceId && !candidate.deletedAt);
+  // The same error for missing and for someone else's invoice.
+  if (!invoice || !identity.advertiserIds.includes(invoice.advertiserId)) throw new PortalAccessError("Invoice not found.");
+  if (invoice.status !== "issued" && invoice.status !== "part_paid") throw new PortalStateError("That invoice cannot be paid online.");
+  if (invoice.balanceMinor <= 0) throw new PortalStateError("That invoice has nothing left to pay.");
+  return describePayableInvoice(data, invoice.id);
 }
 
 // ---- Actions ------------------------------------------------------------------------

@@ -1189,6 +1189,46 @@ export async function issueInvoice(
   return invoice;
 }
 
+export type PayableInvoice = { invoiceId: string; invoiceNumber: string; advertiserId: string; territoryId: string; issuerOrganisationId: string; customerOrganisationId: string; balanceMinor: number; currency: string; customerEmail: string | null };
+
+/** Why an invoice cannot be paid online right now, or the details a payment link needs. Pure: nothing is changed. */
+export function describePayableInvoice(data: AdvertisingData, invoiceId: string): PayableInvoice {
+  const invoice = requireInvoice(data, invoiceId);
+  if (invoice.status !== "issued" && invoice.status !== "part_paid") throw new Error("Only an issued invoice with a balance can be paid online.");
+  if (invoice.balanceMinor <= 0) throw new Error("This invoice has nothing left to pay.");
+  const advertiser = requireAdvertiser(data, invoice.advertiserId);
+  const snapshot = (invoice.billingSnapshot ?? {}) as { email?: string | null };
+  return {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    advertiserId: advertiser.id,
+    territoryId: invoice.territoryId,
+    issuerOrganisationId: invoice.issuerOrganisationId,
+    customerOrganisationId: invoice.customerOrganisationId,
+    balanceMinor: invoice.balanceMinor,
+    currency: invoice.currency,
+    customerEmail: snapshot.email ?? data.contacts.find((contact) => contact.advertiserId === advertiser.id && contact.isPrimary && !contact.deletedAt)?.email ?? null
+  };
+}
+
+/** Staff (franchisee or Head Office) creating a payment link: needs the grant, territory access, and an invoice that can be paid. */
+export function authorisePaymentRequest(context: AdvertisingActorContext, permissions: PermissionData, data: AdvertisingData, invoiceId: string): PayableInvoice {
+  requireAdvertisingPermission(context, permissions, "paymentRequest");
+  const payable = describePayableInvoice(data, invoiceId);
+  ensureContextCanAccessAdvertiser(context, requireAdvertiser(data, payable.advertiserId), data);
+  return payable;
+}
+
+/** Issued invoices with a balance that this actor may collect on, for the finance payments page. */
+export function listPayableInvoices(context: AdvertisingActorContext, permissions: PermissionData, data: AdvertisingData): PayableInvoice[] {
+  requireAdvertisingPermission(context, permissions, "financeView");
+  const visible = visibleTerritories(context, data);
+  return data.invoices
+    .filter((invoice) => !invoice.deletedAt && (invoice.status === "issued" || invoice.status === "part_paid") && invoice.balanceMinor > 0 && (visible == null || visible.has(invoice.territoryId)))
+    .map((invoice) => describePayableInvoice(data, invoice.id))
+    .sort((left, right) => left.invoiceNumber.localeCompare(right.invoiceNumber));
+}
+
 export async function editDraftInvoice(
   context: AdvertisingActorContext,
   permissions: PermissionData,

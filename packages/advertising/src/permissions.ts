@@ -24,6 +24,7 @@ export const advertisingCapabilities = {
   paymentRecord: { module: "advertiser.payment", action: "record" },
   paymentAllocate: { module: "advertiser.payment", action: "allocate" },
   taxRateManage: { module: "advertiser.tax_rate", action: "manage" },
+  paymentRequest: { module: "advertiser.payment", action: "request" },
   paymentReconcile: { module: "advertiser.payment", action: "reconcile" },
   financeExport: { module: "advertiser.finance", action: "export" },
   artworkView: { module: "advertiser.artwork", action: "view" },

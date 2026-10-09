@@ -103,6 +103,7 @@ describe("foundation fixtures", () => {
       "marketing.segment",
       "advertiser.tax_rate",
       "advertiser.proposal",
+      "advertiser.payment",
       "franchise.team",
       "franchise.team",
       "marketing.import",
