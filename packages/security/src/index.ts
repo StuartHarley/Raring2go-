@@ -6,3 +6,4 @@ export * from "./secrets-scan";
 export * from "./privacy/repository";
 export * from "./privacy/service";
 export type * from "./privacy/types";
+export * from "./webhook-claim";

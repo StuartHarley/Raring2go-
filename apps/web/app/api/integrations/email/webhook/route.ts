@@ -1,22 +1,8 @@
-import { randomUUID } from "node:crypto";
-import {
-  createEmailDeliveryEventDedupe,
-  createEmailProviderFromEnv,
-  type EmailDeliveryEvent,
-  type EmailDeliveryProvider
-} from "@raring2go/email";
-import {
-  applyEmailDeliveryEvent,
-  insertEmailDeliveryRecordRows,
-  insertSuppressionRecord,
-  loadDeliveryEventContext,
-  updateContactEmailStatusRecord
-} from "@raring2go/marketing";
-import type { EmailDeliveryRecord } from "@raring2go/marketing";
-import { createDb } from "@raring2go/db";
+import { createEmailProviderFromEnv } from "@raring2go/email";
+import type { EmailDeliveryEvent, EmailDeliveryProvider } from "@raring2go/email";
 import { NextResponse } from "next/server";
-
-const dedupe = createEmailDeliveryEventDedupe();
+import { appLogger } from "../../../../../lib/logger";
+import { processDeliveryEvents } from "../../../../../lib/email-webhook-runtime";
 
 export async function POST(request: Request) {
   const provider: EmailDeliveryProvider = createEmailProviderFromEnv();
@@ -25,74 +11,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Email provider webhooks are not configured." }, { status: 400 });
   }
 
+  let events: EmailDeliveryEvent[];
   try {
-    const body = await request.text();
-    const events = await provider.verifyWebhook({
+    events = await provider.verifyWebhook({
       headers: Object.fromEntries(request.headers.entries()),
-      body,
+      body: await request.text(),
       secret: process.env.POSTMARK_WEBHOOK_SECRET ?? process.env.EMAIL_WEBHOOK_SECRET
     });
-    const accepted = events.filter((event) => dedupe.accept(event));
-    const persisted = await persistEvents(provider.providerKey, accepted);
-
-    return NextResponse.json({
-      accepted: accepted.length,
-      duplicate: events.length - accepted.length,
-      persisted,
-      providerKey: provider.providerKey
-    });
   } catch {
+    // Not authentic: nothing was processed.
     return NextResponse.json({ error: "Email webhook rejected." }, { status: 401 });
   }
-}
-
-async function persistEvents(providerKey: string, events: EmailDeliveryEvent[]) {
-  if (events.length === 0) {
-    return 0;
-  }
-
-  const { db, sql } = createDb();
-  let persisted = 0;
 
   try {
-    for (const event of events) {
-      const context = await loadDeliveryEventContext(db, providerKey, event.providerMessageId);
-
-      if (!context) {
-        continue;
-      }
-
-      const data = { contacts: context.contacts, suppressions: context.suppressions, emailDeliveryRecords: [] as EmailDeliveryRecord[] };
-      const delivery: EmailDeliveryRecord = {
-        id: randomUUID(),
-        campaignId: context.original.campaignId,
-        campaignVersionId: context.original.campaignVersionId,
-        recipientSnapshotId: context.original.recipientSnapshotId,
-        contactId: context.original.contactId,
-        emailNormalised: event.recipientEmail ?? context.original.emailNormalised,
-        providerKey,
-        providerMessageId: event.providerMessageId,
-        status: event.eventType === "failed" || event.eventType === "bounced" ? "failed" : "delivered",
-        eventType: event.eventType,
-        eventAt: event.occurredAt.toISOString(),
-        metadata: event.metadata ?? {}
-      };
-
-      applyEmailDeliveryEvent(data, delivery);
-      await insertEmailDeliveryRecordRows(db, [delivery]);
-
-      const newSuppression = data.suppressions.find((suppression) => !context.suppressions.includes(suppression));
-
-      if (newSuppression) {
-        await insertSuppressionRecord(db, newSuppression);
-        await updateContactEmailStatusRecord(db, newSuppression.contactId, "suppressed");
-      }
-
-      persisted += 1;
-    }
-  } finally {
-    await sql.end();
+    const outcome = await processDeliveryEvents(provider.providerKey, events);
+    return NextResponse.json({ accepted: outcome.persisted, duplicate: outcome.duplicate, unmatched: outcome.unmatched, persisted: outcome.persisted, providerKey: provider.providerKey });
+  } catch (error) {
+    // A verified event we could not apply: fail so the provider retries (the claim rolled back with the work).
+    appLogger.error("email webhook processing failed", { error });
+    return NextResponse.json({ error: "Email webhook could not be processed." }, { status: 500 });
   }
-
-  return persisted;
 }
