@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions, authSessions, createDb, fixtureIds, users } from "@raring2go/db";
+import { contentChannelVariantVersions, contentChannelVariants, contentItems, audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions, authSessions, createDb, fixtureIds, users } from "@raring2go/db";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDevelopmentSession, createFixtureIdentity, setIdentityForTests } from "./auth-runtime";
@@ -8,6 +8,7 @@ import {
   changeParentEmailOptOut,
   changeParentEmailSubscription,
   readParentAccount,
+  savePublicContentForParent,
   saveParentPreferences,
   unsavePublicContentForParent
 } from "./parent-runtime";
@@ -71,6 +72,37 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("parent self-service runtime (postgre
     expect(b?.contact.email).toBe(emails[1]);
     expect(b?.territories.find((area) => area.id === sutton)?.emailSubscribed).toBe(false);
     expect(b?.preferences.interests).toEqual([]);
+  });
+
+  it("saves and unsaves public content through the real database, and refuses non-public content", async () => {
+    const ids = { item: randomUUID(), draft: randomUUID(), variant: randomUUID(), version: randomUUID() };
+    const base = { contentType: "event", ownerLevel: "territory", territoryId: sutton, categories: [], tags: [], provenance: {} };
+    await db.insert(contentItems).values([
+      { ...base, id: ids.item, title: `Save Test ${tag}`, status: "published", relevantDates: { startDate: "2099-05-01" } },
+      { ...base, id: ids.draft, title: `Save Draft ${tag}`, status: "draft", relevantDates: {} }
+    ]);
+    await db.insert(contentChannelVariants).values({ id: ids.variant, contentItemId: ids.item, channel: "website", status: "approved", currentVersionId: ids.version, territoryId: sutton });
+    await db.insert(contentChannelVariantVersions).values({ id: ids.version, variantId: ids.variant, versionNumber: 1, status: "approved", snapshot: {} });
+
+    try {
+      const first = await savePublicContentForParent({ sessionToken: tokens[0], territorySlug: "sutton-coldfield", contentId: ids.item });
+      expect(first.saved).toBe(true);
+      // Saving twice keeps one row.
+      expect((await savePublicContentForParent({ sessionToken: tokens[0], territorySlug: "sutton-coldfield", contentId: ids.item })).id).toBe(first.id);
+      expect((await readParentAccount(tokens[0]))?.saved.map((item) => item.title)).toEqual([`Save Test ${tag}`]);
+      expect((await readParentAccount(tokens[1]))?.saved).toEqual([]);
+
+      await expect(savePublicContentForParent({ sessionToken: tokens[0], territorySlug: "sutton-coldfield", contentId: ids.draft })).rejects.toThrow(/public content/);
+
+      await unsavePublicContentForParent({ sessionToken: tokens[0], contentId: ids.item });
+      expect((await readParentAccount(tokens[0]))?.saved).toEqual([]);
+    } finally {
+      await db.delete(audienceSavedContent).where(eq(audienceSavedContent.contentReferenceId, ids.item));
+      await db.delete(contentChannelVariantVersions).where(eq(contentChannelVariantVersions.id, ids.version));
+      await db.delete(contentChannelVariants).where(eq(contentChannelVariants.id, ids.variant));
+      await db.delete(contentItems).where(eq(contentItems.id, ids.item));
+      await db.delete(contentItems).where(eq(contentItems.id, ids.draft));
+    }
   });
 
   it("opts a signed-in parent out and in, with consent and audit evidence", async () => {

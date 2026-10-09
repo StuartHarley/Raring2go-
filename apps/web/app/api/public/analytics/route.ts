@@ -63,12 +63,17 @@ export async function POST(request: Request) {
         ${JSON.stringify(event.attribution)}::jsonb,
         ${JSON.stringify(event.metadata)}::jsonb,
         ${JSON.stringify(event.privacy)}::jsonb,
-        ${new Date(event.occurredAt)},
-        ${new Date(event.retainUntil)}
+        ${event.occurredAt}::timestamptz,
+        ${event.retainUntil}::timestamptz
       )
     `;
-  } catch {
-    return NextResponse.json({ error: "Invalid public analytics event." }, { status: 400 });
+  } catch (error) {
+    // A rejected event (unknown area, unsafe path) is the caller's fault; anything else is ours and must be visible.
+    if (event === undefined && error instanceof Error && /^(Unknown public territory|Public analytics path)/.test(error.message)) {
+      return NextResponse.json({ error: "Invalid public analytics event." }, { status: 400 });
+    }
+    console.error("Public analytics event was not stored", error);
+    return NextResponse.json({ error: "Event could not be stored." }, { status: 500 });
   } finally {
     await sql.end();
   }

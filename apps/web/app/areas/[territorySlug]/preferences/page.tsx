@@ -42,6 +42,7 @@ export default async function ParentPreferencesPage({ params, searchParams }: Pa
 
   const account = await readParentAccount((await cookies()).get(sessionCookieName)?.value);
   const saved = query.saved !== undefined;
+  const confirmTerritoryId = typeof query.confirm === "string" ? query.confirm : undefined;
   const error = typeof query.error === "string" && query.error !== "1" ? query.error : undefined;
 
   return (
@@ -68,6 +69,10 @@ export default async function ParentPreferencesPage({ params, searchParams }: Pa
 
       {saved ? <p className="public-empty" role="status">Your changes have been saved.</p> : null}
       {error ? <p className="public-empty" role="alert">{error}</p> : null}
+
+      {account && confirmTerritoryId ? (
+        <ConfirmSubscription slug={territorySlug} account={account} territoryId={confirmTerritoryId} />
+      ) : null}
 
       {!account ? (
         <section className="public-section">
@@ -173,5 +178,21 @@ export default async function ParentPreferencesPage({ params, searchParams }: Pa
         </>
       )}
     </main>
+  );
+}
+
+/** The second half of double opt-in: nothing is subscribed until the parent presses this. */
+function ConfirmSubscription({ slug, account, territoryId }: { slug: string; account: NonNullable<Awaited<ReturnType<typeof readParentAccount>>>; territoryId: string }) {
+  const area = account.territories.find((candidate) => candidate.id === territoryId);
+  if (!area || area.emailSubscribed) return null;
+
+  return (
+    <section className="public-section" aria-labelledby="confirm-heading">
+      <h2 id="confirm-heading">Confirm your {area.name} newsletter</h2>
+      <p>We will email {account.contact.email} with local family ideas for {area.name}. You can stop at any time.</p>
+      <form action={setEmailSubscriptionAction.bind(null, slug, area.id, true)}>
+        <button type="submit" className="public-button">Yes, email me</button>
+      </form>
+    </section>
   );
 }

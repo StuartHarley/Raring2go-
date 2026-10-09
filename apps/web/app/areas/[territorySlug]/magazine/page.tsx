@@ -57,7 +57,7 @@ export default async function PublicMagazinePage({ params }: PageProps) {
           <div className="public-magazine-shell">
             <article>
               <span>Generated digital output · v{magazine.edition.outputVersion}</span>
-              <h3>{magazine.edition.title}</h3>
+              <h3><Link href={`/areas/${magazine.territory.slug}/magazine/${magazine.edition.slug}` as Route}>{magazine.edition.title}</Link></h3>
               <p>
                 Browse the latest published local edition and jump into page highlights as they become available online.
               </p>

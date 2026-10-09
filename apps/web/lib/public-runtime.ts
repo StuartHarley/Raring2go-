@@ -2,13 +2,18 @@ import {
   defaultPublicTerritorySlug,
   getPublicCommercialDiscovery,
   getPublicDiscovery,
+  getPublicBusiness,
+  getPublicContentDetail,
   getPublicHomepage,
+  getPublicMagazineEdition,
+  getPublicMagazinePage,
   getPublicMagazine,
   getPublicParentHub,
   getPublicRecommendations,
   publicSeoRoutes,
   publicTerritoryStructuredData,
   territoryFromSlug,
+  type PublicContentSection,
   type PublicDiscoveryFilters,
   type PublicDiscoveryKind,
   type PublicCommercialKind
@@ -77,6 +82,46 @@ export async function readPublicRecommendations(slug: string, contactId?: string
 
   try {
     return await getPublicRecommendations(db, slug, contactId);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPublicContentDetail(slug: string, section: PublicContentSection, itemSlug: string, baseUrl?: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await getPublicContentDetail(db, slug, section, itemSlug, baseUrl);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPublicMagazineEdition(slug: string, editionSlug: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await getPublicMagazineEdition(db, slug, editionSlug);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPublicMagazinePage(slug: string, editionSlug: string, pageNumber: number) {
+  const { db, sql } = createDb();
+
+  try {
+    return await getPublicMagazinePage(db, slug, editionSlug, pageNumber);
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function readPublicBusiness(slug: string, advertiserId: string, baseUrl?: string) {
+  const { db, sql } = createDb();
+
+  try {
+    return await getPublicBusiness(db, slug, advertiserId, baseUrl);
   } finally {
     await sql.end();
   }
