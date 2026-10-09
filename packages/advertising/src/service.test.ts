@@ -10,7 +10,10 @@ import {
   createInvoiceFromBooking,
   createArtworkRequirement,
   createOpportunity,
+  createPricedProposal,
   deriveAdvertiserMetrics,
+  priceProposalLine,
+  sendProposal,
   refreshAdvertiserMetrics,
   createProofPack,
   createProposal,
@@ -98,6 +101,7 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.opportunity", "create", "network"),
     grant(ids.roles.hq, "advertiser.opportunity", "edit", "network"),
     grant(ids.roles.hq, "advertiser.catalogue", "view", "network"),
+    grant(ids.roles.hq, "advertiser.pricing", "manage", "network"),
     grant(ids.roles.hq, "advertiser.inventory", "reserve", "network"),
     grant(ids.roles.hq, "advertiser.proposal", "view", "network"),
     grant(ids.roles.hq, "advertiser.proposal", "create", "network"),
@@ -174,6 +178,60 @@ beforeAll(() => {
   vi.setSystemTime(new Date("2026-08-11T09:00:00.000Z"));
 });
 afterAll(() => vi.useRealTimers());
+
+describe("proposal pricing and sending", () => {
+  const withCatalogue = (overrides: { requiresInventory?: boolean; bookStatus?: string; bookTerritory?: string | null; effectiveTo?: string } = {}) => ({
+    ...seededData(),
+    products: [{ id: "prod_page", key: "full-page", name: "Full page advert", channel: "print", status: "active", requiresInventory: overrides.requiresInventory ?? false, requiresArtwork: true, taxCode: "std", metadata: {} }] as never,
+    priceBooks: [{ id: "book_net", key: "net", name: "Network", territoryId: overrides.bookTerritory ?? null, status: overrides.bookStatus ?? "active", effectiveFrom: "2026-01-01", effectiveTo: overrides.effectiveTo ?? "2026-12-31" }] as never,
+    priceBookItems: [{ id: "pbi_1", priceBookId: "book_net", productId: "prod_page", standardPriceMinor: 52500, minimumPriceMinor: 42500, currency: "GBP", approvalRequiredBelowMinor: 45000, metadata: {} }] as never,
+    inventorySlots: [{ id: "slot_1", territoryId: ids.territories.own, productId: "prod_page", slotKey: "p3", inventoryClass: "page", exclusive: true, status: "available", metadata: {} }] as never
+  });
+  let counter = 0;
+  const newId = () => `id_${++counter}`;
+
+  it("charges the list price from the price book when no price is given", () => {
+    expect(priceProposalLine(localContext(), permissions, withCatalogue(), ids.territories.own, { productId: "prod_page", quantity: 2 })).toMatchObject({ unitPriceMinor: 52500, totalPriceMinor: 105000, discountPercent: 0 });
+  });
+
+  it("refuses a price below the book minimum, and a discount below the approval line without pricing permission", () => {
+    expect(() => priceProposalLine(hqContext(), permissions, withCatalogue(), ids.territories.own, { productId: "prod_page", quantity: 1, unitPriceMinor: 40000 })).toThrow(/below the minimum/);
+    expect(() => priceProposalLine(localContext(), permissions, withCatalogue(), ids.territories.own, { productId: "prod_page", quantity: 1, unitPriceMinor: 44000 })).toThrow(/needs approval/);
+    expect(priceProposalLine(hqContext(), permissions, withCatalogue(), ids.territories.own, { productId: "prod_page", quantity: 1, unitPriceMinor: 44000 })).toMatchObject({ discountPercent: 16 });
+    // A small discount above the approval line needs nobody's sign-off.
+    expect(priceProposalLine(localContext(), permissions, withCatalogue(), ids.territories.own, { productId: "prod_page", quantity: 1, unitPriceMinor: 50000 }).discountPercent).toBe(5);
+  });
+
+  it("will not price from an inactive, expired or missing book, or with a silly quantity", () => {
+    expect(() => priceProposalLine(localContext(), permissions, withCatalogue({ bookStatus: "draft" }), ids.territories.own, { productId: "prod_page", quantity: 1 })).toThrow(/no price/);
+    expect(() => priceProposalLine(localContext(), permissions, withCatalogue({ effectiveTo: "2025-12-31" }), ids.territories.own, { productId: "prod_page", quantity: 1 })).toThrow(/no price/);
+    expect(() => priceProposalLine(localContext(), permissions, withCatalogue(), ids.territories.own, { productId: "prod_page", quantity: 0 })).toThrow(/Quantity/);
+    expect(() => priceProposalLine(localContext(), permissions, withCatalogue(), ids.territories.own, { productId: "prod_page", quantity: 1.5 })).toThrow(/Quantity/);
+  });
+
+  it("requires a slot for inventory products and keeps it in the territory", () => {
+    expect(() => priceProposalLine(localContext(), permissions, withCatalogue({ requiresInventory: true }), ids.territories.own, { productId: "prod_page", quantity: 1 })).toThrow(/edition slot/);
+    expect(priceProposalLine(localContext(), permissions, withCatalogue({ requiresInventory: true }), ids.territories.own, { productId: "prod_page", quantity: 1, inventorySlotId: "slot_1" }).inventorySlotId).toBe("slot_1");
+    expect(() => priceProposalLine(localContext(), permissions, withCatalogue({ requiresInventory: true }), ids.territories.other, { productId: "prod_page", quantity: 1, inventorySlotId: "slot_1" })).toThrow(/territory/);
+  });
+
+  it("creates a draft proposal priced by the server, then sends it once", async () => {
+    const data = withCatalogue();
+    const recorder = audit();
+    const proposal = await createPricedProposal(localContext(), permissions, recorder, data, { proposalId: "prop_new", advertiserId: ids.advertiser, title: "Autumn", validUntil: "2026-12-01", lines: [{ productId: "prod_page", quantity: 2 }], newId });
+    expect(proposal).toMatchObject({ status: "draft", totalValueMinor: 105000, currency: "GBP" });
+    expect(data.proposalItems.filter((item) => item.proposalId === "prop_new")[0]).toMatchObject({ unitPriceMinor: 52500, description: "Full page advert" });
+
+    await sendProposal(localContext(), permissions, recorder, data, "prop_new");
+    expect(data.proposals.find((p) => p.id === "prop_new")).toMatchObject({ status: "sent", sentOn: "2026-08-11" });
+    await expect(sendProposal(localContext(), permissions, recorder, data, "prop_new")).rejects.toThrow(/draft/);
+  });
+
+  it("refuses an expired validity date and an empty proposal", async () => {
+    await expect(createPricedProposal(localContext(), permissions, audit(), withCatalogue(), { proposalId: "p", advertiserId: ids.advertiser, title: "x", validUntil: "2020-01-01", lines: [{ productId: "prod_page", quantity: 1 }], newId })).rejects.toThrow(/past/);
+    await expect(createPricedProposal(localContext(), permissions, audit(), withCatalogue(), { proposalId: "p", advertiserId: ids.advertiser, title: "x", validUntil: "2026-12-01", lines: [], newId })).rejects.toThrow(/at least one/);
+  });
+});
 
 describe("derived advertiser metrics", () => {
   const booking = (id: string, bookedOn: string, totalValueMinor: number, status = "booked") => ({

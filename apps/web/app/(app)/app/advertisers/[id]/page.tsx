@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
-import { readAdvertiser360 } from "../../../../../lib/advertising-runtime";
+import { readAdvertiser360, readCatalogue } from "../../../../../lib/advertising-runtime";
 import { readSalesPanel } from "../../../../../lib/assistants-sales";
 import { getPermissionData } from "../../../../../lib/permission-source";
 import { getDirectory } from "../../../../../lib/directory";
@@ -9,6 +9,7 @@ import { evaluatePermission } from "@raring2go/permissions";
 import { SalesAssistantPanel } from "./SalesAssistantPanel";
 import { CrmBanner } from "../CrmBanner";
 import { CrmPanels } from "./CrmPanels";
+import { SalesPanels } from "./SalesPanels";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -135,6 +136,8 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
         notes={String(result.advertiser.commercialMetadata.internalNotes ?? "")}
         access={result.crmAccess}
       />
+
+      <SalesPanels request={request} view={result} catalogue={result.catalogue} access={result.salesAccess} />
 
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Contacts</p>
@@ -393,7 +396,17 @@ async function loadAdvertiser(
     const allowed = (module: string, action: string) =>
       evaluatePermission({ userId: actor.userId, module, action, context: { organisationId: actor.organisationId, territoryId: actor.territoryId } }, permissions).allowed;
     const crmAccess = { edit: allowed("advertiser", "edit"), contactManage: allowed("advertiser.contact", "manage"), activityRecord: allowed("advertiser.activity", "record") };
-    return { ...view, sales, crmAccess };
+    const salesAccess = {
+      proposalCreate: allowed("advertiser.proposal", "create"),
+      bookingAccept: allowed("advertiser.booking", "accept"),
+      invoiceCreate: allowed("advertiser.invoice", "create"),
+      invoiceIssue: allowed("advertiser.invoice", "issue"),
+      paymentRecord: allowed("advertiser.payment", "record"),
+      paymentAllocate: allowed("advertiser.payment", "allocate")
+    };
+    // Only needed to build the proposal form; a person who cannot see the catalogue just does not get one.
+    const catalogue = salesAccess.proposalCreate ? await readCatalogue(actor).catch(() => undefined) : undefined;
+    return { ...view, sales, crmAccess, salesAccess, catalogue };
   } catch (error) {
     return { error };
   }
