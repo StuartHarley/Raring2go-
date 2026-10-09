@@ -28,6 +28,7 @@ export const auditActions = {
   authEmailVerify: "auth.email.verify",
   authAccountRecover: "auth.account.recover",
   authSessionRevoke: "auth.session.revoke",
+  authSessionRevokeAll: "auth.session.revoke_all",
   authSecurityChange: "auth.security.change",
   franchiseCreate: "franchise.create",
   franchiseUpdate: "franchise.update",

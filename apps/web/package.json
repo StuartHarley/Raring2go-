@@ -8,14 +8,15 @@
     "dev": "next dev",
     "lint": "eslint .",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
-    "@raring2go/advertising": "workspace:*",
     "@raring2go/access": "workspace:*",
+    "@raring2go/advertising": "workspace:*",
     "@raring2go/ai": "workspace:*",
     "@raring2go/analytics": "workspace:*",
     "@raring2go/assistants": "workspace:*",
@@ -32,8 +33,8 @@
     "@raring2go/observability": "workspace:*",
     "@raring2go/permissions": "workspace:*",
     "@raring2go/public": "workspace:*",
-    "@raring2go/security": "workspace:*",
     "@raring2go/publishing": "workspace:*",
+    "@raring2go/security": "workspace:*",
     "@raring2go/storage": "workspace:*",
     "@raring2go/workflows": "workspace:*",
     "@tiptap/react": "3.31.3",
@@ -45,7 +46,9 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
     "@vitejs/plugin-react": "6.0.5",
+    "axe-core": "4.13.0",
     "eslint-config-next": "16.3.0",
     "jsdom": "30.0.1"
   }

@@ -1,5 +1,5 @@
 import { requireShellPermission } from "../../../../lib/app-shell";
-import { readRecentAuditEvents } from "../../../../lib/audit-runtime";
+import { parseAuditFilters, readAuditEvents } from "../../../../lib/audit-runtime";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
@@ -9,7 +9,8 @@ type PageProps = {
 };
 
 export default async function ActivityPage({ searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const search = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(search);
 
   try {
     await requireShellPermission(request, {
@@ -20,7 +21,18 @@ export default async function ActivityPage({ searchParams }: PageProps) {
     return protectedOutcome(error);
   }
 
-  const events = await readRecentAuditEvents();
+  const filters = parseAuditFilters(search);
+  const { events, nextCursor } = await readAuditEvents(filters);
+  const carried = new URLSearchParams();
+  if (request.sessionKey) carried.set("session", request.sessionKey);
+  if (request.organisationId) carried.set("organisationId", request.organisationId);
+  if (request.territoryId) carried.set("territoryId", request.territoryId);
+  const filterParams = new URLSearchParams(carried);
+  for (const [key, value] of [["action", filters.actionPrefix], ["entity", filters.entityType], ["actor", filters.actorUserId], ["territory", filters.territoryId], ["from", filters.from], ["to", filters.to]] as const) {
+    if (value) filterParams.set(key, value);
+  }
+  const olderParams = new URLSearchParams(filterParams);
+  if (nextCursor) olderParams.set("before", nextCursor);
 
   return (
     <AppShell request={request}>
@@ -33,7 +45,21 @@ export default async function ActivityPage({ searchParams }: PageProps) {
         </p>
       </section>
 
-      <section className="app-panel audit-table" aria-label="Recent audit events">
+      <section className="app-panel franchise-panel">
+        <p className="eyebrow">Filter</p>
+        <form method="get" className="franchise-form">
+          {[...carried].map(([key, value]) => <input key={key} type="hidden" name={key} value={value} />)}
+          <label>Action starts with<input name="action" defaultValue={filters.actionPrefix} placeholder="advertiser." maxLength={80} /></label>
+          <label>Entity type<input name="entity" defaultValue={filters.entityType} placeholder="advertiser_invoice" maxLength={80} /></label>
+          <label>Actor (user id)<input name="actor" defaultValue={filters.actorUserId} maxLength={36} /></label>
+          <label>Territory (id)<input name="territory" defaultValue={filters.territoryId} maxLength={36} /></label>
+          <label>From<input name="from" type="date" defaultValue={filters.from} /></label>
+          <label>To<input name="to" type="date" defaultValue={filters.to} /></label>
+          <button type="submit">Apply filters</button>
+        </form>
+      </section>
+
+      <section className="app-panel audit-table" aria-label="Audit events">
         <div className="table-scroll">
           <table>
             <thead>
@@ -55,7 +81,9 @@ export default async function ActivityPage({ searchParams }: PageProps) {
               ))}
             </tbody>
           </table>
+          {events.length === 0 ? <p>No events match.</p> : null}
         </div>
+        {nextCursor ? <a href={`/app/activity?${olderParams.toString()}`} className="app-link-button">Older events</a> : null}
       </section>
     </AppShell>
   );

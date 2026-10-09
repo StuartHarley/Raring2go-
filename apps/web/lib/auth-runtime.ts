@@ -8,7 +8,8 @@ import {
   findOrCreateUserByEmail,
   normalizeEmail,
   requestPasswordlessSignIn,
-  revokeSession
+  revokeSession,
+  revokeAllSessions
 } from "@raring2go/auth";
 import { recordAuditEvent } from "@raring2go/audit";
 import {
@@ -151,6 +152,10 @@ export async function verifySignIn(input: { token: string; sessionToken: string 
   // One transaction: the link is consumed, the account loaded or created, and the session and its
   // audit event written together, so a failure part-way cannot burn a link without signing anyone in.
   return withIdentity(({ repository, audit }) => consumePasswordlessSignIn(repository, audit, input), { transaction: true });
+}
+
+export async function signOutEverywhere(input: { sessionToken: string }) {
+  return withIdentity(({ repository, audit }) => revokeAllSessions(repository, audit, { token: input.sessionToken }), { transaction: true });
 }
 
 export async function signOut(input: { sessionToken: string }) {

@@ -53,7 +53,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("finance assistant end to end (postgr
     await db.delete(royaltyRules).where(eq(royaltyRules.id, ids.rule));
     await db.delete(aiUsageEvents).where(inArray(aiUsageEvents.feature, ["finance.chase_notes", "finance.royalty_notes"]));
     if (createdRuns.length) await db.delete(aiRuns).where(inArray(aiRuns.id, createdRuns));
-    await db.delete(auditEvents).where(and(eq(auditEvents.entityType, "advertiser_payment_allocation"), like(auditEvents.action, "advertiser.payment.%"), eq(auditEvents.actorUserId, sutton.userId)));
+    await withFinanceGuardsDisabled(db, async () => { await db.delete(auditEvents).where(and(eq(auditEvents.entityType, "advertiser_payment_allocation"), like(auditEvents.action, "advertiser.payment.%"), eq(auditEvents.actorUserId, sutton.userId))); });
     await sql.end();
   });
 

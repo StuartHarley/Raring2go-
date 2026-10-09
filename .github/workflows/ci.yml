@@ -77,3 +77,6 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Smoke and accessibility checks on the production build
+        run: pnpm --filter @raring2go/web smoke

@@ -1,5 +1,6 @@
 "use server";
 
+import { assertBoundActor } from "../../../../lib/action-actor";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import {
@@ -15,6 +16,7 @@ export async function createRoyaltyRuleAction(
   context: FinanceActorContext,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   const minimumDueValue = String(formData.get("minimumDueMinor") || "0");
 
   await createRoyaltyRule(context, {
@@ -34,6 +36,7 @@ export async function generateStatementAction(
   context: FinanceActorContext,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   await generateStatement(context, {
     id: randomUUID(),
     franchiseId: String(formData.get("franchiseId") || ""),
@@ -51,6 +54,7 @@ export async function addAdjustmentAction(
   statementId: string,
   formData: FormData
 ) {
+  await assertBoundActor(context);
   const amountPounds = Number(formData.get("amountMinor") || 0);
 
   await recordAdjustment(context, {
@@ -67,6 +71,7 @@ export async function submitStatementAction(
   context: FinanceActorContext,
   statementId: string
 ) {
+  await assertBoundActor(context);
   await submitStatement(context, statementId);
   revalidatePath("/app/finance");
 }
@@ -75,6 +80,7 @@ export async function approveStatementAction(
   context: FinanceActorContext,
   statementId: string
 ) {
+  await assertBoundActor(context);
   await approveStatement(context, statementId);
   revalidatePath("/app/finance");
 }

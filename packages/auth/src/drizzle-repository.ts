@@ -116,6 +116,15 @@ export function createDrizzleAuthRepository(db: Db): AuthRepository & AuthTokenR
       await db.update(authSessions).set({ revokedAt: input.revokedAt, updatedAt: input.revokedAt }).where(eq(authSessions.id, input.sessionId));
     },
 
+    async revokeAllSessionsForUser(input) {
+      const ended = await db
+        .update(authSessions)
+        .set({ revokedAt: input.revokedAt, updatedAt: input.revokedAt })
+        .where(and(eq(authSessions.userId, input.userId), isNull(authSessions.revokedAt)))
+        .returning({ id: authSessions.id });
+      return ended.length;
+    },
+
     async createVerificationToken(input) {
       const [token] = await db.insert(authVerificationTokens).values(input).returning();
       if (!token) throw new Error("Verification token was not created.");

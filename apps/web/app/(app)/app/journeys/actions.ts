@@ -1,5 +1,6 @@
 "use server";
 
+import { assertBoundActor } from "../../../../lib/action-actor";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { validateJourneyConditions, validateJourneySteps, validateJourneyTrigger } from "@raring2go/marketing";
@@ -35,6 +36,7 @@ function parseJourneyContentFields(formData: FormData) {
 }
 
 export async function createJourneyAction(context: MarketingActorContext, formData: FormData) {
+  await assertBoundActor(context);
   const name = String(formData.get("name") || "").trim();
   if (!name) {
     throw new Error("Name the journey before creating it.");
@@ -59,6 +61,7 @@ export async function createJourneyAction(context: MarketingActorContext, formDa
 }
 
 export async function updateJourneyDraftAction(context: MarketingActorContext, journeyId: string, formData: FormData) {
+  await assertBoundActor(context);
   const name = String(formData.get("name") || "").trim();
   if (!name) {
     throw new Error("Name the journey before saving it.");
@@ -78,18 +81,21 @@ export async function updateJourneyDraftAction(context: MarketingActorContext, j
 }
 
 export async function approveJourneyAction(context: MarketingActorContext, journeyId: string, versionId: string) {
+  await assertBoundActor(context);
   await approveMarketingJourneyVersion(context, journeyId, versionId);
   revalidatePath("/app/journeys");
   revalidatePath(`/app/journeys/${journeyId}`);
 }
 
 export async function activateJourneyAction(context: MarketingActorContext, journeyId: string) {
+  await assertBoundActor(context);
   await activateMarketingJourney(context, journeyId);
   revalidatePath("/app/journeys");
   revalidatePath(`/app/journeys/${journeyId}`);
 }
 
 export async function pauseJourneyAction(context: MarketingActorContext, journeyId: string) {
+  await assertBoundActor(context);
   await pauseMarketingJourney(context, journeyId);
   revalidatePath("/app/journeys");
   revalidatePath(`/app/journeys/${journeyId}`);
