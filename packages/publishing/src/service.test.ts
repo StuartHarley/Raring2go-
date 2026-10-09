@@ -47,7 +47,12 @@ import {
   scheduleSocialPublication,
   cancelSocialPublication,
   socialContentGaps,
-  submitPageForReview
+  submitPageForReview,
+  approveMasterEdition,
+  submitEditionForReview,
+  approveTerritoryEdition,
+  reopenTerritoryEdition,
+  releaseTerritoryEdition
 } from "./service";
 import type { PublishingData } from "./types";
 import { contentDraftTask, normaliseContentDraft } from "./ai-tasks";
@@ -102,6 +107,9 @@ const permissions: PermissionData = {
   rolePermissions: [
     grant(ids.roles.hq, "edition", "view", "network"),
     grant(ids.roles.hq, "edition", "create", "network"),
+    grant(ids.roles.hq, "edition", "edit", "network"),
+    grant(ids.roles.hq, "edition", "approve", "network"),
+    grant(ids.roles.hq, "edition", "release", "network"),
     grant(ids.roles.hq, "edition.template", "create", "network"),
     grant(ids.roles.hq, "edition.template", "edit", "network"),
     grant(ids.roles.hq, "edition.template", "approve", "network"),
@@ -1478,6 +1486,53 @@ async function printReadyEditionData(pageCount = 4) {
   });
   return publishingData;
 }
+
+describe("edition lifecycle", () => {
+  it("approves a master, then takes an edition from draft through review and approval to publication", async () => {
+    const data = await printReadyEditionData();
+    const edition = data.territoryEditions[0]!;
+    edition.status = "draft";
+    const master = data.masterEditions[0]!;
+    master.status = "draft";
+    expect((await approveMasterEdition(hqContext(), permissions, audit(), data, master.id)).status).toBe("approved");
+    await expect(approveMasterEdition(hqContext(), permissions, audit(), data, master.id)).rejects.toThrow(/draft/);
+
+    await expect(approveTerritoryEdition(hqContext(), permissions, audit(), data, edition.id)).rejects.toThrow(/in review/);
+    expect((await submitEditionForReview(hqContext(), permissions, audit(), data, edition.id)).status).toBe("review");
+    const rec = audit();
+    expect((await approveTerritoryEdition(hqContext(), permissions, rec, data, edition.id)).status).toBe("approved");
+    expect(rec.events.map((event) => event.action)).toEqual([auditActions.publishingEditionApprove]);
+
+    await expect(releaseTerritoryEdition(hqContext(), permissions, audit(), data, edition.id)).rejects.toThrow(/digital edition/);
+    await generateDigitalOutput(hqContext(), permissions, audit(), data, edition.id, { idempotencyKey: "d1", artifact: { fileId: "f" } });
+    const published = await releaseTerritoryEdition(hqContext(), permissions, audit(), data, edition.id);
+    expect(published.status).toBe("published");
+    expect(data.editionPages.every((page) => page.status === "published")).toBe(true);
+    await expect(reopenTerritoryEdition(hqContext(), permissions, audit(), data, edition.id, "oops")).rejects.toThrow(/review or approved/);
+  });
+
+  it("refuses submission without a flatplan, approval with unready pages, and reopening without a reason", async () => {
+    const data = await printReadyEditionData();
+    const edition = data.territoryEditions[0]!;
+    edition.status = "draft";
+    const pages = data.editionPages.splice(0);
+    await expect(submitEditionForReview(hqContext(), permissions, audit(), data, edition.id)).rejects.toThrow(/flatplan/);
+    data.editionPages.push(...pages);
+    await submitEditionForReview(hqContext(), permissions, audit(), data, edition.id);
+    data.editionPages[0]!.readiness = "blocked";
+    await expect(approveTerritoryEdition(hqContext(), permissions, audit(), data, edition.id)).rejects.toThrow(/ready/);
+    await expect(reopenTerritoryEdition(hqContext(), permissions, audit(), data, edition.id, " ")).rejects.toThrow(/why/);
+    expect((await reopenTerritoryEdition(hqContext(), permissions, audit(), data, edition.id, "Fix page 1")).status).toBe("localising");
+  });
+
+  it("keeps locals out of approval and other territories out of the edition", async () => {
+    const data = await printReadyEditionData();
+    const edition = data.territoryEditions[0]!;
+    edition.status = "review";
+    await expect(approveTerritoryEdition(localContext(), permissions, audit(), data, edition.id)).rejects.toThrow(/permission/);
+    await expect(submitEditionForReview(otherLocalContext(), permissions, audit(), data, edition.id)).rejects.toThrow();
+  });
+});
 
 function grant(roleId: string, module: string, action: string, scope: string) {
   return {

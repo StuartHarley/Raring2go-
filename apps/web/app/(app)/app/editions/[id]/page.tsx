@@ -1,7 +1,7 @@
 import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readPreflightPanel, readTerritoryEdition } from "../../../../../lib/publishing-runtime";
 import { AiPreparedNote, AssistantBanner, fixabilityLabels } from "../../../../../lib/assistant-ui";
-import { explainPreflightAction, generateOutputAction } from "./actions";
+import { explainPreflightAction, generateOutputAction, lifecycleAction } from "./actions";
 import { readOutputReadiness } from "../../../../../lib/edition-output";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
@@ -85,6 +85,35 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
           }
         ]}
       />
+
+      <section id="lifecycle" className="app-panel franchise-panel" aria-label="Edition lifecycle">
+        <p className="eyebrow">Lifecycle</p>
+        <h2>Status: {result.row.territoryEdition.status}</h2>
+        {resultCode?.startsWith("edition_") ? (
+          resultCode.endsWith("_refused") ? <p role="alert">That step is not available yet: check the requirements below.</p> : <p role="status">Done.</p>
+        ) : null}
+        <p className="muted">Draft, then flatplan, review, approval, digital output, publication. Approval needs every page ready; publication needs a generated digital edition. A published edition is public and cannot be reopened.</p>
+        <div className="franchise-list">
+          {result.pages.length === 0 && result.can.flatplan ? (
+            <form action={lifecycleAction.bind(null, request, id, "flatplan")}><button type="submit">Create flatplan ({result.row.territoryEdition.pageCount} pages)</button></form>
+          ) : null}
+          {["draft", "localising"].includes(result.row.territoryEdition.status) && result.pages.length > 0 && result.can.submit ? (
+            <form action={lifecycleAction.bind(null, request, id, "submit")}><button type="submit">Submit for review</button></form>
+          ) : null}
+          {result.row.territoryEdition.status === "review" && result.can.approve ? (
+            <form action={lifecycleAction.bind(null, request, id, "approve")}><button type="submit">Approve edition</button></form>
+          ) : null}
+          {["review", "approved"].includes(result.row.territoryEdition.status) && result.can.approve ? (
+            <form action={lifecycleAction.bind(null, request, id, "reopen")}>
+              <label>Reason for reopening<input name="reason" required maxLength={500} /></label>
+              <button type="submit">Reopen for changes</button>
+            </form>
+          ) : null}
+          {result.row.territoryEdition.status === "approved" && result.can.release ? (
+            <form action={lifecycleAction.bind(null, request, id, "release")}><button type="submit">Publish edition</button></form>
+          ) : null}
+        </div>
+      </section>
 
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Flatplan</p>
@@ -217,10 +246,18 @@ async function loadEdition(
     });
     const actor = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     const edition = await readTerritoryEdition(actor, territoryEditionId);
-    return { ...edition, preflight: await readPreflightPanel(actor, territoryEditionId), readiness: await readOutputReadiness(actor, territoryEditionId) };
+    return { ...edition, preflight: await readPreflightPanel(actor, territoryEditionId), readiness: await readOutputReadiness(actor, territoryEditionId), can: await lifecycleCan(request) };
   } catch (error) {
     return { error };
   }
+}
+
+async function lifecycleCan(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
+  const check = (module: string, action: string) => requireShellPermission(request, { module, action }).then(() => true, (error) => {
+    if (error instanceof ShellAccessError) return false;
+    throw error;
+  });
+  return { flatplan: await check("edition.page", "edit"), submit: await check("edition", "edit"), approve: await check("edition", "approve"), release: await check("edition", "release") };
 }
 
 function protectedOutcome(error: unknown) {
