@@ -1,0 +1,57 @@
+# Backlog audit and completion plan (2026-10-09)
+
+Every ticket that was not marked complete was checked against its acceptance criterion by reading the code, tests and
+docs (nothing was executed). `docs/BACKLOG.md` now carries the result: **Complete** where the criterion is met,
+**Partial (what is missing)** otherwise. Many "complete" tickets are complete at the **service layer only**: the domain
+logic and its in-memory tests exist, but nothing in the web app calls the mutations. That is the dominant gap.
+
+## Headline findings
+
+1. **The Postgres integration tests do not run in CI.** CI migrates and seeds a database but never sets
+   `RUN_DB_TESTS`, and turbo strips the variable. Every `*.integration.test.ts` (auth, permissions, access, security,
+   analytics, assistants, DSAR, tenancy matrix, webhooks) is skipped there. Green CI means only the in-memory tests passed.
+2. **Staff-side mutations are unwired.** Advertiser CRM (create advertiser, opportunities, proposals, invoices,
+   payments, artwork, fulfilment, renewals), social publishing, compliance generation, audience management and parent
+   preferences exist in domain packages with tests, but have no server action, runtime wrapper or job. Pages are
+   read-only dashboards.
+3. **Fixture data in production paths.** `marketing-runtime.ts` (fixture contact and template ids), the preferences page
+   (always shows a fixture parent), `franchise-runtime.ts` (development e-sign provider, placeholder signers, fabricated
+   signed-PDF keys) and `sitemap.ts` (seed territories, not the database).
+4. **Parent self-service does not exist** (EXT-002, MKT-007, PUB-005): no path lets a parent change consent or
+   preferences, save, follow or sign up. The one consent test passes because it also suppresses the contact.
+5. **Public site links 404** (what's-on and activities detail pages, per-edition and per-article routes) and several
+   sections emit nothing (newsletter form, analytics events).
+6. **Smaller:** journey frequency caps are stored but never enforced; accounting sync is not wired and the 20% tax rate
+   is hard-coded; audit "immutability" is by API only; no E2E or accessibility tests anywhere; no real e-sign adapter.
+
+## What only the business can do (not planned as code)
+
+UAT-001 to 005: provider accounts and credentials, named testers and owners, restore rehearsals on the hosted database,
+RPO/RTO and retention decisions, the pilot scope and the GO/NO-GO. The ordered checklist is in `docs/UAT_PROVIDER_SETUP.md`
+and `docs/PILOT_READINESS.md`. Also needed from you: the contract for the existing content/events GPT services, a payment
+provider choice (online payment), an e-sign provider choice, and the lawful-basis decision for importing audience data.
+
+## Plan
+
+One PR per work package, merged in order. Sizes: S under a day, M a few days, L a week or more of work.
+
+| # | Work package | Closes | Size |
+|---|---|---|---|
+| 0 | **Make tests honest.** Add `RUN_DB_TESTS` to turbo `globalEnv`, set it in CI, run `security:gate` in CI, fix whatever the integration tests then reveal | FND-001 | S |
+| 1 | **Remove fixtures from production paths.** Real contact/template lookup, parent-session preference centre scaffold, database-driven sitemap, franchise signers from real contacts; make dev-only providers fail closed outside development | audit finding 3 | S–M |
+| 2 | **Parent self-service.** Parent-session preference centre (consent, territories, age bands), newsletter signup, save/follow/unsave, consent-withdrawal-removes-eligibility test, analytics emission from pages | EXT-002, MKT-007, PUB-005, PUB-008 | M |
+| 3 | **Public site completion.** Detail routes, per-edition and per-article routes, canonical URLs, Event/Article structured data, visible Sponsored labels, personalisation flag gating | PUB-001 to 004, 006, 007 | M |
+| 4 | **Advertiser CRM staff UI.** Create/edit advertiser, pipeline actions, proposals and booking, invoices and payments, artwork status, fulfilment and renewals; runtime wrappers with audit and Postgres tests | ADV-001 to 008 | L |
+| 5 | **Social publishing wired.** Runtime wrappers, queue/approve/schedule UI, calendar, job handler registered in the worker, retry/failure surfacing | MKT-005 | M |
+| 6 | **Journeys and compliance jobs.** Enforce frequency caps, define the named journeys, move the journey and compliance cron work into the durable job runtime, deliver compliance reminders | MKT-006, FRN-006 | M |
+| 7 | **Audience import (dry-run first).** Import service with dry-run, reject report, idempotency, consent provenance, tenancy checks, rollback; mapping doc; audience management UI | MKT-001, UAT-003 | L |
+| 8 | **Franchise documents and e-sign boundary.** Real upload/download through storage, agreement artefact adoption, provider-neutral e-sign webhook route with idempotency (provider chosen by you); franchise staff delegation | FRN-003, FRN-004 | M |
+| 9 | **Finance wiring.** Accounting sync adapter wired, tax configuration, database-level payment idempotency, DB-level immutability for issued invoices and acceptances | ADV-005, ADV-006 | M |
+| 10 | **Metrics and command centres.** Churn, package/digital mix and a versioned definitions document; content clicks and attribution; command-centre gaps | ADV-009, MKT-008, MKT-009 | M |
+| 11 | **Foundation hardening.** Table, drawer, modal and command-palette components with keyboard tests; audit append-only trigger; activity viewer filters; recovery flow; role-by-role page denial tests; CSP `script-src`; Playwright smoke and axe checks on the critical journeys | FND-002, FND-004, IAM-001, IAM-003 | L |
+| 12 | **Pilot operations kit.** Runbook and support playbook, defect log and sign-off templates, health alerting hook, provider failure drill scripts | UAT-002, 004, 005 (repo side) | M |
+| 13 | **Online payment and GPT workflows** | ADV-006, AI | blocked on your decisions |
+
+Recommended order: 0, 1, 2, 3 (makes the parent-facing and public product real and removes the loudest gaps), then 4 and 5
+(staff workflows), 6 and 7, then 8 to 12. Work package 0 first because every later package leans on integration tests
+actually running.
