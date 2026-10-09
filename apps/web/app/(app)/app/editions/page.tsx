@@ -32,6 +32,7 @@ export default async function EditionsPage({ searchParams }: PageProps) {
           Network-wide production status for seasonal territory editions, built
           from the same canonical edition records that feed print and digital output.
         </p>
+        {result.canTemplates ? <p><Link href={"/app/editions/templates" as Route}>Template library</Link></p> : null}
         <div className="franchise-metrics">
           <article>
             <span>Territory editions</span>
@@ -86,7 +87,12 @@ async function loadEditions(request: Awaited<ReturnType<typeof requestFromSearch
       territoryId: shell.activeContext.territoryId
     });
 
-    return { rows };
+    const canTemplates = await requireShellPermission(request, { module: "edition.template", action: "edit" }).then(() => true, (error) => {
+      if (error instanceof ShellAccessError) return false;
+      throw error;
+    });
+
+    return { rows, canTemplates };
   } catch (error) {
     return { error };
   }
