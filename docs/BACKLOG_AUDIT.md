@@ -29,6 +29,9 @@ logic and its in-memory tests exist, but nothing in the web app calls the mutati
 - `advertising` and `publishing` stamped records with a hard-coded date (2026-08-11) and "closing soon" meant a fixed week in
   August 2026. Both now read the clock; tests pin it with fake timers.
 
+- Draft invoices were all numbered "DRAFT" and the database allows one number per issuer, so a second draft invoice could not be
+  saved. Drafts now carry their own id in the number.
+
 ## What only the business can do (not planned as code)
 
 UAT-001 to 005: provider accounts and credentials, named testers and owners, restore rehearsals on the hosted database,
@@ -46,7 +49,7 @@ One PR per work package, merged in order. Sizes: S under a day, M a few days, L 
 | 1 ✅ | **Remove fixtures from production paths.** Real contact/template lookup, parent-session preference centre scaffold, database-driven sitemap, franchise signers from real contacts; make dev-only providers fail closed outside development | audit finding 3 | S–M |
 | 2 ✅ | **Parent self-service.** Parent-session preference centre (consent, territories, age bands), newsletter signup, save/follow/unsave, consent-withdrawal-removes-eligibility test, analytics emission from pages | EXT-002, MKT-007, PUB-005, PUB-008 | M |
 | 3 ✅ | **Public site completion.** Detail routes, per-edition and per-article routes, canonical URLs, Event/Article structured data, visible Sponsored labels, personalisation flag gating | PUB-001 to 004, 006, 007 | M |
-| 4 ◐ | **Advertiser CRM staff UI.** *(Part 1 done: advertiser create/edit, contacts, activity, derived metrics, opportunities and stage changes. Still to do: proposals and booking, invoices and payments, artwork, fulfilment, renewals.)* Create/edit advertiser, pipeline actions, proposals and booking, invoices and payments, artwork status, fulfilment and renewals; runtime wrappers with audit and Postgres tests | ADV-001 to 008 | L |
+| 4 ◐ | **Advertiser CRM staff UI.** *(Part 1 done: advertiser create/edit, contacts, activity, derived metrics, opportunities and stage changes. Part 2 done: server-priced proposals, send, book, invoice, issue, record and apply payments. Still to do: artwork, fulfilment, proof packs, renewals.)* Create/edit advertiser, pipeline actions, proposals and booking, invoices and payments, artwork status, fulfilment and renewals; runtime wrappers with audit and Postgres tests | ADV-001 to 008 | L |
 | 5 | **Social publishing wired.** Runtime wrappers, queue/approve/schedule UI, calendar, job handler registered in the worker, retry/failure surfacing | MKT-005 | M |
 | 6 | **Journeys and compliance jobs.** Enforce frequency caps, define the named journeys, move the journey and compliance cron work into the durable job runtime, deliver compliance reminders | MKT-006, FRN-006 | M |
 | 7 | **Audience import (dry-run first).** Import service with dry-run, reject report, idempotency, consent provenance, tenancy checks, rollback; mapping doc; audience management UI | MKT-001, UAT-003 | L |

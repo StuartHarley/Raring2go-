@@ -1,5 +1,5 @@
 import { auditActions } from "@raring2go/audit";
-import { requirePermission, type PermissionData } from "@raring2go/permissions";
+import { evaluatePermission, requirePermission, type PermissionData } from "@raring2go/permissions";
 import { advertisingCapabilities, type AdvertisingCapability } from "./permissions";
 import type {
   Advertiser360,
@@ -531,6 +531,175 @@ export async function createProposal(
   return created;
 }
 
+export type ProposalLineInput = {
+  productId: string;
+  quantity: number;
+  /** Omit to charge the list price. Anything lower is a discount and is checked against the price book. */
+  unitPriceMinor?: number;
+  inventorySlotId?: string | null;
+};
+
+export type PricedProposalLine = {
+  productId: string;
+  quantity: number;
+  unitPriceMinor: number;
+  totalPriceMinor: number;
+  standardPriceMinor: number;
+  discountPercent: number;
+  currency: string;
+  inventorySlotId: string | null;
+};
+
+/** The price book that applies in a territory today: its own if it has one, otherwise the network book. */
+function applicablePriceBookIds(data: AdvertisingData, territoryId: string, onDate: string) {
+  const active = data.priceBooks.filter((book) =>
+    !book.deletedAt && book.status === "active" &&
+    (!book.effectiveFrom || book.effectiveFrom <= onDate) &&
+    (!book.effectiveTo || book.effectiveTo >= onDate)
+  );
+  const own = active.filter((book) => book.territoryId === territoryId);
+  return (own.length > 0 ? own : active.filter((book) => !book.territoryId)).map((book) => book.id);
+}
+
+/**
+ * Prices a proposal line from the price book, never from what the client sent. A price below the
+ * list price is a discount: below the book's minimum is refused outright, and below its approval
+ * threshold needs the pricing-manage permission.
+ */
+export function priceProposalLine(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  data: AdvertisingData,
+  territoryId: string,
+  line: ProposalLineInput,
+  onDate: string = today()
+): PricedProposalLine {
+  if (!Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 100) {
+    throw new Error("Quantity must be a whole number from 1 to 100.");
+  }
+  const product = requireProduct(data, line.productId);
+  if (product.status !== "active") {
+    throw new Error("That product is not available to sell.");
+  }
+  const bookIds = new Set(applicablePriceBookIds(data, territoryId, onDate));
+  const item = data.priceBookItems.find((candidate) => !candidate.deletedAt && candidate.productId === product.id && bookIds.has(candidate.priceBookId));
+  if (!item) {
+    throw new Error("There is no price for that product in this territory.");
+  }
+
+  const unitPriceMinor = line.unitPriceMinor ?? item.standardPriceMinor;
+  if (!Number.isInteger(unitPriceMinor) || unitPriceMinor < 0) {
+    throw new Error("Price must be a whole number of pence.");
+  }
+  if (unitPriceMinor < item.minimumPriceMinor) {
+    throw new Error("That price is below the minimum allowed for this product.");
+  }
+  if (unitPriceMinor < item.approvalRequiredBelowMinor) {
+    const approver = evaluatePermission(
+      { userId: context.userId, module: advertisingCapabilities.pricingManage.module, action: advertisingCapabilities.pricingManage.action, context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } },
+      permissions
+    ).allowed;
+    if (!approver) {
+      throw new Error("That discount needs approval from someone who can manage pricing.");
+    }
+  }
+  if (line.inventorySlotId) {
+    const slot = requireInventorySlot(data, line.inventorySlotId);
+    if (slot.territoryId !== territoryId) throw new Error("Proposal inventory must belong to the proposal territory.");
+    if (slot.productId !== product.id) throw new Error("That slot is not for this product.");
+  } else if (product.requiresInventory) {
+    throw new Error("Choose the edition slot this product is for.");
+  }
+
+  return {
+    productId: product.id,
+    quantity: line.quantity,
+    unitPriceMinor,
+    totalPriceMinor: unitPriceMinor * line.quantity,
+    standardPriceMinor: item.standardPriceMinor,
+    discountPercent: item.standardPriceMinor > 0 ? Math.max(0, Math.round(((item.standardPriceMinor - unitPriceMinor) / item.standardPriceMinor) * 100)) : 0,
+    currency: item.currency,
+    inventorySlotId: line.inventorySlotId ?? null
+  };
+}
+
+export async function createPricedProposal(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: { proposalId: string; advertiserId: string; opportunityId?: string | null; title: string; validUntil: string; lines: ProposalLineInput[]; newId: () => string }
+) {
+  requireAdvertisingPermission(context, permissions, "proposalCreate");
+  const advertiser = requireAdvertiser(data, input.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
+  if (input.lines.length === 0) throw new Error("Proposal requires at least one item.");
+  if (input.validUntil < today()) throw new Error("A proposal cannot be valid until a date in the past.");
+
+  const priced = input.lines.map((line) => priceProposalLine(context, permissions, data, advertiser.owningTerritoryId, line));
+  const currencies = new Set(priced.map((line) => line.currency));
+  if (currencies.size > 1) throw new Error("All proposal lines must use one currency.");
+
+  return createProposal(
+    context,
+    permissions,
+    audit,
+    data,
+    {
+      id: input.proposalId,
+      advertiserId: advertiser.id,
+      opportunityId: input.opportunityId ?? null,
+      territoryId: advertiser.owningTerritoryId,
+      status: "draft",
+      version: 1,
+      title: input.title,
+      totalValueMinor: 0,
+      currency: priced[0]!.currency,
+      validUntil: input.validUntil,
+      sentOn: null,
+      acceptedOn: null,
+      metadata: {}
+    },
+    priced.map((line) => {
+      const product = requireProduct(data, line.productId);
+      return {
+        id: input.newId(),
+        proposalId: input.proposalId,
+        productId: line.productId,
+        packageId: null,
+        inventorySlotId: line.inventorySlotId,
+        description: product.name,
+        quantity: line.quantity,
+        unitPriceMinor: line.unitPriceMinor,
+        totalPriceMinor: line.totalPriceMinor,
+        currency: line.currency,
+        metadata: { standardPriceMinor: line.standardPriceMinor, discountPercent: line.discountPercent }
+      };
+    })
+  );
+}
+
+/** Sending freezes what the advertiser will be asked to accept: only a draft can be sent. */
+export async function sendProposal(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  proposalId: string
+) {
+  requireAdvertisingPermission(context, permissions, "proposalCreate");
+  const proposal = requireProposal(data, proposalId);
+  const advertiser = requireAdvertiser(data, proposal.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
+  if (proposal.status !== "draft") throw new Error("Only a draft proposal can be sent.");
+  if (!proposal.validUntil || proposal.validUntil < today()) throw new Error("Set a valid-until date in the future before sending.");
+
+  proposal.status = "sent";
+  proposal.sentOn = today();
+  await audit.record(auditEvent(context, auditActions.advertiserProposalCreate, advertiser, { proposalId, action: "sent", totalValueMinor: proposal.totalValueMinor }));
+  return proposal;
+}
+
 export async function acceptProposalAsBooking(
   context: AdvertisingActorContext,
   permissions: PermissionData,
@@ -862,6 +1031,8 @@ export async function createInvoiceFromBooking(
     paymentTermsSnapshot: Record<string, unknown>;
     taxRateBps?: number;
     domainEventId: string;
+    /** Real persistence needs UUIDs for line ids; without it ids are `${lineIdPrefix}_${n}`. */
+    newId?: () => string;
   }
 ) {
   requireAdvertisingPermission(context, permissions, "invoiceCreate");
@@ -872,7 +1043,7 @@ export async function createInvoiceFromBooking(
   if (bookingItems.length === 0) {
     throw new Error("Cannot invoice booking without items.");
   }
-  const lines: AdvertiserInvoiceLine[] = bookingItems.map((item, index) => invoiceLineFromBookingItem(input.invoiceId, `${input.lineIdPrefix}_${index + 1}`, item, input.taxRateBps ?? 2000));
+  const lines: AdvertiserInvoiceLine[] = bookingItems.map((item, index) => invoiceLineFromBookingItem(input.invoiceId, input.newId ? input.newId() : `${input.lineIdPrefix}_${index + 1}`, item, input.taxRateBps ?? 2000));
   const subtotalMinor = lines.reduce((sum, line) => sum + line.netMinor, 0);
   const taxMinor = lines.reduce((sum, line) => sum + line.taxMinor, 0);
   const totalMinor = lines.reduce((sum, line) => sum + line.grossMinor, 0);
@@ -883,7 +1054,8 @@ export async function createInvoiceFromBooking(
     customerOrganisationId: advertiser.advertiserOrganisationId,
     territoryId: booking.territoryId,
     bookingId: booking.id,
-    invoiceNumber: "DRAFT",
+    // Unique per draft: the database enforces one invoice number per issuer, so drafts cannot all be "DRAFT".
+    invoiceNumber: `DRAFT-${input.invoiceId}`,
     status: "draft",
     issueDate: null,
     dueDate: input.dueDate,

@@ -32,16 +32,19 @@ export class DuplicateAdvertiserError extends Error {
   }
 }
 
-type Tx = Parameters<Parameters<ReturnType<typeof createDb>["db"]["transaction"]>[0]>[0];
+export type Tx = Parameters<Parameters<ReturnType<typeof createDb>["db"]["transaction"]>[0]>[0];
 
-async function mutate<T>(
-  work: (tx: Tx, data: AdvertisingData, audit: ReturnType<typeof advertisingAuditFor>, permissions: PermissionData) => Promise<T>
+export async function mutate<T>(
+  work: (tx: Tx, data: AdvertisingData, audit: ReturnType<typeof advertisingAuditFor>, permissions: PermissionData) => Promise<T>,
+  /** Runs inside the transaction before the data is read, e.g. to lock a row the work will increment. */
+  beforeLoad?: (tx: Tx) => Promise<void>
 ) {
   const permissions = await getPermissionData();
   const { db, sql } = createDb();
 
   try {
     return await db.transaction(async (tx) => {
+      if (beforeLoad) await beforeLoad(tx);
       const data = await loadAdvertisingData(tx);
       const before = snapshotAdvertisingData(data);
       const result = await work(tx, data, advertisingAuditFor(tx), permissions);
