@@ -25,7 +25,8 @@
     "security:scan": "pnpm --filter @raring2go/security scan:secrets",
     "security:config": "pnpm --filter @raring2go/security security:config",
     "security:gate": "pnpm security:scan && pnpm --filter @raring2go/security test && pnpm --filter @raring2go/web exec vitest run lib/route-security",
-    "drill:backup": "scripts/backup-drill.sh"
+    "drill:backup": "scripts/backup-drill.sh",
+    "drill:providers": "scripts/provider-drill.sh"
   },
   "devDependencies": {
     "@types/node": "26.2.0",

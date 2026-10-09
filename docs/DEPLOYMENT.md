@@ -68,6 +68,13 @@ Storage and scanning:
 - `CLAMAV_SCANNER_API_KEY`
 - `CLAMAV_SCANNER_WEBHOOK_SECRET`
 
+Operations:
+
+- `CRON_SECRET` (protects `/api/jobs/run` and the detailed `/api/health` view)
+- `ALERT_WEBHOOK_URL` (plain https chat webhook for health alerts; production config check warns when unset)
+- `ACCOUNTING_PROVIDER` is not yet used: production accounting hand-off fails closed until an adapter is chosen
+- `ESIGN_WEBHOOK_SECRET`, `ESIGN_WEBHOOK_SECRET_PREVIOUS`, `ESIGN_ARTIFACT_HOSTS` (see `docs/ESIGN_PROVIDER_CONTRACT.md`)
+
 Never commit real values. Vercel project/environment secrets are the source of truth for production and preview secrets.
 
 ## Neon Postgres

@@ -33,6 +33,25 @@ export function buildHealthChecks(): HealthCheck[] {
       }
     },
     {
+      name: "accounting_sync",
+      critical: false,
+      async run() {
+        const { db, sql } = createDb();
+        try {
+          const rows = (await db.execute(rawSql`
+            select count(*) filter (where status = 'failed')::int as failed,
+                   count(*) filter (where status = 'pending' and created_at < now() - interval '1 day')::int as stale
+            from advertiser_provider_sync_references where provider_type = 'accounting'`)) as unknown as Array<{ failed: number; stale: number }>;
+          const { failed = 0, stale = 0 } = rows[0] ?? {};
+          if (failed > 0) return { status: "degraded", detail: `${failed} invoice or credit note hand-off(s) to accounting need attention`, data: { failed, stale } };
+          if (stale > 0) return { status: "degraded", detail: `${stale} hand-off(s) to accounting have waited over a day`, data: { failed, stale } };
+          return { status: "ok", detail: "nothing waiting", data: { failed, stale } };
+        } finally {
+          await sql.end();
+        }
+      }
+    },
+    {
       name: "security_config",
       critical: false,
       async run() {

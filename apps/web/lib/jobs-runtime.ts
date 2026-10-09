@@ -1,3 +1,4 @@
+import { HEALTH_ALERT_KIND, createHealthAlertHandler, healthAlertIdempotencyKey } from "./health-alerts";
 import { SYNC_ACCOUNTING_KIND, createSyncAccountingHandler, syncAccountingIdempotencyKey } from "./accounting-jobs";
 import { randomUUID } from "node:crypto";
 import { recordAuditEvent } from "@raring2go/audit";
@@ -67,7 +68,7 @@ export function hasNetworkJobAccess(permissions: PermissionData, userId: string)
  * decide whether to offer Retry without building a DB-backed registry; a unit test
  * asserts the two never drift apart.
  */
-export const registeredJobKinds: string[] = [PRUNE_JOB_HISTORY_KIND, EXECUTE_RUN_KIND, WORKFLOW_TICK_KIND, SCAN_OVERDUE_INVOICES_KIND, SNAPSHOT_METRICS_KIND, ENFORCE_RETENTION_KIND, GENERATE_RENEWALS_KIND, PUBLISH_SOCIAL_KIND, RUN_JOURNEYS_KIND, COMPLIANCE_DAILY_KIND, SYNC_ACCOUNTING_KIND];
+export const registeredJobKinds: string[] = [PRUNE_JOB_HISTORY_KIND, EXECUTE_RUN_KIND, WORKFLOW_TICK_KIND, SCAN_OVERDUE_INVOICES_KIND, SNAPSHOT_METRICS_KIND, ENFORCE_RETENTION_KIND, GENERATE_RENEWALS_KIND, PUBLISH_SOCIAL_KIND, RUN_JOURNEYS_KIND, COMPLIANCE_DAILY_KIND, SYNC_ACCOUNTING_KIND, HEALTH_ALERT_KIND];
 
 /** Handlers need a live DB handle, so the registry is built per request/tick. */
 export function buildJobRegistry(db: WorkflowsDb) {
@@ -82,7 +83,8 @@ export function buildJobRegistry(db: WorkflowsDb) {
     createPublishSocialHandler(),
     createRunJourneysHandler(),
     createComplianceDailyHandler(),
-    createSyncAccountingHandler()
+    createSyncAccountingHandler(),
+    createHealthAlertHandler()
   ]);
 }
 
@@ -177,6 +179,7 @@ export async function runJobWorkerTick(options: { workerId?: string; maxJobs?: n
     await enqueueJob(store, undefined, { kind: RUN_JOURNEYS_KIND, idempotencyKey: runJourneysIdempotencyKey(now), correlationId: options.correlationId }, now);
     await enqueueJob(store, undefined, { kind: PUBLISH_SOCIAL_KIND, idempotencyKey: publishSocialIdempotencyKey(now), correlationId: options.correlationId }, now);
     await enqueueJob(store, undefined, { kind: SYNC_ACCOUNTING_KIND, idempotencyKey: syncAccountingIdempotencyKey(now), correlationId: options.correlationId }, now);
+    await enqueueJob(store, undefined, { kind: HEALTH_ALERT_KIND, idempotencyKey: healthAlertIdempotencyKey(now), correlationId: options.correlationId }, now);
     await enqueueJob(store, undefined, { kind: GENERATE_RENEWALS_KIND, idempotencyKey: generateRenewalsIdempotencyKey(now), correlationId: options.correlationId }, now);
 
     const summary = await runDueJobs(store, buildJobRegistry(db), {

@@ -96,7 +96,7 @@ One PR per work package, merged in order. Sizes: S under a day, M a few days, L 
 | 9 ✅ | **Finance wiring.** (Done except the real accounting provider adapter, which is your choice.) Accounting sync adapter wired, tax configuration, database-level payment idempotency, DB-level immutability for issued invoices and acceptances | ADV-005, ADV-006 | M |
 | 10 ✅ | **Metrics and command centres.** Churn, package/digital mix and a versioned definitions document; content clicks and attribution; command-centre gaps | ADV-009, MKT-008, MKT-009 | M |
 | 11 ✅ | **Foundation hardening.** (Playwright was not added: it needs a browser download. Smoke and axe checks run against the production build with jsdom instead; a real-browser pass remains a manual release step.) Table, drawer, modal and command-palette components with keyboard tests; audit append-only trigger; activity viewer filters; recovery flow; role-by-role page denial tests; CSP `script-src`; Playwright smoke and axe checks on the critical journeys | FND-002, FND-004, IAM-001, IAM-003 | L |
-| 12 | **Pilot operations kit.** Runbook and support playbook, defect log and sign-off templates, health alerting hook, provider failure drill scripts | UAT-002, 004, 005 (repo side) | M |
+| 12 ✅ | **Pilot operations kit.** (Repo side done; naming owners, running the drills with real providers and the UAT cycle are yours.) Runbook and support playbook, defect log and sign-off templates, health alerting hook, provider failure drill scripts | UAT-002, 004, 005 (repo side) | M |
 | 13 | **Online payment and GPT workflows** | ADV-006, AI | blocked on your decisions |
 
 Recommended order: 0, 1, 2, 3 (makes the parent-facing and public product real and removes the loudest gaps), then 4 and 5
