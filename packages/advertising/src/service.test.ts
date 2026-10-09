@@ -1,5 +1,5 @@
 import { auditActions } from "@raring2go/audit";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   addAdvertiserContact,
   acceptProposalCommercially,
@@ -10,6 +10,8 @@ import {
   createInvoiceFromBooking,
   createArtworkRequirement,
   createOpportunity,
+  deriveAdvertiserMetrics,
+  refreshAdvertiserMetrics,
   createProofPack,
   createProposal,
   createRenewalPromptFromProofPack,
@@ -166,6 +168,61 @@ const permissions: PermissionData = {
   ]
 };
 
+// The fixtures are written for 2026-08-11; the code reads the real clock, so pin it here.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-08-11T09:00:00.000Z"));
+});
+afterAll(() => vi.useRealTimers());
+
+describe("derived advertiser metrics", () => {
+  const booking = (id: string, bookedOn: string, totalValueMinor: number, status = "booked") => ({
+    id, proposalId: `p_${id}`, advertiserId: ids.advertiser, territoryId: ids.territories.own, status, bookedOn, totalValueMinor, currency: "GBP", metadata: {}
+  });
+  const withBookings = (bookings: ReturnType<typeof booking>[]) => ({ ...seededData(), bookings: bookings as never });
+
+  it("has no history until something is booked", () => {
+    expect(deriveAdvertiserMetrics(withBookings([]), ids.advertiser, "2026-08-11")).toMatchObject({ relationshipState: "new", averageSaleValueMinor: 0, annualAdvertiserValueMinor: 0, lastBookedOn: null });
+  });
+
+  it("is new after one booking and retained once they buy again", () => {
+    const one = deriveAdvertiserMetrics(withBookings([booking("a", "2026-06-01", 100000)]), ids.advertiser, "2026-08-11");
+    expect(one).toMatchObject({ relationshipState: "new", firstBookedOn: "2026-06-01", annualAdvertiserValueMinor: 100000 });
+
+    const two = deriveAdvertiserMetrics(withBookings([booking("a", "2026-01-10", 100000), booking("b", "2026-06-01", 50000)]), ids.advertiser, "2026-08-11");
+    expect(two).toMatchObject({ relationshipState: "retained", averageSaleValueMinor: 75000, annualAdvertiserValueMinor: 150000, lastBookedOn: "2026-06-01" });
+  });
+
+  it("counts only the last 365 days as annual value, and ignores cancelled bookings", () => {
+    const metrics = deriveAdvertiserMetrics(withBookings([booking("old", "2025-01-01", 900000), booking("new", "2026-07-01", 20000), booking("x", "2026-07-02", 777777, "cancelled")]), ids.advertiser, "2026-08-11");
+    expect(metrics.annualAdvertiserValueMinor).toBe(20000);
+    expect(metrics.averageSaleValueMinor).toBe(460000);
+  });
+
+  it("flags at risk after nine months and lapsed after twelve, recording the lapse date", () => {
+    expect(deriveAdvertiserMetrics(withBookings([booking("a", "2025-10-01", 1000)]), ids.advertiser, "2026-08-11").relationshipState).toBe("at_risk");
+    const lapsed = deriveAdvertiserMetrics(withBookings([booking("a", "2025-01-01", 1000)]), ids.advertiser, "2026-08-11");
+    expect(lapsed).toMatchObject({ relationshipState: "lapsed", lapsedOn: "2026-01-01", annualAdvertiserValueMinor: 0 });
+  });
+
+  it("refreshing writes the derived values with an audit record, and is a no-op when nothing changed", async () => {
+    const data = withBookings([booking("a", "2026-01-10", 100000), booking("b", "2026-06-01", 50000)]);
+    const recorder = audit();
+    const first = await refreshAdvertiserMetrics(localContext(), permissions, recorder, data, ids.advertiser, "2026-08-11");
+    expect(first.changed.length).toBeGreaterThan(0);
+    expect(data.advertisers.find((a) => a.id === ids.advertiser)).toMatchObject({ averageSaleValueMinor: 75000, annualAdvertiserValueMinor: 150000 });
+    expect(recorder.events.map((event) => event.action)).toEqual([auditActions.advertiserUpdate]);
+
+    const again = await refreshAdvertiserMetrics(localContext(), permissions, recorder, data, ids.advertiser, "2026-08-11");
+    expect(again.changed).toEqual([]);
+    expect(recorder.events).toHaveLength(1);
+  });
+
+  it("is refused without edit permission", async () => {
+    await expect(refreshAdvertiserMetrics({ userId: "nobody", organisationId: ids.organisations.franchise }, permissions, audit(), seededData(), ids.advertiser)).rejects.toThrow();
+  });
+});
+
 describe("advertiser CRM foundation", () => {
   it("lists advertiser records with organisation, contacts, activity and metrics", () => {
     const view = getAdvertiser360(localContext(), permissions, seededData(), ids.advertiser);
@@ -271,6 +328,18 @@ describe("advertiser CRM foundation", () => {
     expect(pipeline.stages.find((stage) => stage.stage.key === "qualified")?.opportunities).toHaveLength(1);
     expect(pipeline.overdueFollowUps.map((view) => view.opportunity.id)).toEqual([ids.opportunity]);
     expect(pipeline.myPipeline.map((view) => view.opportunity.id)).toEqual([ids.opportunity]);
+  });
+
+  it("stamps records with the current date, not a fixed one", async () => {
+    vi.setSystemTime(new Date("2031-03-04T09:00:00.000Z"));
+    try {
+      const data = seededData();
+      const opportunity = await createOpportunity(localContext(), permissions, audit(), data, { ...baseOpportunity(), id: "opportunity_clock", stageId: ids.stages.lead, probability: 0, estimatedValueMinor: 100 });
+      await changeOpportunityStage(localContext(), permissions, audit(), data, opportunity.id, { stageId: ids.stages.won });
+      expect(opportunity.closedAt).toBe("2031-03-04");
+    } finally {
+      vi.setSystemTime(new Date("2026-08-11T09:00:00.000Z"));
+    }
   });
 
   it("creates opportunities and audits stage changes", async () => {

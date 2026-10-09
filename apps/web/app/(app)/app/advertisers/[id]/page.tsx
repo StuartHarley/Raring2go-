@@ -7,6 +7,8 @@ import { getPermissionData } from "../../../../../lib/permission-source";
 import { getDirectory } from "../../../../../lib/directory";
 import { evaluatePermission } from "@raring2go/permissions";
 import { SalesAssistantPanel } from "./SalesAssistantPanel";
+import { CrmBanner } from "../CrmBanner";
+import { CrmPanels } from "./CrmPanels";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -29,6 +31,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
 
   return (
     <AppShell request={request}>
+      <CrmBanner result={resultCode} />
       <Breadcrumbs items={[
         { label: "Commercial", href: "/app/advertisers" as Route },
         { label: result.organisation.name }
@@ -125,6 +128,14 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
         ]}
       />
 
+      <CrmPanels
+        request={request}
+        advertiserId={result.advertiser.id}
+        status={result.advertiser.status}
+        notes={String(result.advertiser.commercialMetadata.internalNotes ?? "")}
+        access={result.crmAccess}
+      />
+
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Contacts</p>
         <h2>People</h2>
@@ -145,7 +156,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           {result.opportunities.length === 0 ? (
             <div>
               <strong>No open opportunities yet</strong>
-              <span>Pipeline management starts in ADV-002.</span>
+              <span>Add one from the pipeline page.</span>
             </div>
           ) : (
             result.opportunities.map((view) => (
@@ -379,7 +390,10 @@ async function loadAdvertiser(
       async (panel) => ({ panel, canAssist, senderName: (await getDirectory().userName(actor.userId)) ?? "" }),
       () => undefined
     );
-    return { ...view, sales };
+    const allowed = (module: string, action: string) =>
+      evaluatePermission({ userId: actor.userId, module, action, context: { organisationId: actor.organisationId, territoryId: actor.territoryId } }, permissions).allowed;
+    const crmAccess = { edit: allowed("advertiser", "edit"), contactManage: allowed("advertiser.contact", "manage"), activityRecord: allowed("advertiser.activity", "record") };
+    return { ...view, sales, crmAccess };
   } catch (error) {
     return { error };
   }

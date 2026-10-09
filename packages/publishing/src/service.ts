@@ -2233,8 +2233,9 @@ function validateTemplateVersion(version: MagazineTemplateVersion) {
   }
 }
 
+/** Today's date from the clock. Tests pin the clock with fake timers rather than the code carrying a fixed date. */
 function today() {
-  return "2026-08-11";
+  return new Date().toISOString().slice(0, 10);
 }
 
 function auditEvent(
