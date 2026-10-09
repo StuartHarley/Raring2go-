@@ -344,6 +344,13 @@
       "when": 1791531344220,
       "tag": "0048_eminent_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791538053473,
+      "tag": "0049_finance_guards",
+      "breakpoints": true
     }
   ]
 }

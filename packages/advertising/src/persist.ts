@@ -31,7 +31,8 @@ import {
   priceBookItems,
   priceBooks,
   proofPacks,
-  renewalPrompts
+  renewalPrompts,
+  advertiserTaxRates
 } from "@raring2go/db";
 import { eq, getTableColumns } from "drizzle-orm";
 import type { Column } from "drizzle-orm";
@@ -74,7 +75,8 @@ export const persistedCollections: Array<[CollectionKey, PgTable]> = [
   ["artworkVersions", artworkVersions],
   ["campaignFulfilments", campaignFulfilments],
   ["proofPacks", proofPacks],
-  ["renewalPrompts", renewalPrompts]
+  ["renewalPrompts", renewalPrompts],
+  ["taxRates", advertiserTaxRates]
 ];
 
 /** Bookkeeping columns the database owns: never diffed, never written from domain objects. */
