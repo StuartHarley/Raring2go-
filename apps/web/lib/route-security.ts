@@ -28,6 +28,7 @@ export const routeManifest: Record<string, RouteEntry> = {
   "api/files/upload/route.ts": { protection: "session", reason: "Newsletter image upload, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
   "api/health/route.ts": { protection: "public_static", reason: "Uptime status only; per-check detail needs the cron secret.", extraMarkers: [/isAuthorizedCronRequest\(/] },
   "api/integrations/email/webhook/route.ts": { protection: "signed_webhook", reason: "Email provider delivery events, verified by signature." },
+  "api/integrations/signwell/webhook/route.ts": { protection: "signed_webhook", reason: "SignWell callbacks: event hash verified, then confirmed against the SignWell API before anything is applied, then claimed once per event." },
   "api/integrations/esign/webhook/route.ts": { protection: "signed_webhook", reason: "E-signature provider callbacks (provider-neutral), verified by HMAC signature and timestamp, then claimed once per event." },
   "api/integrations/meta/callback/route.ts": { protection: "session", reason: "OAuth callback: needs the session and the issued state." },
   "api/integrations/meta/revoke/route.ts": { protection: "session", reason: "Disconnects a Meta connection." },

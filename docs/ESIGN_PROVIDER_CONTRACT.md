@@ -1,5 +1,7 @@
 # E-signature inbound contract (FRN-003)
 
+SignWell is the first provider (`docs/SIGNWELL.md`); its translator calls this handler in-process after confirming events against SignWell's API.
+
 Endpoint: `POST /api/integrations/esign/webhook`. The domain is provider-neutral; a thin translator for the chosen provider converts its callbacks into this shape and signs them.
 
 ## Signature

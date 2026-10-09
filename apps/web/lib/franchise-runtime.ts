@@ -82,6 +82,7 @@ import type {
 } from "@raring2go/franchise";
 import type { PermissionData } from "@raring2go/permissions";
 import { getPermissionData, invalidatePermissionData } from "./permission-source";
+import { signWellConfigured, signWellProvider, signWellTestMode } from "./signwell-runtime";
 
 export async function listFranchiseSummaries(context: FranchiseActorContext) {
   const franchisePermissionData = await getPermissionData();
@@ -1018,6 +1019,8 @@ function auditFor(db: Parameters<typeof recordAuditEvent>[0]) {
  * outside development this fails closed instead of pretending documents were sent.
  */
 export function eSignProvider(): ESignProvider {
+  // SignWell when its key is configured (docs/SIGNWELL.md); otherwise only the development provider outside production.
+  if (signWellConfigured()) return signWellProvider({ apiKey: process.env.SIGNWELL_API_KEY ?? "", testMode: signWellTestMode() });
   if (process.env.NODE_ENV === "production") {
     throw new Error("No e-signature provider is configured; the development provider is not available in production.");
   }
