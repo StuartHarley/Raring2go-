@@ -1,9 +1,16 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["DATABASE_URL", "DATABASE_MIGRATION_URL", "DATABASE_DIRECT_URL"],
+  "globalEnv": [
+    "DATABASE_DIRECT_URL",
+    "DATABASE_MIGRATION_URL",
+    "DATABASE_URL",
+    "RUN_DB_TESTS"
+  ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "dev": {
@@ -11,13 +18,19 @@
       "persistent": true
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": [
+        "^lint"
+      ]
     },
     "test": {
-      "dependsOn": ["^test"]
+      "dependsOn": [
+        "^test"
+      ]
     },
     "typecheck": {
-      "dependsOn": ["^typecheck"]
+      "dependsOn": [
+        "^typecheck"
+      ]
     }
   }
 }

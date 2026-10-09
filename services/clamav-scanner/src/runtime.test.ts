@@ -15,6 +15,8 @@ describe("compiled scanner service runtime", () => {
         "tsc",
         "--noEmit",
         "false",
+        "--incremental",
+        "false",
         "--outDir",
         outDir
       ]);

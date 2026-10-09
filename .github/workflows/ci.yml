@@ -25,6 +25,9 @@ jobs:
           --health-retries 12
     env:
       DATABASE_URL: postgres://raring2go:raring2go@localhost:5432/raring2go_test
+      # Runs the Postgres integration tests against the migrated, seeded service database above. Without this
+      # they are skipped, and a green build would only mean the in-memory tests passed.
+      RUN_DB_TESTS: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,11 +46,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Scan tracked files for secrets
+        run: pnpm security:scan
+
       - name: Lint
         run: pnpm lint
 
       - name: Generate database migrations
         run: pnpm db:generate
+
+      - name: Fail if the schema has changes without a committed migration
+        run: |
+          if [ -n "$(git status --porcelain packages/db/migrations)" ]; then
+            echo "Schema changed without a committed migration:"
+            git status --porcelain packages/db/migrations
+            exit 1
+          fi
 
       - name: Apply database migrations
         run: pnpm db:migrate
