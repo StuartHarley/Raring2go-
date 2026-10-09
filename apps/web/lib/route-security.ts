@@ -22,11 +22,13 @@ export type RouteEntry = { protection: RouteProtection; reason: string; extraMar
 
 export const routeManifest: Record<string, RouteEntry> = {
   "api/audience/import/route.ts": { protection: "session", reason: "Audience CSV upload (dry run only): needs marketing.import.manage for the territory, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
+  "api/franchise/documents/route.ts": { protection: "session", reason: "Franchise document or new version upload: scanned and stored, needs the document upload permission for that franchise, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
   "api/files/development/[...path]/route.ts": { protection: "dev_only", reason: "Local disk storage backend: unauthenticated, so disabled in production builds." },
   "api/files/list/route.ts": { protection: "session", reason: "Lists the caller's own uploaded images." },
   "api/files/upload/route.ts": { protection: "session", reason: "Newsletter image upload, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
   "api/health/route.ts": { protection: "public_static", reason: "Uptime status only; per-check detail needs the cron secret.", extraMarkers: [/isAuthorizedCronRequest\(/] },
   "api/integrations/email/webhook/route.ts": { protection: "signed_webhook", reason: "Email provider delivery events, verified by signature." },
+  "api/integrations/esign/webhook/route.ts": { protection: "signed_webhook", reason: "E-signature provider callbacks (provider-neutral), verified by HMAC signature and timestamp, then claimed once per event." },
   "api/integrations/meta/callback/route.ts": { protection: "session", reason: "OAuth callback: needs the session and the issued state." },
   "api/integrations/meta/revoke/route.ts": { protection: "session", reason: "Disconnects a Meta connection." },
   "api/integrations/meta/start/route.ts": { protection: "session", reason: "Begins the Meta OAuth flow." },
@@ -42,6 +44,7 @@ export const routeManifest: Record<string, RouteEntry> = {
   "auth/[...nextauth]/route.ts": { protection: "public_static", reason: "Lists sign-in provider names; the POST handler is rejected." },
   "sign-in/verify/route.ts": { protection: "public_rate_limited", reason: "Consumes a one-time sign-in link.", extraMarkers: [/verifySignIn\(/] },
   "(app)/app/audience/import/[id]/report/route.ts": { protection: "session", reason: "Import reject report download: only for an import in the caller's own territory.", extraMarkers: [/no-store/] },
+  "(app)/app/franchisees/[id]/documents/[documentId]/download/route.ts": { protection: "session", reason: "Franchise document download: authorised for that franchise, audited, redirects to a short-lived storage link.", extraMarkers: [/no-store/] },
   "(app)/app/privacy/[id]/export/route.ts": { protection: "session", reason: "Subscriber data export: needs the privacy.request.export permission.", extraMarkers: [/privacy\.request/, /no-store/] }
 };
 

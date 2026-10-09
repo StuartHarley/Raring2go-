@@ -302,6 +302,21 @@ export async function syncSignatureRequestGraph(
     }).onConflictDoNothing();
   }
 
+  // Documents the vault adopted from this agreement's artefacts (artefacts are already in, so versions can reference them).
+  for (const document of data.documents ?? []) {
+    await db.insert(franchiseDocuments).values({
+      ...document,
+      expiryDate: document.expiryDate ? new Date(document.expiryDate) : null,
+      archivedAt: document.archivedAt ? new Date(document.archivedAt) : null
+    }).onConflictDoNothing();
+  }
+  for (const version of data.documentVersions ?? []) {
+    await db.insert(franchiseDocumentVersions).values({
+      ...version,
+      uploadedAt: version.uploadedAt ? new Date(version.uploadedAt) : null
+    }).onConflictDoNothing();
+  }
+
   for (const event of data.domainEvents ?? []) {
     await db.insert(franchiseDomainEvents).values({
       ...event,

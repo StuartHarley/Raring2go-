@@ -28,6 +28,8 @@ import {
   resendSignatureRequest,
   resolveComplianceAction,
   resolveOnboardingBlocker,
+  assertFranchiseDocumentUploadAllowed,
+  authoriseFranchiseDocumentDownload,
   sendAgreementForSignature,
   startOnboardingFromExecutedAgreement,
   submitAgreementForApproval,
@@ -1263,6 +1265,22 @@ describe("franchise service", () => {
     expect(recorder.events.map((event) => event.action)).toContain(
       auditActions.franchiseAgreementExecuted
     );
+
+    // The executed agreement appears in the vault, pointing at the same artefact records, once, however often the event repeats.
+    const adopted = (franchiseData.documents ?? []).filter((document) => document.category === "agreement");
+    expect(adopted.map((document) => document.documentType).sort()).toEqual(["completion_certificate", "signed_agreement"]);
+    const adoptedArtifactIds = adopted.map((document) => franchiseData.documentVersions!.find((version) => version.documentId === document.id)!.artifactReferenceId).sort();
+    expect(adoptedArtifactIds).toEqual([agreement!.signedAgreementArtifactId, agreement!.completionCertificateArtifactId].sort());
+    expect(franchiseData.artifactReferences).toHaveLength(2);
+  });
+
+  it("checks upload and download permission and scope before touching any file", async () => {
+    const franchiseData = await approvedAgreementData();
+    const franchiseId = franchiseData.franchises[0]!.id;
+    expect(() => assertFranchiseDocumentUploadAllowed(hqContext(), permissionData, franchiseData, { franchiseId })).not.toThrow();
+    expect(() => assertFranchiseDocumentUploadAllowed({ userId: "nobody", organisationId: "none" }, permissionData, franchiseData, { franchiseId })).toThrow();
+    expect(() => assertFranchiseDocumentUploadAllowed(hqContext(), permissionData, franchiseData, { franchiseId, documentId: "no-such-document" })).toThrow();
+    await expect(authoriseFranchiseDocumentDownload({ userId: "nobody", organisationId: "none" }, permissionData, audit(), franchiseData, { franchiseId, documentId: "x" })).rejects.toThrow();
   });
 
   it("preserves historical signing request when reissued", async () => {
