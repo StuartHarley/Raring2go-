@@ -53,7 +53,9 @@ import {
   approveTerritoryEdition,
   reopenTerritoryEdition,
   releaseTerritoryEdition,
-  createEditionLocalContent
+  createEditionLocalContent,
+  approvePageReview,
+  returnPageForChanges
 } from "./service";
 import type { PublishingData } from "./types";
 import { contentDraftTask, normaliseContentDraft } from "./ai-tasks";
@@ -1553,6 +1555,48 @@ describe("flatplan editing is territory-scoped", () => {
     await expect(reorderEditionPages(other, permissions, audit(), data, edition.id, data.editionPages.map((candidate) => candidate.id))).rejects.toThrow(/outside/);
     await expect(submitPageForReview(other, permissions, audit(), data, page.id)).rejects.toThrow(/outside/);
     await expect(createEditionLocalContent(localContext(), permissions, audit(), data, edition.id, { title: " ", contentType: "article", body: {} })).rejects.toThrow(/title/);
+  });
+});
+
+describe("page studio domain", () => {
+  async function studioData() {
+    const data = await editableFlatplanData(8);
+    const version = { ...templateVersion(), status: "published", copyZones: [{ id: "strap", maxWords: 3 }], editableZones: [{ id: "strap", type: "copy" }], imageZones: [], headlineZones: [] } as never as PublishingData["magazineTemplateVersions"][number];
+    data.magazineTemplateVersions.push(version);
+    const page = data.editionPages.find((candidate) => candidate.pageNumber === 3)!;
+    page.templateVersionId = version.id;
+    return { data, page, edition: data.territoryEditions[0]! };
+  }
+
+  it("keeps one revision per editing run and reports layout warnings from what was saved", async () => {
+    const { data, page } = await studioData();
+    const first = await autosaveLocalPageContent(localContext(), permissions, audit(), data, page.id, { zones: { strap: "one two three four" } });
+    expect(first.revision.warnings).toEqual([expect.objectContaining({ type: "copy_overflow", zoneId: "strap" })]);
+    expect(page.readiness).toBe("blocked");
+    const second = await autosaveLocalPageContent(localContext(), permissions, audit(), data, page.id, { zones: { strap: "one two" } });
+    expect(second.revision.id).toBe(first.revision.id);
+    expect(data.editionPageRevisions.filter((revision) => revision.pageId === page.id)).toHaveLength(1);
+    expect(page.readiness).toBe("in_progress");
+    expect(second.revision.warnings).toEqual([]);
+    await submitPageForReview(localContext(), permissions, audit(), data, page.id);
+    await autosaveLocalPageContent(localContext(), permissions, audit(), data, page.id, { zones: { strap: "one" } });
+    expect(data.editionPageRevisions.filter((revision) => revision.pageId === page.id).length).toBeGreaterThan(1);
+  });
+
+  it("lets HQ approve or return a submitted page, and refuses locals, other states, and an approved edition's edits", async () => {
+    const { data, page, edition } = await studioData();
+    await autosaveLocalPageContent(localContext(), permissions, audit(), data, page.id, { zones: { strap: "ok" } });
+    await expect(approvePageReview(hqContext(), permissions, audit(), data, page.id)).rejects.toThrow(/awaiting/);
+    await submitPageForReview(localContext(), permissions, audit(), data, page.id);
+    expect(page.status).toBe("awaiting_hq");
+    await expect(approvePageReview(localContext(), permissions, audit(), data, page.id)).rejects.toThrow(/permission/);
+    await expect(returnPageForChanges(hqContext(), permissions, audit(), data, page.id, " ")).rejects.toThrow(/what needs/);
+    await returnPageForChanges(hqContext(), permissions, audit(), data, page.id, "Shorten the strapline");
+    expect(page).toMatchObject({ status: "in_progress", comments: [expect.objectContaining({ text: "Shorten the strapline" })] });
+    await submitPageForReview(localContext(), permissions, audit(), data, page.id);
+    expect((await approvePageReview(hqContext(), permissions, audit(), data, page.id)).status).toBe("approved");
+    edition.status = "approved";
+    await expect(autosaveLocalPageContent(localContext(), permissions, audit(), data, page.id, { zones: { strap: "x" } })).rejects.toThrow(/reopen/);
   });
 });
 

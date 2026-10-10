@@ -54,7 +54,7 @@ export default async function FlatplanPage({ params, searchParams }: { params: P
           <div className="franchise-list">
             {plan.pages.map(({ page, templateName, contentTitle }, index) => (
               <div key={page.id} id={`page-${page.id}`}>
-                <strong>Page {page.pageNumber} <span className="muted">({page.side}, {page.status.replaceAll("_", " ")}{page.locked ? ", locked" : ""})</span></strong>
+                <strong><Link href={`/app/editions/${id}/pages/${page.id}` as Route}>Page {page.pageNumber}</Link> <span className="muted">({page.side}, {page.status.replaceAll("_", " ")}{page.locked ? ", locked" : ""})</span></strong>
                 <span>{templateName ?? "No template"} - {contentTitle ?? "No content"}</span>
                 {canEdit && !frozen && !page.locked ? (
                   <>

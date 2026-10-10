@@ -33,7 +33,7 @@ import type {
   TerritoryEdition,
   TerritoryEditionContent
 } from "./types";
-import { blockingRenderIssues, buildEditionRenderModel, geometryOf, validateZoneGeometry, zonesOf } from "./render";
+import { blockingRenderIssues, buildEditionRenderModel, buildRenderPage, geometryOf, validateZoneGeometry, zonesOf } from "./render";
 
 type PublishingAuditRecorder = {
   record(event: {
@@ -1738,16 +1738,80 @@ export async function autosaveLocalPageContent(
   if (page.locked) {
     throw new Error("Locked pages cannot be edited locally.");
   }
-  const warnings = pageWarnings(snapshot);
+  if (edition.status === "approved" || edition.status === "published") {
+    throw new Error("The edition is approved: reopen it to change pages.");
+  }
+  // Keep one revision per editing run: a save by the same person straight after their last save updates it in place.
+  const latest = data.editionPageRevisions
+    .filter((revision) => revision.pageId === page.id && !revision.deletedAt)
+    .sort((a, b) => b.revisionNumber - a.revisionNumber)[0];
+  const revision = latest && latest.changeType === "autosave" && latest.actorUserId === context.userId
+    ? Object.assign(latest, { snapshot })
+    : addPageRevision(data, page, context.userId, "autosave", snapshot, []);
+  // The warnings come from laying the page out with what was just saved, so they match what the render will do.
+  const warnings: Array<Record<string, unknown>> = pageWarnings(snapshot);
+  if (page.templateVersionId) {
+    for (const issue of buildRenderPage(data, edition, page).page.issues) {
+      warnings.push({ type: issue.code, zoneId: issue.zoneId, message: issue.message });
+    }
+  }
+  revision.warnings = warnings;
   page.status = "in_progress";
   page.readiness = warnings.length > 0 ? "blocked" : "in_progress";
-  const revision = addPageRevision(data, page, context.userId, "autosave", snapshot, warnings);
   await audit.record(auditEvent(context, auditActions.publishingPageAssign, "edition_page", page.id, {
     action: "autosave",
     revisionNumber: revision.revisionNumber,
     warningCount: warnings.length
   }, edition.territoryId));
   return { page, revision };
+}
+
+/** HQ accepts a page that was submitted for review. */
+export async function approvePageReview(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  pageId: string
+) {
+  requirePublishingPermission(context, permissions, "editionApprove");
+  const page = requireEditionPage(data, pageId);
+  const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  if (page.status !== "awaiting_hq") {
+    throw new Error("Only a page awaiting HQ review can be approved.");
+  }
+  page.status = "approved";
+  addPageRevision(data, page, context.userId, "status", { pageId: page.id, status: page.status }, []);
+  await audit.record(auditEvent(context, auditActions.publishingPageAssign, "edition_page", page.id, { action: "approve_page" }, edition.territoryId));
+  return page;
+}
+
+/** HQ sends a submitted page back with a comment the editor will see. */
+export async function returnPageForChanges(
+  context: PublishingActorContext,
+  permissions: PermissionData,
+  audit: PublishingAuditRecorder,
+  data: PublishingData,
+  pageId: string,
+  comment: string
+) {
+  requirePublishingPermission(context, permissions, "editionApprove");
+  const page = requireEditionPage(data, pageId);
+  const edition = requireTerritoryEdition(data, page.territoryEditionId);
+  ensureContextCanAccessEdition(context, edition);
+  if (page.status !== "awaiting_hq") {
+    throw new Error("Only a page awaiting HQ review can be returned.");
+  }
+  if (!comment.trim()) {
+    throw new Error("Say what needs to change.");
+  }
+  page.status = "in_progress";
+  page.readiness = "in_progress";
+  page.comments = [...page.comments, { byUserId: context.userId, text: comment.trim().slice(0, 1000), at: new Date().toISOString(), kind: "returned" }];
+  addPageRevision(data, page, context.userId, "comment", { pageId: page.id, comment: comment.trim().slice(0, 1000) }, []);
+  await audit.record(auditEvent(context, auditActions.publishingPageAssign, "edition_page", page.id, { action: "return_page" }, edition.territoryId));
+  return page;
 }
 
 export async function submitPageForReview(
@@ -2511,8 +2575,8 @@ function preflightChecks(artifact: Record<string, unknown>): PreflightCheck[] {
   if (typeof artifact.dpiUnverifiedImages === "number" && artifact.dpiUnverifiedImages > 0) {
     checks.push({
       code: "unverified_resolution",
-      severity: "warning",
-      message: `${artifact.dpiUnverifiedImages} placed image(s) have no recorded pixel size, so their resolution could not be checked.`,
+      severity: "error",
+      message: `${artifact.dpiUnverifiedImages} placed image(s) have no recorded pixel size, so their resolution cannot be confirmed for print. Enter the image's pixel width on the page.`,
       fixable: false
     });
   }

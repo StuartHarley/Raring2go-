@@ -51,3 +51,9 @@ Everything above is unit and integration tested with the browser and Ghostscript
 - Open the result in a preflight tool (Acrobat Pro or pdfToolbox) and confirm PDF/X-1a, the output intent, CMYK, embedded fonts and bleed with your printer's own checks. Ghostscript's PDF/X-1a mode is strict about transparency and overprint; a layout that uses transparency needs a look.
 - Agree the profile and PDF/X flavour with the printer, and add brand fonts to the image.
 - Limits of the layout engine: absolute-positioned zones with text clipped to the zone (no automatic text flow between zones) and no crop marks yet. Flowing a story across columns or pages is a later piece.
+
+## Page studio and page preflight
+
+Editors fill a page's zones in the page studio (`/app/editions/[id]/pages/[pageId]`): text zones, lists and images (https link, description, pixel size). It autosaves after a pause, keeping one revision per editing run; Save and Submit work without script. Saving lays the page out with what was saved and records the warnings (copy over its limit, too many list items, a missing required image), and a page with warnings cannot be submitted. HQ then approves the page or returns it with a comment.
+
+Page preflight derives its facts from the layout, not from a guess: colour is CMYK because the print pipeline converts every file to it; bleed is present because the renderer runs any zone touching the trim edge into the bleed; resolution is computed from each image's pixel width and its zone size. An image with no recorded pixel size **fails** preflight as unverified resolution (it is never assumed fine), and a low-resolution image fails and cannot be fixed automatically.
