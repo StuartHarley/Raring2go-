@@ -50,10 +50,22 @@ Everything above is unit and integration tested with the browser and Ghostscript
 - Build the image and render a real edition on the hosting platform.
 - Open the result in a preflight tool (Acrobat Pro or pdfToolbox) and confirm PDF/X-1a, the output intent, CMYK, embedded fonts and bleed with your printer's own checks. Ghostscript's PDF/X-1a mode is strict about transparency and overprint; a layout that uses transparency needs a look.
 - Agree the profile and PDF/X flavour with the printer, and add brand fonts to the image.
-- Limits of the layout engine: absolute-positioned zones with text clipped to the zone (no automatic text flow between zones) and no crop marks yet. Flowing a story across columns or pages is a later piece.
+- Limits of the layout engine: absolute-positioned zones with text clipped to the zone (no automatic text flow between zones). Flowing a story across columns or pages is a later piece.
 
 ## Page studio and page preflight
 
 Editors fill a page's zones in the page studio (`/app/editions/[id]/pages/[pageId]`): text zones, lists and images (https link, description, pixel size). It autosaves after a pause, keeping one revision per editing run; Save and Submit work without script. Saving lays the page out with what was saved and records the warnings (copy over its limit, too many list items, a missing required image), and a page with warnings cannot be submitted. HQ then approves the page or returns it with a comment.
 
 Page preflight derives its facts from the layout, not from a guess: colour is CMYK because the print pipeline converts every file to it; bleed is present because the renderer runs any zone touching the trim edge into the bleed; resolution is computed from each image's pixel width and its zone size. An image with no recorded pixel size **fails** preflight as unverified resolution (it is never assumed fine), and a low-resolution image fails and cannot be fixed automatically.
+
+## Crop marks, trim and bleed boxes, and the imposed booklet
+
+**Print sheets** are the trim size plus a margin on every side (bleed + 5mm crop mark + 1mm). Eight hairline crop marks sit in the margin, each starting one bleed away from the trim so a mark never lands in the area that is printed and cut off. A test checks every mark against the bleed box.
+
+**Boxes.** The service writes a TrimBox and BleedBox on every page (pdf-lib), before the PDF/X conversion, and reads them back from the finished file. If Ghostscript drops them they are written back afterwards, and then the file is **not** reported press-ready (the PDF library stamps a newer PDF version than PDF/X-1a allows) and a warning says so. The app also refuses a print file that does not report confirmed boxes.
+
+**Imposition.** Every print output also produces an imposed saddle-stitch booklet: two pages per press-sheet side, in the order that folds and stitches into reading order (the cover shares the outer front with the back cover; the middle pages share the inner sheet). The page ordering is pure code with tests (`imposition.ts`); the placement is done on real PDFs in tests (`boxes.test.ts`): each page is cut to its bleed box except on the spine side, where it is cut at the trim so bleed never prints over a neighbour; crop marks at the outer corners and fold marks at the spine; the spread gets its own boxes and goes through the PDF/X conversion again. The imposed file is stored with the output and downloaded from the edition page.
+
+**Not handled, and needs your printer's spec before a real run:** creep (shingling), gripper margin, press-sheet size and n-up beyond a two-page spread, perfect-bound and other binding orders, and any press-specific marks (colour bars, registration targets).
+
+The pdf-lib steps are tested on real PDFs. Chromium and Ghostscript are still replaced by a fake in tests, so the whole chain is **still unverified on a real press-grade run**.

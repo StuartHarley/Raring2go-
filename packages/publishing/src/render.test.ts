@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockingRenderIssues, buildEditionRenderModel, escapeHtml, renderEditionHtml, safeImageUrl, validateZoneGeometry, zonesOf } from "./render";
+import { cropMarks, printMarginMm, blockingRenderIssues, buildEditionRenderModel, escapeHtml, renderEditionHtml, safeImageUrl, validateZoneGeometry, zonesOf } from "./render";
 import { createHttpRenderProvider, RenderProviderError, sha256Hex, verifyRenderResult } from "./render-provider";
 import type { PublishingData } from "./types";
 
@@ -32,7 +32,8 @@ describe("edition render model", () => {
     const html = renderEditionHtml(model, "print");
     expect(html).toContain("Hi &lt;b&gt;");
     expect(html).toContain("Autumn &lt;2026&gt;");
-    expect(html).toContain("size: 216mm 303mm");
+    expect(html).toContain("size: 228mm 315mm");
+    expect(html.match(/class="mark"/g)).toHaveLength(8);
     expect(model.pages[0]?.furniture.issueDate).toBe("2026-10-01");
     expect(blockingRenderIssues(model)).toEqual([]);
   });
@@ -57,14 +58,41 @@ describe("edition render model", () => {
   });
 });
 
-const request = { kind: "print", html: "<p>x</p>", sheetWidthMm: 216, sheetHeightMm: 303, bleedMm: 3, pageCount: 1, idempotencyKey: "k" } as const;
+describe("crop marks", () => {
+  it("keeps every mark outside the bleed and inside the sheet", () => {
+    const [trimW, trimH, bleed] = [210, 297, 3];
+    const m = printMarginMm(bleed);
+    expect(m).toBe(9);
+    const marks = [...cropMarks(trimW, trimH, bleed).matchAll(/left:([\d.]+)mm;top:([\d.]+)mm;width:([\d.]+)mm;height:([\d.]+)mm/g)].map((x) => x.slice(1).map(Number) as [number, number, number, number]);
+    expect(marks).toHaveLength(8);
+    for (const [left, top, width, height] of marks) {
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(left + width).toBeLessThanOrEqual(trimW + 2 * m);
+      expect(top + height).toBeLessThanOrEqual(trimH + 2 * m);
+      // The bleed box runs from m - bleed to m + trim + bleed; a mark must not overlap it.
+      const insideX = left < m + trimW + bleed && left + width > m - bleed;
+      const insideY = top < m + trimH + bleed && top + height > m - bleed;
+      expect(insideX && insideY).toBe(false);
+    }
+  });
+});
+
+const request = { kind: "print", html: "<p>x</p>", sheetWidthMm: 228, sheetHeightMm: 315, bleedMm: 3, trimWidthMm: 210, trimHeightMm: 297, marginMm: 9, pageCount: 1, idempotencyKey: "k" } as const;
 const pdf = new TextEncoder().encode("%PDF-1.4 body");
-const report = { provider: "p", pressReady: true, pdfx: "PDF/X-1a:2003", colourSpace: "cmyk", outputIntent: "FOGRA39", fontsEmbedded: true, pageCount: 1, bleedMm: 3, warnings: [] as string[] } as const;
+const report = { provider: "p", pressReady: true, pdfx: "PDF/X-1a:2003", colourSpace: "cmyk", outputIntent: "FOGRA39", fontsEmbedded: true, pageCount: 1, bleedMm: 3, boxes: true, warnings: [] as string[] } as const;
 
 describe("render provider", () => {
   it("verifies results", () => {
     expect(verifyRenderResult(request, { pdf, sha256: sha256Hex(pdf), report })).toEqual([]);
-    expect(verifyRenderResult(request, { pdf, sha256: "bad", report: { ...report, colourSpace: "rgb", pdfx: "none", fontsEmbedded: false, bleedMm: 1, pageCount: 2 } })).toHaveLength(6);
+    expect(verifyRenderResult(request, { pdf, sha256: "bad", report: { ...report, colourSpace: "rgb", pdfx: "none", fontsEmbedded: false, bleedMm: 1, pageCount: 2, boxes: false } })).toHaveLength(7);
+  });
+  it("requires and checks the imposed booklet when one was asked for", () => {
+    const withImposition = { ...request, pageCount: 4, impose: { sheets: [{ sheet: 1, front: { left: 4, right: 1 }, back: { left: 2, right: 3 } }] } } as never;
+    const main = { pdf, sha256: sha256Hex(pdf), report: { ...report, pageCount: 4 } };
+    expect(verifyRenderResult(withImposition, main)).toEqual(["The imposed booklet is missing."]);
+    expect(verifyRenderResult(withImposition, { ...main, imposed: { pdf, sha256: sha256Hex(pdf), report: { ...report, pageCount: 2 } } })).toEqual([]);
+    expect(verifyRenderResult(withImposition, { ...main, imposed: { pdf, sha256: sha256Hex(pdf), report: { ...report, pageCount: 3, boxes: false } } })).toHaveLength(2);
   });
   it("calls the service and maps failures", async () => {
     const ok = createHttpRenderProvider({ baseUrl: "https://render.test", secret: "s", fetch: async () => new Response(JSON.stringify({ pdfBase64: Buffer.from(pdf).toString("base64"), report })) });

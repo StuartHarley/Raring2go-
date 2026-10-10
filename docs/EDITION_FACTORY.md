@@ -25,14 +25,15 @@ One `territory_edition` is the single record behind a territory's print and digi
 5. As HQ, return a page with a comment; as the editor see it; resubmit; approve.
 6. Add an image with no pixel size: preflight fails as unverified; enter the size and re-run: passes. Enter a low pixel size: fails and offers no fix.
 7. Submit the edition, approve it, generate the digital output, publish; confirm the public magazine page lists it.
-8. Generate the print output with the real render service (see `EDITION_RENDERING.md`, "Not yet verified") and check the PDF in Acrobat Pro or pdfToolbox.
+8. Generate the print output with the real render service; open both the per-page PDF and the imposed booklet, and check the crop marks, TrimBox and BleedBox, the sheet order against a folded dummy, (see `EDITION_RENDERING.md`, "Not yet verified") and check the PDF in Acrobat Pro or pdfToolbox.
 9. In the Control Room, tick several editions and run a bulk action; confirm the ready ones moved and the rest were skipped.
 10. On the flatplan, put two pages on sale, then open the advertiser catalogue and confirm the slots are bookable; try adding editorial content to a booked page and confirm it is refused.
 11. As a franchisee in another territory, confirm none of the above can be reached by pasting an edition or page id.
 
 ## Known limits
 
-- Zones are absolutely positioned; text does not flow between zones or pages, and there are no crop marks.
+- Zones are absolutely positioned; text does not flow between zones or pages.
+- Imposition is simple saddle-stitch only (no creep, gripper margin or press-sheet size); print files have crop marks, trim and bleed boxes.
 - Images are linked by https URL with a recorded pixel size; picking from the upload library is not wired into the studio yet.
 - Franchisees edit and submit pages; only HQ holds the preflight and approval grants in the seed data.
 - Not yet run against a real Chromium and Ghostscript.
