@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { auditEvents, createDb, editionPages, fixtureIds, editionContentItems, territoryEditionContent, editionPageRevisions, preflightResults, magazineTemplateVersions, magazineTemplates, masterEditions, publicationOutputs, seasons, territoryEditions } from "@raring2go/db";
+import { auditEvents, createDb, editionPages, fixtureIds, editionContentItems, territoryEditionContent, editionPageRevisions, inventorySlots, preflightResults, magazineTemplateVersions, magazineTemplates, masterEditions, publicationOutputs, seasons, territoryEditions } from "@raring2go/db";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
+import { createSlotsAsActor, readEditionInventory, retireSlotAsActor } from "./edition-inventory";
 import { runBulkEditionAction, approvePageAsActor, readStudioPage, returnPageAsActor, runPreflightAsActor, savePageAsActor, snapshotFromForm, submitPageAsActor, assignPageAsActor, createLocalContentAsActor, movePageAsActor, readFlatplan, approveEditionAsActor, approveMasterAsActor, createFlatplanAsActor, createSeasonAsActor, generateEditionsAsActor, readSeasonPlanner, releaseEditionAsActor, reopenEditionAsActor, submitEditionAsActor, approveTemplateVersionAsActor, createTemplateAsActor, publishTemplateVersionAsActor, readTemplateLibrary, reviseTemplateAsActor } from "./edition-runtime";
 import { withFinanceGuardsDisabled } from "./finance-test-support";
 
@@ -261,5 +262,72 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("bulk edition actions (postgres)", ()
     const rows = await db.select({ id: territoryEditions.id, status: territoryEditions.status }).from(territoryEditions).where(inArray(territoryEditions.id, created.map((e) => e.id)));
     expect(rows.map((r) => r.status).sort()).toEqual(["draft", "review"]);
     expect(await runBulkEditionAction(hq, "digital", created.map((e) => e.id))).toEqual({ succeeded: 0, refused: 2 });
+  });
+});
+
+describe.skipIf(!process.env.RUN_DB_TESTS)("edition inventory slots (postgres)", () => {
+  const { db, sql } = createDb();
+  const hq = { userId: fixtureIds.users.superAdmin, organisationId: fixtureIds.organisations.hq, territoryId: null };
+  const sutton = { userId: fixtureIds.users.franchisee, organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
+  const solihull = { ...sutton, territoryId: fixtureIds.territories.solihull };
+  const product = fixtureIds.commercialProducts.fullPageAdvert;
+  const tag = randomUUID().slice(0, 8);
+  let seasonId = "";
+
+  afterAll(async () => {
+    const editionIds = seasonId ? (await db.select({ id: territoryEditions.id }).from(territoryEditions).where(eq(territoryEditions.seasonId, seasonId))).map((e) => e.id) : [];
+    const masters = seasonId ? (await db.select({ id: masterEditions.id }).from(masterEditions).where(eq(masterEditions.seasonId, seasonId))).map((m) => m.id) : [];
+    const slots = editionIds.length ? await db.select({ id: inventorySlots.id }).from(inventorySlots).where(inArray(inventorySlots.territoryEditionId, editionIds)) : [];
+    const pages = editionIds.length ? await db.select({ id: editionPages.id }).from(editionPages).where(inArray(editionPages.territoryEditionId, editionIds)) : [];
+    await withFinanceGuardsDisabled(db, async () => {
+      await db.delete(auditEvents).where(inArray(auditEvents.entityId, [...editionIds, ...masters, ...slots.map((s) => s.id), ...pages.map((p) => p.id)]));
+    });
+    if (editionIds.length) {
+      await db.delete(inventorySlots).where(inArray(inventorySlots.territoryEditionId, editionIds));
+      await db.delete(editionPageRevisions).where(inArray(editionPageRevisions.pageId, pages.map((p) => p.id)));
+      await db.delete(editionPages).where(inArray(editionPages.territoryEditionId, editionIds));
+      await db.delete(territoryEditionContent).where(inArray(territoryEditionContent.territoryEditionId, editionIds));
+      await db.delete(territoryEditions).where(inArray(territoryEditions.id, editionIds));
+    }
+    if (seasonId) {
+      const items = await db.select({ id: editionContentItems.id }).from(editionContentItems).where(eq(editionContentItems.title, `Slot content ${tag}`));
+      if (items.length) await db.delete(editionContentItems).where(inArray(editionContentItems.id, items.map((i) => i.id)));
+      await db.delete(masterEditions).where(eq(masterEditions.seasonId, seasonId));
+      await db.delete(seasons).where(eq(seasons.id, seasonId));
+    }
+    await sql.end();
+  });
+
+  it("puts pages on sale, follows a reorder, blocks editorial on a sold page, and respects scope", async () => {
+    seasonId = await createSeasonAsActor(hq, { key: `slot-${tag}`, name: `Slot ${tag}`, year: "2099", season: "autumn", accent: "#aa3300", pageCount: "8" });
+    const master = (await readSeasonPlanner(hq)).find((e) => e.season.id === seasonId)!.masters[0]!.master;
+    await approveMasterAsActor(hq, master.id);
+    const [edition] = await generateEditionsAsActor(hq, master.id, [fixtureIds.territories.suttonColdfield]);
+    await createFlatplanAsActor(hq, edition!.id);
+    const pages = (await readFlatplan(sutton, edition!.id)).pages.map((p) => p.page);
+    const page = (n: number) => pages.find((p) => p.pageNumber === n)!;
+
+    const first = await createSlotsAsActor(hq, edition!.id, product, [page(3).id, page(5).id]);
+    expect(first).toEqual({ created: 2, restored: 0, skipped: 0 });
+    expect(await createSlotsAsActor(sutton, edition!.id, product, [page(3).id])).toEqual({ created: 0, restored: 0, skipped: 1 });
+    await expect(createSlotsAsActor(hq, edition!.id, product, [page(1).id])).rejects.toThrow(/locked/);
+    await expect(createSlotsAsActor(solihull, edition!.id, product, [page(4).id])).rejects.toThrow();
+
+    let inventory = await readEditionInventory(sutton, edition!.id);
+    expect(inventory.slots.map((s) => [s.pageNumber, s.status])).toEqual([[3, "available"], [5, "available"]]);
+    expect(inventory.pages.find((p) => p.pageNumber === 1)).toMatchObject({ eligible: false, reason: "locked" });
+    expect(inventory.pages.find((p) => p.pageNumber === 3)).toMatchObject({ sold: true });
+
+    await movePageAsActor(sutton, edition!.id, page(3).id, "down");
+    inventory = await readEditionInventory(sutton, edition!.id);
+    expect(inventory.slots.map((s) => s.pageNumber)).toEqual([4, 5]);
+
+    const { content } = await createLocalContentAsActor(sutton, edition!.id, { title: `Slot content ${tag}`, contentType: "article", headline: "H", body: "B" });
+    await expect(assignPageAsActor(sutton, page(3).id, { assignedContentId: content.id })).rejects.toThrow(/on sale/);
+    const slotId = (await db.select({ id: inventorySlots.id }).from(inventorySlots).where(eq(inventorySlots.editionPageId, page(3).id)))[0]!.id;
+    await retireSlotAsActor(sutton, slotId);
+    await assignPageAsActor(sutton, page(3).id, { assignedContentId: content.id });
+    await expect(createSlotsAsActor(sutton, edition!.id, product, [page(3).id])).rejects.toThrow(/editorial/);
+    await expect(retireSlotAsActor(solihull, slotId)).rejects.toThrow();
   });
 });

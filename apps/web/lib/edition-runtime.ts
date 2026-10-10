@@ -41,6 +41,7 @@ import { randomUUID } from "node:crypto";
 import { editionAuditFor, queueEditionOutput } from "./edition-output";
 import { getPermissionData } from "./permission-source";
 import { readTerritoryEdition } from "./publishing-runtime";
+import { assertPageNotOnSale } from "./edition-inventory";
 import { evaluatePermission } from "@raring2go/permissions";
 
 type Audit = ReturnType<typeof editionAuditFor>;
@@ -209,7 +210,12 @@ export async function readFlatplan(context: PublishingActorContext, territoryEdi
   }
 }
 
-export const assignPageAsActor = (context: PublishingActorContext, pageId: string, input: { templateVersionId?: string | null; assignedContentId?: string | null }) =>
+export const assignPageAsActor = async (context: PublishingActorContext, pageId: string, input: { templateVersionId?: string | null; assignedContentId?: string | null }) => {
+  if (input.assignedContentId) await assertPageNotOnSale(pageId);
+  return assignPageMutation(context, pageId, input);
+};
+
+const assignPageMutation = (context: PublishingActorContext, pageId: string, input: { templateVersionId?: string | null; assignedContentId?: string | null }) =>
   mutateEditions((data, audit, permissions) => assignPageTemplateAndContent(context, permissions, audit, data, pageId, input));
 
 /** Moves a page one place earlier or later by swapping its position with its neighbour, through the same reorder rules (locked pages stay put). */

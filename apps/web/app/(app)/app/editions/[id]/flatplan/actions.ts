@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { requireShellPermission } from "../../../../../../lib/app-shell";
 import type { RequestedShellContext } from "../../../../../../lib/app-shell";
 import { assignPageAsActor, createLocalContentAsActor, movePageAsActor } from "../../../../../../lib/edition-runtime";
+import { createSlotsAsActor, retireSlotAsActor } from "../../../../../../lib/edition-inventory";
 
 function back(request: RequestedShellContext, editionId: string, result: string, anchor = ""): never {
   revalidatePath(`/app/editions/${editionId}/flatplan`);
@@ -55,4 +56,27 @@ export async function createContentAction(request: RequestedShellContext, editio
     back(request, editionId, "content_refused", "#content");
   }
   back(request, editionId, "content_created", "#content");
+}
+
+export async function createSlotsAction(request: RequestedShellContext, editionId: string, formData: FormData) {
+  const who = await actor(request, "advertiser.inventory", "manage");
+  const productId = String(formData.get("productId") ?? "");
+  const pageIds = formData.getAll("pageIds").map(String).filter(Boolean);
+  let result: { created: number; restored: number } | null = null;
+  try {
+    result = await createSlotsAsActor(who, editionId, productId, pageIds);
+  } catch {
+    result = null;
+  }
+  back(request, editionId, result === null ? "slots_refused" : result.created + result.restored > 0 ? "slots_created" : "slots_exist", "#advertising");
+}
+
+export async function retireSlotAction(request: RequestedShellContext, editionId: string, slotId: string) {
+  const who = await actor(request, "advertiser.inventory", "manage");
+  try {
+    await retireSlotAsActor(who, slotId);
+  } catch {
+    back(request, editionId, "slot_refused", "#advertising");
+  }
+  back(request, editionId, "slot_retired", "#advertising");
 }

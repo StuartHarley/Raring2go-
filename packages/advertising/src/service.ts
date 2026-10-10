@@ -464,6 +464,134 @@ export function listCatalogue(
   };
 }
 
+/** What the slot planner needs to know about an edition, read from the Edition Factory by the caller. */
+export type EditionInventoryTarget = {
+  id: string;
+  territoryId: string;
+  status: string;
+  pages: Array<{ id: string; pageNumber: number; locked: boolean; ownerType: string; hasContent: boolean }>;
+};
+
+/**
+ * Creates the sellable slots on an edition's pages. Slots follow the page (they are tied to the page's id, so
+ * reordering the flatplan does not move or lose a booking). Pages that cannot carry an advertisement are refused,
+ * a page carries one kind of advertisement, and running it again changes nothing.
+ */
+export async function createEditionInventorySlots(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: { edition: EditionInventoryTarget; productId: string; pageIds: string[] }
+) {
+  requireAdvertisingPermission(context, permissions, "inventoryManage");
+  const { edition } = input;
+  if (context.territoryId && context.territoryId !== edition.territoryId) {
+    throw new Error("Edition is outside the active territory.");
+  }
+  if (edition.status === "published") {
+    throw new Error("A published edition's inventory cannot be changed.");
+  }
+  const product = data.products.find((candidate) => candidate.id === input.productId && !candidate.deletedAt);
+  const inventoryClass = typeof product?.metadata.inventoryClass === "string" ? product.metadata.inventoryClass : null;
+  if (!product || product.status !== "active" || !product.requiresInventory || product.channel !== "magazine" || !inventoryClass) {
+    throw new Error("That product does not sell magazine page inventory.");
+  }
+  const pageIds = [...new Set(input.pageIds)];
+  if (pageIds.length === 0) {
+    throw new Error("Choose at least one page.");
+  }
+  const result = { created: 0, restored: 0, skipped: 0 };
+  for (const pageId of pageIds) {
+    const page = edition.pages.find((candidate) => candidate.id === pageId);
+    if (!page) {
+      throw new Error("A chosen page is not in this edition.");
+    }
+    if (page.locked) {
+      throw new Error(`Page ${page.pageNumber} is locked and cannot carry an advertisement.`);
+    }
+    if (page.ownerType === "hq" && context.territoryId) {
+      throw new Error(`Page ${page.pageNumber} belongs to HQ.`);
+    }
+    if (page.hasContent) {
+      throw new Error(`Page ${page.pageNumber} already has editorial content assigned.`);
+    }
+    const onPage = data.inventorySlots.filter((slot) => slot.editionPageId === page.id && !slot.deletedAt);
+    if (onPage.some((slot) => slot.inventoryClass !== inventoryClass)) {
+      throw new Error(`Page ${page.pageNumber} already carries a different kind of advertisement.`);
+    }
+    const slotKey = `${product.key}-${page.id.slice(0, 8)}`;
+    const existing = data.inventorySlots.find((slot) => slot.territoryEditionId === edition.id && slot.slotKey === slotKey);
+    if (existing && !existing.deletedAt) {
+      result.skipped += 1;
+      continue;
+    }
+    if (existing) {
+      existing.deletedAt = null;
+      existing.status = "available";
+      existing.editionPageId = page.id;
+      result.restored += 1;
+      continue;
+    }
+    data.inventorySlots.push({
+      id: crypto.randomUUID(),
+      territoryEditionId: edition.id,
+      editionPageId: page.id,
+      territoryId: edition.territoryId,
+      productId: product.id,
+      slotKey,
+      inventoryClass,
+      exclusive: true,
+      status: "available",
+      metadata: { createdVia: "edition_factory" }
+    });
+    result.created += 1;
+  }
+  await audit.record({
+    action: auditActions.advertiserInventoryManage,
+    actorUserId: context.userId,
+    entityType: "territory_edition",
+    entityId: edition.id,
+    organisationId: context.organisationId,
+    territoryId: edition.territoryId,
+    payload: { action: "create_slots", productId: product.id, ...result }
+  });
+  return result;
+}
+
+/** Takes an unsold slot off sale. A slot with any reservation or booking against it stays. */
+export async function retireInventorySlot(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  slotId: string
+) {
+  requireAdvertisingPermission(context, permissions, "inventoryManage");
+  const slot = data.inventorySlots.find((candidate) => candidate.id === slotId && !candidate.deletedAt);
+  if (!slot) {
+    throw new Error("Inventory slot was not found.");
+  }
+  if (context.territoryId && context.territoryId !== slot.territoryId) {
+    throw new Error("Inventory slot is outside the active territory.");
+  }
+  const sold = data.inventoryReservations.some((reservation) => reservation.inventorySlotId === slot.id && !reservation.deletedAt && reservation.status !== "released" && reservation.status !== "cancelled" && reservation.status !== "expired");
+  if (slot.status !== "available" || sold) {
+    throw new Error("Only an unsold slot can be taken off sale.");
+  }
+  slot.deletedAt = new Date();
+  await audit.record({
+    action: auditActions.advertiserInventoryManage,
+    actorUserId: context.userId,
+    entityType: "inventory_slot",
+    entityId: slot.id,
+    organisationId: context.organisationId,
+    territoryId: slot.territoryId,
+    payload: { action: "retire_slot", slotKey: slot.slotKey }
+  });
+  return slot;
+}
+
 export async function reserveInventorySlot(
   context: AdvertisingActorContext,
   permissions: PermissionData,
