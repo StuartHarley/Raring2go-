@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import { createDb, organisations } from "@raring2go/db";
 import {
   addAdvertiserContact,
+  cancelAdvertiserTask,
+  completeAdvertiserTask,
+  createAdvertiserTask,
+  reopenAdvertiserTask,
   changeOpportunityStage,
   createAdvertiser,
   createOpportunity,
@@ -203,4 +207,16 @@ export async function moveOpportunityStage(
 
 export async function refreshMetricsRecord(context: AdvertisingActorContext, advertiserId: string) {
   return mutate((_tx, data, audit, permissions) => refreshAdvertiserMetrics(context, permissions, audit, data, advertiserId));
+}
+
+export async function createTaskRecord(context: AdvertisingActorContext, input: { advertiserId: string; opportunityId?: string | null; title: string; notes?: string; dueOn?: string }) {
+  return mutate((_tx, data, audit, permissions) => createAdvertiserTask(context, permissions, audit, data, { ...input, opportunityId: input.opportunityId || null, dueOn: input.dueOn || null }));
+}
+
+export type TaskStep = "complete" | "cancel" | "reopen";
+
+export async function changeTaskRecord(context: AdvertisingActorContext, taskId: string, step: TaskStep) {
+  return mutate((_tx, data, audit, permissions) =>
+    step === "complete" ? completeAdvertiserTask(context, permissions, audit, data, taskId) : step === "cancel" ? cancelAdvertiserTask(context, permissions, audit, data, taskId) : reopenAdvertiserTask(context, permissions, audit, data, taskId)
+  );
 }

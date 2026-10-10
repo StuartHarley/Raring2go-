@@ -43,7 +43,12 @@ import {
   updateArtworkStatus,
   updateAdvertiser,
   createEditionInventorySlots,
-  retireInventorySlot
+  retireInventorySlot,
+  createAdvertiserTask,
+  completeAdvertiserTask,
+  cancelAdvertiserTask,
+  reopenAdvertiserTask,
+  listAdvertiserTasks
 } from "./service";
 import type { AdvertisingData, CampaignFulfilment } from "./types";
 import type { PermissionData } from "@raring2go/permissions";
@@ -1532,6 +1537,7 @@ function emptyData(): AdvertisingData {
     campaignFulfilments: [],
     proofPacks: [],
     renewalPrompts: [],
+    tasks: [],
     organisations: [
       { id: ids.organisations.hq, kind: "hq", name: "HQ" },
       { id: ids.organisations.franchise, kind: "franchise", name: "Own Franchise" },
@@ -1867,6 +1873,61 @@ describe("edition inventory slots", () => {
     await expect(retireInventorySlot(otherLocal(), permissions, audit(), data, slot.id)).rejects.toThrow(/outside|permission/);
     slot.status = "reserved";
     await expect(retireInventorySlot(hqContext(), permissions, audit(), data, slot.id)).rejects.toThrow(/unsold/);
+  });
+});
+
+describe("advertiser tasks", () => {
+  const setup = () => seededData();
+  const advId = ids.advertiser;
+
+  it("creates, completes, cancels and reopens a task, with audit and a sensible order", async () => {
+    const data = setup();
+    const rec = audit();
+    const late = await createAdvertiserTask(localContext(), permissions, rec, data, { advertiserId: advId, title: "  Call Alex  ", dueOn: "2026-10-01", notes: " about page 5 " });
+    const soon = await createAdvertiserTask(localContext(), permissions, rec, data, { advertiserId: advId, title: "Send proposal", dueOn: "2026-10-20" });
+    const undated = await createAdvertiserTask(localContext(), permissions, rec, data, { advertiserId: advId, title: "Think" });
+    expect(late).toMatchObject({ title: "Call Alex", notes: "about page 5", status: "open", assignedToUserId: ids.users.local, territoryId: ids.territories.own });
+    expect(listAdvertiserTasks(localContext(), permissions, data).map((t) => t.id)).toEqual([late.id, soon.id, undated.id]);
+    await completeAdvertiserTask(localContext(), permissions, rec, data, late.id);
+    expect(late).toMatchObject({ status: "done", completedByUserId: ids.users.local });
+    expect(late.completedAt).toBeInstanceOf(Date);
+    await expect(completeAdvertiserTask(localContext(), permissions, rec, data, late.id)).rejects.toThrow(/cannot be completed/);
+    await cancelAdvertiserTask(localContext(), permissions, rec, data, soon.id);
+    expect(listAdvertiserTasks(localContext(), permissions, data, { status: "open" }).map((t) => t.id)).toEqual([undated.id]);
+    await reopenAdvertiserTask(localContext(), permissions, rec, data, late.id);
+    expect(late).toMatchObject({ status: "open", completedAt: null, completedByUserId: null });
+    expect(rec.events.every((e) => e.action === auditActions.advertiserTaskManage)).toBe(true);
+    expect(rec.events).toHaveLength(6);
+  });
+
+  it("validates the title, the date, the opportunity and the assignee", async () => {
+    const data = setup();
+    const create = (input: object, context = localContext()) => createAdvertiserTask(context, permissions, audit(), data, { advertiserId: advId, title: "Call", ...input });
+    await expect(create({ title: " " })).rejects.toThrow(/title/);
+    await expect(create({ title: "x".repeat(201) })).rejects.toThrow(/title/);
+    await expect(create({ dueOn: "2026-02-30" })).rejects.toThrow(/valid date/);
+    await expect(create({ dueOn: "10/10/2026" })).rejects.toThrow(/valid date/);
+    await expect(create({ opportunityId: "nope" })).rejects.toThrow(/does not belong/);
+    await expect(create({ assignedToUserId: "stranger" })).rejects.toThrow(/does not work/);
+    expect((await create({ assignedToUserId: ids.users.hq })).assignedToUserId).toBe(ids.users.hq);
+  });
+
+  it("keeps tasks inside the territory and behind the permission", async () => {
+    const data = setup();
+    const task = await createAdvertiserTask(localContext(), permissions, audit(), data, { advertiserId: advId, title: "Call" });
+    await expect(createAdvertiserTask(otherLocal(), permissions, audit(), data, { advertiserId: advId, title: "Sneaky" })).rejects.toThrow(/outside/);
+    await expect(completeAdvertiserTask(otherLocal(), permissions, audit(), data, task.id)).rejects.toThrow(/outside/);
+    expect(() => listAdvertiserTasks(otherLocal(), permissions, data)).toThrow(/outside/);
+    expect(listAdvertiserTasks(hqContext(), permissions, data)).toHaveLength(1);
+    await expect(createAdvertiserTask({ userId: "nobody", organisationId: ids.organisations.franchise, territoryId: ids.territories.own }, permissions, audit(), data, { advertiserId: advId, title: "x" })).rejects.toThrow(/permission/);
+  });
+
+  it("attaches a score to each open opportunity in the pipeline", () => {
+    const data = setup();
+    const view = listPipeline(hqContext(), permissions, data);
+    const open = view.stages.flatMap((stage) => stage.opportunities);
+    expect(open.every((entry) => entry.score !== null && entry.score.factors.length >= 3)).toBe(true);
+    expect(view.stages.reduce((sum, stage) => sum + stage.opportunities.length, 0)).toBe(open.length);
   });
 });
 

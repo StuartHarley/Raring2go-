@@ -4,3 +4,4 @@ export * from "./service";
 export type * from "./types";
 export * from "./persist";
 export * from "./portal";
+export * from "./scoring";

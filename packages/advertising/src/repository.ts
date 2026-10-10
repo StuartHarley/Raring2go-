@@ -38,6 +38,7 @@ import {
   priceBookItems,
   priceBooks,
   renewalPrompts,
+  advertiserTasks,
   territories
 } from "@raring2go/db";
 import type { AdvertisingData } from "./types";
@@ -84,6 +85,7 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     campaignFulfilmentRows,
     proofPackRows,
     renewalPromptRows,
+    taskRows,
     organisationRows,
     territoryRows
   ] = await Promise.all([
@@ -121,6 +123,7 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
     db.select().from(campaignFulfilments),
     db.select().from(proofPacks),
     db.select().from(renewalPrompts),
+    db.select().from(advertiserTasks),
     db.select().from(organisations),
     db.select().from(territories)
   ]);
@@ -234,6 +237,10 @@ export async function loadAdvertisingData(db: DrizzleDb): Promise<AdvertisingDat
       ...row,
       dueOn: dateString(row.dueOn)
     })) as AdvertisingData["renewalPrompts"],
+    tasks: taskRows.map((row) => ({
+      ...row,
+      dueOn: dateString(row.dueOn)
+    })) as AdvertisingData["tasks"],
     organisations: organisationRows as AdvertisingData["organisations"],
     territories: territoryRows as AdvertisingData["territories"]
   };

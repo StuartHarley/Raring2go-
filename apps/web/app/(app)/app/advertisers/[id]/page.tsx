@@ -9,6 +9,8 @@ import { evaluatePermission } from "@raring2go/permissions";
 import { SalesAssistantPanel } from "./SalesAssistantPanel";
 import { CrmBanner } from "../CrmBanner";
 import { CrmPanels } from "./CrmPanels";
+import { TasksPanel } from "./TasksPanel";
+import { ScoreBadge } from "../ScoreBadge";
 import { SalesPanels } from "./SalesPanels";
 import { FulfilmentPanels } from "./FulfilmentPanels";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
@@ -138,6 +140,8 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
         access={result.crmAccess}
       />
 
+      <TasksPanel request={request} advertiserId={result.advertiser.id} tasks={result.tasks} opportunities={result.opportunities.filter((view) => view.state === "open").map((view) => ({ id: view.opportunity.id, title: view.opportunity.title }))} canManage={result.crmAccess.taskManage} />
+
       <SalesPanels request={request} view={result} catalogue={result.catalogue} access={result.salesAccess} />
 
       <FulfilmentPanels request={request} view={result} access={result.fulfilmentAccess} />
@@ -169,6 +173,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
               <div key={view.opportunity.id}>
                 <strong>{view.opportunity.title}</strong>
                 <span>{view.stage.name} - {formatMoney(view.opportunity.estimatedValueMinor)} - {view.attention.replaceAll("_", " ")}</span>
+                <ScoreBadge score={view.score} />
               </div>
             ))
           )}
@@ -398,7 +403,7 @@ async function loadAdvertiser(
     );
     const allowed = (module: string, action: string) =>
       evaluatePermission({ userId: actor.userId, module, action, context: { organisationId: actor.organisationId, territoryId: actor.territoryId } }, permissions).allowed;
-    const crmAccess = { edit: allowed("advertiser", "edit"), contactManage: allowed("advertiser.contact", "manage"), activityRecord: allowed("advertiser.activity", "record") };
+    const crmAccess = { edit: allowed("advertiser", "edit"), contactManage: allowed("advertiser.contact", "manage"), activityRecord: allowed("advertiser.activity", "record"), taskManage: allowed("advertiser.opportunity", "edit") };
     const salesAccess = {
       proposalCreate: allowed("advertiser.proposal", "create"),
       bookingAccept: allowed("advertiser.booking", "accept"),

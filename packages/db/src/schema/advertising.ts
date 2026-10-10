@@ -792,6 +792,35 @@ export const proofPacks = pgTable(
   ]
 );
 
+/** A follow-up a person owes an advertiser: call, send artwork reminder, chase a proposal. Distinct from an opportunity's single next action. */
+export const advertiserTasks = pgTable(
+  "advertiser_tasks",
+  {
+    id,
+    advertiserId: uuid("advertiser_id").notNull().references(() => advertisers.id),
+    opportunityId: uuid("opportunity_id").references(() => opportunities.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    assignedToUserId: uuid("assigned_to_user_id").references(() => users.id),
+    title: text("title").notNull(),
+    notes: text("notes"),
+    dueOn: date("due_on", { mode: "date" }),
+    status: text("status").notNull().default("open"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedByUserId: uuid("completed_by_user_id").references(() => users.id),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    index("advertiser_tasks_advertiser_id_idx").on(table.advertiserId),
+    index("advertiser_tasks_opportunity_id_idx").on(table.opportunityId),
+    index("advertiser_tasks_territory_id_idx").on(table.territoryId),
+    index("advertiser_tasks_assignee_status_idx").on(table.assignedToUserId, table.status),
+    index("advertiser_tasks_due_on_idx").on(table.dueOn),
+    index("advertiser_tasks_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
 export const renewalPrompts = pgTable(
   "renewal_prompts",
   {
