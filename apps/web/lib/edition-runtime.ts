@@ -1,5 +1,14 @@
 import { createDb } from "@raring2go/db";
 import {
+  applySafePreflightFixes,
+  approvePageReview,
+  autosaveLocalPageContent,
+  buildRenderPage,
+  derivePageArtifact,
+  returnPageForChanges,
+  runPagePreflight,
+  safeImageUrl,
+  submitPageForReview,
   assignPageTemplateAndContent,
   createEditionLocalContent,
   reorderEditionPages,
@@ -222,3 +231,86 @@ export async function createLocalContentAsActor(context: PublishingActorContext,
   if (input.body.trim()) body.body = input.body.trim().slice(0, 20000);
   return mutateEditions((data, audit, permissions) => createEditionLocalContent(context, permissions, audit, data, territoryEditionId, { title: input.title, contentType: input.contentType, body }));
 }
+
+/** What the page studio shows for one page. Scope is proven by the edition read; the page must belong to that edition. */
+export async function readStudioPage(context: PublishingActorContext, territoryEditionId: string, pageId: string) {
+  const { row, pages } = await readTerritoryEdition(context, territoryEditionId);
+  const page = pages.find((candidate) => candidate.id === pageId);
+  if (!page) throw new Error("Page was not found in this edition.");
+  const { db, sql } = createDb();
+  try {
+    const data = await loadPublishingData(db);
+    const edition = data.territoryEditions.find((candidate) => candidate.id === territoryEditionId)!;
+    let layout: ReturnType<typeof buildRenderPage> | null = null;
+    try {
+      layout = buildRenderPage(data, edition, page);
+    } catch {
+      layout = null;
+    }
+    const preflight = data.preflightResults
+      .filter((result) => result.entityType === "edition_page" && result.entityId === page.id && !result.deletedAt)
+      .at(-1);
+    const revisions = data.editionPageRevisions.filter((revision) => revision.pageId === page.id && !revision.deletedAt).sort((a, b) => a.revisionNumber - b.revisionNumber);
+    return {
+      edition: row.territoryEdition,
+      page,
+      layout: layout?.page ?? null,
+      geometry: layout?.geometry ?? null,
+      preflight: preflight ? { id: preflight.id, status: preflight.status, checks: preflight.checks, fixes: preflight.fixes, unfixable: preflight.unfixableIssues } : null,
+      revisionCount: revisions.length,
+      neighbours: { previous: pages.find((candidate) => candidate.pageNumber === page.pageNumber - 1)?.id ?? null, next: pages.find((candidate) => candidate.pageNumber === page.pageNumber + 1)?.id ?? null }
+    };
+  } finally {
+    await sql.end();
+  }
+}
+
+const MAX_ZONE_TEXT = 20000;
+
+/** Turns the studio form into a content snapshot. Only the template's own zone ids are read; everything else is ignored. */
+export function snapshotFromForm(formData: FormData, zones: Array<{ id: string; kind: string }>): Record<string, unknown> {
+  const text = (name: string) => String(formData.get(name) ?? "");
+  const values: Record<string, string | string[]> = {};
+  const images: Record<string, { url: string; alt: string; widthPx?: number; heightPx?: number }> = {};
+  for (const zone of zones) {
+    if (zone.kind === "image") {
+      const url = text(`image-${zone.id}`).trim();
+      if (!url) continue;
+      if (!safeImageUrl(url)) throw new Error("Images must be https links or uploaded image data.");
+      const dim = (name: string) => {
+        const n = Number(text(name));
+        return Number.isInteger(n) && n > 0 && n < 100000 ? n : undefined;
+      };
+      images[zone.id] = { url, alt: text(`alt-${zone.id}`).trim().slice(0, 300), widthPx: dim(`widthPx-${zone.id}`), heightPx: dim(`heightPx-${zone.id}`) };
+    } else if (zone.kind === "list") {
+      values[zone.id] = text(`zone-${zone.id}`).split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 50).map((line) => line.slice(0, 300));
+    } else if (zone.kind !== "advertiser") {
+      values[zone.id] = text(`zone-${zone.id}`).slice(0, MAX_ZONE_TEXT);
+    }
+  }
+  return { zones: values, images };
+}
+
+export const savePageAsActor = (context: PublishingActorContext, pageId: string, snapshot: Record<string, unknown>) =>
+  mutateEditions((data, audit, permissions) => autosaveLocalPageContent(context, permissions, audit, data, pageId, snapshot));
+
+export const submitPageAsActor = (context: PublishingActorContext, pageId: string) =>
+  mutateEditions((data, audit, permissions) => submitPageForReview(context, permissions, audit, data, pageId));
+
+export const approvePageAsActor = (context: PublishingActorContext, pageId: string) =>
+  mutateEditions((data, audit, permissions) => approvePageReview(context, permissions, audit, data, pageId));
+
+export const returnPageAsActor = (context: PublishingActorContext, pageId: string, comment: string) =>
+  mutateEditions((data, audit, permissions) => returnPageForChanges(context, permissions, audit, data, pageId, comment));
+
+export const runPreflightAsActor = (context: PublishingActorContext, pageId: string) =>
+  mutateEditions(async (data, audit, permissions) => {
+    const page = data.editionPages.find((candidate) => candidate.id === pageId && !candidate.deletedAt);
+    const edition = page ? data.territoryEditions.find((candidate) => candidate.id === page.territoryEditionId) : undefined;
+    if (!page || !edition) throw new Error("Page was not found.");
+    const artifact = derivePageArtifact(buildRenderPage(data, edition, page).page);
+    return runPagePreflight(context, permissions, audit, data, pageId, artifact);
+  });
+
+export const applyPreflightFixesAsActor = (context: PublishingActorContext, resultId: string) =>
+  mutateEditions((data, audit, permissions) => applySafePreflightFixes(context, permissions, audit, data, resultId));

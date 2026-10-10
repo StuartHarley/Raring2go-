@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { auditEvents, createDb, editionPages, fixtureIds, editionContentItems, territoryEditionContent, magazineTemplateVersions, magazineTemplates, masterEditions, publicationOutputs, seasons, territoryEditions } from "@raring2go/db";
+import { auditEvents, createDb, editionPages, fixtureIds, editionContentItems, territoryEditionContent, editionPageRevisions, preflightResults, magazineTemplateVersions, magazineTemplates, masterEditions, publicationOutputs, seasons, territoryEditions } from "@raring2go/db";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
-import { assignPageAsActor, createLocalContentAsActor, movePageAsActor, readFlatplan, approveEditionAsActor, approveMasterAsActor, createFlatplanAsActor, createSeasonAsActor, generateEditionsAsActor, readSeasonPlanner, releaseEditionAsActor, reopenEditionAsActor, submitEditionAsActor, approveTemplateVersionAsActor, createTemplateAsActor, publishTemplateVersionAsActor, readTemplateLibrary, reviseTemplateAsActor } from "./edition-runtime";
+import { approvePageAsActor, readStudioPage, returnPageAsActor, runPreflightAsActor, savePageAsActor, snapshotFromForm, submitPageAsActor, assignPageAsActor, createLocalContentAsActor, movePageAsActor, readFlatplan, approveEditionAsActor, approveMasterAsActor, createFlatplanAsActor, createSeasonAsActor, generateEditionsAsActor, readSeasonPlanner, releaseEditionAsActor, reopenEditionAsActor, submitEditionAsActor, approveTemplateVersionAsActor, createTemplateAsActor, publishTemplateVersionAsActor, readTemplateLibrary, reviseTemplateAsActor } from "./edition-runtime";
 import { withFinanceGuardsDisabled } from "./finance-test-support";
 
 const spec = {
@@ -144,6 +144,8 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("flatplan editing (postgres)", () => 
       await db.delete(auditEvents).where(inArray(auditEvents.entityId, [...editionIds, ...masters.map((m) => m.id), ...versions.map((v) => v.id), ...contents.map((c) => c.id), ...contents.map((c) => c.sourceContentItemId), ...pageRows.map((p) => p.id), ...(templateId ? [templateId] : [])]));
     });
     if (editionIds.length) {
+      await db.delete(editionPageRevisions).where(inArray(editionPageRevisions.pageId, pageRows.map((p) => p.id)));
+      await db.delete(preflightResults).where(inArray(preflightResults.territoryEditionId, editionIds));
       await db.delete(editionPages).where(inArray(editionPages.territoryEditionId, editionIds));
       await db.delete(territoryEditionContent).where(inArray(territoryEditionContent.territoryEditionId, editionIds));
       await db.delete(territoryEditions).where(inArray(territoryEditions.id, editionIds));
@@ -185,6 +187,35 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("flatplan editing (postgres)", () => 
     const cover = plan.pages.find((p) => p.page.pageNumber === 1)!.page;
     await expect(movePageAsActor(sutton, edition!.id, cover.id, "down")).rejects.toThrow(/Locked/);
     await expect(assignPageAsActor(sutton, cover.id, { templateVersionId: version })).rejects.toThrow(/Locked/);
+
+    // Page studio: edit, preflight, submit, HQ return and approve.
+    const studio = await readStudioPage(sutton, edition!.id, page3.id);
+    expect(studio.layout?.zones.map((z) => z.id).sort()).toEqual(["body", "headline"]);
+    const form = new FormData();
+    form.set("zone-headline", "Hello autumn");
+    form.set("zone-body", "Some body text");
+    form.set("zone-ignored", "not a zone");
+    const snapshot = snapshotFromForm(form, studio.layout!.zones.map((z) => ({ id: z.id, kind: z.kind })));
+    expect(snapshot).toEqual({ zones: { headline: "Hello autumn", body: "Some body text" }, images: {} });
+    const bad = new FormData();
+    bad.set("image-hero", "javascript:alert(1)");
+    expect(() => snapshotFromForm(bad, [{ id: "hero", kind: "image" }])).toThrow(/https/);
+    await savePageAsActor(sutton, page3.id, snapshot);
+    await savePageAsActor(sutton, page3.id, { ...snapshot, zones: { headline: "Hello autumn again", body: "Some body text" } });
+    const saved = await readStudioPage(sutton, edition!.id, page3.id);
+    expect(saved.revisionCount).toBe(1);
+    expect(saved.layout!.zones.find((z) => z.id === "headline")!.text).toBe("Hello autumn again");
+    const result = await runPreflightAsActor(hq, page3.id);
+    expect(result.status).toBe("passed");
+    await submitPageAsActor(sutton, page3.id);
+    await expect(approvePageAsActor(sutton, page3.id)).rejects.toThrow(/permission/);
+    await returnPageAsActor(hq, page3.id, "Tighten the headline");
+    expect((await readStudioPage(sutton, edition!.id, page3.id)).page.comments).toHaveLength(1);
+    await submitPageAsActor(sutton, page3.id);
+    await approvePageAsActor(hq, page3.id);
+    expect((await readStudioPage(hq, edition!.id, page3.id)).page.status).toBe("approved");
+    await expect(readStudioPage(solihull, edition!.id, page3.id)).rejects.toThrow();
+    await expect(savePageAsActor(solihull, page3.id, snapshot)).rejects.toThrow();
 
     await expect(readFlatplan(solihull, edition!.id)).rejects.toThrow();
     await expect(assignPageAsActor(solihull, page3.id, { templateVersionId: version })).rejects.toThrow();
