@@ -29,7 +29,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { id, outputId } = await params;
   try {
-    const { url: target } = await resolveOutputDownload({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId }, id, outputId);
+    const which = url.searchParams.get("file") === "imposed" ? "imposed" : "main";
+    const { url: target } = await resolveOutputDownload({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId }, id, outputId, which);
     return new NextResponse(null, { status: 302, headers: { location: target, "cache-control": "no-store" } });
   } catch {
     // The same answer for "not yours" and "not there", so output ids cannot be probed.

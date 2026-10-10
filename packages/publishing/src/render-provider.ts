@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ImposedSheet } from "./imposition";
 
 /**
  * The seam between the Edition Factory and whatever turns HTML into a PDF. Production uses the Chromium +
@@ -18,6 +19,12 @@ export type RenderRequest = {
   pageCount: number;
   /** Lets the service de-duplicate a retried request. */
   idempotencyKey: string;
+  /** Print only: the trim size and the room from trim to sheet edge, which become the PDF's TrimBox and BleedBox. */
+  trimWidthMm?: number;
+  trimHeightMm?: number;
+  marginMm?: number;
+  /** Print only: also lay the pages out as an imposed saddle-stitch booklet. */
+  impose?: { sheets: ImposedSheet[] };
 };
 
 export type RenderReport = {
@@ -30,10 +37,13 @@ export type RenderReport = {
   fontsEmbedded: boolean;
   pageCount: number;
   bleedMm: number;
+  /** TrimBox and BleedBox are recorded on every page and match the trim size. */
+  boxes: boolean;
   warnings: string[];
 };
 
-export type RenderResult = { pdf: Uint8Array; sha256: string; report: RenderReport };
+export type RenderOutput = { pdf: Uint8Array; sha256: string; report: RenderReport };
+export type RenderResult = RenderOutput & { imposed?: RenderOutput };
 
 export type RenderProvider = {
   key: string;
@@ -53,19 +63,35 @@ export function sha256Hex(bytes: Uint8Array): string {
 
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d];
 
+function verifyPrintFile(label: string, output: RenderOutput, expectedPages: number, bleedMm: number): string[] {
+  const problems: string[] = [];
+  const head = output.pdf.slice(0, 5);
+  if (head.length < 5 || PDF_MAGIC.some((byte, index) => head[index] !== byte)) problems.push(`${label} is not a PDF.`);
+  if (output.sha256 !== sha256Hex(output.pdf)) problems.push(`${label} does not match its checksum.`);
+  if (output.report.pageCount !== expectedPages) problems.push(`${label} should have ${expectedPages} pages but has ${output.report.pageCount}.`);
+  if (!output.report.fontsEmbedded) problems.push(`${label} has fonts that are not embedded.`);
+  if (output.report.pdfx === "none") problems.push(`${label} is not PDF/X.`);
+  if (output.report.colourSpace !== "cmyk") problems.push(`${label} is not CMYK.`);
+  if (!output.report.boxes) problems.push(`${label} has no confirmed trim and bleed boxes.`);
+  if (output.report.bleedMm + 0.001 < bleedMm) problems.push(`${label} has less bleed than the template requires.`);
+  return problems;
+}
+
 /** A returned file is only accepted if it looks like a PDF and matches what the provider claims about it. */
 export function verifyRenderResult(request: RenderRequest, result: RenderResult): string[] {
+  if (request.kind === "print") {
+    const problems = verifyPrintFile("The print file", result, request.pageCount, request.bleedMm);
+    if (request.impose) {
+      if (!result.imposed) problems.push("The imposed booklet is missing.");
+      else problems.push(...verifyPrintFile("The imposed booklet", result.imposed, request.impose.sheets.length * 2, request.bleedMm));
+    }
+    return problems;
+  }
   const problems: string[] = [];
   const head = result.pdf.slice(0, 5);
   if (head.length < 5 || PDF_MAGIC.some((byte, index) => head[index] !== byte)) problems.push("The returned file is not a PDF.");
   if (result.sha256 !== sha256Hex(result.pdf)) problems.push("The returned file does not match its checksum.");
   if (result.report.pageCount !== request.pageCount) problems.push(`Expected ${request.pageCount} pages but the file has ${result.report.pageCount}.`);
-  if (request.kind === "print") {
-    if (!result.report.fontsEmbedded) problems.push("Fonts are not embedded.");
-    if (result.report.pdfx === "none") problems.push("The file is not PDF/X.");
-    if (result.report.colourSpace !== "cmyk") problems.push("The file is not CMYK.");
-    if (result.report.bleedMm + 0.001 < request.bleedMm) problems.push("Bleed is smaller than the template requires.");
-  }
   return problems;
 }
 
@@ -104,7 +130,7 @@ export function createHttpRenderProvider(input: { baseUrl: string; secret: strin
         throw new RenderProviderError(`The render service rejected the job: ${detail.slice(0, 300)}`, "rejected", false);
       }
       if (!response.ok) throw new RenderProviderError(`The render service answered HTTP ${response.status}.`, "unavailable", response.status >= 500 || response.status === 429);
-      let body: { pdfBase64?: unknown; report?: unknown };
+      let body: { pdfBase64?: unknown; report?: unknown; imposed?: { pdfBase64?: unknown; report?: unknown } };
       try {
         body = (await response.json()) as typeof body;
       } catch {
@@ -115,6 +141,13 @@ export function createHttpRenderProvider(input: { baseUrl: string; secret: strin
       }
       const pdf = new Uint8Array(Buffer.from(body.pdfBase64, "base64"));
       const result: RenderResult = { pdf, sha256: sha256Hex(pdf), report: body.report as RenderReport };
+      if (body.imposed) {
+        if (typeof body.imposed.pdfBase64 !== "string" || typeof body.imposed.report !== "object" || body.imposed.report === null) {
+          throw new RenderProviderError("The render service returned an incomplete imposed file.", "invalid_response", true);
+        }
+        const imposedPdf = new Uint8Array(Buffer.from(body.imposed.pdfBase64, "base64"));
+        result.imposed = { pdf: imposedPdf, sha256: sha256Hex(imposedPdf), report: body.imposed.report as RenderReport };
+      }
       const problems = verifyRenderResult(request, result);
       if (problems.length > 0) throw new RenderProviderError(`The render result failed verification: ${problems.join(" ")}`, "invalid_response", false);
       return result;

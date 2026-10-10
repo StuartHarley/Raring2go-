@@ -338,15 +338,46 @@ function zoneHtml(zone: RenderedZone, index: number, geometry: PageGeometry, ble
   return `<div class="zone ${zone.kind}" ${label} style="${style}">${(paragraphs.length ? paragraphs : [""]).map((text) => `<${tag}>${escapeHtml(text)}</${tag}>`).join("")}</div>`;
 }
 
+/** Room outside the bleed that holds the crop marks: they start one bleed away from the trim and run this far. */
+export const CROP_MARK_LENGTH_MM = 5;
+export const CROP_SLUG_EXTRA_MM = 1;
+
+/** Space from the trim edge to the sheet edge on a print sheet: the bleed, the crop mark and a margin. */
+export function printMarginMm(bleed: number): number {
+  return bleed + CROP_MARK_LENGTH_MM + CROP_SLUG_EXTRA_MM;
+}
+
 /**
- * Print: each sheet is the trim size plus bleed on every side, so Chromium's
- * print-to-PDF produces pages at the bleed box. Digital: trim-size pages with a text layer, alt text and tracked links.
+ * Eight hairlines, two at each corner, pointing at the trim corner. Each starts a bleed's width away from the trim, so
+ * a mark never lands inside the area that is printed and then cut away. Positions are in sheet millimetres.
+ */
+export function cropMarks(trimWidth: number, trimHeight: number, bleed: number): string {
+  const m = printMarginMm(bleed);
+  const hair = 0.1;
+  const line = (left: number, top: number, width: number, height: number) =>
+    `<i class="mark" style="left:${left}mm;top:${top}mm;width:${width}mm;height:${height}mm"></i>`;
+  const marks: string[] = [];
+  for (const [cx, dx] of [[m, -1], [m + trimWidth, 1]] as const) {
+    for (const [cy, dy] of [[m, -1], [m + trimHeight, 1]] as const) {
+      const hx = dx < 0 ? cx - bleed - CROP_MARK_LENGTH_MM : cx + bleed;
+      const vy = dy < 0 ? cy - bleed - CROP_MARK_LENGTH_MM : cy + bleed;
+      marks.push(line(hx, cy - hair / 2, CROP_MARK_LENGTH_MM, hair));
+      marks.push(line(cx - hair / 2, vy, hair, CROP_MARK_LENGTH_MM));
+    }
+  }
+  return marks.join("");
+}
+
+/**
+ * Print: each sheet is the trim size plus bleed, crop marks and a margin on every side; the trim, bleed and margin are
+ * recorded in the PDF by the render service. Digital: trim-size pages with a text layer, alt text and tracked links.
  */
 export function renderEditionHtml(model: EditionRenderModel, mode: HtmlMode): string {
   const { geometry } = model;
   const bleed = mode === "print" ? geometry.bleed : 0;
-  const sheetW = geometry.trimWidth + bleed * 2;
-  const sheetH = geometry.trimHeight + bleed * 2;
+  const margin = mode === "print" ? printMarginMm(geometry.bleed) : 0;
+  const sheetW = geometry.trimWidth + margin * 2;
+  const sheetH = geometry.trimHeight + margin * 2;
   const accent = safeColour(model.accent);
   const css = `
     @page { size: ${sheetW}mm ${sheetH}mm; margin: 0; }
@@ -355,8 +386,9 @@ export function renderEditionHtml(model: EditionRenderModel, mode: HtmlMode): st
     body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a1a1a; }
     .sheet { position: relative; width: ${sheetW}mm; height: ${sheetH}mm; overflow: hidden; page-break-after: always; break-after: page; background: #fff; }
     .sheet:last-child { page-break-after: auto; break-after: auto; }
-    .trim { position: absolute; overflow: visible; left: ${bleed}mm; top: ${bleed}mm; width: ${geometry.trimWidth}mm; height: ${geometry.trimHeight}mm; }
+    .trim { position: absolute; overflow: visible; left: ${margin}mm; top: ${margin}mm; width: ${geometry.trimWidth}mm; height: ${geometry.trimHeight}mm; }
     .zone { position: absolute; overflow: hidden; }
+    .mark { position: absolute; background: #000; display: block; }
     .zone h2 { margin: 0; font-size: 22pt; line-height: 1.1; color: ${accent}; }
     .zone p { margin: 0 0 2mm; font-size: 9.5pt; line-height: 1.35; }
     .zone.image img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -365,12 +397,13 @@ export function renderEditionHtml(model: EditionRenderModel, mode: HtmlMode): st
     .folio.left { left: ${geometry.margins.left}mm; } .folio.right { right: ${geometry.margins.right}mm; } .folio.single { left: 50%; }
     ${mode === "digital" ? "body { background: #f4f4f4; } .sheet { margin: 0 auto 8mm; }" : ""}
   `;
+  const marks = mode === "print" ? cropMarks(geometry.trimWidth, geometry.trimHeight, geometry.bleed) : "";
   const sheets = model.pages.map((page) => {
     const zones = page.zones.map((zone, index) => zoneHtml(zone, index, geometry, bleed)).join("");
     const folio = page.furniture.showPageNumber
       ? `<div class="folio ${escapeHtml(page.side)}">${page.furniture.issueDate ? `${escapeHtml(page.furniture.issueDate)} · ` : ""}${page.pageNumber}</div>`
       : "";
-    return `<section class="sheet" data-page="${page.pageNumber}" aria-label="Page ${page.pageNumber}: ${escapeHtml(page.title)}"><div class="trim">${zones}${folio}</div></section>`;
+    return `<section class="sheet" data-page="${page.pageNumber}" aria-label="Page ${page.pageNumber}: ${escapeHtml(page.title)}"><div class="trim">${zones}${folio}</div>${marks}</section>`;
   });
   return `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><title>${escapeHtml(model.title)}</title><style>${css}</style></head><body>${sheets.join("")}</body></html>`;
 }

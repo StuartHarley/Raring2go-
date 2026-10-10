@@ -89,17 +89,25 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("edition output generation (postgres)
     await db.insert(preflightResults).values([ids.page1, ids.page2].map((entityId) => ({ entityType: "edition_page", entityId, territoryEditionId: ids.edition, status: "passed" })));
     const press = {
       key: "chromium-ghostscript",
-      render: async (request: { pageCount: number; bleedMm: number }) => {
+      render: async (request: { pageCount: number; bleedMm: number; impose?: { sheets: unknown[] } }) => {
         const pdf = new TextEncoder().encode("%PDF-1.3 press");
         const { sha256Hex } = await import("@raring2go/publishing");
-        return { pdf, sha256: sha256Hex(pdf), report: { provider: "chromium-ghostscript", pressReady: true, pdfx: "PDF/X-1a:2003" as const, colourSpace: "cmyk" as const, outputIntent: "FOGRA39", fontsEmbedded: true, pageCount: request.pageCount, bleedMm: request.bleedMm, warnings: [] } };
+        const report = (pageCount: number) => ({ provider: "chromium-ghostscript", pressReady: true, pdfx: "PDF/X-1a:2003" as const, colourSpace: "cmyk" as const, outputIntent: "FOGRA39", fontsEmbedded: true, pageCount, bleedMm: request.bleedMm, boxes: true, warnings: [] as string[] });
+        const imposedPdf = new TextEncoder().encode("%PDF-1.3 imposed");
+        return {
+          pdf, sha256: sha256Hex(pdf), report: report(request.pageCount),
+          ...(request.impose ? { imposed: { pdf: imposedPdf, sha256: sha256Hex(imposedPdf), report: report(request.impose.sheets.length * 2) } } : {})
+        };
       }
     };
-    const printed = await generateEditionOutput({ territoryEditionId: ids.edition, kind: "print", actor }, { provider: press, files: files as never });
+    const printed = await generateEditionOutput({ territoryEditionId: ids.edition, kind: "print", actor }, { provider: press as never, files: files as never });
     const [row] = await db.select().from(publicationOutputs).where(eq(publicationOutputs.id, printed.outputId));
-    expect(row!.artifact).toMatchObject({ pressReady: true, pdfx: "PDF/X-1a:2003", colourSpace: "cmyk", proofOnly: false, bleedMm: 3 });
+    expect(row!.artifact).toMatchObject({ pressReady: true, pdfx: "PDF/X-1a:2003", colourSpace: "cmyk", proofOnly: false, bleedMm: 3, boxes: true });
+    expect(row!.artifact.imposed).toMatchObject({ pressReady: true, sheets: 1 });
+    expect(typeof (row!.artifact.imposed as { fileId?: unknown }).fileId).toBe("string");
+    expect(await db.select().from(fileReferences).where(eq(fileReferences.id, String((row!.artifact.imposed as { fileId: string }).fileId)))).toHaveLength(1);
 
-    const bad = { ...press, render: async (request: { pageCount: number; bleedMm: number }) => ({ ...(await press.render(request)), report: { provider: "x", pressReady: false, pdfx: "none" as const, colourSpace: "rgb" as const, outputIntent: null, fontsEmbedded: true, pageCount: request.pageCount, bleedMm: request.bleedMm, warnings: [] } }) };
+    const bad = { ...press, render: async (request: { pageCount: number; bleedMm: number; impose?: { sheets: unknown[] } }) => { const ok = await press.render(request); return { ...ok, report: { ...ok.report, pressReady: false, pdfx: "none" as const, colourSpace: "rgb" as const, boxes: false } }; } };
     await db.update(publicationOutputs).set({ deletedAt: new Date() }).where(eq(publicationOutputs.id, printed.outputId));
     await expect(generateEditionOutput({ territoryEditionId: ids.edition, kind: "print", actor }, { provider: bad, files: files as never })).rejects.toThrow(/not PDF\/X/);
   });

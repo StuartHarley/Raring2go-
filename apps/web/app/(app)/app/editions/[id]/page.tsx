@@ -228,6 +228,7 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
                   <strong>{output.outputType} v{output.version}{proofOnly ? " - proof only, not press-ready" : ""}</strong>
                   <span>{output.status} - generated {output.generatedAt ?? "date not set"}{typeof output.artifact.pageCount === "number" ? ` - ${output.artifact.pageCount} pages` : ""}</span>
                   {hasFile ? <a href={`/app/editions/${id}/outputs/${output.id}${query.size ? `?${query.toString()}` : ""}`}>Download PDF</a> : null}
+                  {typeof (output.artifact.imposed as { fileId?: unknown } | undefined)?.fileId === "string" ? <a href={`/app/editions/${id}/outputs/${output.id}?${new URLSearchParams([...query.entries(), ["file", "imposed"]]).toString()}`}>Download imposed booklet (press sheets)</a> : null}
                 </div>
               );
             })

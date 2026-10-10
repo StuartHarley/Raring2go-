@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { RenderRejected, renderPdf, validateRequest } from "./pipeline.js";
-import type { PipelineConfig, RenderReport, RenderRequest, Runner } from "./pipeline.js";
+import type { PipelineConfig, RenderOutput, RenderRequest, Runner } from "./pipeline.js";
 
 export const spawnRunner: Runner = (command, args, { timeoutMs }) =>
   new Promise((resolve, reject) => {
@@ -47,7 +47,8 @@ export function createRenderServer(input: { secret: string; config: PipelineConf
   const run = input.run ?? spawnRunner;
   const limit = input.maxConcurrent ?? 1;
   let active = 0;
-  const done = new Map<string, { pdfBase64: string; report: RenderReport }>();
+  type Payload = { pdfBase64: string; report: RenderOutput["report"]; imposed?: { pdfBase64: string; report: RenderOutput["report"] } };
+  const done = new Map<string, Payload>();
   return createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true });
     if (request.method !== "POST" || request.url !== "/render") return send(response, 404, { error: "not_found" });
@@ -60,7 +61,11 @@ export function createRenderServer(input: { secret: string; config: PipelineConf
       const cached = done.get(body.idempotencyKey);
       if (cached) return send(response, 200, cached);
       const result = await renderPdf(body, input.config, run);
-      const payload = { pdfBase64: Buffer.from(result.pdf).toString("base64"), report: result.report };
+      const payload: Payload = {
+        pdfBase64: Buffer.from(result.pdf).toString("base64"),
+        report: result.report,
+        ...(result.imposed ? { imposed: { pdfBase64: Buffer.from(result.imposed.pdf).toString("base64"), report: result.imposed.report } } : {})
+      };
       done.set(body.idempotencyKey, payload);
       if (done.size > 4) done.delete(done.keys().next().value as string);
       send(response, 200, payload);

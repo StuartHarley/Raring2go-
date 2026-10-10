@@ -10,7 +10,9 @@ import {
   loadPublishingData,
   persistEditionChanges,
   prepareEditionOutput,
+  printMarginMm,
   renderEditionHtml,
+  saddleStitchSheets,
   RenderProviderError,
   sha256Hex,
   snapshotPublishingData,
@@ -70,6 +72,7 @@ export function createDevelopmentRenderProvider(): RenderProvider {
         fontsEmbedded: true,
         pageCount: sheets.length,
         bleedMm: request.bleedMm,
+        boxes: false,
         warnings: ["Development stand-in: layout is not rendered and the file is not press-ready."]
       };
       return { pdf, sha256: sha256Hex(pdf), report };
@@ -125,14 +128,18 @@ export async function generateEditionOutput(payload: GenerateOutputPayload, deps
     if (existing) return { outputId: existing.id, reused: true };
 
     const bleedMm = payload.kind === "print" ? model.geometry.bleed : 0;
+    const marginMm = payload.kind === "print" ? printMarginMm(model.geometry.bleed) : 0;
     const request: RenderRequest = {
       kind: payload.kind,
       html,
-      sheetWidthMm: model.geometry.trimWidth + bleedMm * 2,
-      sheetHeightMm: model.geometry.trimHeight + bleedMm * 2,
+      sheetWidthMm: model.geometry.trimWidth + marginMm * 2,
+      sheetHeightMm: model.geometry.trimHeight + marginMm * 2,
       bleedMm,
       pageCount: model.pages.length,
-      idempotencyKey: key
+      idempotencyKey: key,
+      ...(payload.kind === "print"
+        ? { trimWidthMm: model.geometry.trimWidth, trimHeightMm: model.geometry.trimHeight, marginMm, impose: { sheets: saddleStitchSheets(model.pages.length) } }
+        : {})
     };
     let result;
     try {
@@ -152,21 +159,26 @@ export async function generateEditionOutput(payload: GenerateOutputPayload, deps
       throw new PermanentJobError("The stand-in produced the wrong number of pages.", "render_unverified");
     }
 
-    const fileId = randomUUID();
-    const reference = await completeFileUpload(
-      payload.actor,
-      permissions,
-      deps.files ?? { storage: createStorageProviderFromEnv(), scanner: createScannerProviderFromEnv() },
-      {
-        id: fileId,
-        storageKey: `editions/${edition.territoryId}/${edition.id}/${payload.kind}-${fileId}.pdf`,
-        fileName: `${edition.title.replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 60)}-${payload.kind}.pdf`,
-        contentType: "application/pdf",
-        bytes: result.pdf,
-        accessScope: payload.actor.territoryId ? "territory" : "organisation"
-      }
-    );
-    await insertFileReferenceRecord(db, reference);
+    const storeFile = async (bytes: Uint8Array, label: string) => {
+      const fileId = randomUUID();
+      const reference = await completeFileUpload(
+        payload.actor,
+        permissions,
+        deps.files ?? { storage: createStorageProviderFromEnv(), scanner: createScannerProviderFromEnv() },
+        {
+          id: fileId,
+          storageKey: `editions/${edition.territoryId}/${edition.id}/${label}-${fileId}.pdf`,
+          fileName: `${edition.title.replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 60)}-${label}.pdf`,
+          contentType: "application/pdf",
+          bytes,
+          accessScope: payload.actor.territoryId ? "territory" : "organisation"
+        }
+      );
+      await insertFileReferenceRecord(db, reference);
+      return reference;
+    };
+    const reference = await storeFile(result.pdf, payload.kind);
+    const imposedReference = result.imposed ? await storeFile(result.imposed.pdf, "imposed") : null;
 
     const artifact = {
       fileId: reference.id,
@@ -179,8 +191,22 @@ export async function generateEditionOutput(payload: GenerateOutputPayload, deps
       colourSpace: result.report.colourSpace,
       outputIntent: result.report.outputIntent,
       bleedMm: result.report.bleedMm,
+      boxes: result.report.boxes,
       warnings: result.report.warnings,
-      ...(payload.kind === "print" ? { proofOnly: !result.report.pressReady } : {})
+      ...(payload.kind === "print" ? { proofOnly: !result.report.pressReady } : {}),
+      ...(result.imposed && imposedReference
+        ? {
+            imposed: {
+              fileId: imposedReference.id,
+              sha256: result.imposed.sha256,
+              bytes: result.imposed.pdf.byteLength,
+              sheets: result.imposed.report.pageCount / 2,
+              pressReady: result.imposed.report.pressReady,
+              pdfx: result.imposed.report.pdfx,
+              warnings: result.imposed.report.warnings
+            }
+          }
+        : {})
     };
 
     return await db.transaction(async (tx) => {
@@ -244,10 +270,11 @@ export async function queueEditionOutput(payload: GenerateOutputPayload) {
  * A short-lived download address for an output's PDF. Access is decided by the edition (the actor must be able to see
  * it, which proves territory scope) and the file must be the one that edition's output recorded and be scanned clean.
  */
-export async function resolveOutputDownload(actor: PublishingActorContext, territoryEditionId: string, outputId: string) {
+export async function resolveOutputDownload(actor: PublishingActorContext, territoryEditionId: string, outputId: string, which: "main" | "imposed" = "main") {
   const { outputs } = await readTerritoryEdition(actor, territoryEditionId);
   const output = outputs.find((candidate) => candidate.id === outputId);
-  const fileId = output && typeof output.artifact.fileId === "string" ? output.artifact.fileId : null;
+  const source = which === "imposed" ? (output?.artifact.imposed as { fileId?: unknown } | undefined) : output?.artifact;
+  const fileId = source && typeof source.fileId === "string" ? source.fileId : null;
   if (!output || !fileId) throw new Error("That output has no file to download.");
   const { db, sql } = createDb();
   try {
