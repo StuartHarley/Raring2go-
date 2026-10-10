@@ -97,6 +97,7 @@ export const auditActions = {
   advertiserOpportunityStageChange: "advertiser.opportunity.stage.change",
   advertiserPricingChange: "advertiser.pricing.change",
   advertiserInventoryReserve: "advertiser.inventory.reserve",
+  advertiserInventoryManage: "advertiser.inventory.manage",
   advertiserProposalCreate: "advertiser.proposal.create",
   advertiserProposalAccept: "advertiser.proposal.accept",
   advertiserProposalReject: "advertiser.proposal.reject",

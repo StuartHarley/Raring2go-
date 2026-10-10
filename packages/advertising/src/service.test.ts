@@ -41,7 +41,9 @@ import {
   reserveInventorySlot,
   respondToProposal,
   updateArtworkStatus,
-  updateAdvertiser
+  updateAdvertiser,
+  createEditionInventorySlots,
+  retireInventorySlot
 } from "./service";
 import type { AdvertisingData, CampaignFulfilment } from "./types";
 import type { PermissionData } from "@raring2go/permissions";
@@ -110,6 +112,8 @@ const permissions: PermissionData = {
     grant(ids.roles.hq, "advertiser.opportunity", "edit", "network"),
     grant(ids.roles.hq, "advertiser.catalogue", "view", "network"),
     grant(ids.roles.hq, "advertiser.pricing", "manage", "network"),
+    grant(ids.roles.hq, "advertiser.inventory", "manage", "network"),
+    grant(ids.roles.local, "advertiser.inventory", "manage", "own_territory"),
     grant(ids.roles.hq, "advertiser.inventory", "reserve", "network"),
     grant(ids.roles.hq, "advertiser.proposal", "view", "network"),
     grant(ids.roles.hq, "advertiser.proposal", "create", "network"),
@@ -1804,6 +1808,70 @@ function advertiser() {
     tags: ["family-days-out"],
     commercialMetadata: {}
   };
+}
+
+describe("edition inventory slots", () => {
+  const product = () => ({ id: "prod_full", key: "full-page-ad", name: "Full page", channel: "magazine", status: "active", requiresInventory: true, requiresArtwork: true, taxCode: "standard_vat", metadata: { inventoryClass: "full_page" } });
+  const edition = (over: Partial<import("./service").EditionInventoryTarget> = {}) => ({
+    id: "ed1", territoryId: ids.territories.own, status: "localising",
+    pages: [
+      { id: "aaaaaaaa-1", pageNumber: 1, locked: true, ownerType: "hq", hasContent: false },
+      { id: "bbbbbbbb-2", pageNumber: 2, locked: false, ownerType: "hq", hasContent: false },
+      { id: "cccccccc-3", pageNumber: 3, locked: false, ownerType: "local", hasContent: false },
+      { id: "dddddddd-4", pageNumber: 4, locked: false, ownerType: "local", hasContent: true },
+      { id: "eeeeeeee-5", pageNumber: 5, locked: false, ownerType: "local", hasContent: false }
+    ],
+    ...over
+  });
+  const withProduct = () => { const data = emptyData(); data.products.push(product() as never); return data; };
+
+  it("creates slots on chosen pages once, restores a retired one, and audits", async () => {
+    const data = withProduct();
+    const rec = audit();
+    expect(await createEditionInventorySlots(localContext(), permissions, rec, data, { edition: edition(), productId: "prod_full", pageIds: ["cccccccc-3", "eeeeeeee-5"] })).toEqual({ created: 2, restored: 0, skipped: 0 });
+    expect(data.inventorySlots).toHaveLength(2);
+    expect(data.inventorySlots[0]).toMatchObject({ territoryEditionId: "ed1", editionPageId: "cccccccc-3", status: "available", inventoryClass: "full_page", exclusive: true });
+    expect(await createEditionInventorySlots(localContext(), permissions, rec, data, { edition: edition(), productId: "prod_full", pageIds: ["cccccccc-3"] })).toEqual({ created: 0, restored: 0, skipped: 1 });
+    await retireInventorySlot(localContext(), permissions, rec, data, data.inventorySlots[0]!.id);
+    expect(data.inventorySlots[0]!.deletedAt).toBeInstanceOf(Date);
+    expect(await createEditionInventorySlots(localContext(), permissions, rec, data, { edition: edition(), productId: "prod_full", pageIds: ["cccccccc-3"] })).toEqual({ created: 0, restored: 1, skipped: 0 });
+    expect(data.inventorySlots).toHaveLength(2);
+    expect(data.inventorySlots[0]!.deletedAt).toBeNull();
+    expect(rec.events.every((event) => event.action === auditActions.advertiserInventoryManage)).toBe(true);
+  });
+
+  it("refuses locked, HQ-owned (for a territory), editorial and wrong-kind pages, bad products and published editions", async () => {
+    const data = withProduct();
+    const create = (pageIds: string[], over = {}, productId = "prod_full", context: ReturnType<typeof localContext> | ReturnType<typeof hqContext> = localContext()) =>
+      createEditionInventorySlots(context, permissions, audit(), data, { edition: edition(over), productId, pageIds });
+    await expect(create(["aaaaaaaa-1"])).rejects.toThrow(/locked/);
+    await expect(create(["bbbbbbbb-2"])).rejects.toThrow(/belongs to HQ/);
+    await expect(create(["dddddddd-4"])).rejects.toThrow(/editorial content/);
+    await expect(create(["nope"])).rejects.toThrow(/not in this edition/);
+    await expect(create([])).rejects.toThrow(/at least one/);
+    await expect(create(["cccccccc-3"], { status: "published" })).rejects.toThrow(/published/);
+    await expect(create(["cccccccc-3"], {}, "missing")).rejects.toThrow(/does not sell/);
+    data.products[0]!.requiresInventory = false;
+    await expect(create(["cccccccc-3"])).rejects.toThrow(/does not sell/);
+    data.products[0]!.requiresInventory = true;
+    expect(await create(["bbbbbbbb-2"], {}, "prod_full", hqContext())).toMatchObject({ created: 1 });
+    data.inventorySlots.push({ ...data.inventorySlots[0]!, id: "other", editionPageId: "eeeeeeee-5", slotKey: "half-x", inventoryClass: "half_page" });
+    await expect(create(["eeeeeeee-5"])).rejects.toThrow(/different kind/);
+  });
+
+  it("keeps other territories out and will not retire a sold slot", async () => {
+    const data = withProduct();
+    await expect(createEditionInventorySlots(localContext(), permissions, audit(), data, { edition: edition({ territoryId: ids.territories.other }), productId: "prod_full", pageIds: ["cccccccc-3"] })).rejects.toThrow(/outside/);
+    await createEditionInventorySlots(hqContext(), permissions, audit(), data, { edition: edition(), productId: "prod_full", pageIds: ["cccccccc-3"] });
+    const slot = data.inventorySlots[0]!;
+    await expect(retireInventorySlot(otherLocal(), permissions, audit(), data, slot.id)).rejects.toThrow(/outside|permission/);
+    slot.status = "reserved";
+    await expect(retireInventorySlot(hqContext(), permissions, audit(), data, slot.id)).rejects.toThrow(/unsold/);
+  });
+});
+
+function otherLocal() {
+  return { ...localContext(), territoryId: ids.territories.other };
 }
 
 function grant(roleId: string, module: string, action: string, scope: string) {

@@ -8,6 +8,7 @@ One `territory_edition` is the single record behind a territory's print and digi
 | Season and master | `/app/editions/seasons` | HQ (`edition create/approve`) | Page count multiple of 4, real dates in deadline order; master must be approved before generating. |
 | Territory editions | same | HQ | One edition per territory per season; generation is repeatable and skips existing ones. |
 | Flatplan | `/app/editions/[id]/flatplan` | HQ, franchise (`edition.page edit`) | Territory scope on every change; only published templates; locked pages (cover) cannot be moved or changed locally; frozen once approved. |
+| Advertiser slots | flatplan, "Advertiser slots" | HQ, franchise (`advertiser.inventory manage`) | Slots are created on chosen pages of a magazine product that sells page inventory; locked, HQ-owned (for a territory), editorial and mixed-kind pages are refused; tied to the page id so a reorder moves the slot with the page; repeat runs change nothing; only an unsold slot can be taken off sale; editorial content cannot be added to a page that is on sale. |
 | Page studio | `/app/editions/[id]/pages/[pageId]` | HQ, franchise (`edition.content edit_local`) | Autosave, layout warnings block submission, one revision per editing run. |
 | Page review | same | HQ (`edition approve`) | Approve, or return with a comment. |
 | Preflight | same | HQ (`edition.preflight override`) | Derived from the layout; unverifiable image resolution fails; safe fixes make a derived result only. |
@@ -26,7 +27,8 @@ One `territory_edition` is the single record behind a territory's print and digi
 7. Submit the edition, approve it, generate the digital output, publish; confirm the public magazine page lists it.
 8. Generate the print output with the real render service (see `EDITION_RENDERING.md`, "Not yet verified") and check the PDF in Acrobat Pro or pdfToolbox.
 9. In the Control Room, tick several editions and run a bulk action; confirm the ready ones moved and the rest were skipped.
-10. As a franchisee in another territory, confirm none of the above can be reached by pasting an edition or page id.
+10. On the flatplan, put two pages on sale, then open the advertiser catalogue and confirm the slots are bookable; try adding editorial content to a booked page and confirm it is refused.
+11. As a franchisee in another territory, confirm none of the above can be reached by pasting an edition or page id.
 
 ## Known limits
 

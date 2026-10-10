@@ -10,6 +10,7 @@ export const advertisingCapabilities = {
   catalogueView: { module: "advertiser.catalogue", action: "view" },
   pricingManage: { module: "advertiser.pricing", action: "manage" },
   inventoryReserve: { module: "advertiser.inventory", action: "reserve" },
+  inventoryManage: { module: "advertiser.inventory", action: "manage" },
   proposalView: { module: "advertiser.proposal", action: "view" },
   proposalCreate: { module: "advertiser.proposal", action: "create" },
   proposalSend: { module: "advertiser.proposal", action: "send" },

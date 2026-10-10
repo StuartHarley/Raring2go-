@@ -22,7 +22,7 @@ As of 10 October 2026, from the repository (`main`), `docs/BUILD_SPEC.md`, `docs
 | Foundation: monorepo, design system, DB, audit, CI, jobs | Built | Audit is append-only in the database; durable job runtime with dead letters; per-request CSP; smoke test in CI. |
 | Identity and editable RBAC, role-aware shells | Built | Permissions are data; server-side denial tested role by role; Franchise Staff delegation. Territory linkage not yet proven by a UI journey. |
 | Franchise: 360, agreements, e-sign, documents, compliance, onboarding | Built; e-sign live run pending | SignWell sending and confirmed callbacks; documents with real storage and scanning. |
-| Advertiser CRM, proposals, billing, portal | Built; payments live run pending | Stripe (default), GoCardless, bank transfer; Xero hand-off; proposal e-sign via SignWell. Opportunity scoring and tasks not built. Inventory slots are not yet created from Edition Factory. |
+| Advertiser CRM, proposals, billing, portal | Built; payments live run pending | Stripe (default), GoCardless, bank transfer; Xero hand-off; proposal e-sign via SignWell. Opportunity scoring and tasks not built. Slots are now created from the Edition Factory flatplan. |
 | **Edition Factory** | **Built (this week)**; print not yet run on real tooling | Template library, seasons and masters, territory edition generation, lifecycle (submit, approve, publish), flatplan editor, page studio with autosave, page preflight, print (Chromium + Ghostscript PDF/X-1a) and digital output as durable jobs, Control Room with filters and bulk actions. See `EDITION_FACTORY.md` and `EDITION_RENDERING.md`. |
 | Audience, native email, newsletters | Built; email live run pending | Postmark adapter and webhook; consent, suppression, newsletter factory. |
 | Social | Partial | Facebook pages live in code (queue, approve, schedule, retry, crash handling). Instagram and LinkedIn have no adapter and fail closed. |
@@ -54,6 +54,6 @@ Gaps inside it, stated plainly:
 
 1. Fix what UAT finds in the Edition Factory screens.
 2. Imposition and crop marks for the print engine; upload-library images in the studio.
-3. Opportunity scoring and tasks (ADV-002); create inventory slots from Edition Factory (ADV-003).
+3. Opportunity scoring and tasks (ADV-002).
 4. Instagram and LinkedIn adapters; remaining journeys; click and conversion events; HQ-editable homepage template.
 5. Data rehearsal tooling for franchise, advertiser and publishing imports (UAT-003).

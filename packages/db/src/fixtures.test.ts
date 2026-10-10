@@ -101,6 +101,7 @@ describe("foundation fixtures", () => {
       "marketing.consent",
       "marketing.segment",
       "marketing.segment",
+      "advertiser.inventory",
       "advertiser.tax_rate",
       "advertiser.proposal",
       "advertiser.payment",
