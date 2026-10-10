@@ -1,3 +1,4 @@
+import { assertJourneyContentTokens } from "./journey-content";
 import { validateJourneyConditions, validateJourneySteps, validateJourneyTrigger } from "./journey-validation";
 import type { JourneyCondition, JourneyStep, JourneyTrigger } from "./types";
 
@@ -6,12 +7,13 @@ import type { JourneyCondition, JourneyStep, JourneyTrigger } from "./types";
  * copy, timing and cap. A template is only ever a starting draft: it is created through the normal
  * journey flow and still has to be approved and activated before anyone is emailed.
  *
- * Only journeys whose trigger can actually fire are defined. Local event digest, competition follow-up,
- * sponsored campaigns and school-holiday countdowns need triggers (competition entries, a holiday
- * calendar, advertiser campaign events) that do not exist yet, so they are not faked here.
+ * Only journeys whose trigger can actually fire are defined. The school-holiday countdown runs from the HQ
+ * holiday calendar and the weekly local digest from approved public events. Competition follow-up and
+ * sponsored campaigns need triggers (competition entries, advertiser campaign events) that do not exist
+ * yet, so they are not faked here.
  */
 export type JourneyTemplate = {
-  key: "welcome" | "re_engagement" | "digital_magazine";
+  key: "welcome" | "re_engagement" | "digital_magazine" | "school_holiday_countdown" | "weekly_digest";
   name: string;
   description: string;
   frequencyCap: { maxPerContact: number; window: "lifetime" | "24h" | "7d" | "30d" };
@@ -80,6 +82,47 @@ export const journeyTemplates: JourneyTemplate[] = [
         email: { subject: "Your new Raring2go magazine is out", blocks: [text("mag-1", "<p>The latest digital magazine for your area has just been published. Read it online from your area page.</p>")] }
       }
     ]
+  },
+  {
+    key: "school_holiday_countdown",
+    name: "School holiday countdown",
+    description: "One email a set number of days before each school holiday in the HQ calendar, naming the holiday and its dates. Run a second copy with fewer days for a last reminder.",
+    frequencyCap: { maxPerContact: 1, window: "30d" },
+    trigger: { type: "school_holiday_approaching", daysBefore: 14 },
+    conditions: [],
+    steps: [
+      {
+        key: "holiday-countdown",
+        actionType: "send_email",
+        delayMinutes: 0,
+        email: {
+          subject: "[[holiday_name]] starts in [[days_until]] days",
+          blocks: [
+            { id: "hol-1", type: "heading", text: "[[holiday_name]] is nearly here", level: 1 },
+            text("hol-2", "<p>The school holidays start on [[holiday_starts]] and run to [[holiday_ends]]. That is about [[days_until]] days away.</p><p>See what is on and find ideas for [[area_name]] from your area page.</p>")
+          ]
+        }
+      }
+    ]
+  },
+  {
+    key: "weekly_digest",
+    name: "Weekly local events digest",
+    description: "Once a week, on the chosen weekday, the next local events for subscribers of an area. Nothing is sent for an area with no events coming up.",
+    frequencyCap: { maxPerContact: 1, window: "7d" },
+    trigger: { type: "weekly_digest", weekday: 5 },
+    conditions: [],
+    steps: [
+      {
+        key: "weekly-digest",
+        actionType: "send_email",
+        delayMinutes: 0,
+        email: {
+          subject: "What is on near you in [[area_name]]",
+          blocks: [text("dig-1", "<p>Here is what is coming up near you:</p>"), text("dig-2", "[[local_events|html]]"), text("dig-3", "<p>You can change what you hear about, or stop emails, at any time from your preferences.</p>")]
+        }
+      }
+    ]
   }
 ];
 
@@ -89,9 +132,8 @@ export function findJourneyTemplate(key: string) {
 
 /** Runs a template through the same validators untrusted journey JSON goes through. Used by tests so a template can never drift invalid. */
 export function validateJourneyTemplate(template: JourneyTemplate) {
-  return {
-    trigger: validateJourneyTrigger(template.trigger),
-    conditions: validateJourneyConditions(template.conditions),
-    steps: validateJourneySteps(template.steps)
-  };
+  const trigger = validateJourneyTrigger(template.trigger);
+  const steps = validateJourneySteps(template.steps);
+  assertJourneyContentTokens(trigger, steps);
+  return { trigger, conditions: validateJourneyConditions(template.conditions), steps };
 }

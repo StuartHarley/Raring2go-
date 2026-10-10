@@ -2593,6 +2593,20 @@ describe("journey frequency caps and entry conditions", () => {
     expect(decide(withSends({ newsletterSends: [24 * 3] }))).toEqual({ allowed: true });
   });
 
+  it("does not hold a school-holiday countdown back from a parent who asked for school-holiday email only, but still holds back other journeys", () => {
+    const data = withSends({ newsletterSends: [24 * 3], frequency: "school_holidays_only" });
+    const forTrigger = (trigger?: "school_holiday_approaching" | "weekly_digest") => evaluateSendFrequency(data, { contactId: ids.contact, journey: data.journeys[0]!, step: step(false), at, trigger });
+    expect(forTrigger("school_holiday_approaching")).toEqual({ allowed: true });
+    expect(forTrigger("weekly_digest")).toMatchObject({ allowed: false, reason: "preference_gap" });
+    expect(forTrigger()).toMatchObject({ allowed: false, reason: "preference_gap" });
+    // Someone who wants weekly email still gets the countdown held back by their gap: only school-holiday-only parents are exempt.
+    const weekly = withSends({ newsletterSends: [24 * 3], frequency: "weekly" });
+    expect(evaluateSendFrequency(weekly, { contactId: ids.contact, journey: weekly.journeys[0]!, step: step(false), at, trigger: "school_holiday_approaching" })).toMatchObject({ reason: "preference_gap" });
+    // The journey's own cap always applies.
+    const capped = withSends({ journeySends: [1, 2], frequency: "school_holidays_only" });
+    expect(evaluateSendFrequency(capped, { contactId: ids.contact, journey: capped.journeys[0]!, step: step(false), at, trigger: "school_holiday_approaching" })).toMatchObject({ reason: "journey_cap" });
+  });
+
   it("a transactional step still respects the journey cap", () => {
     expect(decide(withSends({ journeySends: [1, 2] }), true)).toMatchObject({ allowed: false, reason: "journey_cap" });
   });

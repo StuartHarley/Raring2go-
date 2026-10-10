@@ -3,6 +3,8 @@ import { auditActions } from "@raring2go/audit";
 import { requirePermission, type PermissionData } from "@raring2go/permissions";
 import type { Block } from "./blocks";
 import { normalizeContentSnapshot } from "./content-snapshot";
+import { JourneyContentUnavailableError, fillJourneyContent, stepUsesContentTokens } from "./journey-content";
+import type { JourneyEntryContent } from "./journey-content";
 import { marketingCapabilities, type MarketingCapability } from "./permissions";
 import { evaluateSegmentRules, normalizeSegmentDefinition, validateSegmentDefinition } from "./segment-rules";
 import type {
@@ -1890,6 +1892,8 @@ export async function enterJourneyFromEvent(
     sourceEventId?: string | null;
     enteredAt: string;
     idempotencyKey: string;
+    /** What this person's emails say (a holiday's name and dates, this week's events), filled into the steps' [[tokens]]. */
+    content?: JourneyEntryContent;
   }
 ) {
   requireMarketingPermission(context, permissions, "journeyExecute");
@@ -1927,7 +1931,7 @@ export async function enterJourneyFromEvent(
     exitedAt: null,
     exitReason: null,
     idempotencyKey: input.idempotencyKey,
-    metadata: {}
+    metadata: input.content ? { content: input.content } : {}
   };
   const execution: MarketingJourneyExecution = {
     id: crypto.randomUUID(),
@@ -1996,18 +2000,31 @@ export async function executeJourneyStep(
   }
 
   const journey = requireJourney(data, execution.journeyId);
-  const decision = evaluateSendFrequency(data, { contactId: entry.contactId, journey, step, at: new Date(completedAt) });
-  const output: Record<string, unknown> = decision.allowed ? await sendJourneyStepEmail(context, permissions, audit, data, entry, version, step) : { skipped: true, reason: decision.reason, detail: decision.detail };
+  const decision = evaluateSendFrequency(data, { contactId: entry.contactId, journey, step, at: new Date(completedAt), trigger: version.trigger.type });
+  let sent = decision.allowed;
+  let output: Record<string, unknown> = decision.allowed ? {} : { skipped: true, reason: decision.reason, detail: decision.detail };
+  let skipReason = decision.allowed ? "" : decision.reason;
+  if (decision.allowed) {
+    try {
+      output = await sendJourneyStepEmail(context, permissions, audit, data, entry, version, step);
+    } catch (error) {
+      // Nothing to say this time (no events this week, a missing value): skip the step and carry on, never email a blank.
+      if (!(error instanceof JourneyContentUnavailableError)) throw error;
+      sent = false;
+      skipReason = "content_unavailable";
+      output = { skipped: true, reason: "content_unavailable", detail: "The content this step needs was not available." };
+    }
+  }
 
   data.journeyStepExecutions.push({
     id: crypto.randomUUID(),
     executionId: execution.id,
     stepKey,
     actionType: step.actionType,
-    status: decision.allowed ? "completed" : "skipped",
+    status: sent ? "completed" : "skipped",
     scheduledFor: null,
     completedAt,
-    failureReason: decision.allowed ? null : decision.reason,
+    failureReason: sent ? null : skipReason,
     output,
     idempotencyKey: stepIdempotencyKey
   });
@@ -2030,7 +2047,7 @@ export async function executeJourneyStep(
     stepKey,
     actionType: step.actionType,
     hasNextStep: Boolean(nextStep),
-    ...(decision.allowed ? {} : { skipped: true, reason: decision.reason })
+    ...(sent ? {} : { skipped: true, reason: skipReason })
   }, entry.territoryId));
 
   return execution;
@@ -2054,8 +2071,14 @@ async function sendJourneyStepEmail(
   version: MarketingJourneyVersion,
   step: JourneyStepSendEmail
 ): Promise<Record<string, unknown>> {
-  const campaignId = deterministicJourneyId("journey-step-campaign", version.id, step.key);
-  const campaignVersionId = deterministicJourneyId("journey-step-campaign-version", version.id, step.key);
+  // A journey whose message depends on what is happening shares one campaign per variant (this holiday, this week's
+  // events in this area), not one per journey, so two different holidays never share wording.
+  const content = (entry.metadata.content ?? undefined) as JourneyEntryContent | undefined;
+  const variantKey = content?.variantKey ?? "";
+  if (!content && stepUsesContentTokens(step)) throw new JourneyContentUnavailableError();
+  const filled = content ? fillJourneyContent(step.email, content) : step.email;
+  const campaignId = variantKey ? deterministicJourneyId("journey-step-campaign", version.id, step.key, variantKey) : deterministicJourneyId("journey-step-campaign", version.id, step.key);
+  const campaignVersionId = variantKey ? deterministicJourneyId("journey-step-campaign-version", version.id, step.key, variantKey) : deterministicJourneyId("journey-step-campaign-version", version.id, step.key);
 
   let campaign = data.emailCampaigns.find((candidate) => candidate.id === campaignId);
   if (!campaign) {
@@ -2066,24 +2089,24 @@ async function sendJourneyStepEmail(
       segmentId: null,
       campaignType: "journey",
       status: "draft",
-      title: `Journey step: ${step.key}`,
-      subject: step.email.subject,
+      title: `Journey step: ${step.key}${variantKey ? ` (${variantKey})` : ""}`,
+      subject: filled.subject,
       preheader: null,
       sendProvider: "postmark",
       sendConnectionId: null,
       scheduledAt: null,
       approvedAt: null,
       sentAt: null,
-      metadata: { journeyVersionId: version.id, journeyStepKey: step.key }
+      metadata: { journeyVersionId: version.id, journeyStepKey: step.key, ...(variantKey ? { journeyVariantKey: variantKey } : {}) }
     };
     const campaignVersion: EmailCampaignVersion = {
       id: campaignVersionId,
       campaignId,
       versionNumber: 1,
       status: "draft",
-      subject: step.email.subject,
+      subject: filled.subject,
       preheader: null,
-      contentSnapshot: { version: 1, blocks: step.email.blocks },
+      contentSnapshot: { version: 1, blocks: filled.blocks },
       variantKey: null,
       // Not context.userId: the journey worker's actor id is a synthetic
       // system identity, never a real row in the users table, and this
@@ -2183,7 +2206,7 @@ export type SendFrequencyDecision =
  */
 export function evaluateSendFrequency(
   data: MarketingData,
-  input: { contactId: string; journey: MarketingJourney; step: JourneyStepSendEmail; at: Date }
+  input: { contactId: string; journey: MarketingJourney; step: JourneyStepSendEmail; at: Date; trigger?: JourneyTrigger["type"] }
 ): SendFrequencyDecision {
   const sends = data.emailRecipientSnapshots
     .filter((snapshot) => snapshot.recipients.some((recipient) => recipient.contactId === input.contactId))
@@ -2204,7 +2227,9 @@ export function evaluateSendFrequency(
 
   if (!input.step.transactional) {
     const profile = data.preferenceProfiles.find((candidate) => candidate.contactId === input.contactId && !candidate.deletedAt);
-    const gapDays = profile ? preferenceGapDays[profile.newsletterFrequency] : undefined;
+    // A parent who asked for school-holiday emails only is exactly who a school-holiday countdown is for, so the gap does not hold it back.
+    const wantsThis = profile?.newsletterFrequency === "school_holidays_only" && input.trigger === "school_holiday_approaching";
+    const gapDays = profile && !wantsThis ? preferenceGapDays[profile.newsletterFrequency] : undefined;
     if (gapDays) {
       const latest = sends.reduce((max, send) => Math.max(max, send.at), Number.NEGATIVE_INFINITY);
       if (latest > input.at.getTime() - gapDays * 86_400_000) {

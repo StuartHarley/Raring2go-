@@ -5,10 +5,12 @@ import { hasMarketingCapability, listNetworkTerritories, readJourneyOverview } f
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { JourneyBuilderFields } from "./JourneyBuilderFields";
-import { activateJourneyAction, createJourneyAction, pauseJourneyAction } from "./actions";
+import { journeyTemplates } from "@raring2go/marketing";
+import { activateJourneyAction, createJourneyAction, createJourneyFromTemplateAction, pauseJourneyAction } from "./actions";
 import { StatusBadge } from "../../../../lib/workflow-ui";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { getPermissionData } from "../../../../lib/permission-source";
+import { evaluatePermission } from "@raring2go/permissions";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -22,7 +24,7 @@ export default async function JourneysPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, overview, territoryOptions, canCreate, canActivate, canPause } = result;
+  const { context, overview, territoryOptions, canCreate, canActivate, canPause, canHolidays } = result;
 
   return (
     <AppShell request={request}>
@@ -33,6 +35,7 @@ export default async function JourneysPage({ searchParams }: PageProps) {
           Consent-aware automated journeys for parents and local audiences,
           with approved versions, execution state and failure visibility.
         </p>
+        {canHolidays ? <p><Link href={"/app/journeys/holidays" as Route}>School holiday calendar</Link></p> : null}
         <div className="franchise-metrics">
           <article>
             <span>Journeys</span>
@@ -70,6 +73,32 @@ export default async function JourneysPage({ searchParams }: PageProps) {
             />
             <button type="submit">Create journey</button>
           </form>
+        </section>
+      ) : null}
+
+      {canCreate ? (
+        <section className="app-panel franchise-panel" aria-label="Ready-made journeys">
+          <p className="eyebrow">Ready-made</p>
+          <h2>Start from a ready-made journey</h2>
+          <p>Reviewed copy, timing and email caps. A new one is a draft: you still review, approve and activate it before anyone is emailed.</p>
+          <div className="franchise-list">
+            {journeyTemplates.map((template) => (
+              <div key={template.key}>
+                <strong>{template.name}</strong>
+                <span>{template.description}</span>
+                <span className="muted">At most {template.frequencyCap.maxPerContact} email{template.frequencyCap.maxPerContact === 1 ? "" : "s"} per person {template.frequencyCap.window === "lifetime" ? "ever" : `in ${template.frequencyCap.window}`}.</span>
+                <form action={createJourneyFromTemplateAction.bind(null, context, template.key)} className="franchise-form">
+                  <label>Area
+                    <select name="territoryId" defaultValue={context.territoryId ?? ""}>
+                      {territoryOptions.length > 0 && !context.territoryId ? <option value="">Every area</option> : null}
+                      {territoryOptions.map((option) => (<option key={option.id} value={option.id}>{option.name}</option>))}
+                    </select>
+                  </label>
+                  <button type="submit">Create draft</button>
+                </form>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
 
@@ -146,7 +175,8 @@ async function loadJourneys(request: Awaited<ReturnType<typeof requestFromSearch
       territoryOptions,
       canCreate: hasMarketingCapability(permissions, context, "journeyCreate"),
       canActivate: hasMarketingCapability(permissions, context, "journeyActivate"),
-      canPause: hasMarketingCapability(permissions, context, "journeyPause")
+      canPause: hasMarketingCapability(permissions, context, "journeyPause"),
+      canHolidays: evaluatePermission({ userId: context.userId, module: "marketing.calendar", action: "manage", context: { organisationId: context.organisationId ?? undefined, territoryId: context.territoryId ?? undefined } }, permissions).allowed
     };
   } catch (error) {
     return { error };

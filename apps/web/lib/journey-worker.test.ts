@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  audienceActivityEvents, audienceContacts, deleteAudienceContactsForTests, territories, audienceSuppressions, audienceTerritorySubscriptions, createDb, emailCampaignVersions, emailCampaigns, emailRecipientSnapshots, emailSendJobs, fixtureIds,
+  contentChannelVariantVersions, contentChannelVariants, contentItems, schoolHolidayPeriods, audienceActivityEvents, audienceContacts, deleteAudienceContactsForTests, territories, audienceSuppressions, audienceTerritorySubscriptions, createDb, emailCampaignVersions, emailCampaigns, emailRecipientSnapshots, emailSendJobs, fixtureIds,
   marketingJourneyAudienceEntries, marketingJourneyExecutions, marketingJourneyStepExecutions, marketingJourneyVersions, marketingJourneys
 } from "@raring2go/db";
 import { findJourneyTemplate, validateJourneyTemplate } from "@raring2go/marketing";
@@ -18,6 +18,8 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("journey engine (postgres)", () => {
   const sutton = "00000000-0000-4000-8000-0000000009a1";
   const journeyIds: string[] = [];
   const contactIds: string[] = [];
+  const periodIds: string[] = [];
+  const eventIds = { item: randomUUID(), variant: randomUUID(), version: randomUUID() };
   const handler = createRunJourneysHandler() as unknown as { handle: (context: { now: () => Date }) => Promise<Record<string, number>> };
   const run = () => handler.handle({ now: () => new Date() });
 
@@ -41,12 +43,12 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("journey engine (postgres)", () => {
     return id;
   }
 
-  async function activate(templateKey: "welcome" | "re_engagement", overrides: { frequencyCap?: Record<string, unknown>; steps?: ReturnType<typeof validateJourneyTemplate>["steps"] } = {}) {
+  async function activate(templateKey: "welcome" | "re_engagement" | "school_holiday_countdown" | "weekly_digest", overrides: { frequencyCap?: Record<string, unknown>; steps?: ReturnType<typeof validateJourneyTemplate>["steps"]; trigger?: ReturnType<typeof validateJourneyTemplate>["trigger"]; territoryId?: string } = {}) {
     const template = findJourneyTemplate(templateKey)!;
     const parsed = validateJourneyTemplate(template);
     const journeyId = randomUUID();
     const versionId = randomUUID();
-    await createMarketingJourney(hq, { journeyId, versionId, key: `${templateKey}-${tag}-${journeyId.slice(0, 4)}`, name: `${template.name} ${tag}`, territoryId: sutton, purpose: "marketing", frequencyCap: overrides.frequencyCap ?? template.frequencyCap, trigger: parsed.trigger, conditions: parsed.conditions, steps: overrides.steps ?? parsed.steps });
+    await createMarketingJourney(hq, { journeyId, versionId, key: `${templateKey}-${tag}-${journeyId.slice(0, 4)}`, name: `${template.name} ${tag}`, territoryId: overrides.territoryId ?? sutton, purpose: "marketing", frequencyCap: overrides.frequencyCap ?? template.frequencyCap, trigger: overrides.trigger ?? parsed.trigger, conditions: parsed.conditions, steps: overrides.steps ?? parsed.steps });
     await approveMarketingJourneyVersion(hq, journeyId, versionId);
     await activateMarketingJourney(hq, journeyId);
     journeyIds.push(journeyId);
@@ -74,6 +76,10 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("journey engine (postgres)", () => {
       await db.delete(marketingJourneyVersions).where(inArray(marketingJourneyVersions.journeyId, journeyIds));
       await db.delete(marketingJourneys).where(inArray(marketingJourneys.id, journeyIds));
     }
+    if (periodIds.length) await db.delete(schoolHolidayPeriods).where(inArray(schoolHolidayPeriods.id, periodIds));
+    await db.delete(contentChannelVariantVersions).where(eq(contentChannelVariantVersions.id, eventIds.version));
+    await db.delete(contentChannelVariants).where(eq(contentChannelVariants.id, eventIds.variant));
+    await db.delete(contentItems).where(eq(contentItems.id, eventIds.item));
     await deleteAudienceContactsForTests(db, contactIds);
     await sql.end();
   });
@@ -138,6 +144,83 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("journey engine (postgres)", () => {
 
     expect(await entriesFor(quiet, journeyId)).toHaveLength(1);
     for (const other of [recent, active, gone]) expect(await entriesFor(other, journeyId)).toHaveLength(0);
+  });
+
+  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const campaignsOf = async (journeyId: string) => {
+    const versions = await db.select({ id: marketingJourneyVersions.id }).from(marketingJourneyVersions).where(eq(marketingJourneyVersions.journeyId, journeyId));
+    return (await db.select().from(emailCampaigns).where(eq(emailCampaigns.campaignType, "journey"))).filter((campaign) => versions.some((version) => version.id === (campaign.metadata as { journeyVersionId?: string }).journeyVersionId));
+  };
+  const snapshotOf = (campaignId: string) => db.select().from(emailCampaignVersions).where(eq(emailCampaignVersions.campaignId, campaignId)).then((rows) => JSON.stringify(rows[0]?.contentSnapshot ?? {}));
+
+  it("counts down to a school holiday once per person per holiday, with the holiday's own name and dates, and ignores holidays that do not apply", async () => {
+    const insert = async (name: string, startsIn: number, lengthDays: number, territoryId: string | null) => {
+      const id = randomUUID();
+      await db.insert(schoolHolidayPeriods).values({ id, territoryId, name: `${name} ${tag}`, startsOn: new Date(`${day(startsIn)}T00:00:00Z`), endsOn: new Date(`${day(startsIn + lengthDays)}T00:00:00Z`) });
+      periodIds.push(id);
+      return id;
+    };
+    await insert("Half term", 10, 4, null);
+    await insert("Other area closure", 5, 1, fixtureIds.territories.solihull);
+    await insert("Far away break", 40, 14, null);
+    await insert("Already started", 0, 3, null);
+    const { journeyId } = await activate("school_holiday_countdown");
+    const id = await contact("holiday");
+
+    await run();
+    await run();
+    await Promise.all([run(), run()]);
+
+    const entries = await entriesFor(id, journeyId);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.sourceEventType).toBe("calendar.school_holiday");
+    const campaigns = await campaignsOf(journeyId);
+    expect(campaigns).toHaveLength(1);
+    expect(campaigns[0]!.subject).toBe(`Half term ${tag} starts in 10 days`);
+    expect(await snapshotOf(campaigns[0]!.id)).toContain(`Half term ${tag} is nearly here`);
+    expect(await snapshotOf(campaigns[0]!.id)).not.toContain("[[");
+    expect(campaigns[0]!.metadata).toMatchObject({ journeyVariantKey: expect.stringMatching(/^holiday:/) });
+    // One email, once.
+    const snapshots = (await db.select().from(emailRecipientSnapshots)).filter((snapshot) => snapshot.campaignId === campaigns[0]!.id && (snapshot.recipients as Array<{ contactId: string }>).some((recipient) => recipient.contactId === id));
+    expect(snapshots).toHaveLength(1);
+  });
+
+  it("sends each subscriber a weekly digest of the events coming up in their area, on the journey's weekday, and nothing when there are none", async () => {
+    const base = { contentType: "event", ownerLevel: "territory", territoryId: fixtureIds.territories.suttonColdfield, categories: [], tags: [], provenance: {} };
+    await db.insert(contentItems).values({ ...base, id: eventIds.item, title: `Digest <Event> ${tag}`, status: "published", relevantDates: { startDate: day(3) } });
+    await db.insert(contentChannelVariants).values({ id: eventIds.variant, contentItemId: eventIds.item, channel: "website", status: "approved", currentVersionId: eventIds.version, territoryId: fixtureIds.territories.suttonColdfield });
+    await db.insert(contentChannelVariantVersions).values({ id: eventIds.version, variantId: eventIds.variant, versionNumber: 1, status: "approved", snapshot: {} });
+
+    const template = validateJourneyTemplate(findJourneyTemplate("weekly_digest")!);
+    const wrongDay = (new Date().getUTCDay() + 3) % 7;
+    const { journeyId: offDay } = await activate("weekly_digest", { territoryId: fixtureIds.territories.suttonColdfield, trigger: { type: "weekly_digest", weekday: wrongDay } });
+    const { journeyId } = await activate("weekly_digest", { territoryId: fixtureIds.territories.suttonColdfield, trigger: { type: "weekly_digest", weekday: new Date().getUTCDay() }, steps: template.steps });
+    const subscriber = await db.insert(audienceContacts).values({ id: randomUUID(), email: `digest-${tag}@example.test`, emailNormalised: `digest-${tag}@example.test`, emailStatus: "subscribed", tags: [], metadata: {} }).returning({ id: audienceContacts.id });
+    const id = subscriber[0]!.id;
+    contactIds.push(id);
+    await db.insert(audienceTerritorySubscriptions).values({ id: randomUUID(), contactId: id, territoryId: fixtureIds.territories.suttonColdfield, status: "subscribed", source: "test", preferences: {}, subscribedAt: new Date(Date.now() - 30 * 86_400_000) });
+
+    await run();
+    await run();
+
+    expect(await entriesFor(id, offDay)).toHaveLength(0);
+    expect(await entriesFor(id, journeyId)).toHaveLength(1);
+    const campaigns = await campaignsOf(journeyId);
+    expect(campaigns).toHaveLength(1);
+    expect(campaigns[0]!.subject).toContain("Sutton");
+    const content = await snapshotOf(campaigns[0]!.id);
+    expect(content).toContain("Digest &lt;Event&gt;");
+    expect(content).not.toContain("<Event>");
+    expect(content).toContain("/areas/sutton-coldfield/");
+    expect(content).not.toContain("[[");
+
+    // With nothing coming up, a later subscriber gets no digest at all rather than an empty one.
+    await db.update(contentItems).set({ status: "draft" }).where(eq(contentItems.id, eventIds.item));
+    const later = await db.insert(audienceContacts).values({ id: randomUUID(), email: `digest2-${tag}@example.test`, emailNormalised: `digest2-${tag}@example.test`, emailStatus: "subscribed", tags: [], metadata: {} }).returning({ id: audienceContacts.id });
+    contactIds.push(later[0]!.id);
+    await db.insert(audienceTerritorySubscriptions).values({ id: randomUUID(), contactId: later[0]!.id, territoryId: fixtureIds.territories.suttonColdfield, status: "subscribed", source: "test", preferences: {}, subscribedAt: new Date(Date.now() - 30 * 86_400_000) });
+    await run();
+    expect(await entriesFor(later[0]!.id, journeyId)).toHaveLength(0);
   });
 
   it("only registers real, validated journeys (every template is created through the normal validated flow)", async () => {

@@ -1,5 +1,7 @@
 import { recordAuditEvent } from "@raring2go/audit";
-import { createDb, publicationOutputs, territoryEditions } from "@raring2go/db";
+import { createDb, publicationOutputs, schoolHolidayPeriods, territoryEditions } from "@raring2go/db";
+import { escapeHtml, formatHolidayDate, holidaysDueForCountdown, isoWeekKey } from "@raring2go/marketing";
+import { getPublicDiscovery, territorySlug } from "@raring2go/public";
 import {
   JourneyEntryNotEligibleError,
   advanceJourneyExecution,
@@ -18,9 +20,9 @@ import {
   loadMarketingData,
   updateJourneyAudienceEntryRecord
 } from "@raring2go/marketing";
-import type { MarketingActorContext } from "@raring2go/marketing";
+import type { JourneyEntryContent, MarketingActorContext } from "@raring2go/marketing";
 import type { PermissionData } from "@raring2go/permissions";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, isNull } from "drizzle-orm";
 
 type Db = ReturnType<typeof createDb>["db"];
 
@@ -143,7 +145,7 @@ const NEW_SUBSCRIBER_DAYS = 3;
  *    journey does not email about an old issue).
  */
 export async function scanJourneyTriggers(db: Db, now: Date = new Date()) {
-  const entered = { welcome: 0, reengagement: 0, magazine: 0, notEligible: 0 };
+  const entered = { welcome: 0, reengagement: 0, magazine: 0, holiday: 0, digest: 0, notEligible: 0 };
 
   await db.transaction(async (tx) => {
     const data = await loadMarketingData(tx);
@@ -151,7 +153,7 @@ export async function scanJourneyTriggers(db: Db, now: Date = new Date()) {
     let budget = SCAN_LIMIT;
 
     /** Returns true when this call created a new entry. */
-    const enter = async (input: { journeyId: string; contactId: string; territoryId: string; sourceEventType: string; sourceEventId: string; idempotencyKey: string }) => {
+    const enter = async (input: { journeyId: string; contactId: string; territoryId: string; sourceEventType: string; sourceEventId: string; idempotencyKey: string; content?: JourneyEntryContent }) => {
       if (budget <= 0) return false;
       if (data.journeyAudienceEntries.some((existing) => existing.idempotencyKey === input.idempotencyKey)) return false;
       try {
@@ -204,6 +206,64 @@ export async function scanJourneyTriggers(db: Db, now: Date = new Date()) {
           for (const subscription of data.subscriptions.filter((item) => item.territoryId === edition.territoryId && item.status === "subscribed" && !item.deletedAt)) {
             if (await enter({ journeyId: journey.id, contactId: subscription.contactId, territoryId: edition.territoryId, sourceEventType: "edition.published", sourceEventId: edition.id, idempotencyKey: `scan:edition:${edition.id}:${journey.id}:${subscription.contactId}` })) entered.magazine += 1;
           }
+        }
+      }
+    }
+
+    // School-holiday countdown: each subscriber, once per holiday, when it starts within the journey's days. The copy is filled
+    // in from the calendar entry (name, dates, days away), so two different holidays never share an email.
+    const holidayJourneys = findActiveJourneysForTrigger(data, { type: "school_holiday_approaching", daysBefore: 0 });
+    if (holidayJourneys.length > 0) {
+      const periods = (await tx.select().from(schoolHolidayPeriods).where(isNull(schoolHolidayPeriods.deletedAt))).map((row) => ({
+        id: row.id, territoryId: row.territoryId, name: row.name, startsOn: row.startsOn.toISOString().slice(0, 10), endsOn: row.endsOn.toISOString().slice(0, 10)
+      }));
+      for (const { journey, version } of holidayJourneys) {
+        if (version.trigger.type !== "school_holiday_approaching") continue;
+        for (const subscription of data.subscriptions.filter((item) => item.status === "subscribed" && !item.deletedAt && (!journey.territoryId || journey.territoryId === item.territoryId))) {
+          const areaName = data.territories.find((territory) => territory.id === subscription.territoryId)?.name ?? "your area";
+          for (const holiday of holidaysDueForCountdown(periods, subscription.territoryId, version.trigger.daysBefore, now)) {
+            const content: JourneyEntryContent = {
+              variantKey: `holiday:${holiday.id}:${subscription.territoryId}`,
+              fields: {
+                holiday_name: { value: holiday.name },
+                holiday_starts: { value: formatHolidayDate(holiday.startsOn) },
+                holiday_ends: { value: formatHolidayDate(holiday.endsOn) },
+                days_until: { value: String(holiday.daysUntil) },
+                area_name: { value: areaName }
+              }
+            };
+            if (await enter({ journeyId: journey.id, contactId: subscription.contactId, territoryId: subscription.territoryId, sourceEventType: "calendar.school_holiday", sourceEventId: holiday.id, idempotencyKey: `scan:holiday:${holiday.id}:${journey.id}:${subscription.contactId}:${subscription.territoryId}`, content })) entered.holiday += 1;
+          }
+        }
+      }
+    }
+
+    // Weekly local digest: on the journey's weekday, each area that has events coming up, once per subscriber per week.
+    const digestJourneys = findActiveJourneysForTrigger(data, { type: "weekly_digest", weekday: 0 }).filter(({ version }) => version.trigger.type === "weekly_digest" && version.trigger.weekday === now.getUTCDay());
+    if (digestJourneys.length > 0) {
+      const week = isoWeekKey(now);
+      const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000")).replace(/\/$/, "");
+      if (!siteUrl) console.error("Weekly digest skipped: NEXT_PUBLIC_SITE_URL is not set, so event links cannot be made absolute.");
+      const eventsByTerritory = new Map<string, string | null>();
+      const eventsFor = async (territoryId: string) => {
+        if (eventsByTerritory.has(territoryId)) return eventsByTerritory.get(territoryId)!;
+        const territory = data.territories.find((candidate) => candidate.id === territoryId);
+        const found = territory?.name ? await getPublicDiscovery(tx as never, territorySlug(territory.name), "whats_on") : undefined;
+        const today = now.toISOString().slice(0, 10);
+        const limit = new Date(now.getTime() + 14 * 86_400_000).toISOString().slice(0, 10);
+        const upcoming = (found?.items ?? []).filter((item) => item.startDate && item.startDate.slice(0, 10) >= today && item.startDate.slice(0, 10) <= limit).sort((a, b) => String(a.startDate).localeCompare(String(b.startDate))).slice(0, 5);
+        const html = upcoming.length === 0 ? null : `<ul>${upcoming.map((item) => `<li><a href="${escapeHtml(`${siteUrl}${item.href}`)}">${escapeHtml(item.title)}</a> - ${escapeHtml(formatHolidayDate(item.startDate!.slice(0, 10)))}</li>`).join("")}</ul>`;
+        eventsByTerritory.set(territoryId, html);
+        return html;
+      };
+      for (const { journey } of digestJourneys) {
+        for (const subscription of data.subscriptions.filter((item) => item.status === "subscribed" && !item.deletedAt && (!journey.territoryId || journey.territoryId === item.territoryId))) {
+          if (!siteUrl) break;
+          const html = await eventsFor(subscription.territoryId);
+          if (!html) continue; // nothing coming up here: no digest, never an empty one
+          const areaName = data.territories.find((territory) => territory.id === subscription.territoryId)?.name ?? "your area";
+          const content: JourneyEntryContent = { variantKey: `digest:${subscription.territoryId}:${week}`, fields: { area_name: { value: areaName }, local_events: { value: html, html: true } } };
+          if (await enter({ journeyId: journey.id, contactId: subscription.contactId, territoryId: subscription.territoryId, sourceEventType: "schedule.weekly_digest", sourceEventId: `${subscription.territoryId}:${week}`, idempotencyKey: `scan:digest:${journey.id}:${week}:${subscription.contactId}:${subscription.territoryId}`, content })) entered.digest += 1;
         }
       }
     }

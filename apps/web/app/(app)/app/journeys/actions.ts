@@ -3,7 +3,7 @@
 import { assertBoundActor } from "../../../../lib/action-actor";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { validateJourneyConditions, validateJourneySteps, validateJourneyTrigger } from "@raring2go/marketing";
+import { assertJourneyContentTokens, findJourneyTemplate, validateJourneyConditions, validateJourneySteps, validateJourneyTemplate, validateJourneyTrigger } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import {
   activateMarketingJourney,
@@ -31,6 +31,7 @@ function parseJourneyContentFields(formData: FormData) {
     throw new Error("The journey's steps could not be read. Try editing them again.");
   }
   const steps = validateJourneySteps(parsedSteps);
+  assertJourneyContentTokens(trigger, steps);
 
   return { trigger, conditions, steps };
 }
@@ -52,6 +53,31 @@ export async function createJourneyAction(context: MarketingActorContext, formDa
     territoryId,
     purpose: "marketing",
     description: String(formData.get("description") || "").trim() || null,
+    trigger,
+    conditions,
+    steps
+  });
+
+  revalidatePath("/app/journeys");
+}
+
+/** Starts a draft from one of the network's ready-made journeys. It still has to be reviewed, approved and activated before anyone is emailed. */
+export async function createJourneyFromTemplateAction(context: MarketingActorContext, templateKey: string, formData: FormData) {
+  await assertBoundActor(context);
+  const template = findJourneyTemplate(templateKey);
+  if (!template) throw new Error("That ready-made journey does not exist.");
+  const { trigger, conditions, steps } = validateJourneyTemplate(template);
+  const territoryId = String(formData.get("territoryId") || "") || null;
+
+  await createMarketingJourney(context, {
+    journeyId: randomUUID(),
+    versionId: randomUUID(),
+    key: randomUUID(),
+    name: template.name,
+    territoryId,
+    purpose: "marketing",
+    description: template.description,
+    frequencyCap: template.frequencyCap,
     trigger,
     conditions,
     steps
