@@ -13,8 +13,7 @@ const allowedEventTypes = new Set<PublicAnalyticsEventType>([
   "discovery_item_clicked",
   "magazine_opened",
   "magazine_page_interaction",
-  "commercial_placement_clicked",
-  "public_conversion"
+  "commercial_placement_clicked"
 ]);
 
 export async function POST(request: Request) {

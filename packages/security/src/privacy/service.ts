@@ -196,6 +196,7 @@ function summarise(bundle: SubjectDataBundle): DataCounts {
     consentEvents: bundle.consentEvents.length,
     suppressions: bundle.suppressions.length,
     savedContent: bundle.savedContent.length,
+    competitionEntries: bundle.competitionEntries.length,
     activity: bundle.activity.length,
     segmentMemberships: bundle.segmentMemberships.length,
     emailDeliveries: bundle.emailDeliveries.length,

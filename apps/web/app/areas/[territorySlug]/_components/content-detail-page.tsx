@@ -2,13 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata, Route } from "next";
 import type { PublicContentSection } from "@raring2go/public";
+import { cookies } from "next/headers";
+import { sessionCookieName } from "../../../../lib/auth-runtime";
+import { competitionState, hasEnteredCompetition } from "../../../../lib/competition-runtime";
+import { enterCompetitionAction } from "../competitions/actions";
 import { readPublicContentDetail } from "../../../../lib/public-runtime";
 import { toggleSavedContentAction } from "../preferences/actions";
 import { JsonLd, PublicNav, siteUrl } from "./PublicNav";
 import { Track } from "./Track";
 
 type Params = { territorySlug: string; itemSlug: string };
-type PageProps = { params: Promise<Params> };
+type PageProps = { params: Promise<Params>; searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
 const sectionLabels: Record<PublicContentSection, string> = {
   "whats-on": "What's On",
@@ -33,13 +37,18 @@ export function contentDetailPage(section: PublicContentSection) {
     };
   }
 
-  async function ContentDetailPage({ params }: PageProps) {
+  async function ContentDetailPage({ params, searchParams }: PageProps) {
     const { territorySlug, itemSlug } = await params;
+    const query = (await searchParams) ?? {};
+    const entryResult = Array.isArray(query.entry) ? query.entry[0] : query.entry;
     const detail = await readPublicContentDetail(territorySlug, section, itemSlug, siteUrl());
     if (!detail) notFound();
 
     const { item, territory } = detail;
     const sponsored = section === "offers" || section === "competitions";
+    const competition = section === "competitions"
+      ? { state: competitionState(item.endDate ? item.endDate.slice(0, 10) : null), entered: await hasEnteredCompetition((await cookies()).get(sessionCookieName)?.value, item.id) }
+      : null;
 
     return (
       <main className="public-site public-season-autumn">
@@ -65,6 +74,23 @@ export function contentDetailPage(section: PublicContentSection) {
               <form action={toggleSavedContentAction.bind(null, territory.slug, item.id, true, detail.canonicalPath)}>
                 <button type="submit" className="public-button">Save for later</button>
               </form>
+              {competition ? (
+                <div id="enter" aria-label="Enter this competition">
+                  {entryResult === "entered" ? <p role="status">You are in. Good luck!</p> : null}
+                  {entryResult === "already" ? <p role="status">You have already entered this competition.</p> : null}
+                  {entryResult === "closed" ? <p role="alert">Sorry, this competition is not open for entries.</p> : null}
+                  {competition.entered ? (
+                    <p>You have entered this competition.</p>
+                  ) : competition.state === "open" ? (
+                    <form action={enterCompetitionAction.bind(null, territory.slug, item.id, `${detail.canonicalPath}#enter`)}>
+                      <button type="submit" className="public-button">Enter this competition</button>
+                      <p><small>You need to be signed in. We keep your entry until the draw and for 90 days after, then delete it. Entering does not sign you up to emails.</small></p>
+                    </form>
+                  ) : (
+                    <p>{competition.state === "closed" ? "This competition has closed." : "Entries are not open yet."}</p>
+                  )}
+                </div>
+              ) : null}
             </div>
           </section>
           <section className="public-section">

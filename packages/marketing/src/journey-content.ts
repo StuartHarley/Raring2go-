@@ -16,7 +16,8 @@ const TOKENS_BY_TRIGGER: Record<JourneyTrigger["type"], string[]> = {
   contact_inactive: [],
   digital_edition_published: [],
   school_holiday_approaching: ["holiday_name", "holiday_starts", "holiday_ends", "days_until", "area_name"],
-  weekly_digest: ["local_events", "area_name"]
+  weekly_digest: ["local_events", "area_name"],
+  competition_closed: ["competition_title", "area_name"]
 };
 
 /** Tokens that carry a block of HTML built by our own code; everything else is plain text. */

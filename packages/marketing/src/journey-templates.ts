@@ -13,7 +13,7 @@ import type { JourneyCondition, JourneyStep, JourneyTrigger } from "./types";
  * yet, so they are not faked here.
  */
 export type JourneyTemplate = {
-  key: "welcome" | "re_engagement" | "digital_magazine" | "school_holiday_countdown" | "weekly_digest";
+  key: "welcome" | "re_engagement" | "digital_magazine" | "school_holiday_countdown" | "weekly_digest" | "competition_follow_up";
   name: string;
   description: string;
   frequencyCap: { maxPerContact: number; window: "lifetime" | "24h" | "7d" | "30d" };
@@ -120,6 +120,28 @@ export const journeyTemplates: JourneyTemplate[] = [
         email: {
           subject: "What is on near you in [[area_name]]",
           blocks: [text("dig-1", "<p>Here is what is coming up near you:</p>"), text("dig-2", "[[local_events|html]]"), text("dig-3", "<p>You can change what you hear about, or stop emails, at any time from your preferences.</p>")]
+        }
+      }
+    ]
+  },
+  {
+    key: "competition_follow_up",
+    name: "Competition follow-up",
+    description: "Once a competition has closed, thanks each entrant who subscribes to the area, says winners are contacted directly, and points to what else is on. Only people who entered and also subscribed get it; entering alone never signs anyone up.",
+    frequencyCap: { maxPerContact: 1, window: "7d" },
+    trigger: { type: "competition_closed" },
+    conditions: [],
+    steps: [
+      {
+        key: "competition-thanks",
+        actionType: "send_email",
+        delayMinutes: 0,
+        email: {
+          subject: "Thanks for entering [[competition_title]]",
+          blocks: [
+            { id: "comp-1", type: "heading", text: "[[competition_title]] has closed", level: 1 },
+            text("comp-2", "<p>Thank you for entering. Winners are contacted directly by email, so keep an eye on your inbox.</p><p>There is plenty more coming up in [[area_name]]: have a look at what is on from your area page.</p>")
+          ]
         }
       }
     ]

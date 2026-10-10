@@ -106,9 +106,9 @@ before that date; until snapshots have accumulated it simply shows no change fig
 | `magazine_page_interaction` | browser | previous or next page in the reader is clicked | edition |
 | `content_saved` | **server** | a signed-in parent saves public content (a repeat save is not counted again) | content |
 | `newsletter_signup_completed` | **server** | the parent presses "email me" and the subscription really changed (a repeat or an unsubscribe is not counted) | newsletter |
-| `public_conversion` | not emitted | defined for a future real conversion step (an enquiry or booking); the public site has none today | |
+| `public_conversion` | **server** | a parent enters a competition (once per entry; `conversionType: competition_entry`) | content |
 
-Privacy: no event stores an IP address, a user agent, a contact, a user or a session. Server-recorded events carry only what happened, where, and to which content. The intake endpoint **refuses** `content_saved` and `newsletter_signup_completed`, so a visitor cannot invent saves or sign-ups. A failure to record an event never breaks the action the person took.
+Privacy: no event stores an IP address, a user agent, a contact, a user or a session. Server-recorded events carry only what happened, where, and to which content. The intake endpoint **refuses** `content_saved`, `newsletter_signup_completed` and `public_conversion`, so a visitor cannot invent saves or sign-ups. A failure to record an event never breaks the action the person took.
 
 Not tracked: impressions (so no click-through rate), email opens and clicks where the provider does not report them, social reach, print reach.
 

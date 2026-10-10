@@ -424,7 +424,9 @@ export type JourneyTrigger =
   /** A school holiday in the HQ calendar starts within `daysBefore` days. Found by the daily scan, once per holiday per subscriber. */
   | { type: "school_holiday_approaching"; daysBefore: number }
   /** Each week, on `weekday` (0 Sunday to 6 Saturday, UTC), to subscribers of an area that has local events coming up. Once per subscriber per week. */
-  | { type: "weekly_digest"; weekday: number };
+  | { type: "weekly_digest"; weekday: number }
+  /** A competition the contact entered closed in the last 14 days. Found by the daily scan, once per competition per entrant who subscribes to the area. */
+  | { type: "competition_closed" };
 
 /**
  * Reused directly from segment-rules.ts rather than a parallel type -

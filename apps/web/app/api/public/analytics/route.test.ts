@@ -14,7 +14,7 @@ describe("public analytics endpoint input handling", () => {
   });
 
   it("refuses events only the server may record, so a visitor cannot invent saves or sign-ups", async () => {
-    for (const eventType of ["content_saved", "newsletter_signup_completed"]) {
+    for (const eventType of ["content_saved", "newsletter_signup_completed", "public_conversion"]) {
       expect((await post({ eventType, territorySlug: "sutton-coldfield", path: "/areas/sutton-coldfield" })).status).toBe(400);
     }
   });

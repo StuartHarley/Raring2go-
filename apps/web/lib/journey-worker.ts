@@ -1,5 +1,6 @@
 import { recordAuditEvent } from "@raring2go/audit";
-import { createDb, publicationOutputs, schoolHolidayPeriods, territoryEditions } from "@raring2go/db";
+import { competitionEntries, contentItems, createDb, publicationOutputs, schoolHolidayPeriods, territoryEditions } from "@raring2go/db";
+import { competitionClosingDate } from "./competition-runtime";
 import { escapeHtml, formatHolidayDate, holidaysDueForCountdown, isoWeekKey } from "@raring2go/marketing";
 import { getPublicDiscovery, territorySlug } from "@raring2go/public";
 import {
@@ -145,7 +146,7 @@ const NEW_SUBSCRIBER_DAYS = 3;
  *    journey does not email about an old issue).
  */
 export async function scanJourneyTriggers(db: Db, now: Date = new Date()) {
-  const entered = { welcome: 0, reengagement: 0, magazine: 0, holiday: 0, digest: 0, notEligible: 0 };
+  const entered = { welcome: 0, reengagement: 0, magazine: 0, holiday: 0, digest: 0, competition: 0, notEligible: 0 };
 
   await db.transaction(async (tx) => {
     const data = await loadMarketingData(tx);
@@ -264,6 +265,28 @@ export async function scanJourneyTriggers(db: Db, now: Date = new Date()) {
           const areaName = data.territories.find((territory) => territory.id === subscription.territoryId)?.name ?? "your area";
           const content: JourneyEntryContent = { variantKey: `digest:${subscription.territoryId}:${week}`, fields: { area_name: { value: areaName }, local_events: { value: html, html: true } } };
           if (await enter({ journeyId: journey.id, contactId: subscription.contactId, territoryId: subscription.territoryId, sourceEventType: "schedule.weekly_digest", sourceEventId: `${subscription.territoryId}:${week}`, idempotencyKey: `scan:digest:${journey.id}:${week}:${subscription.contactId}:${subscription.territoryId}`, content })) entered.digest += 1;
+        }
+      }
+    }
+
+    // Competition follow-up: each entrant of a competition that closed in the last 14 days, once, if they also subscribe to the area.
+    // Entering alone never signs anyone up: someone who is not subscribed is simply not entered into the journey.
+    const competitionJourneys = findActiveJourneysForTrigger(data, { type: "competition_closed" });
+    if (competitionJourneys.length > 0) {
+      const today = now.toISOString().slice(0, 10);
+      const earliest = new Date(now.getTime() - 14 * 86_400_000).toISOString().slice(0, 10);
+      const closed = (await tx.select({ id: contentItems.id, title: contentItems.title, relevantDates: contentItems.relevantDates }).from(contentItems).where(and(eq(contentItems.contentType, "competition"), isNull(contentItems.deletedAt))))
+        .map((item) => ({ ...item, closedOn: competitionClosingDate(item.relevantDates) }))
+        .filter((item) => item.closedOn && item.closedOn < today && item.closedOn >= earliest);
+      for (const competition of closed) {
+        const entries = await tx.select().from(competitionEntries).where(eq(competitionEntries.contentItemId, competition.id));
+        for (const { journey } of competitionJourneys) {
+          for (const entry of entries.filter((candidate) => !journey.territoryId || journey.territoryId === candidate.territoryId)) {
+            if (!data.subscriptions.some((subscription) => subscription.contactId === entry.contactId && subscription.territoryId === entry.territoryId && subscription.status === "subscribed" && !subscription.deletedAt)) continue;
+            const areaName = data.territories.find((territory) => territory.id === entry.territoryId)?.name ?? "your area";
+            const content: JourneyEntryContent = { variantKey: `competition:${competition.id}:${entry.territoryId}`, fields: { competition_title: { value: competition.title }, area_name: { value: areaName } } };
+            if (await enter({ journeyId: journey.id, contactId: entry.contactId, territoryId: entry.territoryId, sourceEventType: "competition.closed", sourceEventId: competition.id, idempotencyKey: `scan:competition:${competition.id}:${journey.id}:${entry.contactId}`, content })) entered.competition += 1;
+          }
         }
       }
     }

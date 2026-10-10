@@ -4,6 +4,7 @@ import {
   audienceContacts,
   audiencePreferenceProfiles,
   audienceSavedContent,
+  competitionEntries,
   audienceSegmentMembers,
   audienceSuppressions,
   audienceTerritorySubscriptions,
@@ -69,12 +70,13 @@ export function createDrizzlePrivacyStore(db: Db): PrivacyStore {
     async gatherSubjectData(contactId, now): Promise<SubjectDataBundle> {
       const [contact] = await db.select().from(audienceContacts).where(eq(audienceContacts.id, contactId));
       if (!contact) throw new Error("Contact not found.");
-      const [subscriptions, preferences, consentEvents, suppressions, savedContent, activity, segmentMemberships, emailDeliveries] = await Promise.all([
+      const [subscriptions, preferences, consentEvents, suppressions, savedContent, entries, activity, segmentMemberships, emailDeliveries] = await Promise.all([
         db.select().from(audienceTerritorySubscriptions).where(eq(audienceTerritorySubscriptions.contactId, contactId)),
         db.select().from(audiencePreferenceProfiles).where(eq(audiencePreferenceProfiles.contactId, contactId)),
         db.select().from(audienceConsentEvents).where(eq(audienceConsentEvents.contactId, contactId)),
         db.select().from(audienceSuppressions).where(eq(audienceSuppressions.contactId, contactId)),
         db.select().from(audienceSavedContent).where(eq(audienceSavedContent.contactId, contactId)),
+        db.select().from(competitionEntries).where(eq(competitionEntries.contactId, contactId)),
         db.select().from(audienceActivityEvents).where(eq(audienceActivityEvents.contactId, contactId)),
         db.select().from(audienceSegmentMembers).where(eq(audienceSegmentMembers.contactId, contactId)),
         db
@@ -91,6 +93,7 @@ export function createDrizzlePrivacyStore(db: Db): PrivacyStore {
         consentEvents,
         suppressions,
         savedContent,
+        competitionEntries: entries,
         activity,
         segmentMemberships,
         emailDeliveries
@@ -129,6 +132,7 @@ export function createDrizzlePrivacyStore(db: Db): PrivacyStore {
 
       counts.activity = await deleted(db.delete(audienceActivityEvents).where(eq(audienceActivityEvents.contactId, contactId)).returning({ id: audienceActivityEvents.id }));
       counts.savedContent = await deleted(db.delete(audienceSavedContent).where(eq(audienceSavedContent.contactId, contactId)).returning({ id: audienceSavedContent.id }));
+      counts.competitionEntries = await deleted(db.delete(competitionEntries).where(eq(competitionEntries.contactId, contactId)).returning({ id: competitionEntries.id }));
       counts.preferences = await deleted(db.delete(audiencePreferenceProfiles).where(eq(audiencePreferenceProfiles.contactId, contactId)).returning({ id: audiencePreferenceProfiles.id }));
       counts.segmentMemberships = await deleted(db.delete(audienceSegmentMembers).where(eq(audienceSegmentMembers.contactId, contactId)).returning({ id: audienceSegmentMembers.id }));
 
