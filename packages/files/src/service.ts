@@ -21,10 +21,8 @@ export function requireFilesPermission(
       userId: context.userId,
       module: descriptor.module,
       action: descriptor.action,
-      context: {
-        organisationId: context.organisationId ?? undefined,
-        territoryId: context.territoryId ?? undefined
-      },
+      // Only `resource` is passed: the evaluator lets `context` override `resource`, which would ignore
+      // the target's own territory/organisation. It defaults to the actor's active context when none is given.
       resource: {
         organisationId: resource?.organisationId ?? context.organisationId ?? undefined,
         territoryId: resource?.territoryId ?? context.territoryId ?? undefined
