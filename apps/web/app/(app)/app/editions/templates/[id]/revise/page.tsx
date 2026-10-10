@@ -5,7 +5,6 @@ import { readTemplateForm } from "../../../../../../../lib/edition-runtime";
 import { formatLabel } from "../../../../../../../lib/format";
 import { Notice, PageHeader, Panel } from "../../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../../page";
 import { reviseTemplateAction } from "../../actions";
 import { TemplateForm } from "../../template-form";
@@ -23,11 +22,11 @@ export default async function ReviseTemplatePage({ params, searchParams }: { par
     const shell = await requireShellPermission(request, { module: "edition.template", action: "edit" });
     loaded = await readTemplateForm({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId }, id);
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
   const message = code ? (templateSpecErrorText as Record<string, string>)[code] : undefined;
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Edition Factory", href: "/app/editions" as Route }, { label: "Template library", href: "/app/editions/templates" as Route }, { label: `${loaded.template.name}: new version` }]} />
       <PageHeader
         eyebrow="Template library"
@@ -38,6 +37,6 @@ export default async function ReviseTemplatePage({ params, searchParams }: { par
         {message ? <Notice tone="error">{message}</Notice> : null}
         <TemplateForm action={reviseTemplateAction.bind(null, request, id)} initial={loaded.form} withIdentity={false} submitLabel="Create new draft version" />
       </Panel>
-    </AppShell>
+    </>
   );
 }

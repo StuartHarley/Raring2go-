@@ -5,7 +5,6 @@ import { readRoleDetail } from "../../../../../lib/access-runtime";
 import { formatCount, formatLabel } from "../../../../../lib/format";
 import { Actions, EmptyState, FactList, LinkButton, Notice, PageHeader, Panel, Table } from "../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { addGrantAction, deleteRoleAction, removeGrantAction } from "../actions";
 import { resultMessages } from "../messages";
@@ -38,7 +37,7 @@ export default async function RoleDetailPage({ params, searchParams }: PageProps
   } catch (error) {
     if (error instanceof AccessStateError) {
       return (
-        <AppShell request={request}>
+        <>
           <Breadcrumbs items={[{ label: "Roles & permissions", href: back }, { label: "Role not found" }]} />
           <PageHeader
             eyebrow="Roles & permissions"
@@ -50,10 +49,10 @@ export default async function RoleDetailPage({ params, searchParams }: PageProps
               </LinkButton>
             }
           />
-        </AppShell>
+        </>
       );
     }
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
 
   const { role, catalogue, canManage } = loaded;
@@ -61,7 +60,7 @@ export default async function RoleDetailPage({ params, searchParams }: PageProps
   const banner = resultParam ? resultMessages[resultParam] : undefined;
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Roles & permissions", href: back }, { label: role.name }]} />
       <PageHeader eyebrow={role.isSystem ? "Built-in role" : "Custom role"} title={role.name} intro={role.description ?? "What this role lets people do, and how far that reaches."}>
         <FactList
@@ -157,6 +156,6 @@ export default async function RoleDetailPage({ params, searchParams }: PageProps
           ) : null}
         </Panel>
       ) : null}
-    </AppShell>
+    </>
   );
 }

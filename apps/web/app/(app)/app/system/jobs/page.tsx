@@ -8,7 +8,6 @@ import { formatCode, formatDateTime, formatLabel, formatLabels } from "../../../
 import { EmptyState, FilterTabs, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, StatusBadge, Table } from "../../../../../lib/page-ui";
 import { jobStatuses, retryableLegacySources } from "@raring2go/workflows";
 import type { JobSource, JobStatus, TrackedJob } from "@raring2go/workflows";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { cancelJobAction, retryJobAction } from "./actions";
 import { getPermissionData } from "../../../../../lib/permission-source";
@@ -54,7 +53,7 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
   const result = await loadConsole(request, status);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { context, permissions, jobs, counts, registeredKinds, health } = result;
@@ -63,7 +62,7 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
   const needsAttention = counts.dead;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="System"
         title="Background jobs"
@@ -174,7 +173,7 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
           </Table>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

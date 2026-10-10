@@ -3,7 +3,6 @@ import { requireShellPermission } from "../../../../lib/app-shell";
 import { readAudienceOverview } from "../../../../lib/marketing-runtime";
 import { formatCount, formatLabel } from "../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 
@@ -18,14 +17,14 @@ export default async function AudiencePage({ searchParams }: PageProps) {
   const result = await loadAudience(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { totals, contacts } = result.audience;
   const query = contextQuery(request);
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Audience"
         title="Audience"
@@ -77,7 +76,7 @@ export default async function AudiencePage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

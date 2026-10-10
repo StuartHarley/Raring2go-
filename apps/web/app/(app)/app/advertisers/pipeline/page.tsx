@@ -1,7 +1,6 @@
 import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readPipeline } from "../../../../../lib/advertising-runtime";
-import { AppShell } from "../../../layout";
 import { CrmBanner } from "../CrmBanner";
 import { ScoreBadge } from "../ScoreBadge";
 import { createOpportunityAction, moveOpportunityStageAction, updateOpportunityAction } from "../actions";
@@ -32,14 +31,14 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
   const result = await loadPipeline(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const overdue = result.pipeline.overdueFollowUps.length;
   const closingSoon = result.pipeline.closingSoon.length;
 
   return (
-    <AppShell request={request}>
+    <>
       <CrmBanner result={resultCode} />
       <PageHeader
         eyebrow="Commercial"
@@ -181,7 +180,7 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -4,7 +4,6 @@ import { listNetworkTerritories, readAudienceOverview, readPreferenceCentre } fr
 import { displayName, formatLabel, formatLabels } from "../../../../lib/format";
 import { EmptyState, FactList, Metrics, PageHeader, Panel, RecordCard, RecordLink, RecordList, StatusBadge } from "../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../lib/workflow-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 
@@ -22,12 +21,12 @@ export default async function PreferencesPage({ searchParams }: PageProps) {
   const result = await loadPreferences(request, contactId);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   if ("contacts" in result && result.contacts) {
     return (
-      <AppShell request={request}>
+      <>
         <PageHeader
           eyebrow="Audience"
           title="Parent preferences"
@@ -53,17 +52,17 @@ export default async function PreferencesPage({ searchParams }: PageProps) {
             </RecordList>
           )}
         </Panel>
-      </AppShell>
+      </>
     );
   }
 
-  if (!("preferences" in result) || !result.preferences) return protectedOutcome(new Error("Preferences are unavailable."), request);
+  if (!("preferences" in result) || !result.preferences) return protectedOutcome(new Error("Preferences are unavailable."));
   const { contact, profile, subscriptions, savedContent, recommendedContent, recommendedSegments } = result.preferences;
   const territoryNames = new Map((await listNetworkTerritories()).map((territory) => [territory.id, territory.name]));
   const contactName = [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.email;
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Parent preferences", href: withSession("/app/preferences", request) }, { label: contactName }]} />
       <PageHeader
         eyebrow="Parent preferences"
@@ -121,7 +120,7 @@ export default async function PreferencesPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -5,7 +5,6 @@ import { explainAccessAsActor, readAccessOverview } from "../../../../lib/access
 import type { AccessActorContext } from "../../../../lib/access-runtime";
 import { formatDate } from "../../../../lib/format";
 import { Actions, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { assignRoleAction, createRoleAction, inviteAction, revokeAssignmentAction, revokeInvitationAction } from "./actions";
 import { resultMessages } from "./messages";
@@ -39,7 +38,7 @@ export default async function RolesPage({ searchParams }: PageProps) {
     }
     loaded = { overview, explanation, subject, capability, at: first(params.at) };
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
 
   const { overview, explanation } = loaded;
@@ -63,7 +62,7 @@ export default async function RolesPage({ searchParams }: PageProps) {
   ]);
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="System"
         title="Roles & permissions"
@@ -325,7 +324,7 @@ export default async function RolesPage({ searchParams }: PageProps) {
           </Notice>
         ) : null}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -2,7 +2,6 @@ import { requireShellPermission } from "../../../../lib/app-shell";
 import { readSocialQueue } from "../../../../lib/publishing-runtime";
 import { formatDateTime, formatLabel, formatLabels } from "../../../../lib/format";
 import { Actions, EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { approveSocialAction, cancelSocialAction, queueSocialAction, resolveSocialAction, retrySocialAction, scheduleSocialAction } from "./actions";
 import type { SocialResult } from "./actions";
 import { requestFromSearchParamsAndCookies } from "../page";
@@ -21,7 +20,7 @@ export default async function SocialQueuePage({ searchParams }: PageProps) {
   const result = await loadSocial(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const scheduled = result.queue.filter((item) => item.publication.publishState === "scheduled").length;
@@ -30,7 +29,7 @@ export default async function SocialQueuePage({ searchParams }: PageProps) {
   const gaps = result.gaps.filter((gap) => gap.signals.length > 0).length;
 
   return (
-    <AppShell request={request}>
+    <>
       <SocialBanner result={resultCode} />
       <PageHeader
         eyebrow="Social"
@@ -190,7 +189,7 @@ export default async function SocialQueuePage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

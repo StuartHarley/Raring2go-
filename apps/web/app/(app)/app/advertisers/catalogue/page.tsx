@@ -3,7 +3,6 @@ import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readCatalogue } from "../../../../../lib/advertising-runtime";
 import { formatCount, formatLabel } from "../../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
@@ -18,13 +17,13 @@ export default async function AdvertiserCataloguePage({ searchParams }: PageProp
   const result = await loadCatalogue(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { catalogue } = result;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Commercial"
         title="Catalogue"
@@ -104,7 +103,7 @@ export default async function AdvertiserCataloguePage({ searchParams }: PageProp
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

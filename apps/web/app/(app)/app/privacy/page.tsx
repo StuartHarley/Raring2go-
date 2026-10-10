@@ -5,7 +5,6 @@ import { can, readPrivacyRequests } from "../../../../lib/privacy-runtime";
 import type { PrivacyActorContext } from "../../../../lib/privacy-runtime";
 import { formatDate } from "../../../../lib/format";
 import { Actions, EmptyState, Metrics, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { decideAction, openRequestAction } from "./actions";
 import { getPermissionData } from "../../../../lib/permission-source";
@@ -39,7 +38,7 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
     const context: PrivacyActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     loaded = { context, permissions: await getPermissionData(), ...(await readPrivacyRequests(context)) };
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
 
   const { context, permissions, requests, checkedAt } = loaded;
@@ -51,7 +50,7 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
   const query = contextQuery(request);
 
   return (
-    <AppShell request={request}>
+    <>
       {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
       <PageHeader
         eyebrow="Privacy"
@@ -140,7 +139,7 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
           </Table>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

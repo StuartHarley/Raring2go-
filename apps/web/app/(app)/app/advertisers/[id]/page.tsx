@@ -15,7 +15,6 @@ import { ScoreBadge } from "../ScoreBadge";
 import { SalesPanels } from "./SalesPanels";
 import { FulfilmentPanels } from "./FulfilmentPanels";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
@@ -49,7 +48,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
   const result = await loadAdvertiser(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const openArtwork = result.artworkRequirements.filter((item) => item.status !== "production_ready").length;
@@ -58,7 +57,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
   const pipelineValue = result.opportunities.reduce((sum, view) => sum + view.opportunity.estimatedValueMinor, 0);
 
   return (
-    <AppShell request={request}>
+    <>
       <CrmBanner result={resultCode} />
       <Breadcrumbs items={[
         { label: "Commercial", href: "/app/advertisers" as Route },
@@ -333,7 +332,7 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
           </ol>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

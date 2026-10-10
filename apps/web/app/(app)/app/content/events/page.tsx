@@ -5,7 +5,6 @@ import { hasEventCapability, listDiscoverableTerritories, readEventSuggestions }
 import { formatDateTime, formatLabel } from "../../../../../lib/format";
 import { Actions, EmptyState, FilterTabs, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { approveSuggestionAction, discoverEventsAction, rejectSuggestionAction } from "./actions";
 import { DiscoverForm } from "./DiscoverForm";
@@ -32,7 +31,7 @@ export default async function EventDiscoveryPage({ searchParams }: PageProps) {
   const result = await load(request, status);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { suggestions, canDiscover, territories, canDecide } = result;
@@ -53,7 +52,7 @@ export default async function EventDiscoveryPage({ searchParams }: PageProps) {
   };
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Content Studio", href: "/app/content" as Route }, { label: "Event discovery" }]} />
 
       <PageHeader
@@ -112,7 +111,7 @@ export default async function EventDiscoveryPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

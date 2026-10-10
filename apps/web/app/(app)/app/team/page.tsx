@@ -4,7 +4,6 @@ import { readFranchiseTeamAsActor } from "../../../../lib/access-runtime";
 import { formatCount, formatDate } from "../../../../lib/format";
 import { EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { inviteStaffAction, removeStaffAction, revokeStaffInvitationAction } from "./actions";
 import type { TeamResult } from "./actions";
@@ -34,7 +33,7 @@ export default async function TeamPage({ searchParams }: PageProps) {
   try {
     shell = await requireShellPermission(request, { module: "franchise.team", action: "view" });
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
   let team;
   try {
@@ -42,19 +41,19 @@ export default async function TeamPage({ searchParams }: PageProps) {
   } catch (error) {
     if (!(error instanceof AccessInputError)) throw error;
     return (
-      <AppShell request={request}>
+      <>
         <PageHeader eyebrow="Franchise" title="My team" intro="The people who work in your franchise territory with you." />
         <Panel>
           <EmptyState title="Choose your franchise first">Your team belongs to one franchise territory. Switch to it from the context menu, then come back.</EmptyState>
         </Panel>
-      </AppShell>
+      </>
     );
   }
 
   const seatsFull = team.seats.used >= team.seats.limit;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Franchise"
         title={`${shell.activeContext.territoryName ?? "Your territory"} team`}
@@ -108,6 +107,6 @@ export default async function TeamPage({ searchParams }: PageProps) {
           </form>
         </Panel>
       ) : null}
-    </AppShell>
+    </>
   );
 }

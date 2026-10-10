@@ -4,7 +4,6 @@ import { readAdvertiser360 } from "../../../../../../lib/advertising-runtime";
 import { formatDate, formatLabel } from "../../../../../../lib/format";
 import { EmptyState, LinkButton, PageHeader, Panel, RecordCard, RecordList } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { protectedOutcome } from "../../../../../../lib/protected-outcome";
 
@@ -21,11 +20,11 @@ export default async function AdvertiserAcceptancePage({ params, searchParams }:
   const result = await loadAdvertiser(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs
         items={[
           { label: "Commercial", href: "/app/advertisers" as Route },
@@ -67,7 +66,7 @@ export default async function AdvertiserAcceptancePage({ params, searchParams }:
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

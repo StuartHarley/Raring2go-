@@ -7,7 +7,6 @@ import type { AnalyticsActorContext } from "../../../../lib/analytics-runtime";
 import { formatDate, formatDateTime, formatLabel } from "../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, Table } from "../../../../lib/page-ui";
 import type { Tone } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { generateSnapshotAction } from "./actions";
 import { bandLabels, benchmarkLabels, formatChange, formatMetric } from "./format";
@@ -44,7 +43,7 @@ export default async function ScorecardPage({ searchParams }: PageProps) {
     const context: AnalyticsActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     loaded = { context, ...(await readScorecardForActor(context)) };
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
 
   const { context, view, history } = loaded;
@@ -58,7 +57,7 @@ export default async function ScorecardPage({ searchParams }: PageProps) {
   const health = view.health;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Analytics"
         title={view.scope === "network" ? "Network scorecard" : `${view.territory?.name ?? "Territory"} scorecard`}
@@ -232,7 +231,7 @@ export default async function ScorecardPage({ searchParams }: PageProps) {
           )}
         </Panel>
       ))}
-    </AppShell>
+    </>
   );
 }
 

@@ -5,7 +5,6 @@ import { readDebtPanel } from "../../../../../lib/assistants-finance";
 import { displayName, formatCount } from "../../../../../lib/format";
 import { EmptyState, FactList, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { DebtAssistantPanel } from "./DebtAssistantPanel";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
@@ -22,7 +21,7 @@ export default async function CommercialCommandCentrePage({ searchParams }: Page
   const result = await loadCommandCentre(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { commandCentre, debt } = result;
@@ -30,7 +29,7 @@ export default async function CommercialCommandCentrePage({ searchParams }: Page
   const percent = (value: number | null | undefined) => (value == null ? "No data" : `${value}%`);
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Commercial"
         title="Commercial health"
@@ -125,7 +124,7 @@ export default async function CommercialCommandCentrePage({ searchParams }: Page
         />
       </Panel>
       {debt ? <DebtAssistantPanel request={request} panel={debt} resultCode={resultCode} /> : null}
-    </AppShell>
+    </>
   );
 }
 

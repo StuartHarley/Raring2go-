@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { listConnectionCards } from "../../../../../lib/integrations-runtime";
 import { formatDateTime, formatLabel } from "../../../../../lib/format";
@@ -40,7 +39,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps) {
   query.set("returnTo", "/app/settings/connections");
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Settings"
         title="Connections"
@@ -181,7 +180,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps) {
           </Actions>
         </form>
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

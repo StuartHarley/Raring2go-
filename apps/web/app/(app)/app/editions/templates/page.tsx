@@ -5,7 +5,6 @@ import { readTemplateLibrary } from "../../../../../lib/edition-runtime";
 import { formatCount, formatDate, formatLabel } from "../../../../../lib/format";
 import { EmptyState, LinkButton, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { approveTemplateVersionAction, publishTemplateVersionAction } from "./actions";
 import { ZonePreview } from "./zone-preview";
@@ -27,7 +26,7 @@ export default async function TemplateLibraryPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(search);
   const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const loaded = await load(request);
-  if ("error" in loaded) return protectedOutcome(loaded.error, request);
+  if ("error" in loaded) return protectedOutcome(loaded.error);
 
   const query = new URLSearchParams();
   if (request.sessionKey) query.set("session", request.sessionKey);
@@ -36,7 +35,7 @@ export default async function TemplateLibraryPage({ searchParams }: PageProps) {
   const qs = query.size ? `?${query.toString()}` : "";
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Edition Factory", href: "/app/editions" as Route }, { label: "Template library" }]} />
       <PageHeader
         eyebrow="Edition Factory"
@@ -93,7 +92,7 @@ export default async function TemplateLibraryPage({ searchParams }: PageProps) {
           </RecordList>
         </Panel>
       ))}
-    </AppShell>
+    </>
   );
 }
 

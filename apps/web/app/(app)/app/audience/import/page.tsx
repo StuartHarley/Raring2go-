@@ -4,7 +4,6 @@ import { listAudienceImports } from "../../../../../lib/audience-import-runtime"
 import { getDirectory } from "../../../../../lib/directory";
 import { formatCount, formatDate } from "../../../../../lib/format";
 import { EmptyState, LinkButton, PageHeader, Panel, RecordLink, RecordList } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { ImportUploadForm } from "./ImportUploadForm";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
@@ -16,7 +15,7 @@ type PageProps = { searchParams: Promise<Record<string, string | string[] | unde
 export default async function AudienceImportPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(await searchParams);
   const result = await load(request);
-  if ("error" in result) return protectedOutcome(result.error, request);
+  if ("error" in result) return protectedOutcome(result.error);
 
   const query = new URLSearchParams();
   if (request.sessionKey) query.set("session", request.sessionKey);
@@ -25,7 +24,7 @@ export default async function AudienceImportPage({ searchParams }: PageProps) {
   const queryString = query.size > 0 ? `?${query.toString()}` : "";
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Audience"
         title="Import contacts"
@@ -65,7 +64,7 @@ export default async function AudienceImportPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

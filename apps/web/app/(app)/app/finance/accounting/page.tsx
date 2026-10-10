@@ -3,7 +3,6 @@ import { ShellAccessError, requireShellPermission } from "../../../../../lib/app
 import { readFinanceConfig } from "../../../../../lib/finance-config-runtime";
 import { formatCount, formatDate } from "../../../../../lib/format";
 import { Actions, EmptyState, LinkButton, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { retryAccountingSyncAction, setTaxRateAction } from "./actions";
 import type { AccountingResult } from "./actions";
@@ -29,11 +28,11 @@ export default async function AccountingPage({ searchParams }: PageProps) {
   if ("error" in result) {
     if (result.error instanceof ShellAccessError) {
       return (
-        <AppShell request={request}>
+        <>
           <Panel>
             <EmptyState title="Not available">You do not have access to finance configuration.</EmptyState>
           </Panel>
-        </AppShell>
+        </>
       );
     }
     throw result.error;
@@ -45,7 +44,7 @@ export default async function AccountingPage({ searchParams }: PageProps) {
   const { counts } = result;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Finance"
         title="Tax rates and accounting"
@@ -127,7 +126,7 @@ export default async function AccountingPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

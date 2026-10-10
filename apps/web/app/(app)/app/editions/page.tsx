@@ -3,8 +3,6 @@ import { ShellAccessError, requireShellPermission } from "../../../../lib/app-sh
 import { formatDate, formatLabel } from "../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
 import { listEditionFactoryRows } from "../../../../lib/publishing-runtime";
-import { bulkEditionAction } from "./actions";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 
@@ -21,7 +19,7 @@ export default async function EditionsPage({ searchParams }: PageProps) {
   const param = (name: string) => (Array.isArray(search[name]) ? search[name]![0] : search[name]) as string | undefined;
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const allRows = result.rows;
@@ -36,7 +34,7 @@ export default async function EditionsPage({ searchParams }: PageProps) {
   ).length;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Publishing"
         title="Edition Factory"
@@ -83,7 +81,7 @@ export default async function EditionsPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

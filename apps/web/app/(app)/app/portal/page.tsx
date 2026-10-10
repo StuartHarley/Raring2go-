@@ -4,7 +4,6 @@ import { readPortalPaymentOptions } from "../../../../lib/payments-runtime";
 import { formatDate, formatLabel } from "../../../../lib/format";
 import { Actions, EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, StatusBadge, Table } from "../../../../lib/page-ui";
 import type { Tone } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { ArtworkUploadForm } from "./ArtworkUploadForm";
 import { payInvoiceAction, respondToProofAction, respondToProposalAction, signProposalAction } from "./actions";
@@ -47,7 +46,7 @@ export default async function PortalPage({ searchParams }: PageProps) {
   const result = await load(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { view, paymentOptions } = result;
@@ -61,7 +60,7 @@ export default async function PortalPage({ searchParams }: PageProps) {
   const currency = view.invoices[0]?.currency ?? view.proposals[0]?.currency ?? "GBP";
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader eyebrow="Your account" title={view.advertisers[0]?.name ?? "Your campaigns"} intro="Your bookings, artwork, proofs and invoices in one place." />
       {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
 
@@ -264,7 +263,7 @@ export default async function PortalPage({ searchParams }: PageProps) {
           </RecordList>
         </Panel>
       ) : null}
-    </AppShell>
+    </>
   );
 }
 

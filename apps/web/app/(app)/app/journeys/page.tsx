@@ -3,7 +3,6 @@ import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasMarketingCapability, listNetworkTerritories, readJourneyOverview } from "../../../../lib/marketing-runtime";
 import { formatCount } from "../../../../lib/format";
 import { Actions, EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { JourneyBuilderFields } from "./JourneyBuilderFields";
 import { activateJourneyAction, createJourneyAction, pauseJourneyAction } from "./actions";
@@ -22,7 +21,7 @@ export default async function JourneysPage({ searchParams }: PageProps) {
   const result = await loadJourneys(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { context, overview, territoryOptions, canCreate, canActivate, canPause } = result;
@@ -30,7 +29,7 @@ export default async function JourneysPage({ searchParams }: PageProps) {
   const activeRuns = overview.journeys.reduce((total, journey) => total + journey.activeExecutions, 0);
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Marketing"
         title="Journeys"
@@ -115,7 +114,7 @@ export default async function JourneysPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

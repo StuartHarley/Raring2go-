@@ -6,7 +6,6 @@ import { getDirectory } from "../../../../../lib/directory";
 import { displayName, formatCount, formatLabel, formatLabels } from "../../../../../lib/format";
 import { EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, toneForStatus } from "../../../../../lib/page-ui";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { approveVariantAction, generateContentDraftAction, repurposeContentAction } from "../actions";
 import { RepurposeForm } from "../RepurposeForm";
@@ -33,7 +32,7 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
   const result = await loadWorkspace(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { libraryItem, versions, variantVersions, aiTasks, websiteJobs } = result.workspace;
@@ -46,7 +45,7 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
   const aiTaskById = new Map(aiTasks.map((task) => [task.id, task]));
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[
         { label: "Content Studio", href: "/app/content" as Route },
         { label: libraryItem.item.title }
@@ -230,7 +229,7 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

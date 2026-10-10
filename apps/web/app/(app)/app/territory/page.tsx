@@ -21,14 +21,8 @@ export default async function TerritoryPage({ searchParams }: PageProps) {
       action: "view"
     });
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
 
-  const query = new URLSearchParams();
-  if (request.sessionKey) query.set("session", request.sessionKey);
-  if (request.organisationId) query.set("organisationId", request.organisationId);
-  if (request.territoryId) query.set("territoryId", request.territoryId);
-  const suffix = query.toString();
-
-  redirect(`/app${suffix ? `?${suffix}` : ""}` as Route);
+  redirect("/app" as Route);
 }

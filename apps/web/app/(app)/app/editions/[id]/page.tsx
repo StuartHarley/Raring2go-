@@ -7,7 +7,6 @@ import { readOutputReadiness } from "../../../../../lib/edition-output";
 import { formatCount, formatDate, formatLabel } from "../../../../../lib/format";
 import { EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
@@ -26,7 +25,7 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
   const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const pagesNeedingAttention = result.pages.filter((page) => page.readiness !== "ready").length;
@@ -36,7 +35,7 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
   if (request.territoryId) outputQuery.set("territoryId", request.territoryId);
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[
         { label: "Edition Factory", href: "/app/editions" as Route },
         { label: result.row.territoryEdition.title }
@@ -215,7 +214,7 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

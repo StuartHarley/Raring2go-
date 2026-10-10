@@ -1,4 +1,3 @@
-import { AppShell } from "../../layout";
 import { resolveShell } from "../../../../lib/app-shell";
 import { buildMyToday } from "../../../../lib/my-today";
 import { EmptyState, PageHeader, Panel } from "../../../../lib/page-ui";
@@ -22,14 +21,14 @@ export default async function ActionCentrePage({ searchParams }: PageProps) {
   const shell = await resolveShell(request);
 
   if (shell.kind !== "authenticated") {
-    return <ProtectedOutcome outcome={shell} request={request} />;
+    return <ProtectedOutcome outcome={shell} />;
   }
 
   const today = await buildMyToday(shell);
   const place = shell.activeContext.territoryName ?? shell.activeContext.organisationName;
 
   return (
-    <AppShell request={request} shell={shell}>
+    <>
       <PageHeader
         eyebrow="Action Centre"
         title="Everything waiting on you"
@@ -56,6 +55,6 @@ export default async function ActionCentrePage({ searchParams }: PageProps) {
           </Panel>
         );
       })}
-    </AppShell>
+    </>
   );
 }

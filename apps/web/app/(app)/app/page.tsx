@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { AppShell } from "../layout";
 import type { RequestedShellContext } from "../../../lib/app-shell";
 import { resolveShell } from "../../../lib/app-shell";
 import { sessionCookieName } from "../../../lib/auth-runtime";
+import { parseWorkingContext, workingContextCookieName } from "../../../lib/working-context";
 import { firstName } from "../../../lib/format";
 import { buildMyToday } from "../../../lib/my-today";
 import { EmptyState, Metrics, PageHeader, Panel } from "../../../lib/page-ui";
@@ -22,22 +22,19 @@ export default async function AppHome({ searchParams }: PageProps) {
   const shell = await resolveShell(request);
 
   if (shell.kind !== "authenticated") {
-    return <ProtectedOutcome outcome={shell} request={request} />;
+    return <ProtectedOutcome outcome={shell} />;
   }
 
   // An advertiser's login only ever has the portal: send them straight to it.
   if (shell.navigation.length > 0 && shell.navigation.every((item) => item.group === "portal")) {
-    const query = new URLSearchParams();
-    if (request.sessionKey) query.set("session", request.sessionKey);
-    if (request.organisationId) query.set("organisationId", request.organisationId);
-    redirect(`/app/portal${query.toString() ? `?${query.toString()}` : ""}` as Route);
+    redirect("/app/portal" as Route);
   }
 
   const today = await buildMyToday(shell);
   const place = shell.activeContext.territoryName ?? shell.activeContext.organisationName;
 
   return (
-    <AppShell request={request} shell={shell}>
+    <>
       <PageHeader
         eyebrow="My Today"
         title={`${firstName(shell.displayName)}, here is what needs attention`}
@@ -76,7 +73,7 @@ export default async function AppHome({ searchParams }: PageProps) {
           }))}
         />
       </section>
-    </AppShell>
+    </>
   );
 }
 
@@ -97,9 +94,14 @@ export async function requestFromSearchParamsAndCookies(
   const request = requestFromSearchParams(params);
   const cookieStore = await cookies();
 
+  const stored = parseWorkingContext(cookieStore.get(workingContextCookieName)?.value);
+
   return {
     ...request,
-    sessionToken: request.sessionToken ?? cookieStore.get(sessionCookieName)?.value
+    sessionToken: request.sessionToken ?? cookieStore.get(sessionCookieName)?.value,
+    // Query parameters win (deep links); otherwise the context the person chose last time.
+    organisationId: request.organisationId ?? stored.organisationId,
+    territoryId: request.organisationId ? request.territoryId : stored.territoryId
   };
 }
 

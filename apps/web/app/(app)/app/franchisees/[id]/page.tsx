@@ -4,7 +4,6 @@ import { displayName, formatCount, formatDate, formatDateTime, formatLabel, form
 import { Actions, EmptyState, FactList, Metrics, PageHeader, Panel, RecordCard, RecordList, StatusBadge } from "../../../../../lib/page-ui";
 import type { Tone } from "../../../../../lib/page-ui";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { readFranchisePanel } from "../../../../../lib/assistants-franchise";
 import { FranchiseAssistantPanel } from "./FranchiseAssistantPanel";
 import { DocumentUploadForm } from "./DocumentUploadForm";
@@ -60,7 +59,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
   const result = await loadFranchise360(request, id);
 
   if ("error" in result) {
-    return recordOutcome(result.error, request);
+    return recordOutcome(result.error);
   }
 
   // The session is carried by cookie; these only repeat any explicit context the page was opened with.
@@ -96,7 +95,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
   const firstPolicy = view.insurancePolicies[0];
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Franchisees", href: "/app/franchisees" }, { label: territoryName }]} />
       <PageHeader
         eyebrow="Franchisee"
@@ -576,7 +575,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
           <EmptyState title="No activity yet">Changes to this franchise are recorded here as they happen.</EmptyState>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

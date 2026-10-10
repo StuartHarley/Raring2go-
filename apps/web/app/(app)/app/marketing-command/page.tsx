@@ -5,7 +5,6 @@ import { readMarketingExtras } from "../../../../lib/marketing-insights";
 import { displayName, formatCount, formatLabel } from "../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList, Table } from "../../../../lib/page-ui";
 import type { Tone } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 
@@ -22,7 +21,7 @@ export default async function MarketingCommandPage({ searchParams }: PageProps) 
   const result = await loadCommandCentre(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { command, extras, territories } = result;
@@ -30,7 +29,7 @@ export default async function MarketingCommandPage({ searchParams }: PageProps) 
     territoryId ? displayName(territories.find((territory) => territory.id === territoryId)?.name, "Area not named yet") : "Whole network";
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Marketing"
         title="Marketing overview"
@@ -187,7 +186,7 @@ export default async function MarketingCommandPage({ searchParams }: PageProps) 
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -1,4 +1,3 @@
-import { AppShell } from "../../layout";
 import { resolveShell } from "../../../../lib/app-shell";
 import { formatCount } from "../../../../lib/format";
 import { globalSearch } from "../../../../lib/global-search";
@@ -19,14 +18,14 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const query = first(params.q) ?? "";
 
   if (shell.kind !== "authenticated") {
-    return <ProtectedOutcome outcome={shell} request={request} />;
+    return <ProtectedOutcome outcome={shell} />;
   }
 
   const results = await globalSearch(shell, query);
   const tooShort = query.trim().length < 2;
 
   return (
-    <AppShell request={request} shell={shell}>
+    <>
       <PageHeader eyebrow="Search" title="Find a record" intro="Franchisees, advertisers, editions and content you are allowed to see. Press ⌘K anywhere to jump to a page." />
 
       <Panel>
@@ -52,7 +51,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

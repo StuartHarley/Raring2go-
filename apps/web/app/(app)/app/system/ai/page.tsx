@@ -6,7 +6,6 @@ import { readAiRuns } from "../../../../../lib/ai-runtime";
 import { getDirectory } from "../../../../../lib/directory";
 import { displayName, formatCode, formatDateTime, formatLabel } from "../../../../../lib/format";
 import { EmptyState, FilterTabs, Metrics, PageHeader, Panel, StatusBadge, Table } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
@@ -27,7 +26,7 @@ export default async function AiRunsPage({ searchParams }: PageProps) {
   const result = await load(request, state);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { runs } = result;
@@ -46,7 +45,7 @@ export default async function AiRunsPage({ searchParams }: PageProps) {
   const requesterNames = await resolveNames(runs.map((run) => run.actorUserId));
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="AI"
         title="AI runs"
@@ -119,7 +118,7 @@ export default async function AiRunsPage({ searchParams }: PageProps) {
           </Table>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -5,7 +5,6 @@ import { getDirectory } from "../../../../lib/directory";
 import { formatCode, formatDateTime, formatLabel } from "../../../../lib/format";
 import { Actions, EmptyState, LinkButton, PageHeader, Panel, Table } from "../../../../lib/page-ui";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
 export const metadata = { title: "Audit trail" };
@@ -26,7 +25,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
       action: "administer"
     });
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
 
   const filters = parseAuditFilters(search);
@@ -45,7 +44,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
   const filtering = Boolean(filters.actionPrefix || filters.entityType || filters.actorUserId || filters.territoryId || filters.from || filters.to);
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="System"
         title="Audit trail"
@@ -140,7 +139,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
           </Actions>
         ) : null}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

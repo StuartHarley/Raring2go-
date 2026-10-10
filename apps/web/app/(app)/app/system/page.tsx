@@ -2,7 +2,6 @@ import type { Route } from "next";
 import { requireShellPermission } from "../../../../lib/app-shell";
 import { PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
 export const metadata = { title: "System" };
@@ -33,13 +32,13 @@ export default async function SystemPage({ searchParams }: PageProps) {
       action: "administer"
     });
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
 
   const areas = shell.navigation.filter((item) => item.group === "administration" && item.id !== "system");
 
   return (
-    <AppShell request={request} shell={shell}>
+    <>
       <PageHeader
         eyebrow="System"
         title="Administration"
@@ -50,7 +49,7 @@ export default async function SystemPage({ searchParams }: PageProps) {
           {areas.map((area) => (
             <RecordLink
               key={area.id}
-              href={withContext(area.href, request)}
+              href={area.href as Route}
               title={area.label}
               lines={[PURPOSE[area.id] ?? "Open this administration area."]}
             />
@@ -68,15 +67,7 @@ export default async function SystemPage({ searchParams }: PageProps) {
           </a>
         </p>
       </Panel>
-    </AppShell>
+    </>
   );
 }
 
-function withContext(href: string, request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
-  const query = new URLSearchParams();
-  if (request.sessionKey) query.set("session", request.sessionKey);
-  if (request.organisationId) query.set("organisationId", request.organisationId);
-  if (request.territoryId) query.set("territoryId", request.territoryId);
-  const suffix = query.toString();
-  return (suffix ? `${href}?${suffix}` : href) as Route;
-}

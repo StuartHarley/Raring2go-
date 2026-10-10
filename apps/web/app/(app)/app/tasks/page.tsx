@@ -3,7 +3,6 @@ import { hasAutomationCapability, readTasksAndApprovals } from "../../../../lib/
 import type { AutomationActorContext } from "../../../../lib/automation-runtime";
 import { formatDate, formatDateTime } from "../../../../lib/format";
 import { EmptyState, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { completeTaskAction, decideApprovalAction } from "./actions";
 import { getPermissionData } from "../../../../lib/permission-source";
@@ -27,7 +26,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const result = await load(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { context, permissions, tasks, approvals, notifications } = result;
@@ -37,7 +36,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const overdue = tasks.filter((task) => task.dueDate && task.dueDate < today).length;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Today"
         title="Tasks & approvals"
@@ -136,7 +135,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

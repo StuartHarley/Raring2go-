@@ -3,7 +3,6 @@ import { requireShellPermission } from "../../../../../../lib/app-shell";
 import { templateSpecErrorText } from "@raring2go/publishing";
 import { Notice, PageHeader, Panel } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { createTemplateAction } from "../actions";
 import { TemplateForm } from "../template-form";
@@ -18,11 +17,11 @@ export default async function NewTemplatePage({ searchParams }: { searchParams: 
   try {
     await requireShellPermission(request, { module: "edition.template", action: "create" });
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
   const message = code ? (templateSpecErrorText as Record<string, string>)[code] : undefined;
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Edition Factory", href: "/app/editions" as Route }, { label: "Template library", href: "/app/editions/templates" as Route }, { label: "New template" }]} />
       <PageHeader
         eyebrow="Template library"
@@ -33,6 +32,6 @@ export default async function NewTemplatePage({ searchParams }: { searchParams: 
         {message ? <Notice tone="error">{message}</Notice> : null}
         <TemplateForm action={createTemplateAction.bind(null, request)} withIdentity submitLabel="Create draft" />
       </Panel>
-    </AppShell>
+    </>
   );
 }

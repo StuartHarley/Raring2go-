@@ -5,7 +5,6 @@ import { listConnectionCards } from "../../../../lib/integrations-runtime";
 import { readEmailCampaignOverview, readSegments, readSubjectLineComparison } from "../../../../lib/marketing-runtime";
 import { formatCount, formatDateTime } from "../../../../lib/format";
 import { Actions, EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { CampaignComposeFields } from "./CampaignComposeFields";
 import {
@@ -40,13 +39,13 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
   const result = await loadNewsletters(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { context, email, composableSegments, outlookMailboxes, aiAssistAvailable, lastNewsletter, comparisons } = result;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Marketing"
         title="Newsletters"
@@ -308,7 +307,7 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

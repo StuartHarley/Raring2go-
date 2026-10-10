@@ -6,7 +6,6 @@ import type { AnalyticsActorContext } from "../../../../../lib/analytics-runtime
 import { formatDate, formatLabel } from "../../../../../lib/format";
 import { Actions, EmptyState, FactList, LinkButton, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { activateAction, saveDraftAction } from "./actions";
 import { ConfigEditor } from "./ConfigEditor";
@@ -38,7 +37,7 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
     const context: AnalyticsActorContext = { userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId };
     configs = await readHealthConfigsForActor(context);
   } catch (error) {
-    return protectedOutcome(error, request);
+    return protectedOutcome(error);
   }
 
   const resultParam = Array.isArray(params.result) ? params.result[0] : params.result;
@@ -54,7 +53,7 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
   const back = `/app/analytics${query.toString() ? `?${query.toString()}` : ""}` as Route;
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Franchise scorecard", href: back }, { label: "Franchise health settings" }]} />
       <PageHeader
         eyebrow="Analytics"
@@ -140,6 +139,6 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }

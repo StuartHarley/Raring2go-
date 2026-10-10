@@ -5,7 +5,6 @@ import { readWorkflowOverview } from "../../../../../lib/automation-runtime";
 import type { AutomationActorContext } from "../../../../../lib/automation-runtime";
 import { formatCode, formatDateTime, formatLabel } from "../../../../../lib/format";
 import { EmptyState, Metrics, PageHeader, Panel, StatusBadge, Table } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
@@ -22,7 +21,7 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
   const result = await load(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { definitions, runs } = result;
@@ -35,7 +34,7 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
   const failed = runs.filter(({ run }) => run.status === "failed").length;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Automation"
         title="Workflows"
@@ -124,7 +123,7 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
           </Table>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -4,7 +4,6 @@ import { readContentDraftRun } from "../../../../../../lib/publishing-runtime";
 import { formatLabel } from "../../../../../../lib/format";
 import { Actions, FactList, Notice, PageHeader, Panel, StatusBadge } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { acceptContentDraftAction, rejectContentDraftAction } from "../../actions";
 import { protectedOutcome } from "../../../../../../lib/protected-outcome";
@@ -30,7 +29,7 @@ export default async function ContentDraftReviewPage({ params, searchParams }: P
   const result = await load(request, runId);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { run } = result;
@@ -39,7 +38,7 @@ export default async function ContentDraftReviewPage({ params, searchParams }: P
   const pending = run.approvalState === "pending" && run.status === "succeeded";
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Content Studio", href: "/app/content" as Route }, { label: "Review AI draft" }]} />
 
       <PageHeader
@@ -91,7 +90,7 @@ export default async function ContentDraftReviewPage({ params, searchParams }: P
           </Notice>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

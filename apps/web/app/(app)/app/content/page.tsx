@@ -3,7 +3,6 @@ import { requireShellPermission } from "../../../../lib/app-shell";
 import { formatCount, formatLabel, formatLabels } from "../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
 import { hasContentAiCapability, listContentLibraryItems } from "../../../../lib/publishing-runtime";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { getPermissionData } from "../../../../lib/permission-source";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
@@ -19,7 +18,7 @@ export default async function ContentLibraryPage({ searchParams }: PageProps) {
   const result = await loadContent(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const needsAttention = result.items.filter((item) => item.health.length > 0).length;
@@ -27,7 +26,7 @@ export default async function ContentLibraryPage({ searchParams }: PageProps) {
   const localised = result.items.filter((item) => item.localisations.length > 0).length;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Publishing"
         title="Content Studio"
@@ -69,7 +68,7 @@ export default async function ContentLibraryPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

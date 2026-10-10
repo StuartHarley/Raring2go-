@@ -4,7 +4,6 @@ import { readAudienceImport } from "../../../../../../lib/audience-import-runtim
 import { formatDate, formatLabel } from "../../../../../../lib/format";
 import { Actions, FactList, LinkButton, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { commitImportAction, rollbackImportAction } from "../actions";
 import type { ImportResult } from "../actions";
@@ -44,7 +43,7 @@ export default async function AudienceImportDetailPage({ params, searchParams }:
   const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const { id } = await params;
   const result = await load(request, id);
-  if ("error" in result) return recordOutcome(result.error, request);
+  if ("error" in result) return recordOutcome(result.error);
 
   const { record, summary, sample, hasReport } = result.detail;
   const query = new URLSearchParams();
@@ -57,7 +56,7 @@ export default async function AudienceImportDetailPage({ params, searchParams }:
   const rollback = record.metadata.rollback;
 
   return (
-    <AppShell request={request}>
+    <>
       {banner ? <Notice tone={bannerTone}>{banner}</Notice> : null}
       <Breadcrumbs
         items={[
@@ -151,7 +150,7 @@ export default async function AudienceImportDetailPage({ params, searchParams }:
           />
         </Panel>
       ) : null}
-    </AppShell>
+    </>
   );
 }
 

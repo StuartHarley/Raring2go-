@@ -11,7 +11,6 @@ import { readRoyaltyPanel } from "../../../../lib/assistants-finance";
 import { displayName, formatDate, formatLabel } from "../../../../lib/format";
 import { Actions, EmptyState, LinkButton, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { RoyaltyReviewPanel } from "./RoyaltyReviewPanel";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import {
   addAdjustmentAction,
@@ -38,7 +37,7 @@ export default async function FinancePage({ searchParams }: PageProps) {
   const result = await loadFinance(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { context, isNetworkView, franchises, territoryNames, rules, networkStatements, ownFranchise, ownStatements } = result;
@@ -46,7 +45,7 @@ export default async function FinancePage({ searchParams }: PageProps) {
   const nameOf = (franchiseId: string) => franchiseName(franchises, territoryNames, franchiseId);
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Finance"
         title="Royalties"
@@ -187,7 +186,7 @@ export default async function FinancePage({ searchParams }: PageProps) {
           )}
         </Panel>
       )}
-    </AppShell>
+    </>
   );
 }
 

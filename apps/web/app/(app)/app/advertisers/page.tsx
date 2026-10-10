@@ -4,7 +4,6 @@ import { listAdvertiser360Rows } from "../../../../lib/advertising-runtime";
 import { getDirectory } from "../../../../lib/directory";
 import { displayName } from "../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { createAdvertiserAction } from "./actions";
 import { CrmBanner } from "./CrmBanner";
 import { requestFromSearchParamsAndCookies } from "../page";
@@ -23,7 +22,7 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
   const result = await loadAdvertisers(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const retained = result.advertisers.filter((row) => row.advertiser.relationshipState === "retained").length;
@@ -33,7 +32,7 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
   );
 
   return (
-    <AppShell request={request}>
+    <>
       <CrmBanner result={resultCode} />
       <PageHeader
         eyebrow="Commercial"
@@ -106,7 +105,7 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
           </button>
         </form>
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -4,7 +4,6 @@ import { requireShellPermission } from "../../../../../lib/app-shell";
 import { listNetworkTerritories, readNewsletterFactoryOverview, readSegments } from "../../../../../lib/marketing-runtime";
 import { displayName, formatCount, formatLabel } from "../../../../../lib/format";
 import { Actions, EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import {
   addEditionOverrideAction,
@@ -28,13 +27,13 @@ export default async function NewsletterFactoryPage({ searchParams }: PageProps)
   const result = await loadFactory(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { context, factory, territories, segments, isNetworkView } = result;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Head Office"
         title="Newsletter factory"
@@ -184,7 +183,7 @@ export default async function NewsletterFactoryPage({ searchParams }: PageProps)
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

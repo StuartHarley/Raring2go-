@@ -7,7 +7,6 @@ import type { AutomationActorContext } from "../../../../../../lib/automation-ru
 import { formatCode, formatDateTime, formatLabels } from "../../../../../../lib/format";
 import { Actions, Metrics, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { createDraftAction, saveDraftAction, toggleWorkflowAction } from "./actions";
 import { WorkflowDraftEditor } from "./WorkflowDraftEditor";
@@ -47,7 +46,7 @@ export default async function WorkflowDefinitionPage({ params, searchParams }: P
 
   if ("error" in result) {
     // A JobAccessError means the record exists but is outside this actor's scope: shown as a denial, not a crash.
-    return protectedOutcome(result.error instanceof JobAccessError ? new ShellAccessError("unauthorised", result.error.message) : result.error, request);
+    return protectedOutcome(result.error instanceof JobAccessError ? new ShellAccessError("unauthorised", result.error.message) : result.error);
   }
 
   const { context, permissions, definition, versions } = result;
@@ -61,7 +60,7 @@ export default async function WorkflowDefinitionPage({ params, searchParams }: P
   const trigger = (active ?? draft)?.triggerEvent;
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Workflows", href: "/app/system/workflows" as Route }, { label: definition.name }]} />
 
       <PageHeader eyebrow="Workflow" title={definition.name} intro={definition.description} />
@@ -141,7 +140,7 @@ export default async function WorkflowDefinitionPage({ params, searchParams }: P
           </tbody>
         </Table>
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

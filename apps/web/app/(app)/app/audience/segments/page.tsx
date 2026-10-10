@@ -2,7 +2,6 @@ import { requireShellPermission } from "../../../../../lib/app-shell";
 import { listNetworkTerritories, readSegmentsWithAudienceCounts } from "../../../../../lib/marketing-runtime";
 import { formatCount } from "../../../../../lib/format";
 import { EmptyState, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { SegmentRuleBuilder } from "./SegmentRuleBuilder";
 import { createSegmentAction, previewSegmentAudienceAction, updateSegmentAction } from "./actions";
@@ -23,13 +22,13 @@ export default async function SegmentsPage({ searchParams }: PageProps) {
   const result = await loadSegments(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { context, segments, territoryOptions } = result;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Audience"
         title="Segments"
@@ -101,7 +100,7 @@ export default async function SegmentsPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

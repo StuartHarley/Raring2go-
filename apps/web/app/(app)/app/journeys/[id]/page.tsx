@@ -3,7 +3,6 @@ import { hasMarketingCapability, listNetworkTerritories, readJourneyDetail } fro
 import { formatLabel } from "../../../../../lib/format";
 import { Metrics, Notice, PageHeader, Panel, toneForStatus } from "../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { JourneyBuilderFields } from "../JourneyBuilderFields";
 import { activateJourneyAction, approveJourneyAction, pauseJourneyAction, updateJourneyDraftAction } from "../actions";
@@ -24,7 +23,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
   const result = await loadJourney(request, id);
 
   if ("error" in result) {
-    return recordOutcome(result.error, request);
+    return recordOutcome(result.error);
   }
 
   const { context, detail, territoryOptions, canEdit, canApprove, canActivate, canPause } = result;
@@ -35,7 +34,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
   const showPause = canPause && (journey.status === "active" || journey.status === "approved");
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Journeys", href: "/app/journeys" }, { label: journey.name }]} />
 
       <PageHeader
@@ -126,7 +125,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
           </ol>
         </Panel>
       ) : null}
-    </AppShell>
+    </>
   );
 }
 

@@ -6,7 +6,6 @@ import type { JobActorContext } from "../../../../../../lib/jobs-runtime";
 import { formatCode, formatDateTime, formatLabel } from "../../../../../../lib/format";
 import { Actions, EmptyState, FactList, Metrics, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { cancelJobAction, retryJobAction } from "../actions";
 import { getPermissionData } from "../../../../../../lib/permission-source";
@@ -28,7 +27,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   if ("error" in result) {
     // A JobAccessError means the record exists but is outside this actor's scope: shown as a denial, not a crash.
-    return protectedOutcome(result.error instanceof JobAccessError ? new ShellAccessError("unauthorised", result.error.message) : result.error, request);
+    return protectedOutcome(result.error instanceof JobAccessError ? new ShellAccessError("unauthorised", result.error.message) : result.error);
   }
 
   const { context, permissions, job, attempts } = result;
@@ -38,7 +37,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   const canCancel = job.status === "queued" && hasJobCapability(permissions, context, "cancel", job);
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Background jobs", href: "/app/system/jobs" as Route }, { label: formatCode(job.kind) }]} />
 
       <PageHeader eyebrow="Job" title={formatCode(job.kind)} intro={`Created ${formatDateTime(job.createdAt)}.`} />
@@ -121,7 +120,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
           </Table>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

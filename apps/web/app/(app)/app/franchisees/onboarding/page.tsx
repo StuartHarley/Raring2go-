@@ -3,7 +3,6 @@ import { requireShellPermission } from "../../../../../lib/app-shell";
 import { displayName, formatCount, formatDate } from "../../../../../lib/format";
 import { listOnboardingOverview } from "../../../../../lib/franchise-runtime";
 import { EmptyState, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
@@ -18,7 +17,7 @@ export default async function FranchiseOnboardingPage({ searchParams }: PageProp
   const result = await loadOnboardingOverview(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const launching = result.rows.filter((row) => row.riskStatus !== "launched").length;
@@ -27,7 +26,7 @@ export default async function FranchiseOnboardingPage({ searchParams }: PageProp
   const overdue = result.rows.reduce((total, row) => total + row.overdueTasks, 0);
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Franchise"
         title="Onboarding"
@@ -67,7 +66,7 @@ export default async function FranchiseOnboardingPage({ searchParams }: PageProp
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -4,7 +4,6 @@ import { listNetworkTerritories, readMarketingAnalytics } from "../../../../lib/
 import { readContentEngagement } from "../../../../lib/marketing-insights";
 import { displayName, formatCount, formatDateTime, formatLabel } from "../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList, Table } from "../../../../lib/page-ui";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 
@@ -19,7 +18,7 @@ export default async function MarketingAnalyticsPage({ searchParams }: PageProps
   const result = await loadAnalytics(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const { analytics, engagement, territories } = result;
@@ -29,7 +28,7 @@ export default async function MarketingAnalyticsPage({ searchParams }: PageProps
     territoryId ? displayName(territories.find((territory) => territory.id === territoryId)?.name, "Area not named yet") : "Whole network";
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Marketing"
         title="Marketing analytics"
@@ -191,7 +190,7 @@ export default async function MarketingAnalyticsPage({ searchParams }: PageProps
           ))}
         </ul>
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

@@ -6,7 +6,6 @@ import { getDirectory } from "../../../../../../lib/directory";
 import { displayName, formatCode, formatDateTime, formatLabel } from "../../../../../../lib/format";
 import { Actions, FactList, Metrics, Notice, PageHeader, Panel } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { decideAiRunAction } from "../actions";
 import { getPermissionData } from "../../../../../../lib/permission-source";
@@ -38,7 +37,7 @@ export default async function AiRunPage({ params, searchParams }: PageProps) {
 
   if ("error" in result) {
     // A AiRunAccessError means the record exists but is outside this actor's scope: shown as a denial, not a crash.
-    return protectedOutcome(result.error instanceof AiRunAccessError ? new ShellAccessError("unauthorised", result.error.message) : result.error, request);
+    return protectedOutcome(result.error instanceof AiRunAccessError ? new ShellAccessError("unauthorised", result.error.message) : result.error);
   }
 
   const { run, canDecide } = result;
@@ -53,7 +52,7 @@ export default async function AiRunPage({ params, searchParams }: PageProps) {
   const decision = decisionLabel[run.approvalState] ?? formatLabel(run.approvalState);
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "AI runs", href: "/app/system/ai" as Route }, { label: run.purpose }]} />
 
       <PageHeader eyebrow="AI run" title={run.purpose} intro={`${formatCode(run.taskKey)}, requested ${formatDateTime(run.createdAt)}.`} />
@@ -119,7 +118,7 @@ export default async function AiRunPage({ params, searchParams }: PageProps) {
       <Panel eyebrow="What it returned" title="Output">
         <pre className="code-block">{pretty(run.output)}</pre>
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

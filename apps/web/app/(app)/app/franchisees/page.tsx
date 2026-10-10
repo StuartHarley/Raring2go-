@@ -5,7 +5,6 @@ import { displayName, formatCount, formatDate, formatLabel } from "../../../../l
 import { listComplianceOverview, listFranchiseSummaries } from "../../../../lib/franchise-runtime";
 import { EmptyState, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
 export const metadata = { title: "Franchisees" };
@@ -19,7 +18,7 @@ export default async function FranchiseesPage({ searchParams }: PageProps) {
   const result = await loadFranchisees(request);
 
   if ("error" in result) {
-    return protectedOutcome(result.error, request);
+    return protectedOutcome(result.error);
   }
 
   const trading = result.franchises.filter((franchise) => franchise.status === "active").length;
@@ -27,7 +26,7 @@ export default async function FranchiseesPage({ searchParams }: PageProps) {
   const behind = result.complianceOverview.filter((row) => row.openActions > 0).length;
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Franchise"
         title="Franchisees"
@@ -82,7 +81,7 @@ export default async function FranchiseesPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
 

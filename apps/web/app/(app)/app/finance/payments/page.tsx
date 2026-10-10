@@ -3,7 +3,6 @@ import { ShellAccessError, requireShellPermission } from "../../../../../lib/app
 import { readPaymentsOverview } from "../../../../../lib/payments-runtime";
 import { formatCount, formatDate, formatLabel } from "../../../../../lib/format";
 import { Actions, EmptyState, LinkButton, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { createPaymentLinkAction, emailPaymentLinkAction } from "./actions";
 import type { PaymentsResult } from "./actions";
@@ -40,11 +39,11 @@ export default async function PaymentsPage({ searchParams }: PageProps) {
   } catch (error) {
     if (error instanceof ShellAccessError) {
       return (
-        <AppShell request={request}>
+        <>
           <Panel>
             <EmptyState title="Not available">You do not have access to payments.</EmptyState>
           </Panel>
-        </AppShell>
+        </>
       );
     }
     throw error;
@@ -54,7 +53,7 @@ export default async function PaymentsPage({ searchParams }: PageProps) {
   const queryString = carried.size > 0 ? `?${carried.toString()}` : "";
 
   return (
-    <AppShell request={request}>
+    <>
       <PageHeader
         eyebrow="Finance"
         title="Online payments"
@@ -162,6 +161,6 @@ export default async function PaymentsPage({ searchParams }: PageProps) {
           </RecordList>
         )}
       </Panel>
-    </AppShell>
+    </>
   );
 }
