@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  auditEvents, createDb, preflightResults, editionPages, fileReferences, fixtureIds, magazineTemplates, magazineTemplateVersions, masterEditions, publicationOutputs, seasons, territoryEditions
+  auditEvents, createDb, editionPageRevisions, preflightResults, editionPages, fileReferences, fixtureIds, magazineTemplates, magazineTemplateVersions, masterEditions, publicationOutputs, seasons, territoryEditions
 } from "@raring2go/db";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -22,6 +22,7 @@ describe("render provider selection", () => {
 describe.skipIf(!process.env.RUN_DB_TESTS)("edition output generation (postgres)", () => {
   const { db, sql } = createDb();
   const tag = randomUUID().slice(0, 8);
+  const imageFileIds: string[] = [];
   const actor = { userId: fixtureIds.users.superAdmin, organisationId: fixtureIds.organisations.hq, territoryId: null };
   const franchisee = { userId: fixtureIds.users.franchisee, organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
   const ids = { season: randomUUID(), master: randomUUID(), edition: randomUUID(), template: randomUUID(), version: randomUUID(), page1: randomUUID(), page2: randomUUID() };
@@ -41,7 +42,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("edition output generation (postgres)
     await db.insert(magazineTemplates).values({ id: ids.template, key: `eo-${tag}`, name: "EO", category: "article", status: "approved" });
     await db.insert(magazineTemplateVersions).values({
       id: ids.version, templateId: ids.template, version: 1, status: "published", pageDimensions: {}, bleed: { top: 3, right: 3, bottom: 3, left: 3 }, trim: { width: 210, height: 297 }, margins: { top: 12, right: 12, bottom: 14, left: 12 },
-      grid: {}, lockedElements: [{ id: "x" }], editableZones: [], imageZones: [], copyZones: [{ id: "body" }], headlineZones: [{ id: "head" }], advertiserZones: [], footerFurniture: {}, printRules: {}, digitalEnhancements: {}
+      grid: {}, lockedElements: [{ id: "x" }], editableZones: [], imageZones: [{ id: "hero" }], copyZones: [{ id: "body" }], headlineZones: [{ id: "head" }], advertiserZones: [], footerFurniture: {}, printRules: {}, digitalEnhancements: {}
     });
     await db.insert(editionPages).values([1, 2].map((n) => ({
       id: n === 1 ? ids.page1 : ids.page2, territoryEditionId: ids.edition, pageNumber: n, spreadNumber: Math.ceil(n / 2), side: n === 1 ? "single" : "left", status: "approved",
@@ -58,7 +59,8 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("edition output generation (postgres)
     });
     await db.delete(publicationOutputs).where(eq(publicationOutputs.territoryEditionId, ids.edition));
     await db.delete(preflightResults).where(eq(preflightResults.territoryEditionId, ids.edition));
-    if (fileIds.length) await db.delete(fileReferences).where(inArray(fileReferences.id, fileIds));
+    if (fileIds.length || imageFileIds.length) await db.delete(fileReferences).where(inArray(fileReferences.id, [...fileIds, ...imageFileIds]));
+    await db.delete(editionPageRevisions).where(inArray(editionPageRevisions.pageId, [ids.page1, ids.page2]));
     await db.delete(editionPages).where(eq(editionPages.territoryEditionId, ids.edition));
     await db.delete(territoryEditions).where(eq(territoryEditions.id, ids.edition));
     await db.delete(masterEditions).where(eq(masterEditions.id, ids.master));
@@ -83,6 +85,24 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("edition output generation (postgres)
     expect(edition!.digitalStatus).toBe("generated");
     const stored = await db.select().from(fileReferences).where(eq(fileReferences.id, String(rows[0]!.artifact.fileId)));
     expect(stored).toHaveLength(1);
+  });
+
+  it("renders placed images from short-lived links, and a refreshed link reuses the same output", async () => {
+    const fileId = randomUUID();
+    await db.insert(fileReferences).values({ id: fileId, providerKey: "test", storageKey: `editions/test/${fileId}.png`, fileName: "hero.png", contentType: "image/png", accessScope: "territory", territoryId: fixtureIds.territories.suttonColdfield, version: 1, virusScanStatus: "clean", metadata: { widthPx: 2480, heightPx: 1200 } });
+    imageFileIds.push(fileId);
+    await db.insert(editionPageRevisions).values({ pageId: ids.page1, revisionNumber: 1, changeType: "autosave", snapshot: { images: { hero: { fileId, alt: "Hero", widthPx: 2480, heightPx: 1200 } } }, warnings: [] });
+    const html: string[] = [];
+    const capture = { key: "capture", render: async (request: { html: string; pageCount: number }) => { html.push(request.html); return createDevelopmentRenderProvider().render({ ...(request as object), kind: "digital" } as never); } };
+    const storage = (link: string) => ({ createDownloadIntent: async () => ({ downloadUrl: link }) }) as never;
+    const first = await generateEditionOutput({ territoryEditionId: ids.edition, kind: "digital", actor }, { provider: capture as never, files: files as never, images: { storage: storage("https://cdn.test/one?sig=1") } });
+    // The page now has an image, so the content changed and this is a new output version.
+    expect(first.reused).toBe(false);
+    expect(html[0]).toContain("https://cdn.test/one?sig=1");
+    expect(html[0]).not.toContain("files.invalid");
+    const again = await generateEditionOutput({ territoryEditionId: ids.edition, kind: "digital", actor }, { provider: capture as never, files: files as never, images: { storage: storage("https://cdn.test/two?sig=2") } });
+    expect(again).toEqual({ outputId: first.outputId, reused: true });
+    await expect(generateEditionOutput({ territoryEditionId: ids.edition, kind: "digital", actor }, { provider: capture as never, files: files as never, images: { storage: { createDownloadIntent: async () => { throw new Error("storage down"); } } as never } })).resolves.toMatchObject({ reused: true });
   });
 
   it("records a press-ready print file from a verified provider, and marks a stand-in's print file as proof only", async () => {

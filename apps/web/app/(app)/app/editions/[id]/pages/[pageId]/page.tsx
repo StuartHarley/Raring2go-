@@ -7,6 +7,8 @@ import { AppShell } from "../../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../../page";
 import { applyFixesAction, approvePageAction, autosavePageAction, returnPageAction, runPreflightAction, saveAndSubmitAction, saveOnlyAction } from "./actions";
 import { AutosaveForm } from "./autosave-form";
+import { ImagePicker } from "./image-picker";
+import { listStudioImages } from "../../../../../../../lib/studio-images";
 
 const banners: Record<string, string> = {
   saved: "Saved.",
@@ -30,6 +32,7 @@ export default async function PageStudio({ params, searchParams }: { params: Pro
   const code = Array.isArray(search.result) ? search.result[0] : search.result;
   const can = { edit: false, approve: false, preflight: false };
   let studio;
+  let library: Awaited<ReturnType<typeof listStudioImages>> = [];
   try {
     const shell = await requireShellPermission(request, { module: "edition", action: "view" });
     studio = await readStudioPage({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId }, id, pageId);
@@ -37,6 +40,7 @@ export default async function PageStudio({ params, searchParams }: { params: Pro
     can.edit = await check("edition.content", "edit_local");
     can.approve = await check("edition", "approve");
     can.preflight = await check("edition.preflight", "override");
+    library = await listStudioImages({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId }, id).catch(() => []);
   } catch (error) {
     if (error instanceof ShellAccessError) {
       return <main className={`app-outcome app-outcome-${error.kind}`}><section><h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1><p>{error.message}</p></section></main>;
@@ -53,6 +57,11 @@ export default async function PageStudio({ params, searchParams }: { params: Pro
     save: saveOnlyAction.bind(null, request, id, pageId),
     submit: saveAndSubmitAction.bind(null, request, id, pageId)
   };
+  const uploadParams = new URLSearchParams();
+  if (request.sessionKey) uploadParams.set("session", request.sessionKey);
+  if (request.organisationId) uploadParams.set("organisationId", request.organisationId);
+  if (request.territoryId) uploadParams.set("territoryId", request.territoryId);
+  const uploadQuery = uploadParams.size ? `?${uploadParams.toString()}` : "";
   const link = (target: string | null) => (target ? (`/app/editions/${id}/pages/${target}` as Route) : null);
   const previous = link(studio.neighbours.previous);
   const next = link(studio.neighbours.next);
@@ -91,10 +100,14 @@ export default async function PageStudio({ params, searchParams }: { params: Pro
                 return (
                   <fieldset key={zone.id} disabled={!editable}>
                     <legend>{zone.id} (image{zone.minDpi ? `, at least ${zone.minDpi}dpi` : ""})</legend>
-                    <label>Image link (https)<input name={`image-${zone.id}`} defaultValue={zone.image?.url ?? ""} inputMode="url" /></label>
+                    <ImagePicker zoneId={zone.id} editionId={id} query={uploadQuery} options={library} selected={zone.image?.fileId ?? ""} zoneWidthMm={zone.width} minDpi={zone.minDpi} disabled={!editable} />
                     <label>Description for screen readers<input name={`alt-${zone.id}`} defaultValue={zone.image?.alt ?? ""} maxLength={300} /></label>
-                    <label>Pixel width<input name={`widthPx-${zone.id}`} defaultValue={zone.image?.widthPx ?? ""} inputMode="numeric" /></label>
-                    <label>Pixel height<input name={`heightPx-${zone.id}`} defaultValue={zone.image?.heightPx ?? ""} inputMode="numeric" /></label>
+                    <details>
+                      <summary>Use a link instead of an upload</summary>
+                      <label>Image link (https)<input name={`image-${zone.id}`} defaultValue={zone.image && !zone.image.fileId ? zone.image.url : ""} inputMode="url" /></label>
+                      <label>Pixel width<input name={`widthPx-${zone.id}`} defaultValue={zone.image && !zone.image.fileId ? zone.image.widthPx ?? "" : ""} inputMode="numeric" /></label>
+                      <label>Pixel height<input name={`heightPx-${zone.id}`} defaultValue={zone.image && !zone.image.fileId ? zone.image.heightPx ?? "" : ""} inputMode="numeric" /></label>
+                    </details>
                   </fieldset>
                 );
               }

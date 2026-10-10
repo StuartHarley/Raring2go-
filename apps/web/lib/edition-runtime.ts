@@ -280,6 +280,14 @@ export function snapshotFromForm(formData: FormData, zones: Array<{ id: string; 
   const images: Record<string, { url: string; alt: string; widthPx?: number; heightPx?: number }> = {};
   for (const zone of zones) {
     if (zone.kind === "image") {
+      const fileId = text(`image-file-${zone.id}`).trim();
+      const alt = text(`alt-${zone.id}`).trim().slice(0, 300);
+      if (fileId) {
+        // An uploaded file: its size is filled in from the stored file by `resolveSnapshotImages`, never from the form.
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fileId)) throw new Error("That image is not valid.");
+        images[zone.id] = { url: "", fileId, alt } as never;
+        continue;
+      }
       const url = text(`image-${zone.id}`).trim();
       if (!url) continue;
       if (!safeImageUrl(url)) throw new Error("Images must be https links or uploaded image data.");
@@ -287,7 +295,7 @@ export function snapshotFromForm(formData: FormData, zones: Array<{ id: string; 
         const n = Number(text(name));
         return Number.isInteger(n) && n > 0 && n < 100000 ? n : undefined;
       };
-      images[zone.id] = { url, alt: text(`alt-${zone.id}`).trim().slice(0, 300), widthPx: dim(`widthPx-${zone.id}`), heightPx: dim(`heightPx-${zone.id}`) };
+      images[zone.id] = { url, alt, widthPx: dim(`widthPx-${zone.id}`), heightPx: dim(`heightPx-${zone.id}`) };
     } else if (zone.kind === "list") {
       values[zone.id] = text(`zone-${zone.id}`).split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 50).map((line) => line.slice(0, 300));
     } else if (zone.kind !== "advertiser") {

@@ -23,7 +23,7 @@ One `territory_edition` is the single record behind a territory's print and digi
 3. Create the flatplan, assign the template to pages, add local content, move a page; confirm the cover will not move.
 4. In the page studio, exceed a word limit: the warning shows and Submit is refused. Fix it, submit.
 5. As HQ, return a page with a comment; as the editor see it; resubmit; approve.
-6. Add an image with no pixel size: preflight fails as unverified; enter the size and re-run: passes. Enter a low pixel size: fails and offers no fix.
+6. Upload a large image into an image zone and run preflight: passes. Upload a small one (under 300dpi at the zone width): fails as low resolution and offers no fix. Try to upload an SVG, or a text file renamed to .png: both are refused.
 7. Submit the edition, approve it, generate the digital output, publish; confirm the public magazine page lists it.
 8. Generate the print output with the real render service; open both the per-page PDF and the imposed booklet, and check the crop marks, TrimBox and BleedBox, the sheet order against a folded dummy, (see `EDITION_RENDERING.md`, "Not yet verified") and check the PDF in Acrobat Pro or pdfToolbox.
 9. In the Control Room, tick several editions and run a bulk action; confirm the ready ones moved and the rest were skipped.
@@ -34,6 +34,6 @@ One `territory_edition` is the single record behind a territory's print and digi
 
 - Zones are absolutely positioned; text does not flow between zones or pages.
 - Imposition is simple saddle-stitch only (no creep, gripper margin or press-sheet size); print files have crop marks, trim and bleed boxes.
-- Images are linked by https URL with a recorded pixel size; picking from the upload library is not wired into the studio yet.
+- Images: choose from this territory's uploads or upload in the studio (PNG, JPEG or WebP, up to 4MB); the pixel size is read from the file. A plain https link with a typed pixel size is still available under "Use a link instead of an upload".
 - Franchisees edit and submit pages; only HQ holds the preflight and approval grants in the seed data.
 - Not yet run against a real Chromium and Ghostscript.

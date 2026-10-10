@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cropMarks, printMarginMm, blockingRenderIssues, buildEditionRenderModel, escapeHtml, renderEditionHtml, safeImageUrl, validateZoneGeometry, zonesOf } from "./render";
+import { derivePageArtifact, cropMarks, printMarginMm, blockingRenderIssues, buildEditionRenderModel, escapeHtml, renderEditionHtml, safeImageUrl, validateZoneGeometry, zonesOf } from "./render";
 import { createHttpRenderProvider, RenderProviderError, sha256Hex, verifyRenderResult } from "./render-provider";
 import type { PublishingData } from "./types";
 
@@ -55,6 +55,26 @@ describe("edition render model", () => {
     expect(safeImageUrl("javascript:alert(1)")).toBeNull();
     expect(safeImageUrl("https://a.test/x.png")).not.toBeNull();
     expect(escapeHtml(`"'&`)).toBe("&quot;&#39;&amp;");
+  });
+});
+
+describe("uploaded images in the layout", () => {
+  const content = { zones: { head: "Hi" }, images: { hero: { fileId: "file-1", alt: "Hero", widthPx: 2480, heightPx: 1200 } } };
+  it("addresses an uploaded file by a stable placeholder until real links are supplied", () => {
+    const model = buildEditionRenderModel(data(content), edition);
+    expect(model.pages[0]!.zones.find((z) => z.id === "hero")!.image).toMatchObject({ fileId: "file-1", widthPx: 2480 });
+    const hashed = renderEditionHtml(model, "print");
+    expect(hashed).toContain("https://files.invalid/file-1");
+    const rendered = renderEditionHtml(model, "print", { imageUrls: { "file-1": "https://cdn.test/a?sig=1" } });
+    expect(rendered).toContain("https://cdn.test/a?sig=1");
+    expect(rendered).not.toContain("files.invalid");
+    // A refreshed link must not change what the idempotency key is made from.
+    expect(renderEditionHtml(model, "print")).toBe(hashed);
+  });
+  it("refuses an unsafe resolved address and derives resolution from the stored pixel size", () => {
+    const model = buildEditionRenderModel(data(content), edition);
+    expect(renderEditionHtml(model, "print", { imageUrls: { "file-1": "javascript:alert(1)" } })).not.toContain("javascript:");
+    expect(derivePageArtifact(model.pages[0]!)).toMatchObject({ dpi: 300, dpiUnverifiedImages: 0 });
   });
 });
 

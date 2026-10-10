@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { auditEvents, createDb, editionPages, fixtureIds, editionContentItems, territoryEditionContent, editionPageRevisions, inventorySlots, preflightResults, magazineTemplateVersions, magazineTemplates, masterEditions, publicationOutputs, seasons, territoryEditions } from "@raring2go/db";
 import { eq, inArray } from "drizzle-orm";
+import { fileReferences } from "@raring2go/db";
 import { afterAll, describe, expect, it } from "vitest";
+import { resolveImageUrlsForRender, resolveSnapshotImages, listStudioImages, resolveStudioImage, uploadStudioImage } from "./studio-images";
+import { generateEditionOutput } from "./edition-output";
 import { createSlotsAsActor, readEditionInventory, retireSlotAsActor } from "./edition-inventory";
 import { runBulkEditionAction, approvePageAsActor, readStudioPage, returnPageAsActor, runPreflightAsActor, savePageAsActor, snapshotFromForm, submitPageAsActor, assignPageAsActor, createLocalContentAsActor, movePageAsActor, readFlatplan, approveEditionAsActor, approveMasterAsActor, createFlatplanAsActor, createSeasonAsActor, generateEditionsAsActor, readSeasonPlanner, releaseEditionAsActor, reopenEditionAsActor, submitEditionAsActor, approveTemplateVersionAsActor, createTemplateAsActor, publishTemplateVersionAsActor, readTemplateLibrary, reviseTemplateAsActor } from "./edition-runtime";
 import { withFinanceGuardsDisabled } from "./finance-test-support";
 
 const spec = {
   size: "a4" as const, lockedElements: ["Masthead"], showPageNumber: true, showIssueDate: false,
-  zones: [{ id: "headline", kind: "headline", x: "12", y: "12", width: "186", height: "30", maxCharacters: "60" }, { id: "body", kind: "copy" }]
+  zones: [{ id: "headline", kind: "headline", x: "12", y: "12", width: "186", height: "30", maxCharacters: "60" }, { id: "body", kind: "copy" }, { id: "hero", kind: "image", x: "0", y: "50", width: "210", height: "100", minDpi: "300" }]
 };
 
 describe.skipIf(!process.env.RUN_DB_TESTS)("template library lifecycle (postgres)", () => {
@@ -191,7 +194,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("flatplan editing (postgres)", () => 
 
     // Page studio: edit, preflight, submit, HQ return and approve.
     const studio = await readStudioPage(sutton, edition!.id, page3.id);
-    expect(studio.layout?.zones.map((z) => z.id).sort()).toEqual(["body", "headline"]);
+    expect(studio.layout?.zones.map((z) => z.id).sort()).toEqual(["body", "headline", "hero"]);
     const form = new FormData();
     form.set("zone-headline", "Hello autumn");
     form.set("zone-body", "Some body text");
@@ -329,5 +332,107 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("edition inventory slots (postgres)",
     await assignPageAsActor(sutton, page(3).id, { assignedContentId: content.id });
     await expect(createSlotsAsActor(sutton, edition!.id, product, [page(3).id])).rejects.toThrow(/editorial/);
     await expect(retireSlotAsActor(solihull, slotId)).rejects.toThrow();
+  });
+});
+
+const pngBytes = (w: number, h: number) => {
+  const b = new Uint8Array(40);
+  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  new DataView(b.buffer).setUint32(16, w);
+  new DataView(b.buffer).setUint32(20, h);
+  return b;
+};
+
+describe.skipIf(!process.env.RUN_DB_TESTS)("page studio images (postgres)", () => {
+  const { db, sql } = createDb();
+  const hq = { userId: fixtureIds.users.superAdmin, organisationId: fixtureIds.organisations.hq, territoryId: null };
+  const sutton = { userId: fixtureIds.users.franchisee, organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
+  const solihull = { ...sutton, territoryId: fixtureIds.territories.solihull };
+  const tag = randomUUID().slice(0, 8);
+  let seasonId = "";
+  let templateId = "";
+  const fileIds: string[] = [];
+  const files = {
+    storage: { key: "test", createUploadIntent: async (reference: never) => ({ reference, uploadUrl: "https://storage.test/put", headers: {}, expiresAt: new Date().toISOString() }), createDownloadIntent: async (reference: { id: string }) => ({ reference, downloadUrl: `https://cdn.test/${reference.id}?sig=1`, expiresAt: new Date().toISOString(), disposition: "inline" }) },
+    scanner: { key: "test", scan: async (reference: { id: string }) => ({ fileId: reference.id, status: "clean" as const, providerKey: "test", scannedAt: new Date().toISOString() }) },
+    fetch: (async () => new Response("", { status: 200 })) as typeof fetch
+  };
+
+  afterAll(async () => {
+    const editionIds = seasonId ? (await db.select({ id: territoryEditions.id }).from(territoryEditions).where(eq(territoryEditions.seasonId, seasonId))).map((e) => e.id) : [];
+    const masters = seasonId ? (await db.select({ id: masterEditions.id }).from(masterEditions).where(eq(masterEditions.seasonId, seasonId))).map((m) => m.id) : [];
+    const versions = templateId ? (await db.select({ id: magazineTemplateVersions.id }).from(magazineTemplateVersions).where(eq(magazineTemplateVersions.templateId, templateId))).map((v) => v.id) : [];
+    const pages = editionIds.length ? (await db.select({ id: editionPages.id }).from(editionPages).where(inArray(editionPages.territoryEditionId, editionIds))).map((p) => p.id) : [];
+    const outputs = editionIds.length ? await db.select({ id: publicationOutputs.id, artifact: publicationOutputs.artifact }).from(publicationOutputs).where(inArray(publicationOutputs.territoryEditionId, editionIds)) : [];
+    const outputFiles = outputs.map((o) => String(o.artifact.fileId)).filter(Boolean);
+    await withFinanceGuardsDisabled(db, async () => {
+      await db.delete(auditEvents).where(inArray(auditEvents.entityId, [...editionIds, ...masters, ...versions, ...pages, ...outputs.map((o) => o.id), ...(templateId ? [templateId] : [])]));
+    });
+    if (editionIds.length) {
+      await db.delete(publicationOutputs).where(inArray(publicationOutputs.territoryEditionId, editionIds));
+      if (pages.length) await db.delete(editionPageRevisions).where(inArray(editionPageRevisions.pageId, pages));
+      await db.delete(preflightResults).where(inArray(preflightResults.territoryEditionId, editionIds));
+      await db.delete(editionPages).where(inArray(editionPages.territoryEditionId, editionIds));
+      await db.delete(territoryEditions).where(inArray(territoryEditions.id, editionIds));
+    }
+    if (fileIds.length || outputFiles.length) await db.delete(fileReferences).where(inArray(fileReferences.id, [...fileIds, ...outputFiles]));
+    if (seasonId) {
+      await db.delete(masterEditions).where(eq(masterEditions.seasonId, seasonId));
+      await db.delete(seasons).where(eq(seasons.id, seasonId));
+    }
+    if (templateId) {
+      await db.delete(magazineTemplateVersions).where(eq(magazineTemplateVersions.templateId, templateId));
+      await db.delete(magazineTemplates).where(eq(magazineTemplates.id, templateId));
+    }
+    await sql.end();
+  });
+
+  it("uploads, lists and resolves images within the edition's territory, reads the size from the file, and refuses fakes and other territories", async () => {
+    templateId = await createTemplateAsActor(hq, { key: `img-${tag}`, name: "Img", category: "article", spec });
+    const version = (await readTemplateLibrary(hq)).find((t) => t.template.id === templateId)!.versions[0]!.version.id;
+    await approveTemplateVersionAsActor(hq, version);
+    await publishTemplateVersionAsActor(hq, version);
+    seasonId = await createSeasonAsActor(hq, { key: `img-${tag}`, name: `Img ${tag}`, year: "2099", season: "autumn", accent: "#aa3300", pageCount: "8" });
+    const master = (await readSeasonPlanner(hq)).find((e) => e.season.id === seasonId)!.masters[0]!.master;
+    await approveMasterAsActor(hq, master.id);
+    const [edition] = await generateEditionsAsActor(hq, master.id, [fixtureIds.territories.suttonColdfield]);
+    await createFlatplanAsActor(hq, edition!.id);
+    const page = (await readFlatplan(sutton, edition!.id)).pages.find((p) => p.page.pageNumber === 3)!.page;
+    await assignPageAsActor(sutton, page.id, { templateVersionId: version });
+
+    const good = await uploadStudioImage(sutton, edition!.id, { fileName: "hero.png", contentType: "image/png", bytes: pngBytes(2480, 1200) }, files as never);
+    fileIds.push(good.fileId);
+    expect(good).toMatchObject({ widthPx: 2480, heightPx: 1200, fileName: "hero.png" });
+    const hqUpload = await uploadStudioImage(hq, edition!.id, { fileName: "hq.png", contentType: "image/png", bytes: pngBytes(800, 600) }, files as never);
+    fileIds.push(hqUpload.fileId);
+    expect((await listStudioImages(sutton, edition!.id)).map((i) => i.fileId)).toEqual(expect.arrayContaining([good.fileId, hqUpload.fileId]));
+    await expect(uploadStudioImage(sutton, edition!.id, { fileName: "x.png", contentType: "image/png", bytes: new TextEncoder().encode("<svg/>") }, files as never)).rejects.toThrow(/readable image/);
+    await expect(uploadStudioImage(sutton, edition!.id, { fileName: "x.svg", contentType: "image/svg+xml", bytes: pngBytes(10, 10) }, files as never)).rejects.toThrow(/PNG, JPEG or WebP/);
+    await expect(uploadStudioImage(sutton, edition!.id, { fileName: "big.png", contentType: "image/png", bytes: new Uint8Array(5 * 1024 * 1024) }, files as never)).rejects.toThrow(/4MB/);
+    await expect(uploadStudioImage(solihull, edition!.id, { fileName: "x.png", contentType: "image/png", bytes: pngBytes(10, 10) }, files as never)).rejects.toThrow();
+    await expect(listStudioImages(solihull, edition!.id)).rejects.toThrow();
+    await expect(resolveStudioImage(solihull, edition!.id, good.fileId)).rejects.toThrow();
+
+    // Saving takes the size from the stored file, ignoring anything the form said.
+    const snapshot = await resolveSnapshotImages(sutton, edition!.id, { zones: { headline: "H", body: "B" }, images: { hero: { url: "", fileId: good.fileId, alt: "A hero", widthPx: 99999 } } });
+    expect((snapshot.images as Record<string, unknown>).hero).toMatchObject({ fileId: good.fileId, widthPx: 2480, heightPx: 1200, alt: "A hero" });
+    await expect(resolveSnapshotImages(sutton, edition!.id, { images: { hero: { fileId: randomUUID() } } })).rejects.toThrow(/not available/);
+    await savePageAsActor(sutton, page.id, snapshot);
+
+    // 2480px across 210mm is 300dpi: preflight passes. A 1000px image across the same zone does not.
+    expect((await runPreflightAsActor(hq, page.id)).status).toBe("passed");
+    const low = await uploadStudioImage(sutton, edition!.id, { fileName: "low.png", contentType: "image/png", bytes: pngBytes(1000, 500) }, files as never);
+    fileIds.push(low.fileId);
+    await savePageAsActor(sutton, page.id, await resolveSnapshotImages(sutton, edition!.id, { zones: { headline: "H", body: "B" }, images: { hero: { url: "", fileId: low.fileId } } }));
+    const failed = await runPreflightAsActor(hq, page.id);
+    expect(failed.status).toBe("failed");
+    expect(failed.checks.map((c) => c.code)).toContain("low_resolution");
+    expect(failed.unfixableIssues.map((c) => c.code)).toContain("low_resolution");
+
+    // Render addresses: only this territory's clean files, as short-lived links.
+    const urls = await resolveImageUrlsForRender(fixtureIds.territories.suttonColdfield, [good.fileId], { storage: files.storage as never });
+    expect(urls[good.fileId]).toMatch(/^https:\/\/cdn\.test\//);
+    await expect(resolveImageUrlsForRender(fixtureIds.territories.solihull, [good.fileId], { storage: files.storage as never })).rejects.toThrow(/does not belong/);
+    await expect(resolveImageUrlsForRender(fixtureIds.territories.suttonColdfield, [randomUUID()], { storage: files.storage as never })).rejects.toThrow(/missing/);
   });
 });

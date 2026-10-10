@@ -1,3 +1,4 @@
+import { printResolutionDpi } from "./image-meta";
 import type { EditionPage, EditionPageRevision, MagazineTemplateVersion, PublishingData, TerritoryEdition, TerritoryEditionContent } from "./types";
 
 /**
@@ -29,7 +30,8 @@ export type TemplateZone = {
 
 export type ZoneIssue = { zoneId: string; code: "copy_overflow" | "too_many_items" | "missing_image" | "unknown_content_key" | "bad_geometry"; message: string };
 
-export type RenderedImage = { url: string; alt: string; widthPx?: number; heightPx?: number };
+/** An image on a page: an uploaded file (by id, resolved to an address at render time) or a plain https link. */
+export type RenderedImage = { url: string; fileId?: string; alt: string; widthPx?: number; heightPx?: number };
 
 export type RenderedZone = TemplateZone & {
   text?: string;
@@ -179,9 +181,11 @@ function buildImage(zone: TemplateZone, content: Record<string, unknown>): Rende
   const images = (content.images ?? {}) as Record<string, unknown>;
   const raw = (images[zone.id] ?? content[zone.id]) as unknown;
   const entry = typeof raw === "string" ? { url: raw } : (raw as Record<string, unknown> | undefined);
-  const url = entry && str(entry.url);
-  if (!url) return undefined;
-  return { url, alt: str(entry?.alt) ?? "", widthPx: num(entry?.widthPx), heightPx: num(entry?.heightPx) };
+  if (!entry) return undefined;
+  const fileId = str(entry.fileId);
+  const url = str(entry.url);
+  if (!fileId && !url) return undefined;
+  return { url: url ?? "", ...(fileId ? { fileId } : {}), alt: str(entry.alt) ?? "", widthPx: num(entry.widthPx), heightPx: num(entry.heightPx) };
 }
 
 function fillZone(zone: TemplateZone, content: Record<string, unknown>, issues: ZoneIssue[]): RenderedZone {
@@ -279,7 +283,7 @@ export function derivePageArtifact(page: RenderPage): Record<string, unknown> {
   for (const zone of page.zones) {
     if (zone.kind !== "image" || !zone.image) continue;
     if (zone.image.widthPx && zone.width) {
-      const value = Math.round(zone.image.widthPx / (zone.width / 25.4));
+      const value = printResolutionDpi(zone.image.widthPx, zone.width);
       dpi = dpi === undefined ? value : Math.min(dpi, value);
     } else {
       unverified += 1;
@@ -322,11 +326,13 @@ function zoneBox(zone: RenderedZone, index: number, geometry: PageGeometry, blee
   return `left:${live.x}mm;top:${live.y + index * (band + 4)}mm;width:${live.width}mm;height:${band}mm;`;
 }
 
-function zoneHtml(zone: RenderedZone, index: number, geometry: PageGeometry, bleed: number): string {
+function zoneHtml(zone: RenderedZone, index: number, geometry: PageGeometry, bleed: number, imageUrls: Record<string, string>): string {
   const style = zoneBox(zone, index, geometry, bleed);
   const label = `data-zone="${escapeHtml(zone.id)}" data-kind="${zone.kind}"`;
   if (zone.kind === "image") {
-    const url = zone.image ? safeImageUrl(zone.image.url) : null;
+    // An uploaded file is addressed by id: a stable placeholder when the HTML is only being hashed, the real address when it is rendered.
+    const address = zone.image?.fileId ? imageUrls[zone.image.fileId] ?? `${PLACEHOLDER_FILE_URL}${zone.image.fileId}` : zone.image?.url ?? "";
+    const url = zone.image ? safeImageUrl(address) : null;
     if (!url) return `<div class="zone empty" ${label} style="${style}"></div>`;
     return `<div class="zone image" ${label} style="${style}"><img src="${escapeHtml(url)}" alt="${escapeHtml(zone.image!.alt)}"></div>`;
   }
@@ -372,7 +378,11 @@ export function cropMarks(trimWidth: number, trimHeight: number, bleed: number):
  * Print: each sheet is the trim size plus bleed, crop marks and a margin on every side; the trim, bleed and margin are
  * recorded in the PDF by the render service. Digital: trim-size pages with a text layer, alt text and tracked links.
  */
-export function renderEditionHtml(model: EditionRenderModel, mode: HtmlMode): string {
+/** Stands in for an uploaded file address, so the HTML (and the idempotency key made from it) does not change when a short-lived link does. */
+export const PLACEHOLDER_FILE_URL = "https://files.invalid/";
+
+export function renderEditionHtml(model: EditionRenderModel, mode: HtmlMode, options: { imageUrls?: Record<string, string> } = {}): string {
+  const imageUrls = options.imageUrls ?? {};
   const { geometry } = model;
   const bleed = mode === "print" ? geometry.bleed : 0;
   const margin = mode === "print" ? printMarginMm(geometry.bleed) : 0;
@@ -399,7 +409,7 @@ export function renderEditionHtml(model: EditionRenderModel, mode: HtmlMode): st
   `;
   const marks = mode === "print" ? cropMarks(geometry.trimWidth, geometry.trimHeight, geometry.bleed) : "";
   const sheets = model.pages.map((page) => {
-    const zones = page.zones.map((zone, index) => zoneHtml(zone, index, geometry, bleed)).join("");
+    const zones = page.zones.map((zone, index) => zoneHtml(zone, index, geometry, bleed, imageUrls)).join("");
     const folio = page.furniture.showPageNumber
       ? `<div class="folio ${escapeHtml(page.side)}">${page.furniture.issueDate ? `${escapeHtml(page.furniture.issueDate)} · ` : ""}${page.pageNumber}</div>`
       : "";
