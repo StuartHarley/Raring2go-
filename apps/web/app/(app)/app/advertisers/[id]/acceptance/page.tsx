@@ -1,7 +1,13 @@
-import { ShellAccessError, requireShellPermission } from "../../../../../../lib/app-shell";
+import type { Route } from "next";
+import { requireShellPermission } from "../../../../../../lib/app-shell";
 import { readAdvertiser360 } from "../../../../../../lib/advertising-runtime";
-import { AppShell } from "../../../../layout";
+import { formatDate, formatLabel } from "../../../../../../lib/format";
+import { EmptyState, LinkButton, PageHeader, Panel, RecordCard, RecordList } from "../../../../../../lib/page-ui";
+import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
 import { requestFromSearchParamsAndCookies } from "../../../page";
+import { protectedOutcome } from "../../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Commercial acceptance" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -18,31 +24,49 @@ export default async function AdvertiserAcceptancePage({ params, searchParams }:
   }
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Commercial acceptance</p>
-        <h2>{result.organisation.name}</h2>
-        <p>Provider-neutral proposal acceptance records tied to exact proposal versions and approved terms.</p>
-      </section>
+    <>
+      <Breadcrumbs
+        items={[
+          { label: "Commercial", href: "/app/advertisers" as Route },
+          { label: result.organisation.name, href: `/app/advertisers/${result.advertiser.id}` as Route },
+          { label: "Acceptance" }
+        ]}
+      />
+      <PageHeader
+        eyebrow={result.organisation.name}
+        title="Proposal acceptance"
+        intro="Which proposals this advertiser has accepted, how they accepted, and the exact version they agreed to."
+        actions={
+          <LinkButton href={`/app/advertisers/${result.advertiser.id}` as Route} variant="secondary">
+            Back to advertiser
+          </LinkButton>
+        }
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Proposal review</p>
-        <h2>Current proposals</h2>
-        <div className="franchise-list">
-          {result.proposals.map((proposal) => {
-            const acceptance = result.acceptances.find((candidate) => candidate.proposalId === proposal.id);
+      <Panel eyebrow="Proposals" title="Current proposals">
+        {result.proposals.length === 0 ? (
+          <EmptyState title="No proposals yet">Acceptances appear here once a proposal has been sent and answered.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.proposals.map((proposal) => {
+              const acceptance = result.acceptances.find((candidate) => candidate.proposalId === proposal.id);
 
-            return (
-              <div key={proposal.id}>
-                <strong>{proposal.title}</strong>
-                <span>{proposal.status} - version {proposal.version} - valid until {proposal.validUntil ?? "not set"}</span>
-                <span>{acceptance ? `${acceptance.status} by ${acceptance.method}` : "awaiting response"}</span>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-    </AppShell>
+              return (
+                <RecordCard
+                  key={proposal.id}
+                  title={proposal.title}
+                  status={proposal.status}
+                  lines={[
+                    `Version ${proposal.version} · Valid until ${formatDate(proposal.validUntil, "not set")}`,
+                    acceptance ? `${formatLabel(acceptance.status)} by ${formatLabel(acceptance.method)}` : "Awaiting a response"
+                  ]}
+                />
+              );
+            })}
+          </RecordList>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -66,20 +90,4 @@ async function loadAdvertiser(
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

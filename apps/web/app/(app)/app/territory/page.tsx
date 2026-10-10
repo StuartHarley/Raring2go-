@@ -1,11 +1,17 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
-import { AppShell } from "../../layout";
+import type { Route } from "next";
+import { redirect } from "next/navigation";
+import { requireShellPermission } from "../../../../lib/app-shell";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
 import { requestFromSearchParamsAndCookies } from "../page";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+/**
+ * My Today is the territory view. This route stays for old links and bookmarks: it proves the
+ * territory permission as before, then sends the person to My Today in the same context.
+ */
 export default async function TerritoryPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(await searchParams);
 
@@ -18,32 +24,5 @@ export default async function TerritoryPage({ searchParams }: PageProps) {
     return protectedOutcome(error);
   }
 
-  return (
-    <AppShell request={request}>
-      <section className="app-panel">
-        <p className="eyebrow">Territory Dashboard</p>
-        <h2>Territory workspace placeholder</h2>
-        <p>
-          Future local operating views will mount here once their own tickets add
-          domain models and permissions.
-        </p>
-      </section>
-    </AppShell>
-  );
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
+  redirect("/app" as Route);
 }

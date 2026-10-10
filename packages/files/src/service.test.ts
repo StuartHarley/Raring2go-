@@ -40,6 +40,11 @@ describe("requireFilesPermission", () => {
     expect(() => requireFilesPermission(context, permissions, "upload")).not.toThrow();
   });
 
+  it("checks the target's own territory, not just the actor's active context", () => {
+    expect(() => requireFilesPermission(context, permissions, "upload", { territoryId: fixtureIds.territories.suttonColdfield })).not.toThrow();
+    expect(() => requireFilesPermission(context, permissions, "upload", { territoryId: fixtureIds.territories.solihull })).toThrow();
+  });
+
   it("denies a user with no matching role assignment", () => {
     const stranger = { userId: "unknown_user", organisationId: null, territoryId: null };
     expect(() => requireFilesPermission(stranger, permissions, "upload")).toThrow();

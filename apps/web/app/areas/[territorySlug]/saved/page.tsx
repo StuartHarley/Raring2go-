@@ -7,6 +7,7 @@ import { sessionCookieName } from "../../../../lib/auth-runtime";
 import { readSessionBackedParentHub } from "../../../../lib/parent-runtime";
 import { territoryFromSlug } from "../../../../lib/public-runtime";
 import { toggleSavedContentAction } from "../preferences/actions";
+import { PublicNav } from "../_components/PublicNav";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -16,7 +17,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const territory = territoryFromSlug((await params).territorySlug);
 
   return {
-    title: territory ? `Saved | Raring2go! ${territory.name}` : "Saved | Raring2go!",
+    title: { absolute: territory ? `Saved | Raring2go! ${territory.name}` : "Saved | Raring2go!" },
     description: "Saved family content, followed areas and parent preferences from Raring2go!"
   };
 }
@@ -35,21 +36,12 @@ export default async function SavedPage({ params }: PageProps) {
 
   return (
     <main className="public-site public-season-autumn">
-      <header className="public-nav">
-        <Link href={`/areas/${hub.territory.slug}` as Route} className="public-logo">Raring2go!</Link>
-        <nav aria-label="Public navigation">
-          <Link href={`/areas/${hub.territory.slug}/whats-on` as Route}>What&apos;s On</Link>
-          <Link href={`/areas/${hub.territory.slug}/activities` as Route}>Activities</Link>
-          <Link href={`/areas/${hub.territory.slug}/offers` as Route}>Offers</Link>
-          <Link href={`/areas/${hub.territory.slug}/saved` as Route}>Saved</Link>
-          <Link href={`/areas/${hub.territory.slug}/preferences` as Route}>Preferences</Link>
-        </nav>
-      </header>
+      <PublicNav slug={hub.territory.slug} current="saved" />
       <section className="public-hero public-hero-compact">
         <div>
           <p className="public-kicker">Parent account</p>
           <h1>{hub.authenticated ? `Welcome back, ${hub.contact?.name}` : "Save your local family favourites"}</h1>
-          <p>{hub.authenticated ? "Your followed areas, preferences and saved Raring2go content." : hub.emptyState}</p>
+          <p>{hub.authenticated ? "Your areas, your preferences and the things you have saved for later." : hub.emptyState}</p>
           {!hub.authenticated ? (
             <Link
               href={`/sign-in?returnTo=${encodeURIComponent(`/areas/${hub.territory.slug}/saved`)}` as Route}

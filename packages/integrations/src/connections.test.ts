@@ -8,6 +8,7 @@ import {
   createOAuthConnectionTransaction,
   hashOAuthValue,
   integrationCapabilities,
+  requireIntegrationPermission,
   revokeProviderConnection,
   safeInternalReturnTo
 } from "./connections";
@@ -46,6 +47,11 @@ const context = {
 };
 
 describe("provider connection framework", () => {
+  it("checks the target connection's territory, not just the actor's active context", () => {
+    expect(() => requireIntegrationPermission(context, permissions, "revoke", { territoryId: fixtureIds.territories.suttonColdfield })).not.toThrow();
+    expect(() => requireIntegrationPermission(context, permissions, "revoke", { territoryId: fixtureIds.territories.solihull })).toThrow();
+  });
+
   it("creates short-lived OAuth state server-side and rejects unsafe return paths", async () => {
     const repository = createMemoryProviderConnectionRepository();
     const result = await createOAuthConnectionTransaction({

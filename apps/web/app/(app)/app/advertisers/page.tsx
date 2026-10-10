@@ -1,12 +1,15 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { listAdvertiser360Rows } from "../../../../lib/advertising-runtime";
 import { getDirectory } from "../../../../lib/directory";
-import { AppShell } from "../../layout";
+import { displayName } from "../../../../lib/format";
+import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
 import { createAdvertiserAction } from "./actions";
 import { CrmBanner } from "./CrmBanner";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Advertisers" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -29,44 +32,62 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
   );
 
   return (
-    <AppShell request={request}>
+    <>
       <CrmBanner result={resultCode} />
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Advertiser CRM</p>
-        <h2>Advertisers</h2>
-        <p>
-          Territory-scoped advertiser relationships, contacts and commercial
-          health foundations before pipeline, booking and invoicing workflows.
-        </p>
-        {result.canImport ? <p><Link href={"/app/advertisers/import" as Route}>Import a list of advertisers</Link></p> : null}
-        <Link href={"/app/advertisers/pipeline" as Route} className="app-link-button">
-          Open pipeline
-        </Link>
-        <Link href={"/app/advertisers/catalogue" as Route} className="app-link-button">
-          View catalogue
-        </Link>
-        <Link href={"/app/advertisers/command-centre" as Route} className="app-link-button">
-          Commercial command
-        </Link>
-        <div className="franchise-metrics">
-          <article>
-            <span>Advertisers</span>
-            <strong>{result.advertisers.length}</strong>
-          </article>
-          <article>
-            <span>Retained</span>
-            <strong>{retained}</strong>
-          </article>
-          <article>
-            <span>Annual value</span>
-            <strong>{formatMoney(annualValue)}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Commercial"
+        title="Advertisers"
+        intro="The businesses advertising with you: who they are, what they are worth, and what needs chasing next."
+        actions={
+          <>
+            <LinkButton href={"/app/advertisers/pipeline" as Route}>Open pipeline</LinkButton>
+            <LinkButton href={"/app/advertisers/catalogue" as Route} variant="secondary">
+              Catalogue
+            </LinkButton>
+            <LinkButton href={"/app/advertisers/command-centre" as Route} variant="secondary">
+              Commercial command
+            </LinkButton>
+            {result.canImport ? (
+              <LinkButton href={"/app/advertisers/import" as Route} variant="secondary">
+                Import a list
+              </LinkButton>
+            ) : null}
+          </>
+        }
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">New advertiser</p>
-        <h2>Add an advertiser</h2>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Advertisers", value: result.advertisers.length },
+            { label: "Retained", value: retained, detail: `${result.advertisers.length - retained} not yet retained`, tone: retained > 0 ? "success" : "neutral" },
+            { label: "Annual value", value: formatMoney(annualValue) }
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="Accounts" title="All advertisers">
+        {result.advertisers.length === 0 ? (
+          <EmptyState title="No advertisers yet">Add the first one below, or import a list from Audience.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.advertisers.map((row) => (
+              <RecordLink
+                key={row.advertiser.id}
+                href={`/app/advertisers/${row.advertiser.id}` as Route}
+                title={row.organisation.name}
+                status={row.advertiser.relationshipState}
+                lines={[
+                  displayName(row.territory?.name, "Territory not named yet"),
+                  `Average sale ${formatMoney(row.advertiser.averageSaleValueMinor)} · Annual value ${formatMoney(row.advertiser.annualAdvertiserValueMinor)}`
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+
+      <Panel eyebrow="New advertiser" title="Add an advertiser" id="new">
         <form action={createAdvertiserAction.bind(null, request)} className="franchise-form">
           <label>
             Business name
@@ -84,26 +105,12 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
             How did they find us?
             <input name="source" maxLength={80} placeholder="Referral, event, cold call" />
           </label>
-          <button type="submit">Create advertiser</button>
+          <button type="submit" className="r2-button r2-button--primary">
+            Create advertiser
+          </button>
         </form>
-      </section>
-
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Accounts</p>
-        <h2>Advertiser 360 list</h2>
-        <div className="franchise-list">
-          {result.advertisers.map((row) => (
-            <Link key={row.advertiser.id} href={`/app/advertisers/${row.advertiser.id}` as Route}>
-              <strong>{row.organisation.name}</strong>
-              <span>{row.territory?.name ?? row.advertiser.owningTerritoryId} - {row.advertiser.relationshipState}</span>
-              <span>
-                ASV {formatMoney(row.advertiser.averageSaleValueMinor)} - AAV {formatMoney(row.advertiser.annualAdvertiserValueMinor)}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-    </AppShell>
+      </Panel>
+    </>
   );
 }
 
@@ -141,20 +148,4 @@ function formatMoney(valueMinor: number) {
     currency: "GBP",
     maximumFractionDigits: 0
   }).format(valueMinor / 100);
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { Route } from "next";
 import { readPublicMagazine, territoryFromSlug } from "../../../../lib/public-runtime";
+import { PublicNav } from "../_components/PublicNav";
+import { formatCount } from "../../../../lib/format";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -12,7 +14,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const territory = territoryFromSlug((await params).territorySlug);
 
   return {
-    title: territory ? `Digital Magazine | Raring2go! ${territory.name}` : "Digital Magazine | Raring2go!",
+    title: { absolute: territory ? `Digital Magazine | Raring2go! ${territory.name}` : "Digital Magazine | Raring2go!" },
     description: territory
       ? `Read the published Raring2go digital magazine for ${territory.name}.`
       : "Read published Raring2go digital magazines."
@@ -28,15 +30,7 @@ export default async function PublicMagazinePage({ params }: PageProps) {
 
   return (
     <main className="public-site public-season-autumn">
-      <header className="public-nav">
-        <Link href={`/areas/${magazine.territory.slug}` as Route} className="public-logo">Raring2go!</Link>
-        <nav aria-label="Public navigation">
-          <Link href={`/areas/${magazine.territory.slug}/whats-on` as Route}>What&apos;s On</Link>
-          <Link href={`/areas/${magazine.territory.slug}/activities` as Route}>Activities</Link>
-          <Link href={`/areas/${magazine.territory.slug}/offers` as Route}>Offers</Link>
-          <Link href={`/areas/${magazine.territory.slug}/magazine` as Route}>Magazine</Link>
-        </nav>
-      </header>
+      <PublicNav slug={magazine.territory.slug} current="magazine" />
       <section className="public-hero public-hero-compact">
         <div>
           <p className="public-kicker">Digital magazine</p>
@@ -51,15 +45,15 @@ export default async function PublicMagazinePage({ params }: PageProps) {
       <section className="public-section">
         <div className="public-section-heading">
           <p className="public-kicker">Magazine reader</p>
-          <h2>{magazine.edition ? `${magazine.edition.pageCount} page edition` : "No public edition yet"}</h2>
+          <h2>{magazine.edition ? `${formatCount(magazine.edition.pageCount, "page")} to read` : "No edition online yet"}</h2>
         </div>
         {magazine.edition ? (
           <div className="public-magazine-shell">
             <article>
-              <span>Generated digital output · v{magazine.edition.outputVersion}</span>
+              <span>Digital edition</span>
               <h3><Link href={`/areas/${magazine.territory.slug}/magazine/${magazine.edition.slug}` as Route}>{magazine.edition.title}</Link></h3>
               <p>
-                Browse the latest published local edition and jump into page highlights as they become available online.
+                Read the latest edition online and jump straight to the pages you want.
               </p>
             </article>
             <div className="public-card-grid">

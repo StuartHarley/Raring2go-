@@ -1,11 +1,14 @@
 import type { Route } from "next";
-import { AiRunAccessError } from "@raring2go/ai";
-import { ShellAccessError, requireShellPermission } from "../../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../../lib/app-shell";
 import { readContentDraftRun } from "../../../../../../lib/publishing-runtime";
+import { formatLabel } from "../../../../../../lib/format";
+import { Actions, FactList, Notice, PageHeader, Panel, StatusBadge } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { acceptContentDraftAction, rejectContentDraftAction } from "../../actions";
+import { protectedOutcome } from "../../../../../../lib/protected-outcome";
+
+export const metadata = { title: "AI draft" };
 
 type PageProps = {
   params: Promise<{ runId: string }>;
@@ -35,45 +38,59 @@ export default async function ContentDraftReviewPage({ params, searchParams }: P
   const pending = run.approvalState === "pending" && run.status === "succeeded";
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Content Studio", href: "/app/content" as Route }, { label: "Review AI draft" }]} />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">{revising ? "AI revision" : "AI draft"} · {run.approvalState.replace("_", " ")}</p>
-        <h2>{output.title ?? "Draft"}</h2>
-        {output.standfirst ? <p><em>{output.standfirst}</em></p> : null}
+      <PageHeader
+        eyebrow={revising ? "AI revision" : "AI draft"}
+        title={output.title ?? "Draft"}
+        intro={output.standfirst ? <em>{output.standfirst}</em> : "Read the draft, then accept it as draft content for the normal approval steps or reject it."}
+      >
+        <StatusBadge status={run.approvalState} />
+      </PageHeader>
+
+      <Panel eyebrow="Draft" title="What the AI wrote">
         <div className="draft-body">
           {(output.body ?? "").split(/\n{2,}/).map((paragraph, index) => (
             <p key={index}>{paragraph}</p>
           ))}
         </div>
         {output.notes ? (
-          <p className="notice notice--error" role="note">
+          <Notice tone="warning">
             <strong>Check before using:</strong> {output.notes}
-          </p>
+          </Notice>
         ) : null}
-        <p className="journey-builder-step-note">
-          Brief: {String(run.input.brief ?? "")} · {run.providerKey} / {run.modelReference}
-        </p>
+        <FactList
+          items={[
+            { label: "Brief", value: String(run.input.brief ?? "") || "Not given" },
+            { label: "Provider", value: formatLabel(run.providerKey) },
+            { label: "Model", value: run.modelReference }
+          ]}
+        />
+      </Panel>
 
-        {errorMessage ? <p role="alert" className="notice notice--error">{errorMessage}</p> : null}
-
+      <Panel eyebrow="Decision" title={pending ? "Accept or reject" : "Decided"}>
+        {errorMessage ? <Notice tone="error">{errorMessage}</Notice> : null}
         {pending ? (
-          <div className="franchise-actions">
+          <Actions>
             <form action={acceptContentDraftAction.bind(null, request, run.id)}>
-              <button type="submit">{revising ? "Accept as a new draft version" : "Accept and create draft content"}</button>
+              <button type="submit" className="r2-button r2-button--primary">
+                {revising ? "Accept as a new draft version" : "Accept and create draft content"}
+              </button>
             </form>
             <form action={rejectContentDraftAction.bind(null, request, run.id)}>
-              <button type="submit">Reject</button>
+              <button type="submit" className="r2-button r2-button--secondary">
+                Reject
+              </button>
             </form>
-          </div>
+          </Actions>
         ) : (
-          <p role="status" className="notice notice--success">
-            This draft is {run.approvalState.replace("_", " ")}{run.appliedAt ? " and has been applied" : ""}.
-          </p>
+          <Notice tone="success">
+            This draft is {formatLabel(run.approvalState).toLowerCase()}{run.appliedAt ? " and has been applied" : ""}.
+          </Notice>
         )}
-      </section>
-    </AppShell>
+      </Panel>
+    </>
   );
 }
 
@@ -85,20 +102,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError || error instanceof AiRunAccessError) {
-    const kind = error instanceof ShellAccessError ? error.kind : "unauthorised";
-    return (
-      <main className={`app-outcome app-outcome-${kind}`}>
-        <section>
-          <p className="eyebrow">{kind.replace("_", " ")}</p>
-          <h1>{kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

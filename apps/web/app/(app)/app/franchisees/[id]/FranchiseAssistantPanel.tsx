@@ -2,9 +2,12 @@ import type { FranchisePanel } from "../../../../../lib/assistants-franchise";
 import { attentionItems, healthInsight, onboardingGuidance } from "@raring2go/assistants";
 import { AiPreparedNote, AssistantBanner } from "../../../../../lib/assistant-ui";
 import type { RequestedShellContext } from "../../../../../lib/app-shell";
+import { formatLabel, formatLabels } from "../../../../../lib/format";
+import { Actions, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { briefingAction, compareAgreementsAction, decideComparisonAction } from "./assistant-actions";
 
 const severityLabels = { high: "Urgent", medium: "Soon", low: "Later" } as const;
+const approvalLabels = { pending: "awaiting review by someone else", approved: "reviewed", rejected: "rejected" } as const;
 
 /**
  * The franchise assistant. Next steps, attention items and the health insight are calculated from the franchise's
@@ -19,9 +22,7 @@ export function FranchiseAssistantPanel({ request, franchiseId, panel, resultCod
   const { briefing, comparison } = panel;
 
   return (
-    <section id="franchise-assistant" className="app-panel franchise-panel" aria-label="Franchise assistant">
-      <p className="eyebrow">Franchise assistant</p>
-      <h2>Where {panel.facts.franchiseName} stands</h2>
+    <Panel id="franchise-assistant" eyebrow="Franchise assistant" title={`Where ${panel.facts.franchiseName} stands`} className="franchise-panel">
       <AssistantBanner code={resultCode} />
 
       {briefing ? (
@@ -32,9 +33,8 @@ export function FranchiseAssistantPanel({ request, franchiseId, panel, resultCod
         </div>
       ) : null}
 
-      <div className="franchise-list" aria-label="Calculated analysis">
-        <div>
-          <strong>Next steps</strong>
+      <RecordList>
+        <RecordCard title="Next steps">
           {steps.length === 0 ? (
             <span>Nothing is outstanding on the way to launch.</span>
           ) : (
@@ -47,25 +47,22 @@ export function FranchiseAssistantPanel({ request, franchiseId, panel, resultCod
               ))}
             </ol>
           )}
-        </div>
-        <div>
-          <strong>Needs attention</strong>
+        </RecordCard>
+        <RecordCard title="Needs attention">
           {attention.length === 0 ? (
             <span>Nothing needs attention.</span>
           ) : (
             <ul>
               {attention.map((item) => (
                 <li key={item.message}>
-                  <span className="muted">{severityLabels[item.severity]} · {item.area}:</span> {item.message}
+                  <span className="muted">{severityLabels[item.severity]} · {formatLabel(item.area)}:</span> {item.message}
                 </li>
               ))}
             </ul>
           )}
-        </div>
+        </RecordCard>
         {health ? (
-          <div>
-            <strong>Health</strong>
-            <span>{health.summary}</span>
+          <RecordCard title="Health" lines={[health.summary]}>
             {health.weaknesses.length > 0 ? (
               <ul>
                 {health.weaknesses.map((weakness) => (
@@ -76,15 +73,15 @@ export function FranchiseAssistantPanel({ request, franchiseId, panel, resultCod
               </ul>
             ) : null}
             {health.strengths.length > 0 ? <span className="muted">Strong: {health.strengths.map((s) => `${s.label} (${s.score})`).join(", ")}.</span> : null}
-          </div>
+          </RecordCard>
         ) : null}
-        <p className="muted">Calculated from this franchise&apos;s records. Nothing here is an AI opinion.</p>
-      </div>
+      </RecordList>
+      <p className="muted">Calculated from this franchise&apos;s records. Nothing here is an AI opinion.</p>
 
       {panel.canAssist ? (
         panel.aiConfigured ? (
           <form action={briefingAction.bind(null, request, franchiseId)}>
-            <button type="submit">{briefing ? "Refresh the AI introduction" : "Add an AI introduction"}</button>
+            <button type="submit" className="r2-button r2-button--secondary">{briefing ? "Refresh the AI introduction" : "Add an AI introduction"}</button>
           </form>
         ) : (
           <p className="muted">The AI introduction is not switched on for this environment. The analysis above does not need it.</p>
@@ -116,53 +113,58 @@ export function FranchiseAssistantPanel({ request, franchiseId, panel, resultCod
                 ))}
               </select>
             </label>
-            <div className="franchise-actions">
-              <button type="submit">Compare</button>
-            </div>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--primary">Compare</button>
+            </Actions>
           </form>
 
           {comparison ? (
-            <div className="franchise-list" aria-label="Agreement comparison">
-              <div>
-                <strong>
-                  {comparison.output.summary} <span className="muted">({comparison.approvalState === "pending" ? "awaiting review by someone else" : comparison.approvalState === "approved" ? "reviewed" : "rejected"})</span>
-                </strong>
-                <span className="muted">{comparison.output.notice}</span>
+            <RecordList>
+              <RecordCard
+                title={
+                  <>
+                    {comparison.output.summary} <span className="muted">({approvalLabels[comparison.approvalState as keyof typeof approvalLabels] ?? formatLabel(comparison.approvalState)})</span>
+                  </>
+                }
+                status={comparison.approvalState}
+                lines={[comparison.output.notice]}
+              >
                 <AiPreparedNote run={{ id: comparison.runId, createdAt: comparison.createdAt, providerKey: "", approvalState: comparison.approvalState as "pending" }} />
-              </div>
+              </RecordCard>
               {comparison.output.mergeFields.added.length + comparison.output.mergeFields.removed.length > 0 ? (
-                <div>
-                  <strong>Merge fields</strong>
-                  <span>
-                    Added: {comparison.output.mergeFields.added.join(", ") || "none"}. Removed: {comparison.output.mergeFields.removed.join(", ") || "none"}.
-                  </span>
-                </div>
+                <RecordCard
+                  title="Merge fields"
+                  lines={[
+                    `Added: ${comparison.output.mergeFields.added.length > 0 ? formatLabels(comparison.output.mergeFields.added) : "none"}. Removed: ${comparison.output.mergeFields.removed.length > 0 ? formatLabels(comparison.output.mergeFields.removed) : "none"}.`
+                  ]}
+                />
               ) : null}
               {comparison.output.changes.map((change) => (
-                <div key={change.path}>
-                  <strong>
-                    {change.kind} <code>{change.path}</code>
-                  </strong>
-                  {change.before ? <span>Before: {change.before}</span> : null}
-                  {change.after ? <span>After: {change.after}</span> : null}
-                  <span className="muted">{change.whyItMatters}</span>
-                </div>
+                <RecordCard
+                  key={change.path}
+                  title={
+                    <>
+                      {formatLabel(change.kind)} <code>{change.path}</code>
+                    </>
+                  }
+                  lines={[change.before ? `Before: ${change.before}` : null, change.after ? `After: ${change.after}` : null, <span key="why" className="muted">{change.whyItMatters}</span>]}
+                />
               ))}
               {comparison.approvalState === "pending" ? (
-                <div className="franchise-actions">
+                <Actions>
                   <form action={decideComparisonAction.bind(null, request, franchiseId, comparison.runId, "approved")}>
-                    <button type="submit">Mark as reviewed</button>
+                    <button type="submit" className="r2-button r2-button--primary">Mark as reviewed</button>
                   </form>
                   <form action={decideComparisonAction.bind(null, request, franchiseId, comparison.runId, "rejected")}>
-                    <button type="submit">Reject</button>
+                    <button type="submit" className="r2-button r2-button--danger">Reject</button>
                   </form>
-                </div>
+                </Actions>
               ) : null}
               <p className="muted">The person who asked for this comparison cannot approve it; if they try, it is refused.</p>
-            </div>
+            </RecordList>
           ) : null}
         </div>
       ) : null}
-    </section>
+    </Panel>
   );
 }

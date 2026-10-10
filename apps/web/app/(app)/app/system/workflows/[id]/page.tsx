@@ -4,12 +4,16 @@ import { ShellAccessError, requireShellPermission } from "../../../../../../lib/
 import { knownHooks } from "../../../../../../lib/automation-hooks";
 import { hasAutomationCapability, readWorkflowDefinition } from "../../../../../../lib/automation-runtime";
 import type { AutomationActorContext } from "../../../../../../lib/automation-runtime";
-import { Breadcrumbs, StatusBadge } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
+import { formatCode, formatDateTime, formatLabels } from "../../../../../../lib/format";
+import { Actions, Metrics, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../../../lib/page-ui";
+import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { createDraftAction, saveDraftAction, toggleWorkflowAction } from "./actions";
 import { WorkflowDraftEditor } from "./WorkflowDraftEditor";
 import { getPermissionData } from "../../../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Workflow" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -32,6 +36,8 @@ const SAMPLES: Record<string, string> = {
   "marketing.email.campaign.approve": JSON.stringify({ versionId: "00000000-0000-0000-0000-000000000000" }, null, 2)
 };
 
+/** "finance.invoice.overdue" → "Finance invoice overdue": dotted event codes read as words. */
+
 export default async function WorkflowDefinitionPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const search = await searchParams;
@@ -39,7 +45,8 @@ export default async function WorkflowDefinitionPage({ params, searchParams }: P
   const result = await load(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    // A JobAccessError means the record exists but is outside this actor's scope: shown as a denial, not a crash.
+    return protectedOutcome(result.error instanceof JobAccessError ? new ShellAccessError("unauthorised", result.error.message) : result.error);
   }
 
   const { context, permissions, definition, versions } = result;
@@ -49,55 +56,50 @@ export default async function WorkflowDefinitionPage({ params, searchParams }: P
   const canActivate = hasAutomationCapability(permissions, context, "workflowActivate");
   const resultParam = Array.isArray(search.result) ? search.result[0] : search.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
+  const live = definition.status === "enabled" && Boolean(active);
+  const trigger = (active ?? draft)?.triggerEvent;
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Workflows", href: "/app/system/workflows" as Route }, { label: definition.name }]} />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Workflow</p>
-        <h2>{definition.name}</h2>
-        <p>{definition.description}</p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Status</span>
-            <strong>
-              <StatusBadge status={definition.status === "enabled" && active ? "active" : "paused"} />
-            </strong>
-          </article>
-          <article>
-            <span>Active version</span>
-            <strong>{active ? `v${active.versionNumber}` : "none"}</strong>
-          </article>
-          <article>
-            <span>Trigger</span>
-            <strong>{(active ?? draft)?.triggerEvent ?? "-"}</strong>
-          </article>
-        </div>
-        {banner ? (
-          <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
-            {banner.text}
-          </p>
+      <PageHeader eyebrow="Workflow" title={definition.name} intro={definition.description} />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Status", value: live ? "Active" : "Paused", tone: live ? "success" : "warning" },
+            { label: "Active version", value: active ? `Version ${active.versionNumber}` : "None", tone: active ? "neutral" : "warning" },
+            { label: "Trigger", value: trigger ? formatCode(trigger) : "-" }
+          ]}
+        />
+        {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
+        {canActivate || (canManage && !draft) ? (
+          <Actions>
+            {canActivate ? (
+              <form action={toggleWorkflowAction.bind(null, request, definition.id, definition.status !== "enabled")}>
+                <button type="submit" className={`r2-button ${definition.status === "enabled" ? "r2-button--secondary" : "r2-button--primary"}`}>
+                  {definition.status === "enabled" ? "Disable workflow" : "Enable workflow"}
+                </button>
+              </form>
+            ) : null}
+            {canManage && !draft ? (
+              <form action={createDraftAction.bind(null, request, definition.id)}>
+                <button type="submit" className="r2-button r2-button--secondary">
+                  Create draft to edit
+                </button>
+              </form>
+            ) : null}
+          </Actions>
         ) : null}
-        <div className="franchise-actions">
-          {canActivate ? (
-            <form action={toggleWorkflowAction.bind(null, request, definition.id, definition.status !== "enabled")}>
-              <button type="submit">{definition.status === "enabled" ? "Disable workflow" : "Enable workflow"}</button>
-            </form>
-          ) : null}
-          {canManage && !draft ? (
-            <form action={createDraftAction.bind(null, request, definition.id)}>
-              <button type="submit">Create draft to edit</button>
-            </form>
-          ) : null}
-        </div>
-      </section>
+      </Panel>
 
       {draft && canManage ? (
-        <section className="app-panel franchise-panel" aria-label="Draft editor">
-          <p className="eyebrow">Draft v{draft.versionNumber}</p>
-          <h2>Edit draft</h2>
-          <p>Changes here do not affect live runs until you activate the draft. Activating retires the current version.</p>
+        <Panel
+          eyebrow={`Draft version ${draft.versionNumber}`}
+          title="Edit draft"
+          intro="Changes here do not affect live runs until you activate the draft. Activating retires the current version."
+        >
           <WorkflowDraftEditor
             action={saveDraftAction.bind(null, request, definition.id, draft.id)}
             initial={{ triggerEvent: draft.triggerEvent, settings: draft.settings, conditions: draft.conditions, steps: draft.steps as never, changeNote: draft.changeNote ?? "" }}
@@ -105,42 +107,40 @@ export default async function WorkflowDefinitionPage({ params, searchParams }: P
             sampleHint={SAMPLES[draft.triggerEvent] ?? "{}"}
             runsBase="/app/system/workflows/runs"
           />
-        </section>
+        </Panel>
       ) : null}
 
-      <section className="app-panel audit-table" aria-label="Versions">
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Version</th>
-                <th>Status</th>
-                <th>Trigger</th>
-                <th>Steps</th>
-                <th>Thresholds</th>
-                <th>Note</th>
-                <th>Activated</th>
+      <Panel eyebrow="History" title="Versions">
+        <Table caption="Versions of this workflow">
+          <thead>
+            <tr>
+              <th scope="col">Version</th>
+              <th scope="col">Status</th>
+              <th scope="col">Trigger</th>
+              <th scope="col">Steps</th>
+              <th scope="col">Thresholds</th>
+              <th scope="col">Note</th>
+              <th scope="col">Activated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {versions.map((version) => (
+              <tr key={version.id}>
+                <td>Version {version.versionNumber}</td>
+                <td>
+                  <StatusBadge status={version.status === "active" ? "active" : version.status === "draft" ? "draft" : "retired"} />
+                </td>
+                <td>{formatCode(version.triggerEvent)}</td>
+                <td>{formatLabels(version.steps.map((step) => step.type), " → ")}</td>
+                <td>{Object.entries(version.settings).map(([name, value]) => `${name}: ${value}`).join(", ") || "-"}</td>
+                <td>{version.changeNote ?? "-"}</td>
+                <td>{version.activatedAt ? formatDateTime(version.activatedAt) : "-"}</td>
               </tr>
-            </thead>
-            <tbody>
-              {versions.map((version) => (
-                <tr key={version.id}>
-                  <td>v{version.versionNumber}</td>
-                  <td>
-                    <StatusBadge status={version.status === "active" ? "active" : version.status === "draft" ? "draft" : "retired"} />
-                  </td>
-                  <td>{version.triggerEvent}</td>
-                  <td>{version.steps.map((step) => step.type.replace("_", " ")).join(" → ")}</td>
-                  <td>{Object.entries(version.settings).map(([name, value]) => `${name}: ${value}`).join(", ") || "-"}</td>
-                  <td>{version.changeNote ?? "-"}</td>
-                  <td>{version.activatedAt ? version.activatedAt.toLocaleString("en-GB") : "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </AppShell>
+            ))}
+          </tbody>
+        </Table>
+      </Panel>
+    </>
   );
 }
 
@@ -152,20 +152,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError || error instanceof JobAccessError) {
-    const kind = error instanceof ShellAccessError ? error.kind : "unauthorised";
-    return (
-      <main className={`app-outcome app-outcome-${kind}`}>
-        <section>
-          <p className="eyebrow">{kind.replace("_", " ")}</p>
-          <h1>{kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

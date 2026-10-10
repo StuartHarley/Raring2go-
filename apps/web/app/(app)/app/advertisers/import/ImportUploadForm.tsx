@@ -45,8 +45,8 @@ export function ImportUploadForm({ territories, defaultTerritoryId, queryString 
       <label>CSV file (up to 1 MB, 1,000 rows). Columns: business name (required), contact, email, phone, role, tags, notes.
         <input type="file" name="file" accept=".csv,text/csv" required />
       </label>
-      <div className="franchise-actions">
-        <button type="submit" disabled={pending}>{pending ? "Checking…" : "Check the file (dry run)"}</button>
+      <div className="action-row">
+        <button type="submit" className="r2-button r2-button--primary" disabled={pending}>{pending ? "Checking…" : "Check the file (dry run)"}</button>
       </div>
       <small>Checking changes nothing. You review the result first.</small>
     </form>

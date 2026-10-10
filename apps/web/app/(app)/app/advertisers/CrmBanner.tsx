@@ -1,3 +1,4 @@
+import { Notice } from "../../../../lib/page-ui";
 import type { CrmResult } from "./actions";
 
 const messages: Record<CrmResult, string> = {
@@ -22,9 +23,5 @@ const messages: Record<CrmResult, string> = {
 export function CrmBanner({ result }: { result?: string }) {
   const message = result && Object.hasOwn(messages, result) ? messages[result as CrmResult] : undefined;
   if (!message) return null;
-  return (
-    <p className={result === "created" || result === "saved" ? "notice notice--success" : "notice notice--error"} role={result === "created" || result === "saved" ? "status" : "alert"}>
-      {message}
-    </p>
-  );
+  return <Notice tone={result === "created" || result === "saved" ? "success" : "error"}>{message}</Notice>;
 }

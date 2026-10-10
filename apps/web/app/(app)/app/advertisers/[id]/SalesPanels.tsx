@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Advertiser360, CatalogueView } from "@raring2go/advertising";
 import type { RequestedShellContext } from "../../../../../lib/app-shell";
+import { formatDate } from "../../../../../lib/format";
+import { EmptyState, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import {
   allocatePaymentAction,
   bookProposalAction,
@@ -50,11 +52,9 @@ export function SalesPanels({
   return (
     <>
       {access.proposalCreate ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Selling</p>
-          <h2>New proposal</h2>
+        <Panel eyebrow="Selling" title="New proposal">
           {sellable.length === 0 ? (
-            <p>No products have a price for this area yet.</p>
+            <EmptyState title="Nothing to sell here yet">No products have a price for this area. Prices are set in the catalogue.</EmptyState>
           ) : (
             <form action={createProposalAction.bind(null, request, advertiserId)} className="franchise-form">
               <label>Title<input name="title" required maxLength={160} /></label>
@@ -88,78 +88,72 @@ export function SalesPanels({
                 </label>
               ) : null}
               <label>Valid until<input name="validUntil" type="date" required /></label>
-              <button type="submit">Create draft proposal</button>
+              <button type="submit" className="r2-button r2-button--primary">Create draft proposal</button>
               <small>Prices come from the price book. Discounts below the approval line need someone who can manage pricing.</small>
             </form>
           )}
-        </section>
+        </Panel>
       ) : null}
 
       {view.proposals.length > 0 ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Selling</p>
-          <h2>Proposals</h2>
-          <div className="franchise-list">
+        <Panel eyebrow="Selling" title="Proposals">
+          <RecordList>
             {view.proposals.map((proposal) => (
-              <div key={proposal.id}>
-                <strong>{proposal.title}</strong>
-                <span>{proposal.status} - {money(proposal.totalValueMinor)} - valid until {proposal.validUntil ?? "not set"}</span>
+              <RecordCard
+                key={proposal.id}
+                title={proposal.title}
+                status={proposal.status}
+                lines={[`${money(proposal.totalValueMinor)} · Valid until ${formatDate(proposal.validUntil, "not set")}`]}
+              >
                 {access.proposalCreate && proposal.status === "draft" ? (
-                  <form action={sendProposalAction.bind(null, request, advertiserId, proposal.id)}><button type="submit">Send to advertiser</button></form>
+                  <form action={sendProposalAction.bind(null, request, advertiserId, proposal.id)}>
+                    <button type="submit" className="r2-button r2-button--secondary">Send to advertiser</button>
+                  </form>
                 ) : null}
                 {access.bookingAccept && proposal.status === "sent" && !bookedProposalIds.has(proposal.id) ? (
                   <form action={bookProposalAction.bind(null, request, advertiserId, proposal.id)}>
-                    <button type="submit">Record acceptance and book</button>
+                    <button type="submit" className="r2-button r2-button--secondary">Record acceptance and book</button>
                     <small>Use when they agreed by phone or on paper. Reserves the slots and starts artwork.</small>
                   </form>
                 ) : null}
-              </div>
+              </RecordCard>
             ))}
-          </div>
-        </section>
+          </RecordList>
+        </Panel>
       ) : null}
 
       {access.invoiceCreate && view.bookings.some((booking) => !invoicedBookingIds.has(booking.id)) ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Billing</p>
-          <h2>Bookings to invoice</h2>
-          <div className="franchise-list">
+        <Panel eyebrow="Billing" title="Bookings to invoice">
+          <RecordList>
             {view.bookings.filter((booking) => !invoicedBookingIds.has(booking.id)).map((booking) => (
-              <div key={booking.id}>
-                <strong>Booked {booking.bookedOn} - {money(booking.totalValueMinor)}</strong>
+              <RecordCard key={booking.id} title={`Booked ${formatDate(booking.bookedOn)}`} lines={[money(booking.totalValueMinor)]}>
                 <form action={createInvoiceAction.bind(null, request, advertiserId, booking.id)} className="franchise-form">
                   <label>Payment terms (days)<input name="dueInDays" type="number" min="0" max="120" defaultValue="30" /></label>
-                  <button type="submit">Create draft invoice</button>
+                  <button type="submit" className="r2-button r2-button--secondary">Create draft invoice</button>
                 </form>
-              </div>
+              </RecordCard>
             ))}
-          </div>
-        </section>
+          </RecordList>
+        </Panel>
       ) : null}
 
       {access.invoiceIssue && view.invoices.some((invoice) => invoice.status === "draft") ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Billing</p>
-          <h2>Draft invoices</h2>
-          <div className="franchise-list">
+        <Panel eyebrow="Billing" title="Draft invoices">
+          <RecordList>
             {view.invoices.filter((invoice) => invoice.status === "draft").map((invoice) => (
-              <div key={invoice.id}>
-                <strong>Draft - {money(invoice.totalMinor)} including tax</strong>
-                <span>Due {invoice.dueDate ?? "not set"}</span>
+              <RecordCard key={invoice.id} title={`${money(invoice.totalMinor)} including tax`} status={invoice.status} lines={[`Due ${formatDate(invoice.dueDate, "not set")}`]}>
                 <form action={issueInvoiceAction.bind(null, request, advertiserId, invoice.id)}>
-                  <button type="submit">Issue invoice</button>
+                  <button type="submit" className="r2-button r2-button--secondary">Issue invoice</button>
                   <small>Issuing gives it its number and locks its contents.</small>
                 </form>
-              </div>
+              </RecordCard>
             ))}
-          </div>
-        </section>
+          </RecordList>
+        </Panel>
       ) : null}
 
       {access.paymentRecord ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Billing</p>
-          <h2>Record a payment</h2>
+        <Panel eyebrow="Billing" title="Record a payment">
           <form action={recordPaymentAction.bind(null, request, advertiserId)} className="franchise-form">
             <input type="hidden" name="token" value={paymentToken} />
             <label>Amount received (£)<input name="amount" type="number" min="0.01" step="0.01" required /></label>
@@ -174,20 +168,18 @@ export function SalesPanels({
               </select>
             </label>
             <label>Reference<input name="reference" maxLength={120} /></label>
-            <button type="submit">Record payment</button>
+            <button type="submit" className="r2-button r2-button--primary">Record payment</button>
           </form>
-        </section>
+        </Panel>
       ) : null}
 
       {access.paymentAllocate && unallocated.length > 0 && openInvoices.length > 0 ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Billing</p>
-          <h2>Apply a payment to an invoice</h2>
+        <Panel eyebrow="Billing" title="Apply a payment to an invoice">
           <form action={allocatePaymentAction.bind(null, request, advertiserId)} className="franchise-form">
             <label>
               Payment
               <select name="paymentId" required>
-                {unallocated.map((payment) => <option key={payment.id} value={payment.id}>{payment.receivedDate} - {money(payment.unallocatedMinor)} unapplied</option>)}
+                {unallocated.map((payment) => <option key={payment.id} value={payment.id}>{formatDate(payment.receivedDate)} - {money(payment.unallocatedMinor)} unapplied</option>)}
               </select>
             </label>
             <label>
@@ -197,9 +189,9 @@ export function SalesPanels({
               </select>
             </label>
             <label>Amount to apply (£)<input name="amount" type="number" min="0.01" step="0.01" required /></label>
-            <button type="submit">Apply payment</button>
+            <button type="submit" className="r2-button r2-button--primary">Apply payment</button>
           </form>
-        </section>
+        </Panel>
       ) : null}
     </>
   );

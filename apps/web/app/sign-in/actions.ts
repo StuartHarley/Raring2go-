@@ -14,6 +14,7 @@ import {
   signOutEverywhere
 } from "../../lib/auth-runtime";
 import { clientIp, firstRateLimitRefusal } from "../../lib/rate-limit-runtime";
+import { workingContextCookieName } from "../../lib/working-context";
 
 const devSessionTtlMs = 30 * 24 * 60 * 60 * 1000;
 
@@ -33,6 +34,7 @@ export async function requestSignInAction(formData: FormData) {
     await createDevelopmentSession({ email, sessionToken, ttlMs: devSessionTtlMs });
 
     const cookieStore = await cookies();
+    cookieStore.delete(workingContextCookieName);
     cookieStore.set(sessionCookieName, sessionToken, {
       httpOnly: true,
       sameSite: "lax",
@@ -84,6 +86,7 @@ export async function signOutEverywhereAction() {
   }
 
   cookieStore.delete(sessionCookieName);
+  cookieStore.delete(workingContextCookieName);
   redirect("/sign-in?recovered=1" as Route);
 }
 
@@ -96,5 +99,6 @@ export async function signOutAction() {
   }
 
   cookieStore.delete(sessionCookieName);
+  cookieStore.delete(workingContextCookieName);
   redirect("/sign-in" as Route);
 }

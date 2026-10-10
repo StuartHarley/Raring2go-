@@ -1,13 +1,16 @@
-import { PortalAccessError } from "@raring2go/advertising";
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { readPortal } from "../../../../lib/portal-runtime";
 import { readPortalPaymentOptions } from "../../../../lib/payments-runtime";
-import { StatusBadge } from "../../../../lib/workflow-ui";
-import { AppShell } from "../../layout";
+import { formatDate, formatLabel } from "../../../../lib/format";
+import { Actions, EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, StatusBadge, Table } from "../../../../lib/page-ui";
+import type { Tone } from "../../../../lib/page-ui";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { ArtworkUploadForm } from "./ArtworkUploadForm";
 import { payInvoiceAction, respondToProofAction, respondToProposalAction, signProposalAction } from "./actions";
 import { advertiserSigningEnabled } from "../../../../lib/advertiser-signing";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "My campaigns" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -27,7 +30,15 @@ const resultMessages: Record<string, { tone: "success" | "error"; text: string }
 };
 
 const money = (minor: number, currency: string) => new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(minor / 100);
-const day = (value: string | null) => (value ? new Date(value).toLocaleDateString("en-GB") : "-");
+const figure = (value: number) => new Intl.NumberFormat("en-GB").format(value);
+
+/** The to-do list from the domain carries ISO dates ("Needed by 2026-03-01"); show them as words. */
+/** Colour artwork by what the advertiser needs to do: green when done, red when it needs re-sending, amber while it waits. */
+function artworkTone(status: string): Tone {
+  if (status === "approved" || status === "production_ready") return "success";
+  if (status === "changes_requested" || status === "rejected") return "danger";
+  return "warning";
+}
 
 export default async function PortalPage({ searchParams }: PageProps) {
   const params = await searchParams;
@@ -49,203 +60,210 @@ export default async function PortalPage({ searchParams }: PageProps) {
   const currency = view.invoices[0]?.currency ?? view.proposals[0]?.currency ?? "GBP";
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Your account</p>
-        <h2>{view.advertisers[0]?.name ?? "Your campaigns"}</h2>
-        <p>Your campaigns, artwork, proofs and invoices in one place.</p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Needs your attention</span>
-            <strong>{view.needsAction.length}</strong>
-          </article>
-          <article>
-            <span>Active campaigns</span>
-            <strong>{view.summary.activeCampaigns}</strong>
-          </article>
-          <article>
-            <span>Outstanding</span>
-            <strong>{money(view.summary.outstandingMinor, currency)}</strong>
-          </article>
-          <article>
-            <span>Overdue</span>
-            <strong>{money(view.summary.overdueMinor, currency)}</strong>
-          </article>
-        </div>
-        {banner ? <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>{banner.text}</p> : null}
-      </section>
+    <>
+      <PageHeader eyebrow="Your account" title={view.advertisers[0]?.name ?? "Your campaigns"} intro="Your bookings, artwork, proofs and invoices in one place." />
+      {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
 
-      <section className="app-panel franchise-panel" aria-label="Needs your attention">
-        <p className="eyebrow">To do</p>
-        <h2>Needs your attention</h2>
-        <div className="franchise-list">
-          {view.needsAction.length === 0 ? (
-            <div>
-              <strong>You are all caught up.</strong>
-            </div>
-          ) : (
-            view.needsAction.map((item) => (
-              <div key={`${item.kind}:${item.recordId}`}>
-                <strong>{item.title}</strong>
-                <span>{item.detail}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Needs your attention", value: view.needsAction.length, tone: view.needsAction.length > 0 ? "warning" : "success" },
+            { label: "Active campaigns", value: view.summary.activeCampaigns },
+            { label: "Outstanding", value: money(view.summary.outstandingMinor, currency), tone: view.summary.outstandingMinor > 0 ? "warning" : "neutral" },
+            { label: "Overdue", value: money(view.summary.overdueMinor, currency), tone: view.summary.overdueMinor > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="To do" title="Needs your attention" id="to-do">
+        {view.needsAction.length === 0 ? (
+          <EmptyState title="You are all caught up">Anything that needs a reply from you, such as a proposal, artwork or a proof, will appear here.</EmptyState>
+        ) : (
+          <RecordList>
+            {view.needsAction.map((item) => (
+              <RecordCard key={`${item.kind}:${item.recordId}`} title={item.title} lines={[item.detail]} />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
       {view.proposals.length > 0 ? (
-        <section className="app-panel franchise-panel" aria-label="Proposals">
-          <p className="eyebrow">Proposals</p>
-          <h2>Your proposals</h2>
-          <div className="franchise-list">
+        <Panel eyebrow="Proposals" title="Your proposals" id="proposals">
+          <RecordList>
             {view.proposals.map((proposal) => (
-              <div key={proposal.id}>
-                <strong>{proposal.title}</strong>
-                <span>
-                  {money(proposal.totalValueMinor, proposal.currency)} · {proposal.status.replace("_", " ")}
-                  {proposal.validUntil ? ` · valid until ${day(proposal.validUntil)}` : ""}
-                </span>
-                {proposal.items.map((item, index) => (
-                  <span key={index}>{item.quantity} × {item.description} ({money(item.totalPriceMinor, proposal.currency)})</span>
-                ))}
+              <RecordCard
+                key={proposal.id}
+                title={proposal.title}
+                status={proposal.status}
+                lines={[
+                  `${money(proposal.totalValueMinor, proposal.currency)}${proposal.validUntil ? ` · valid until ${formatDate(proposal.validUntil)}` : ""}`,
+                  ...proposal.items.map((item) => `${item.quantity} × ${item.description} (${money(item.totalPriceMinor, proposal.currency)})`),
+                  proposal.awaitingSignature ? "You have accepted. Your booking is confirmed once your signature is complete." : null,
+                  !proposal.canRespond && !proposal.awaitingSignature && proposal.response ? `Your response: ${formatLabel(proposal.response)}` : null
+                ]}
+              >
                 {proposal.canRespond ? (
-                  <div className="franchise-actions">
-                    <form action={respondToProposalAction.bind(null, request, proposal.id, "accepted")}><button type="submit">{advertiserSigningEnabled() ? "Accept and sign" : "Accept and book"}</button></form>
-                    <form action={respondToProposalAction.bind(null, request, proposal.id, "change_requested")}><button type="submit">Ask for changes</button></form>
-                    <form action={respondToProposalAction.bind(null, request, proposal.id, "rejected")}><button type="submit">Decline</button></form>
-                  </div>
+                  <Actions>
+                    <form action={respondToProposalAction.bind(null, request, proposal.id, "accepted")}>
+                      <button type="submit" className="r2-button r2-button--primary">{advertiserSigningEnabled() ? "Accept and sign" : "Accept and book"}</button>
+                    </form>
+                    <form action={respondToProposalAction.bind(null, request, proposal.id, "change_requested")}>
+                      <button type="submit" className="r2-button r2-button--secondary">Ask for changes</button>
+                    </form>
+                    <form action={respondToProposalAction.bind(null, request, proposal.id, "rejected")}>
+                      <button type="submit" className="r2-button r2-button--secondary">Decline</button>
+                    </form>
+                  </Actions>
                 ) : proposal.awaitingSignature ? (
-                  <div className="franchise-actions">
-                    <span>You have accepted. Your booking is confirmed once your signature is complete.</span>
-                    <form action={signProposalAction.bind(null, request, proposal.id)}><button type="submit">Continue to sign</button></form>
-                  </div>
-                ) : proposal.response ? (
-                  <span>Your response: {proposal.response.replace("_", " ")}</span>
+                  <Actions>
+                    <form action={signProposalAction.bind(null, request, proposal.id)}>
+                      <button type="submit" className="r2-button r2-button--primary">Continue to sign</button>
+                    </form>
+                  </Actions>
                 ) : null}
-              </div>
+              </RecordCard>
             ))}
-          </div>
-        </section>
+          </RecordList>
+        </Panel>
       ) : null}
 
-      <section className="app-panel franchise-panel" aria-label="Campaigns">
-        <p className="eyebrow">Campaigns</p>
-        <h2>Your campaigns</h2>
-        <div className="franchise-list">
-          {view.campaigns.length === 0 ? (
-            <div>
-              <strong>No campaigns yet.</strong>
-              <span>Once you accept a proposal your booking appears here.</span>
-            </div>
-          ) : (
-            view.campaigns.map((campaign) => (
-              <div key={campaign.bookingId}>
-                <strong>Booked {day(campaign.bookedOn)} · {money(campaign.totalValueMinor, campaign.currency)}</strong>
-                {campaign.items.map((item) => (
-                  <span key={item.id}>{item.quantity} × {item.description}{item.channel ? ` (${item.channel})` : ""}</span>
-                ))}
-                {campaign.fulfilments.map((fulfilment) => (
-                  <span key={fulfilment.id}>
-                    {fulfilment.channel}: {fulfilment.status.replace("_", " ")}{fulfilment.scheduledOn ? ` · scheduled ${day(fulfilment.scheduledOn)}` : ""}{fulfilment.fulfilledOn ? ` · delivered ${day(fulfilment.fulfilledOn)}` : ""}
-                  </span>
-                ))}
+      <Panel eyebrow="Campaigns" title="Your campaigns" id="campaigns">
+        {view.campaigns.length === 0 ? (
+          <EmptyState title="No campaigns yet">Once you accept a proposal your booking appears here.</EmptyState>
+        ) : (
+          <RecordList>
+            {view.campaigns.map((campaign) => (
+              <RecordCard
+                key={campaign.bookingId}
+                title={`Booked ${formatDate(campaign.bookedOn)} · ${money(campaign.totalValueMinor, campaign.currency)}`}
+                status={campaign.status}
+                lines={[
+                  ...campaign.items.map((item) => `${item.quantity} × ${item.description}${item.channel ? ` (${formatLabel(item.channel)})` : ""}`),
+                  ...campaign.fulfilments.map(
+                    (fulfilment) =>
+                      `${formatLabel(fulfilment.channel)}: ${formatLabel(fulfilment.status)}${fulfilment.scheduledOn ? ` · scheduled ${formatDate(fulfilment.scheduledOn)}` : ""}${fulfilment.fulfilledOn ? ` · delivered ${formatDate(fulfilment.fulfilledOn)}` : ""}`
+                  ),
+                  ...campaign.proofPacks.map(
+                    (pack) =>
+                      `Results (${formatLabel(pack.status)}, ${formatDate(pack.issuedAt)}): ${
+                        Object.entries(pack.metrics)
+                          .map(([key, value]) => `${formatLabel(key)} ${figure(value)}`)
+                          .join(" · ") || "no figures yet"
+                      }`
+                  )
+                ]}
+              >
                 {campaign.artwork.map((artwork) => (
-                  <div key={artwork.requirementId} aria-label="Artwork">
-                    <strong>Artwork</strong> <StatusBadge status={artwork.status === "approved" || artwork.status === "production_ready" ? "completed" : artwork.status === "changes_requested" || artwork.status === "rejected" ? "failed" : "paused"} />
-                    <span>{artwork.status.replace("_", " ")}{artwork.deadline ? ` · needed by ${day(artwork.deadline)}` : ""}</span>
-                    {artwork.versions.map((version) => (
-                      <span key={version.id}>v{version.versionNumber}: {version.fileName ?? "file"} · {version.status.replace("_", " ")}{version.notes ? ` · ${version.notes}` : ""}</span>
-                    ))}
+                  <RecordCard
+                    key={artwork.requirementId}
+                    title="Your artwork"
+                    status={artwork.status}
+                    tone={artworkTone(artwork.status)}
+                    lines={[
+                      artwork.deadline ? `Needed by ${formatDate(artwork.deadline)}` : null,
+                      ...artwork.versions.map(
+                        (version) => `Version ${version.versionNumber}: ${version.fileName ?? "file"} · ${formatLabel(version.status)}${version.notes ? ` · ${version.notes}` : ""}`
+                      )
+                    ]}
+                  >
                     {artwork.canSubmit ? <ArtworkUploadForm requirementId={artwork.requirementId} queryString={queryString} /> : null}
                     {artwork.awaitingProofApproval ? (
-                      <div className="franchise-actions">
-                        <form action={respondToProofAction.bind(null, request, artwork.requirementId, "approved")}><button type="submit">Approve proof</button></form>
-                        <form action={respondToProofAction.bind(null, request, artwork.requirementId, "changes_requested")}><button type="submit">Request changes</button></form>
-                      </div>
+                      <Actions>
+                        <form action={respondToProofAction.bind(null, request, artwork.requirementId, "approved")}>
+                          <button type="submit" className="r2-button r2-button--primary">Approve proof</button>
+                        </form>
+                        <form action={respondToProofAction.bind(null, request, artwork.requirementId, "changes_requested")}>
+                          <button type="submit" className="r2-button r2-button--secondary">Request changes</button>
+                        </form>
+                      </Actions>
                     ) : null}
-                  </div>
+                  </RecordCard>
                 ))}
-                {campaign.proofPacks.map((pack) => (
-                  <span key={pack.id}>
-                    Results ({pack.status}, {day(pack.issuedAt)}): {Object.entries(pack.metrics).map(([key, value]) => `${key} ${value.toLocaleString("en-GB")}`).join(" · ") || "no figures yet"}
-                  </span>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel audit-table" aria-label="Invoices">
-        <div className="table-scroll">
-          <table>
+      <Panel eyebrow="Invoices" title="Your invoices" intro="Payments are made on your provider's own secure page. Quote the invoice number if you contact us." id="invoices">
+        {paymentReturn === "returned" ? (
+          <Notice tone="success">Thank you. We will show your payment here as soon as your bank or card provider confirms it, which can take a few minutes.</Notice>
+        ) : null}
+        {paymentReturn === "cancelled" ? <Notice tone="info">The payment was not completed. You have not been charged.</Notice> : null}
+        {view.invoices.length === 0 ? (
+          <EmptyState title="No invoices yet">Invoices for your bookings appear here with how to pay them.</EmptyState>
+        ) : (
+          <Table caption="Your invoices">
             <thead>
               <tr>
-                <th>Invoice</th>
-                <th>Issued</th>
-                <th>Due</th>
-                <th>Total</th>
-                <th>Paid</th>
-                <th>Balance</th>
-                <th>Status</th>
+                <th scope="col">Invoice</th>
+                <th scope="col">Issued</th>
+                <th scope="col">Due</th>
+                <th scope="col">Total</th>
+                <th scope="col">Paid</th>
+                <th scope="col">Balance</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
             <tbody>
-              {view.invoices.length === 0 ? (
-                <tr>
-                  <td colSpan={7}>No invoices yet.</td>
-                </tr>
-              ) : (
-                view.invoices.map((invoice) => (
+              {view.invoices.map((invoice) => {
+                const options = paymentOptions[invoice.id];
+                return (
                   <tr key={invoice.id}>
-                    <td>
+                    <th scope="row">
                       {invoice.invoiceNumber}
                       {invoice.payments.map((payment, index) => (
-                        <small key={index}><br />Paid {money(payment.amountMinor, invoice.currency)} on {day(payment.receivedDate)} ({payment.method.replace("_", " ")})</small>
+                        <small key={index}>
+                          <br />
+                          Paid {money(payment.amountMinor, invoice.currency)} on {formatDate(payment.receivedDate)} ({formatLabel(payment.method)})
+                        </small>
                       ))}
-                    </td>
-                    <td>{day(invoice.issueDate)}</td>
-                    <td>{day(invoice.dueDate)}</td>
+                    </th>
+                    <td>{formatDate(invoice.issueDate)}</td>
+                    <td>{formatDate(invoice.dueDate)}</td>
                     <td>{money(invoice.totalMinor, invoice.currency)}</td>
                     <td>{money(invoice.amountPaidMinor, invoice.currency)}</td>
                     <td>{money(invoice.balanceMinor, invoice.currency)}</td>
                     <td>
-                      <StatusBadge status={invoice.status === "paid" ? "completed" : invoice.overdue ? "failed" : "paused"} /> {invoice.overdue ? "Overdue" : invoice.status.replace("_", " ")}
-                      {paymentOptions[invoice.id] && invoice.balanceMinor > 0 ? (
-                        <div>
-                          {paymentOptions[invoice.id]!.stripe ? <form action={payInvoiceAction.bind(null, request, invoice.id, "stripe")}><button type="submit">Pay {money(invoice.balanceMinor, invoice.currency)} by card or bank</button></form> : null}
-                          {paymentOptions[invoice.id]!.gocardless ? <form action={payInvoiceAction.bind(null, request, invoice.id, "gocardless")}><button type="submit">Pay by bank or Direct Debit</button></form> : null}
-                          {paymentOptions[invoice.id]!.bank ? <small>Or bank transfer to {paymentOptions[invoice.id]!.bank!.accountName}, sort code {paymentOptions[invoice.id]!.bank!.sortCode}, account {paymentOptions[invoice.id]!.bank!.accountNumber}, reference {invoice.invoiceNumber}.</small> : null}
-                        </div>
+                      <StatusBadge status={invoice.overdue ? "overdue" : invoice.status} tone={invoice.overdue ? "danger" : invoice.status === "paid" ? "success" : "warning"} />
+                      {options && invoice.balanceMinor > 0 ? (
+                        <Actions>
+                          {options.stripe ? (
+                            <form action={payInvoiceAction.bind(null, request, invoice.id, "stripe")}>
+                              <button type="submit" className="r2-button r2-button--primary">Pay {money(invoice.balanceMinor, invoice.currency)} by card or bank</button>
+                            </form>
+                          ) : null}
+                          {options.gocardless ? (
+                            <form action={payInvoiceAction.bind(null, request, invoice.id, "gocardless")}>
+                              <button type="submit" className="r2-button r2-button--secondary">Pay by bank or Direct Debit</button>
+                            </form>
+                          ) : null}
+                          {options.bank ? (
+                            <small>
+                              Or bank transfer to {options.bank.accountName}, sort code {options.bank.sortCode}, account {options.bank.accountNumber}, reference {invoice.invoiceNumber}.
+                            </small>
+                          ) : null}
+                        </Actions>
                       ) : null}
                     </td>
                   </tr>
-                ))
-              )}
+                );
+              })}
             </tbody>
-          </table>
-        </div>
-        {paymentReturn === "returned" ? <p role="status" className="app-banner">Thank you. We will show your payment here as soon as your bank or card provider confirms it, which can take a few minutes.</p> : null}
-        {paymentReturn === "cancelled" ? <p role="status" className="app-banner">The payment was not completed. You have not been charged.</p> : null}
-        <p className="journey-builder-step-note">Payments are made on your provider&apos;s own secure page. Quote the invoice number if you contact us.</p>
-      </section>
+          </Table>
+        )}
+      </Panel>
 
       {view.renewals.length > 0 ? (
-        <section className="app-panel franchise-panel" aria-label="Renewals">
-          <p className="eyebrow">Renewals</p>
-          <h2>Coming up for renewal</h2>
-          <div className="franchise-list">
+        <Panel eyebrow="Renewals" title="Coming up for renewal" id="renewals">
+          <RecordList>
             {view.renewals.map((renewal) => (
-              <div key={renewal.id}>
-                <strong>{renewal.summary ?? "Renewal"}</strong>
-                <span>Due {day(renewal.dueOn)}. Your account manager will be in touch.</span>
-              </div>
+              <RecordCard key={renewal.id} title={renewal.summary ?? "Renewal"} status={renewal.status} lines={[`Due ${formatDate(renewal.dueOn)}. Your account manager will be in touch.`]} />
             ))}
-          </div>
-        </section>
+          </RecordList>
+        </Panel>
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -257,20 +275,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError || error instanceof PortalAccessError) {
-    const kind = error instanceof ShellAccessError ? error.kind : "unauthorised";
-    return (
-      <main className={`app-outcome app-outcome-${kind}`}>
-        <section>
-          <p className="eyebrow">{kind.replace("_", " ")}</p>
-          <h1>{kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

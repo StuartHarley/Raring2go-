@@ -26,10 +26,10 @@ export function contentDetailPage(section: PublicContentSection) {
   async function generateMetadata({ params }: PageProps): Promise<Metadata> {
     const { territorySlug, itemSlug } = await params;
     const detail = await readPublicContentDetail(territorySlug, section, itemSlug, siteUrl());
-    if (!detail) return { title: "Not found | Raring2go!", robots: { index: false } };
+    if (!detail) return { title: { absolute: "Not found | Raring2go!" }, robots: { index: false } };
 
     return {
-      title: detail.seoTitle,
+      title: { absolute: detail.seoTitle },
       description: detail.item.summary,
       alternates: { canonical: `${siteUrl()}${detail.canonicalPath}` },
       // A page with no real body is reachable but not offered to search engines.

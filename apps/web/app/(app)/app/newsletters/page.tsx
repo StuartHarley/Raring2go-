@@ -1,10 +1,11 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import type { Route } from "next";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasAiAssistCapability } from "../../../../lib/ai-runtime";
 import { listConnectionCards } from "../../../../lib/integrations-runtime";
 import { readEmailCampaignOverview, readSegments, readSubjectLineComparison } from "../../../../lib/marketing-runtime";
-import { AppShell } from "../../layout";
+import { formatCount, formatDateTime } from "../../../../lib/format";
+import { Actions, EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { requestFromSearchParamsAndCookies } from "../page";
-import { StatusBadge } from "../../../../lib/workflow-ui";
 import { CampaignComposeFields } from "./CampaignComposeFields";
 import {
   acceptAiSuggestionAction,
@@ -25,6 +26,9 @@ import { normalizeContentSnapshot } from "@raring2go/marketing";
 import type { AudienceSegment, EmailCampaignOverview, EmailSendJob } from "@raring2go/marketing";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { getPermissionData } from "../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Newsletters" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -41,45 +45,42 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
   const { context, email, composableSegments, outlookMailboxes, aiAssistAvailable, lastNewsletter, comparisons } = result;
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Native email</p>
-        <h2>Newsletter campaigns</h2>
-        <p>
-          {context.territoryId
-            ? "Send a local newsletter to your own territory's audience."
-            : "Send a national newsletter to every subscribed audience across the network."}
-        </p>
-        <p>
-          <a href="/app/newsletters/factory">Open HQ newsletter factory</a>
-          {" · "}
-          <a href="/app/audience/segments">Build an audience segment</a>
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Campaigns</span>
-            <strong>{email.totals.campaigns}</strong>
-          </article>
-          <article>
-            <span>Draft</span>
-            <strong>{email.totals.draft}</strong>
-          </article>
-          <article>
-            <span>Scheduled</span>
-            <strong>{email.totals.scheduled}</strong>
-          </article>
-          <article>
-            <span>Sent</span>
-            <strong>{email.totals.sent}</strong>
-          </article>
-        </div>
-      </section>
+    <>
+      <PageHeader
+        eyebrow="Marketing"
+        title="Newsletters"
+        intro={
+          context.territoryId
+            ? "Write and send a newsletter to the families subscribed in your area, and see how past sends went."
+            : "Write and send a newsletter to every subscribed audience across the network, and see how past sends went."
+        }
+        actions={
+          <>
+            <LinkButton href={"#compose" as Route}>Compose a newsletter</LinkButton>
+            <LinkButton href={"/app/newsletters/factory" as Route} variant="secondary">
+              Newsletter factory
+            </LinkButton>
+            <LinkButton href={"/app/audience/segments" as Route} variant="secondary">
+              Audience segments
+            </LinkButton>
+          </>
+        }
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Compose</p>
-        <h2>{context.territoryId ? "Compose a local newsletter" : "Compose a newsletter"}</h2>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Campaigns", value: email.totals.campaigns },
+            { label: "Drafts", value: email.totals.draft },
+            { label: "Scheduled", value: email.totals.scheduled, tone: email.totals.scheduled > 0 ? "info" : "neutral" },
+            { label: "Sent", value: email.totals.sent, tone: email.totals.sent > 0 ? "success" : "neutral" }
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="Compose" title={context.territoryId ? "Compose a local newsletter" : "Compose a newsletter"} id="compose">
         {composableSegments.length === 0 ? (
-          <p>No audience segment is configured yet. Ask HQ to set one up before composing a campaign.</p>
+          <EmptyState title="No audience to send to yet">Ask Head Office to set up an audience segment before composing a campaign.</EmptyState>
         ) : (
           <form action={composeEmailCampaignAction.bind(null, context)} className="newsletter-compose-form">
             <div className="newsletter-compose-section">
@@ -129,22 +130,19 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                 generateCampaignDraftAction={generateCampaignDraftAction.bind(null, context)}
               />
             </div>
-            <button type="submit">Create draft campaign</button>
+            <button type="submit" className="r2-button r2-button--primary">
+              Create draft campaign
+            </button>
           </form>
         )}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Campaigns</p>
-        <h2>Native campaign records</h2>
-        <div className="franchise-list">
-          {email.campaigns.length === 0 ? (
-            <div>
-              <strong>No campaigns yet</strong>
-              <span>Compose a national or local newsletter above to get started.</span>
-            </div>
-          ) : (
-            email.campaigns.map((view) => {
+      <Panel eyebrow="Campaigns" title="All campaigns" id="campaigns">
+        {email.campaigns.length === 0 ? (
+          <EmptyState title="No campaigns yet">Compose a newsletter above and it will appear here as a draft.</EmptyState>
+        ) : (
+          <RecordList>
+            {email.campaigns.map((view) => {
               const canAct = !context.territoryId || context.territoryId === view.campaign.territoryId;
               const isAbTest = view.variants.length === 2;
               const comparison = comparisons.get(view.campaign.id);
@@ -155,19 +153,18 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
               const sendableSnapshot = isAbTest ? view.remainderSnapshot : view.latestSnapshot;
 
               return (
-                <div key={view.campaign.id}>
-                  <strong>
-                    {view.campaign.title} {view.campaign.territoryId ? "" : "(national)"}
-                  </strong>
-                  <span>
-                    <StatusBadge status={view.campaign.status} /> · {view.latestSnapshot?.recipientCount ?? 0} recipients
-                  </span>
-                  <span>{view.deliveryCount} delivery events</span>
-                  {view.campaign.sendProvider === "microsoft" ? (
-                    <span>Sent via Outlook - delivery, bounce and open tracking is not available for this campaign</span>
-                  ) : null}
-                  {!canAct ? <span>Managed by HQ</span> : null}
-
+                <RecordCard
+                  key={view.campaign.id}
+                  title={view.campaign.territoryId ? view.campaign.title : `${view.campaign.title} (national)`}
+                  status={view.campaign.status}
+                  lines={[
+                    `${formatCount(view.latestSnapshot?.recipientCount ?? 0, "recipient")} · ${formatCount(view.deliveryCount, "delivery event")}`,
+                    view.campaign.sendProvider === "microsoft"
+                      ? "Sent via Outlook - delivery, bounce and open tracking is not available for this campaign"
+                      : null,
+                    !canAct ? "Managed by Head Office" : null
+                  ]}
+                >
                   {canAct && view.campaign.status === "draft" && isAbTest ? (
                     <form action={startAbTestAction.bind(null, context, view.campaign.id)} className="franchise-form">
                       <p>
@@ -177,13 +174,19 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                         Test sample size (% of audience)
                         <input type="number" name="sampleFraction" min={2} max={50} defaultValue={20} />
                       </label>
-                      <button type="submit">Start subject-line test</button>
+                      <button type="submit" className="r2-button r2-button--primary">
+                        Start subject-line test
+                      </button>
                     </form>
                   ) : null}
 
                   {canAct && view.campaign.status === "draft" && !isAbTest && view.latestVersion ? (
                     <form action={approveCampaignAction.bind(null, context, view.campaign.id, view.latestVersion.id)}>
-                      <button type="submit">Approve</button>
+                      <Actions>
+                        <button type="submit" className="r2-button r2-button--primary">
+                          Approve
+                        </button>
+                      </Actions>
                     </form>
                   ) : null}
 
@@ -193,7 +196,9 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                         const stats = comparison?.variants.find((candidate) => candidate.version.id === variant.version.id);
                         return (
                           <div key={variant.version.id}>
-                            <strong>Variant {variant.version.variantKey?.toUpperCase()}: {variant.version.subject}</strong>
+                            <strong>
+                              Variant {variant.version.variantKey?.toUpperCase()}: {variant.version.subject}
+                            </strong>
                             <span>{variant.snapshot?.recipientCount ?? 0} sent to sample</span>
                             {stats ? (
                               <span>
@@ -203,7 +208,9 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                             ) : null}
                             {canAct && comparison?.canDeclareWinner ? (
                               <form action={declareWinnerAction.bind(null, context, view.campaign.id, variant.version.id)}>
-                                <button type="submit">Declare this the winner</button>
+                                <button type="submit" className="r2-button r2-button--secondary">
+                                  Declare this the winner
+                                </button>
                               </form>
                             ) : null}
                           </div>
@@ -217,7 +224,11 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                       <p>Winner: {view.variants.find((variant) => variant.version.status === "approved")?.version.subject}</p>
                       {!view.remainderSnapshot ? (
                         <form action={generateWinnerRemainderSnapshotAction.bind(null, context, view.campaign.id)}>
-                          <button type="submit">Generate recipient snapshot for the rest of the audience</button>
+                          <Actions>
+                            <button type="submit" className="r2-button r2-button--primary">
+                              Generate recipient snapshot for the rest of the audience
+                            </button>
+                          </Actions>
                         </form>
                       ) : null}
                     </>
@@ -225,21 +236,31 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
 
                   {canAct && view.campaign.status === "approved" && !isAbTest ? (
                     <form action={generateSnapshotAction.bind(null, context, view.campaign.id)}>
-                      <button type="submit">Generate recipient snapshot</button>
+                      <Actions>
+                        <button type="submit" className="r2-button r2-button--secondary">
+                          Generate recipient snapshot
+                        </button>
+                      </Actions>
                     </form>
                   ) : null}
 
                   {canAct && view.campaign.status === "approved" && sendableSnapshot ? (
                     <>
                       <form action={sendCampaignAction.bind(null, context, view.campaign.id)}>
-                        <button type="submit">Send now</button>
+                        <Actions>
+                          <button type="submit" className="r2-button r2-button--primary">
+                            Send now
+                          </button>
+                        </Actions>
                       </form>
                       <form action={scheduleCampaignAction.bind(null, context, view.campaign.id)} className="franchise-form">
                         <label>
                           Send at
                           <input type="datetime-local" name="scheduledAt" required />
                         </label>
-                        <button type="submit">Schedule</button>
+                        <button type="submit" className="r2-button r2-button--secondary">
+                          Schedule
+                        </button>
                       </form>
                     </>
                   ) : null}
@@ -254,44 +275,44 @@ export default async function NewslettersPage({ searchParams }: PageProps) {
                         Default hour for contacts with no engagement history (UTC, 0-23)
                         <input type="number" name="defaultHour" min={0} max={23} defaultValue={9} />
                       </label>
-                      <button type="submit">Schedule with send-time optimization</button>
+                      <button type="submit" className="r2-button r2-button--secondary">
+                        Schedule with send-time optimisation
+                      </button>
                     </form>
                   ) : null}
 
                   {view.sendJobs.length > 1 ? (
                     <div className="newsletter-sto-progress">
                       <span>
-                        Optimized send: {view.sendJobs.filter((entry) => entry.job.status === "completed").length}/{view.sendJobs.length} send windows complete
+                        Optimised send: {view.sendJobs.filter((entry) => entry.job.status === "completed").length}/{view.sendJobs.length} send windows complete
                         {" · "}
                         {view.sendJobs.reduce((total, entry) => total + entry.job.cursor, 0)}/
                         {view.sendJobs.reduce((total, entry) => total + (entry.snapshot?.recipientCount ?? 0), 0)} sent
                       </span>
                       <ul>
                         {view.sendJobs.map((entry) => (
-                          <li key={entry.job.id}>
-                            {describeSendWindow(entry.job, entry.snapshot?.recipientCount ?? 0)}
-                          </li>
+                          <li key={entry.job.id}>{describeSendWindow(entry.job, entry.snapshot?.recipientCount ?? 0)}</li>
                         ))}
                       </ul>
                     </div>
                   ) : (view.campaign.status === "scheduled" || view.campaign.status === "sending") && view.activeJob ? (
-                    <span>
+                    <span className="record-card__line">
                       Sending: {view.activeJob.cursor}/{view.latestSnapshot?.recipientCount ?? 0} sent
-                      {view.campaign.status === "scheduled" ? ` (starts ${new Date(view.campaign.scheduledAt ?? "").toLocaleString()})` : ""}
+                      {view.campaign.status === "scheduled" ? ` (starts ${formatDateTime(view.campaign.scheduledAt)})` : ""}
                     </span>
                   ) : null}
-                </div>
+                </RecordCard>
               );
-            })
-          )}
-        </div>
-      </section>
-    </AppShell>
+            })}
+          </RecordList>
+        )}
+      </Panel>
+    </>
   );
 }
 
 function describeSendWindow(job: EmailSendJob, recipientCount: number): string {
-  const time = new Date(job.nextAttemptAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const time = formatDateTime(job.nextAttemptAt);
 
   switch (job.status) {
     case "completed":
@@ -350,22 +371,6 @@ async function loadNewsletters(request: Awaited<ReturnType<typeof requestFromSea
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }
 
 function findLastNewsletter(campaigns: EmailCampaignOverview["campaigns"]) {

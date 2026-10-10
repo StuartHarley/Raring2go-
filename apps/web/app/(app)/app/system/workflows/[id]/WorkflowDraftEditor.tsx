@@ -143,10 +143,10 @@ export function WorkflowDraftEditor({
           <div key={index} className="workflow-row">
             <input aria-label="Threshold name" value={setting.name} placeholder="name" onChange={(event) => setSettings((current) => current.map((item, i) => (i === index ? { ...item, name: event.target.value } : item)))} />
             <input aria-label={`Value for ${setting.name || "threshold"}`} value={setting.value} placeholder="value" onChange={(event) => setSettings((current) => current.map((item, i) => (i === index ? { ...item, value: event.target.value } : item)))} />
-            <button type="button" onClick={() => setSettings((current) => current.filter((_, i) => i !== index))}>Remove</button>
+            <button type="button" className="r2-button r2-button--secondary" onClick={() => setSettings((current) => current.filter((_, i) => i !== index))}>Remove</button>
           </div>
         ))}
-        <button type="button" onClick={() => setSettings((current) => [...current, { name: "", value: "" }])}>Add threshold</button>
+        <button type="button" className="r2-button r2-button--secondary" onClick={() => setSettings((current) => [...current, { name: "", value: "" }])}>Add threshold</button>
       </fieldset>
 
       <fieldset>
@@ -161,10 +161,10 @@ export function WorkflowDraftEditor({
               ))}
             </select>
             <input aria-label="Condition value" value={condition.value} disabled={condition.op === "exists"} placeholder="value" onChange={(event) => setConditions((current) => current.map((item, i) => (i === index ? { ...item, value: event.target.value } : item)))} />
-            <button type="button" onClick={() => setConditions((current) => current.filter((_, i) => i !== index))}>Remove</button>
+            <button type="button" className="r2-button r2-button--secondary" onClick={() => setConditions((current) => current.filter((_, i) => i !== index))}>Remove</button>
           </div>
         ))}
-        <button type="button" onClick={() => setConditions((current) => [...current, { field: "event.payload.", op: "eq", value: "" }])}>Add condition</button>
+        <button type="button" className="r2-button r2-button--secondary" onClick={() => setConditions((current) => [...current, { field: "event.payload.", op: "eq", value: "" }])}>Add condition</button>
       </fieldset>
 
       <fieldset>
@@ -178,9 +178,9 @@ export function WorkflowDraftEditor({
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
               </select>
-              <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} aria-label={`Move step ${index + 1} up`}>Up</button>
-              <button type="button" onClick={() => moveStep(index, 1)} disabled={index === steps.length - 1} aria-label={`Move step ${index + 1} down`}>Down</button>
-              <button type="button" onClick={() => setSteps((current) => current.filter((_, i) => i !== index))}>Remove</button>
+              <button type="button" className="r2-button r2-button--secondary" onClick={() => moveStep(index, -1)} disabled={index === 0} aria-label={`Move step ${index + 1} up`}>Up</button>
+              <button type="button" className="r2-button r2-button--secondary" onClick={() => moveStep(index, 1)} disabled={index === steps.length - 1} aria-label={`Move step ${index + 1} down`}>Down</button>
+              <button type="button" className="r2-button r2-button--secondary" onClick={() => setSteps((current) => current.filter((_, i) => i !== index))}>Remove</button>
             </div>
 
             {step.type === "create_task" ? (
@@ -246,7 +246,7 @@ export function WorkflowDraftEditor({
             ) : null}
           </div>
         ))}
-        <button type="button" onClick={() => setSteps((current) => [...current, blankStep("notify")])}>Add step</button>
+        <button type="button" className="r2-button r2-button--secondary" onClick={() => setSteps((current) => [...current, blankStep("notify")])}>Add step</button>
       </fieldset>
 
       <label>
@@ -268,9 +268,9 @@ export function WorkflowDraftEditor({
       </fieldset>
 
       <div className="franchise-actions">
-        <button type="submit" name="intent" value="save" disabled={pending}>Save draft</button>
-        <button type="submit" name="intent" value="test" disabled={pending}>Save and test run</button>
-        <button type="submit" name="intent" value="activate" disabled={pending}>Save and activate</button>
+        <button type="submit" className="r2-button r2-button--primary" name="intent" value="save" disabled={pending}>Save draft</button>
+        <button type="submit" className="r2-button r2-button--secondary" name="intent" value="test" disabled={pending}>Save and test run</button>
+        <button type="submit" className="r2-button r2-button--secondary" name="intent" value="activate" disabled={pending}>Save and activate</button>
       </div>
     </form>
   );

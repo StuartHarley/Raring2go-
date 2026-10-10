@@ -1,6 +1,8 @@
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import type { RequestedShellContext } from "../../../../../lib/app-shell";
 import { readCompetitionEntries } from "../../../../../lib/competition-runtime";
+import { formatCount, formatDate } from "../../../../../lib/format";
+import { EmptyState, Notice, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { drawWinnersAction } from "./competition-actions";
 
 const messages: Record<string, string> = {
@@ -19,33 +21,45 @@ export async function CompetitionPanel({ request, contentId, resultCode }: { req
   const shell = await requireShellPermission(request, { module: "content", action: "view" });
   const data = await readCompetitionEntries({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId }, contentId);
   const message = resultCode ? messages[resultCode] : undefined;
+  const standing =
+    data.state === "no_end_date"
+      ? "No closing date is set, so nobody can enter yet."
+      : data.state === "open"
+        ? `Open for entries until ${formatDate(data.closesOn)}.`
+        : `Closed on ${formatDate(data.closesOn)}.`;
   return (
-    <section id="competition" className="app-panel franchise-panel" aria-label="Competition entries">
-      <p className="eyebrow">Competition</p>
-      <h2>Entries and draw</h2>
-      {message ? <p role={resultCode === "drawn" ? "status" : "alert"}>{message}</p> : null}
-      <p>
-        {data.entryCount} {data.entryCount === 1 ? "entry" : "entries"}.{" "}
-        {data.state === "no_end_date" ? "No closing date is set, so nobody can enter yet." : data.state === "open" ? `Open for entries until ${data.closesOn}.` : `Closed on ${data.closesOn}.`}
-      </p>
+    <Panel eyebrow="Competition" title="Entries and draw" intro={`${formatCount(data.entryCount, "entry", "entries")}. ${standing}`} id="competition">
+      {message ? <Notice tone={resultCode === "drawn" ? "success" : "error"}>{message}</Notice> : null}
       <p className="muted">Entries hold only who entered and when. Entering does not sign anyone up to emails. Entries that do not win are deleted 90 days after they were made; winners after 12 months.</p>
       {data.drawn ? (
-        <div className="franchise-list" aria-label="Winners">
+        <RecordList>
           {data.winners.map((winner) => (
-            <div key={winner.entryId}>
-              <strong>Winner</strong>
-              <span>{data.canDraw ? winner.email ?? "Contact details removed" : "Contact details are shown to people who can draw"}</span>
-              <span className="muted">Drawn {winner.drawnAt?.toISOString().slice(0, 10)}</span>
-            </div>
+            <RecordCard
+              key={winner.entryId}
+              title="Winner"
+              status="drawn"
+              tone="success"
+              lines={[
+                data.canDraw ? winner.email ?? "Contact details removed" : "Contact details are shown to people who can draw",
+                `Drawn ${formatDate(winner.drawnAt)}`
+              ]}
+            />
           ))}
-        </div>
+        </RecordList>
       ) : data.canDraw && data.state === "closed" && data.entryCount > 0 ? (
         <form action={drawWinnersAction.bind(null, request, contentId)} className="franchise-form">
-          <label>Number of winners<input name="winnerCount" type="number" min={1} max={10} defaultValue={1} required /></label>
-          <button type="submit">Draw winners</button>
+          <label>
+            Number of winners
+            <input name="winnerCount" type="number" min={1} max={10} defaultValue={1} required />
+          </label>
+          <button type="submit" className="r2-button r2-button--primary">
+            Draw winners
+          </button>
           <p className="muted">The draw is random and can only be done once.</p>
         </form>
+      ) : data.state === "closed" && data.entryCount === 0 ? (
+        <EmptyState title="Nobody entered">The competition closed without any entries, so there is nothing to draw.</EmptyState>
       ) : null}
-    </section>
+    </Panel>
   );
 }

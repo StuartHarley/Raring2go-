@@ -1,11 +1,13 @@
 import type { AiRunRecord } from "@raring2go/ai";
 import { assistantMessages } from "./assistants-runtime";
+import { formatDate } from "./format";
+import { Notice } from "./page-ui";
 
 /** Labels AI-prepared content so nobody mistakes a draft for a decision, and shows where it came from. */
 export function AiPreparedNote({ run }: { run: Pick<AiRunRecord, "id" | "createdAt" | "providerKey" | "approvalState"> }) {
   return (
-    <p className="muted">
-      Prepared by AI on {run.createdAt.toLocaleDateString("en-GB")}: a draft to check, not a decision.
+    <p className="app-panel__intro">
+      Prepared by AI on {formatDate(run.createdAt)}: a draft to check, not a decision.
       {run.approvalState === "pending" ? " Awaiting review." : ""}
     </p>
   );
@@ -15,11 +17,7 @@ export function AiPreparedNote({ run }: { run: Pick<AiRunRecord, "id" | "created
 export function AssistantBanner({ code }: { code: string | undefined }) {
   const banner = code ? assistantMessages[code] : undefined;
   if (!banner) return null;
-  return (
-    <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
-      {banner.text}
-    </p>
-  );
+  return <Notice tone={banner.tone === "error" ? "error" : "success"}>{banner.text}</Notice>;
 }
 
 export const fixabilityLabels: Record<string, string> = {

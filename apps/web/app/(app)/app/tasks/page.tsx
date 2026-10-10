@@ -1,10 +1,14 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasAutomationCapability, readTasksAndApprovals } from "../../../../lib/automation-runtime";
 import type { AutomationActorContext } from "../../../../lib/automation-runtime";
-import { AppShell } from "../../layout";
+import { formatDate, formatDateTime } from "../../../../lib/format";
+import { EmptyState, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { completeTaskAction, decideApprovalAction } from "./actions";
 import { getPermissionData } from "../../../../lib/permission-source";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Tasks & approvals" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -15,8 +19,6 @@ const resultMessages: Record<string, { tone: "success" | "error"; text: string }
   not_allowed: { tone: "error", text: "You do not have permission to action that item." },
   wrong_state: { tone: "error", text: "That item has already been dealt with. Refresh to see the latest." }
 };
-
-const formatDate = (value: Date | null) => (value ? value.toLocaleDateString("en-GB") : "No due date");
 
 export default async function TasksPage({ searchParams }: PageProps) {
   const params = await searchParams;
@@ -31,50 +33,43 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const resultParam = Array.isArray(params.result) ? params.result[0] : params.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
   const today = new Date();
+  const overdue = tasks.filter((task) => task.dueDate && task.dueDate < today).length;
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Today</p>
-        <h2>Tasks &amp; approvals</h2>
-        <p>Work created automatically by workflows, such as follow-ups after a signed agreement, a confirmed booking or an overdue invoice.</p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Waiting for your approval</span>
-            <strong>{approvals.length}</strong>
-          </article>
-          <article>
-            <span>Open tasks</span>
-            <strong>{tasks.length}</strong>
-          </article>
-          <article>
-            <span>Overdue tasks</span>
-            <strong>{tasks.filter((task) => task.dueDate && task.dueDate < today).length}</strong>
-          </article>
-        </div>
+    <>
+      <PageHeader
+        eyebrow="Today"
+        title="Tasks & approvals"
+        intro="Work created automatically by workflows, such as follow-ups after a signed agreement, a confirmed booking or an overdue invoice."
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Waiting for your approval", value: approvals.length, tone: approvals.length > 0 ? "warning" : "neutral" },
+            { label: "Open tasks", value: tasks.length, tone: tasks.length > 0 ? "info" : "neutral" },
+            { label: "Overdue tasks", value: overdue, tone: overdue > 0 ? "danger" : "success" }
+          ]}
+        />
         {banner ? (
           <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
             {banner.text}
           </p>
         ) : null}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel" aria-label="Approvals">
-        <p className="eyebrow">Approvals</p>
-        <h2>Needs a decision</h2>
-        <div className="franchise-list">
-          {approvals.length === 0 ? (
-            <div>
-              <strong>Nothing is waiting for a decision.</strong>
-            </div>
-          ) : (
-            approvals.map((approval) => (
-              <div key={approval.id}>
-                <strong>{approval.title}</strong>
-                <span>
-                  {approval.description ?? "A workflow is paused until this is decided."}
-                  {approval.expiresAt ? ` Expires ${formatDate(approval.expiresAt)}.` : ""}
-                </span>
+      <Panel eyebrow="Approvals" title="Needs a decision" id="approvals">
+        {approvals.length === 0 ? (
+          <EmptyState title="Nothing is waiting for a decision">Approvals raised by workflows will appear here with their deadline.</EmptyState>
+        ) : (
+          <RecordList>
+            {approvals.map((approval) => (
+              <RecordCard
+                key={approval.id}
+                title={approval.title}
+                status="pending"
+                lines={[`${approval.description ?? "A workflow is paused until this is decided."}${approval.expiresAt ? ` Expires ${formatDate(approval.expiresAt)}.` : ""}`]}
+              >
                 {hasAutomationCapability(permissions, context, "approvalDecide") ? (
                   <form className="franchise-form">
                     <label>
@@ -82,71 +77,65 @@ export default async function TasksPage({ searchParams }: PageProps) {
                       <input name="note" maxLength={500} />
                     </label>
                     <div className="franchise-actions">
-                      <button type="submit" formAction={decideApprovalAction.bind(null, request, approval.id, "approved")}>
+                      <button type="submit" className="r2-button r2-button--primary" formAction={decideApprovalAction.bind(null, request, approval.id, "approved")}>
                         Approve
                       </button>
-                      <button type="submit" formAction={decideApprovalAction.bind(null, request, approval.id, "rejected")}>
+                      <button type="submit" className="r2-button r2-button--secondary" formAction={decideApprovalAction.bind(null, request, approval.id, "rejected")}>
                         Reject
                       </button>
                     </div>
                   </form>
                 ) : null}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel" aria-label="Tasks">
-        <p className="eyebrow">Tasks</p>
-        <h2>Open tasks</h2>
-        <div className="franchise-list">
-          {tasks.length === 0 ? (
-            <div>
-              <strong>No open tasks.</strong>
-            </div>
-          ) : (
-            tasks.map((task) => (
-              <div key={task.id}>
-                <strong>{task.title}</strong>
-                <span>
-                  {task.assigneeScope === "hq" ? "Head Office" : "Territory team"} · Due {formatDate(task.dueDate)}
-                  {task.dueDate && task.dueDate < today ? " · Overdue" : ""}
-                </span>
-                {task.link ? <a href={task.link}>Open related record</a> : null}
-                {hasAutomationCapability(permissions, context, "taskComplete") ? (
-                  <form action={completeTaskAction.bind(null, request, task.id)}>
-                    <button type="submit">Mark done</button>
-                  </form>
-                ) : null}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <Panel eyebrow="Tasks" title="Open tasks" id="tasks">
+        {tasks.length === 0 ? (
+          <EmptyState title="No open tasks">You are up to date. New tasks arrive as workflows run.</EmptyState>
+        ) : (
+          <RecordList>
+            {tasks.map((task) => {
+              const isOverdue = Boolean(task.dueDate && task.dueDate < today);
+              return (
+                <RecordCard
+                  key={task.id}
+                  title={task.title}
+                  status={isOverdue ? "overdue" : "open"}
+                  tone={isOverdue ? "danger" : "info"}
+                  lines={[`${task.assigneeScope === "hq" ? "Head Office" : "Territory team"} · Due ${formatDate(task.dueDate, "No due date")}`]}
+                >
+                  {task.link ? <a href={task.link}>Open related record</a> : null}
+                  {hasAutomationCapability(permissions, context, "taskComplete") ? (
+                    <form action={completeTaskAction.bind(null, request, task.id)}>
+                      <button type="submit" className="r2-button r2-button--secondary">
+                        Mark done
+                      </button>
+                    </form>
+                  ) : null}
+                </RecordCard>
+              );
+            })}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel" aria-label="Notifications">
-        <p className="eyebrow">Recent</p>
-        <h2>Notifications</h2>
-        <div className="franchise-list">
-          {notifications.length === 0 ? (
-            <div>
-              <strong>No notifications yet.</strong>
-            </div>
-          ) : (
-            notifications.map((note) => (
-              <div key={note.id}>
-                <strong>{note.title}</strong>
-                <span>
-                  {note.body ?? ""} {note.createdAt.toLocaleString("en-GB")}
-                </span>
+      <Panel eyebrow="Recent" title="Notifications" id="notifications">
+        {notifications.length === 0 ? (
+          <EmptyState title="No notifications yet" />
+        ) : (
+          <RecordList>
+            {notifications.map((note) => (
+              <RecordCard key={note.id} title={note.title} lines={[note.body ?? null, formatDateTime(note.createdAt)]}>
                 {note.link ? <a href={note.link}>Open</a> : null}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </AppShell>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -158,19 +147,4 @@ async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAn
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-  throw error;
 }

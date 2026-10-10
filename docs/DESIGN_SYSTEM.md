@@ -33,3 +33,30 @@ The system supports comfortable and compact density modes from the same componen
 ## FND-002 Scope
 
 This ticket provides presentational primitives only. Command palette behaviour, drag-and-drop magazine editing, permission enforcement and domain workflows belong to later tickets.
+
+## Shell and page anatomy (shell sprint, October 2026)
+
+The operator app consumes the design system through two layers:
+
+- `packages/ui` holds the presentational primitives (`Button`, `Badge`, `Card`, `KpiCard`, `Tabs`, `DataTable`, overlays, `CommandPalette`) and the token stylesheet.
+- `apps/web/lib/page-ui.tsx` composes them into the page anatomy every operator screen shares: `PageHeader` (eyebrow, one `h1`, intro, right-aligned actions), `Panel` (a `Card` with the `app-panel` layout), `Metrics` (a grid of `KpiCard`s coloured by meaning), `RecordList` / `RecordLink`, `StatusBadge`, `EmptyState` and `LinkButton`.
+
+Rules that follow from it:
+
+- Pages never render a status, date or identifier directly. `apps/web/lib/format.ts` turns machine values into words (`formatLabel`, `formatDate`, `formatCount`, `displayName`), and names come from the directory, never from a UUID.
+- One primary button per page, in the page header. Secondary actions use the `secondary` or `quiet` variants.
+- KPI tiles carry a tone (`danger` for blocked or failed work, `warning` for watch items, `success` when clear) so a number that needs attention looks different from a healthy one.
+- Refusals render inside the shell through `ProtectedOutcome` so navigation and the context switcher stay available; `recordOutcome` sends a missing record to the branded not-found page.
+- Every page exports a `metadata.title`; the root layout templates it as `<title> · Raring2go!`.
+
+The shell itself is rendered once by the `(app)` layout, so it stays put while pages load; `apps/web/app/(app)/app/loading.tsx` shows a page-shaped skeleton in the content area meanwhile. The working context (organisation and territory) lives in the `r2_context` cookie (`apps/web/lib/working-context.ts`): the context switcher is a server action that validates the choice against the person's memberships before storing it, and the proxy copies `?organisationId=&territoryId=` from a deep link into the cookie so the next click keeps it. Links therefore carry no context parameters. The layout (`apps/web/app/(app)/layout.tsx`) provides the brand mark, grouped collapsible navigation with group icons (`SidebarNav`), the working-context switcher and account menu (`Disclosure`, native `<details>` with outside-click and Escape handling), and ⌘K quick navigation over the permission-filtered destinations (`ShellCommandPalette`, built on the ui package's `CommandPalette`).
+
+Every operator page under `apps/web/app/(app)/app` now uses the anatomy, including the companion panels (CRM, sales, fulfilment, finance assistant) and the advertiser portal. The only legacy classes still in use are the form grid (`franchise-form`), the attention list on My Today (`today-item`), purpose-built editors (`block-editor-*`, `segment-builder-*`, `newsletter-compose-*`, `journey-builder-*`, `edition-flatplan`) and `code-block` for payloads. New pages start from `PageHeader` + `Panel`; a grep for `className="app-panel`, `franchise-list`, `franchise-metrics`, `app-link-button`, `toLocale` or `.replace("_"` in a page is a review finding.
+
+Values deliberately shown raw are identifiers people search or type: permission codes on the role page, job and correlation ids on the job page, audit action codes under their formatted label, and tax-rate codes needed to add a successor rate.
+
+Brand assets: no production logo vector has been supplied yet. `BrandMark` and `app/icon.svg` are interim marks set in the brand colours and type stack; replace both when the logo files arrive, without touching pages.
+
+## Naming
+
+Named product areas keep their names and Title Case: My Today, Action Centre, Content Studio, Edition Factory. Every other destination, panel and button is a plain noun in sentence case ("Tasks & approvals", "Background jobs", "Audit trail", "Franchise scorecard", "Newsletter factory"). Avoid metaphors ("command centre", "control room", "360") in navigation; use them, if at all, only in an intro sentence.

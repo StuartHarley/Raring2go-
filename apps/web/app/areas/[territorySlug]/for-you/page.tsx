@@ -7,6 +7,7 @@ import type { Route } from "next";
 import { sessionCookieName } from "../../../../lib/auth-runtime";
 import { readSessionBackedRecommendations } from "../../../../lib/parent-runtime";
 import { territoryFromSlug } from "../../../../lib/public-runtime";
+import { PublicNav } from "../_components/PublicNav";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -16,7 +17,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const territory = territoryFromSlug((await params).territorySlug);
 
   return {
-    title: territory ? `For You | Raring2go! ${territory.name}` : "For You | Raring2go!",
+    title: { absolute: territory ? `For You | Raring2go! ${territory.name}` : "For You | Raring2go!" },
     description: "Explainable local Raring2go recommendations from approved public records."
   };
 }
@@ -35,20 +36,12 @@ export default async function ForYouPage({ params }: PageProps) {
 
   return (
     <main className="public-site public-season-autumn">
-      <header className="public-nav">
-        <Link href={`/areas/${recommendations.territory.slug}` as Route} className="public-logo">Raring2go!</Link>
-        <nav aria-label="Public navigation">
-          <Link href={`/areas/${recommendations.territory.slug}/whats-on` as Route}>What&apos;s On</Link>
-          <Link href={`/areas/${recommendations.territory.slug}/activities` as Route}>Activities</Link>
-          <Link href={`/areas/${recommendations.territory.slug}/offers` as Route}>Offers</Link>
-          <Link href={`/areas/${recommendations.territory.slug}/saved` as Route}>Saved</Link>
-        </nav>
-      </header>
+      <PublicNav slug={recommendations.territory.slug} current="for-you" />
       <section className="public-hero public-hero-compact">
         <div>
           <p className="public-kicker">For you</p>
           <h1>{recommendations.personalised ? "Picked from your local preferences" : "Start with local family favourites"}</h1>
-          <p>Every recommendation is drawn from approved public Raring2go records and explains why it appears.</p>
+          <p>Picked for you from what&apos;s on near you and the interests you have told us about.</p>
           {!recommendations.personalised ? (
             <Link
               href={`/sign-in?returnTo=${encodeURIComponent(`/areas/${recommendations.territory.slug}/for-you`)}` as Route}

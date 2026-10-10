@@ -1,9 +1,13 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { getDirectory } from "../../../../lib/directory";
+import { displayName, formatCount, formatDate, formatLabel } from "../../../../lib/format";
 import { listComplianceOverview, listFranchiseSummaries } from "../../../../lib/franchise-runtime";
-import { AppShell } from "../../layout";
+import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
 import { requestFromSearchParamsAndCookies } from "../page";
+
+export const metadata = { title: "Franchisees" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -17,39 +21,68 @@ export default async function FranchiseesPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
+  const trading = result.franchises.filter((franchise) => franchise.status === "active").length;
+  const openActions = result.complianceOverview.reduce((total, row) => total + row.openActions, 0);
+  const behind = result.complianceOverview.filter((row) => row.openActions > 0).length;
+
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Franchise Hub</p>
-        <h2>Franchisees</h2>
-        <p>
-          Canonical operating relationships linking franchise organisations,
-          territory ownership and platform users.
-        </p>
-        {result.canImport ? <p><Link href={"/app/franchisees/import" as Route}>Import franchises and territories</Link></p> : null}
-        <div className="franchise-list">
-          {result.franchises.map((franchise) => (
-            <Link key={franchise.id} href={`/app/franchisees/${franchise.id}` as Route}>
-              <strong>{franchise.primaryTerritoryId}</strong>
-              <span>{franchise.status} - {franchise.lifecycleStage}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">HQ compliance overview</p>
-        <h2>Network exceptions</h2>
-        <div className="franchise-list">
-          {result.complianceOverview.map((row) => (
-            <Link key={row.franchise.id} href={`/app/franchisees/${row.franchise.id}` as Route}>
-              <strong>{row.territory?.name ?? row.franchise.primaryTerritoryId}</strong>
-              <span>{row.status} - {row.completeCount}/{row.totalCount} complete</span>
-              <span>{row.openActions} open action(s), next due {row.nextDueDate ?? "not set"}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-    </AppShell>
+    <>
+      <PageHeader
+        eyebrow="Franchise"
+        title="Franchisees"
+        intro="Every franchise in the network: who runs each territory, whether they are trading, and where their compliance stands."
+        actions={result.canImport ? <LinkButton href={"/app/franchisees/import" as Route} variant="secondary">Import franchises</LinkButton> : undefined}
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Franchises", value: result.franchises.length, detail: `${trading} trading` },
+            { label: "Open compliance actions", value: openActions, tone: openActions > 0 ? "warning" : "success" },
+            { label: "Behind on compliance", value: behind, detail: formatCount(result.complianceOverview.length, "franchise record"), tone: behind > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="Network" title="Franchises">
+        {result.franchises.length === 0 ? (
+          <EmptyState title="No franchises in this context">Switch to the network view to see every franchise.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.franchises.map((franchise) => (
+              <RecordLink
+                key={franchise.id}
+                href={`/app/franchisees/${franchise.id}` as Route}
+                title={displayName(result.territoryNames.get(franchise.primaryTerritoryId), "Territory not named yet")}
+                status={franchise.status}
+                lines={[`Lifecycle: ${formatLabel(franchise.lifecycleStage)}`]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+
+      <Panel eyebrow="Compliance" title="Who needs chasing">
+        {result.complianceOverview.length === 0 ? (
+          <EmptyState title="No compliance records to show" />
+        ) : (
+          <RecordList>
+            {result.complianceOverview.map((row) => (
+              <RecordLink
+                key={row.franchise.id}
+                href={`/app/franchisees/${row.franchise.id}` as Route}
+                title={displayName(row.territory?.name ?? result.territoryNames.get(row.franchise.primaryTerritoryId), "Territory not named yet")}
+                status={row.status}
+                lines={[
+                  `${row.completeCount} of ${row.totalCount} requirements complete`,
+                  `${formatCount(row.openActions, "open action")} · next due ${formatDate(row.nextDueDate)}`
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -59,41 +92,30 @@ async function loadFranchisees(request: Awaited<ReturnType<typeof requestFromSea
       module: "franchise",
       action: "view"
     });
-    const franchises = await listFranchiseSummaries({
-      userId: shell.userId,
-      organisationId: shell.activeContext.organisationId,
-      territoryId: shell.activeContext.territoryId
-    });
     const context = {
       userId: shell.userId,
       organisationId: shell.activeContext.organisationId,
       territoryId: shell.activeContext.territoryId
     };
+    const franchises = await listFranchiseSummaries(context);
     const complianceOverview = await listComplianceOverview(context).catch(() => []);
+
+    const directory = getDirectory();
+    const territoryIds = new Set<string>([
+      ...franchises.map((franchise) => franchise.primaryTerritoryId),
+      ...complianceOverview.map((row) => row.franchise.primaryTerritoryId)
+    ]);
+    const territoryNames = new Map<string, string | undefined>(
+      await Promise.all([...territoryIds].map(async (id) => [id, await directory.territoryName(id).catch(() => undefined)] as const))
+    );
 
     const canImport = await requireShellPermission(request, { module: "franchise.import", action: "manage" }).then(() => true, (error) => {
       if (error instanceof ShellAccessError) return false;
       throw error;
     });
 
-    return { franchises, complianceOverview, canImport };
+    return { franchises, complianceOverview, territoryNames, canImport };
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

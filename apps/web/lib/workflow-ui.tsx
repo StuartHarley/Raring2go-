@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
+import { Panel, StatusBadge } from "./page-ui";
 
 export type BreadcrumbItem = {
   label: string;
@@ -14,28 +15,7 @@ export type RelatedRecord = {
   status?: string;
 };
 
-const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
-  draft: "neutral",
-  approved: "info",
-  active: "success",
-  sent: "success",
-  completed: "success",
-  scheduled: "info",
-  sending: "warning",
-  testing: "warning",
-  paused: "warning",
-  queued: "warning",
-  processing: "warning",
-  failed: "danger",
-  rejected: "danger",
-  retired: "neutral"
-};
-
-/** A colour-coded status pill, using the design system's own status tokens instead of plain text. */
-export function StatusBadge({ status }: { status: string }) {
-  const tone = STATUS_TONE[status] ?? "neutral";
-  return <span className={`status-badge status-badge--${tone}`}>{status}</span>;
-}
+export { StatusBadge };
 
 export function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
   return (
@@ -61,9 +41,7 @@ export function RelatedRecords({
   }
 
   return (
-    <section className="app-panel franchise-panel workflow-context">
-      <p className="eyebrow">Related records</p>
-      <h2>{title}</h2>
+    <Panel eyebrow="Related records" title={title} accent="brand" className="workflow-context">
       <div className="workflow-links">
         {records.map((record) => {
           const content = (
@@ -71,7 +49,7 @@ export function RelatedRecords({
               <span>{record.label}</span>
               <strong>{record.title}</strong>
               <small>{record.description}</small>
-              {record.status ? <em>{record.status}</em> : null}
+              {record.status ? <StatusBadge status={record.status} /> : null}
             </>
           );
 
@@ -92,6 +70,6 @@ export function RelatedRecords({
           );
         })}
       </div>
-    </section>
+    </Panel>
   );
 }

@@ -1,13 +1,20 @@
-import { AppShell } from "../../../layout";
+import type { ReactNode } from "react";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { listConnectionCards } from "../../../../../lib/integrations-runtime";
+import { formatDateTime, formatLabel } from "../../../../../lib/format";
+import { Actions, EmptyState, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { ProtectedOutcome } from "../../../../../lib/protected-outcome";
 import { ShellAccessError } from "../../../../../lib/app-shell";
 import { defaultXeroMapping } from "@raring2go/integrations";
 
+export const metadata = { title: "Connections" };
+
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type ConnectionCards = Awaited<ReturnType<typeof listConnectionCards>>["connections"];
+type ConnectionCard = ConnectionCards[number];
 
 export default async function ConnectionsPage({ searchParams }: PageProps) {
   const params = await searchParams;
@@ -32,148 +39,171 @@ export default async function ConnectionsPage({ searchParams }: PageProps) {
   query.set("returnTo", "/app/settings/connections");
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Settings</p>
-        <h2>Connections</h2>
-        <p>
-          Connect provider accounts for approved operational workflows without
-          exposing provider credentials to normal records or users.
-        </p>
-      </section>
+    <>
+      <PageHeader
+        eyebrow="Settings"
+        title="Connections"
+        intro="The provider accounts this franchise uses for social posting, email, accounting and getting paid, and whether each one is healthy. Provider credentials never reach ordinary records or users."
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Social connections</p>
-        <h2>Facebook Page</h2>
+      <Panel eyebrow="Social" title="Facebook Page">
         {connection ? (
-          <div className="franchise-list">
-            <div>
-              <strong>{connection.externalAccountDisplayName}</strong>
-              <span>{connection.status} - {connection.lastHealthStatus}</span>
-              <span>Last checked: {connection.lastHealthCheckAt ? String(connection.lastHealthCheckAt) : "not checked"}</span>
-              {connection.lastFailureSummary ? <span>{connection.lastFailureSummary}</span> : null}
-              <form action={`/api/integrations/meta/revoke?connectionId=${encodeURIComponent(connection.id)}`} method="post">
-                <button type="submit">Disconnect</button>
-              </form>
-            </div>
-          </div>
+          <RecordList>
+            <ConnectionRecord card={connection} revokeHref={`/api/integrations/meta/revoke?connectionId=${encodeURIComponent(connection.id)}`} />
+          </RecordList>
         ) : (
-          <div className="empty-state">
-            <strong>Facebook is not connected</strong>
-            <p>Connect a Facebook Page so approved Raring2go content can publish from the Social queue.</p>
-            <a className="button-primary" href={`/api/integrations/meta/start?${query.toString()}`}>
-              Connect Facebook
-            </a>
-          </div>
+          <EmptyState
+            title="Facebook is not connected"
+            action={
+              <a className="r2-button r2-button--primary" href={`/api/integrations/meta/start?${query.toString()}`}>
+                Connect Facebook
+              </a>
+            }
+          >
+            Connect a Facebook Page so approved Raring2go content can publish from the Social queue.
+          </EmptyState>
         )}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Email connections</p>
-        <h2>Outlook mailbox</h2>
-        <p>
-          Connect your own Outlook mailbox for personalised outreach sent as you, not for
-          bulk newsletters - large sends stay on the network&apos;s dedicated email provider.
-        </p>
+      <Panel
+        eyebrow="Email"
+        title="Outlook mailbox"
+        intro="Your own Outlook mailbox sends personalised outreach as you; bulk newsletters stay on the network's dedicated email provider."
+      >
         {outlookConnection ? (
-          <div className="franchise-list">
-            <div>
-              <strong>{outlookConnection.externalAccountDisplayName}</strong>
-              <span>{outlookConnection.status} - {outlookConnection.lastHealthStatus}</span>
-              <span>Last checked: {outlookConnection.lastHealthCheckAt ? String(outlookConnection.lastHealthCheckAt) : "not checked"}</span>
-              {outlookConnection.lastFailureSummary ? <span>{outlookConnection.lastFailureSummary}</span> : null}
-              <form action={`/api/integrations/microsoft/revoke?connectionId=${encodeURIComponent(outlookConnection.id)}`} method="post">
-                <button type="submit">Disconnect</button>
-              </form>
-            </div>
-          </div>
+          <RecordList>
+            <ConnectionRecord card={outlookConnection} revokeHref={`/api/integrations/microsoft/revoke?connectionId=${encodeURIComponent(outlookConnection.id)}`} />
+          </RecordList>
         ) : (
-          <div className="empty-state">
-            <strong>Outlook is not connected</strong>
-            <p>Connect your Outlook mailbox to send personalised outreach from your own address.</p>
-            <a className="button-primary" href={`/api/integrations/microsoft/start?${query.toString()}`}>
-              Connect Outlook
-            </a>
-          </div>
+          <EmptyState
+            title="Outlook is not connected"
+            action={
+              <a className="r2-button r2-button--primary" href={`/api/integrations/microsoft/start?${query.toString()}`}>
+                Connect Outlook
+              </a>
+            }
+          >
+            Connect your Outlook mailbox to send personalised outreach from your own address.
+          </EmptyState>
         )}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Accounting</p>
-        <h2>Xero</h2>
-        <p>
-          Connect your franchise&apos;s Xero organisation so every invoice and credit note you issue is sent to your own books automatically.
-          Authorise one organisation. Only invoices and credit notes are sent; nothing is read back.
-        </p>
+      <Panel
+        eyebrow="Accounting"
+        title="Xero"
+        intro="Every invoice and credit note you issue is sent to your own Xero organisation automatically; nothing is read back. Authorise one organisation."
+      >
         {xeroConnection ? (
-          <div className="franchise-list">
-            <div>
-              <strong>{xeroConnection.externalAccountDisplayName}</strong>
-              <span>{xeroConnection.status} - {xeroConnection.lastHealthStatus}</span>
-              {xeroConnection.lastFailureSummary ? <span>{xeroConnection.lastFailureSummary}</span> : null}
+          <RecordList>
+            <ConnectionRecord card={xeroConnection} revokeHref={`/api/integrations/xero/revoke?connectionId=${encodeURIComponent(xeroConnection.id)}`}>
               <form action={`/api/integrations/xero/mapping?connectionId=${encodeURIComponent(xeroConnection.id)}`} method="post" className="franchise-form">
-                <label>Sales account code<input name="salesAccountCode" defaultValue={xeroMapping.salesAccountCode} required maxLength={40} /></label>
-                <label>Standard VAT tax type<input name="standardVat" defaultValue={xeroMapping.taxTypes.standard_vat} required maxLength={40} /></label>
-                <label>Zero-rated tax type<input name="zeroRated" defaultValue={xeroMapping.taxTypes.zero_rated} required maxLength={40} /></label>
-                <label>Exempt tax type<input name="exempt" defaultValue={xeroMapping.taxTypes.exempt} required maxLength={40} /></label>
-                <button type="submit">Save mapping</button>
+                <label>
+                  Sales account code
+                  <input name="salesAccountCode" defaultValue={xeroMapping.salesAccountCode} required maxLength={40} />
+                </label>
+                <label>
+                  Standard VAT tax type
+                  <input name="standardVat" defaultValue={xeroMapping.taxTypes.standard_vat} required maxLength={40} />
+                </label>
+                <label>
+                  Zero-rated tax type
+                  <input name="zeroRated" defaultValue={xeroMapping.taxTypes.zero_rated} required maxLength={40} />
+                </label>
+                <label>
+                  Exempt tax type
+                  <input name="exempt" defaultValue={xeroMapping.taxTypes.exempt} required maxLength={40} />
+                </label>
+                <Actions>
+                  <button type="submit" className="r2-button r2-button--primary">
+                    Save mapping
+                  </button>
+                </Actions>
               </form>
-              <form action={`/api/integrations/xero/revoke?connectionId=${encodeURIComponent(xeroConnection.id)}`} method="post">
-                <button type="submit">Disconnect</button>
-              </form>
-            </div>
-          </div>
+            </ConnectionRecord>
+          </RecordList>
         ) : (
-          <div className="empty-state">
-            <strong>Xero is not connected</strong>
-            <p>Until it is, issued invoices wait here and are sent as soon as you connect.</p>
-            <a className="button-primary" href={`/api/integrations/xero/start?${query.toString()}`}>Connect Xero</a>
-          </div>
+          <EmptyState
+            title="Xero is not connected"
+            action={
+              <a className="r2-button r2-button--primary" href={`/api/integrations/xero/start?${query.toString()}`}>
+                Connect Xero
+              </a>
+            }
+          >
+            Until it is, issued invoices wait here and are sent as soon as you connect.
+          </EmptyState>
         )}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Getting paid</p>
-        <h2>Online payments</h2>
-        <p>
-          Advertisers pay on the provider&apos;s own secure page: card and bank details never reach Raring2go. Money goes straight to the account you connect here.
-          Stripe is the default; GoCardless suits bank payments and Direct Debit; bank transfer details are shown for anyone who prefers to pay that way.
-        </p>
-        {[
-          { name: "Stripe", slug: "stripe", cards: stripeConnections, about: "Card payments and more, paid into your own Stripe account." },
-          { name: "GoCardless", slug: "gocardless", cards: goCardlessConnections, about: "Bank payments and Direct Debit, paid into your own GoCardless account." }
-        ].map((provider) => (
-          <div key={provider.slug} className="franchise-list">
-            <div>
-              <strong>{provider.name}</strong>
-              {provider.cards[0] ? (
-                <>
-                  <span>{provider.cards[0].externalAccountDisplayName} - {provider.cards[0].status}</span>
-                  <form action={`/api/integrations/${provider.slug}/revoke?connectionId=${encodeURIComponent(provider.cards[0].id)}`} method="post"><button type="submit">Disconnect</button></form>
-                </>
-              ) : (
-                <>
-                  <span>{provider.about}</span>
-                  <a className="button-primary" href={`/api/integrations/${provider.slug}/start?${query.toString()}`}>Connect {provider.name}</a>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
+      <Panel
+        eyebrow="Getting paid"
+        title="Online payments"
+        intro="Advertisers pay on the provider's own secure page, so card and bank details never reach Raring2go, and the money goes straight to the account you connect here. Stripe is the default; GoCardless suits bank payments and Direct Debit; bank transfer details are shown for anyone who prefers to pay that way."
+      >
+        <RecordList>
+          {[
+            { name: "Stripe", slug: "stripe", cards: stripeConnections, about: "Card payments and more, paid into your own Stripe account." },
+            { name: "GoCardless", slug: "gocardless", cards: goCardlessConnections, about: "Bank payments and Direct Debit, paid into your own GoCardless account." }
+          ].map((provider) =>
+            provider.cards[0] ? (
+              <ConnectionRecord key={provider.slug} card={provider.cards[0]} title={provider.name} revokeHref={`/api/integrations/${provider.slug}/revoke?connectionId=${encodeURIComponent(provider.cards[0].id)}`} />
+            ) : (
+              <RecordCard key={provider.slug} title={provider.name} status="not_connected" lines={[provider.about]}>
+                <Actions>
+                  <a className="r2-button r2-button--secondary" href={`/api/integrations/${provider.slug}/start?${query.toString()}`}>
+                    Connect {provider.name}
+                  </a>
+                </Actions>
+              </RecordCard>
+            )
+          )}
+        </RecordList>
         <form action="/api/integrations/bank-details" method="post" className="franchise-form">
           <h3>Bank transfer details</h3>
-          <label>Account name<input name="accountName" required maxLength={60} defaultValue={bankDetails?.accountName} /></label>
-          <label>Sort code<input name="sortCode" required inputMode="numeric" maxLength={8} placeholder="12-34-56" defaultValue={bankDetails?.sortCode} /></label>
-          <label>Account number<input name="accountNumber" required inputMode="numeric" maxLength={8} defaultValue={bankDetails?.accountNumber} /></label>
-          <button type="submit">Save bank details</button>
           <p>Shown to your advertisers with the invoice number as the payment reference.</p>
+          <label>
+            Account name
+            <input name="accountName" required maxLength={60} defaultValue={bankDetails?.accountName} />
+          </label>
+          <label>
+            Sort code
+            <input name="sortCode" required inputMode="numeric" maxLength={8} placeholder="12-34-56" defaultValue={bankDetails?.sortCode} />
+          </label>
+          <label>
+            Account number
+            <input name="accountNumber" required inputMode="numeric" maxLength={8} defaultValue={bankDetails?.accountNumber} />
+          </label>
+          <Actions>
+            <button type="submit" className="r2-button r2-button--primary">
+              Save bank details
+            </button>
+          </Actions>
         </form>
-      </section>
-    </AppShell>
+      </Panel>
+    </>
   );
 }
 
-type ConnectionCards = Awaited<ReturnType<typeof listConnectionCards>>["connections"];
+/** One connected provider account: who it is, whether it is healthy, and the button that disconnects it. */
+function ConnectionRecord({ card, title, revokeHref, children }: { card: ConnectionCard; title?: string; revokeHref: string; children?: ReactNode }) {
+  const lines = [
+    title ? card.externalAccountDisplayName : null,
+    `Health: ${formatLabel(card.lastHealthStatus, "Not checked yet")} · last checked ${formatDateTime(card.lastHealthCheckAt, "never")}`,
+    card.lastFailureSummary ?? null
+  ];
+  return (
+    <RecordCard title={title ?? card.externalAccountDisplayName} status={card.status} tone={card.status === "connected" ? "success" : undefined} lines={lines}>
+      {children}
+      <form action={revokeHref} method="post">
+        <Actions>
+          <button type="submit" className="r2-button r2-button--danger">
+            Disconnect
+          </button>
+        </Actions>
+      </form>
+    </RecordCard>
+  );
+}
 
 async function loadConnections(
   request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>

@@ -1,20 +1,25 @@
-import Link from "next/link";
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasMarketingCapability, listNetworkTerritories, readJourneyOverview } from "../../../../lib/marketing-runtime";
-import { AppShell } from "../../layout";
+import { formatCount } from "../../../../lib/format";
+import { Actions, EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { JourneyBuilderFields } from "./JourneyBuilderFields";
 import { journeyTemplates } from "@raring2go/marketing";
 import { activateJourneyAction, createJourneyAction, createJourneyFromTemplateAction, pauseJourneyAction } from "./actions";
-import { StatusBadge } from "../../../../lib/workflow-ui";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { getPermissionData } from "../../../../lib/permission-source";
 import { evaluatePermission } from "@raring2go/permissions";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Journeys" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+/** A template's frequency-cap window in words: "30d" → "in 30 days". */
+const capWindow: Record<string, string> = { lifetime: "ever", "24h": "in 24 hours", "7d": "in 7 days", "30d": "in 30 days" };
 
 export default async function JourneysPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(await searchParams);
@@ -25,41 +30,42 @@ export default async function JourneysPage({ searchParams }: PageProps) {
   }
 
   const { context, overview, territoryOptions, canCreate, canActivate, canPause, canHolidays } = result;
+  const entries = overview.journeys.reduce((total, journey) => total + journey.entries, 0);
+  const activeRuns = overview.journeys.reduce((total, journey) => total + journey.activeExecutions, 0);
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Marketing automation</p>
-        <h2>Journeys</h2>
-        <p>
-          Consent-aware automated journeys for parents and local audiences,
-          with approved versions, execution state and failure visibility.
-        </p>
-        {canHolidays ? <p><Link href={"/app/journeys/holidays" as Route}>School holiday calendar</Link></p> : null}
-        <div className="franchise-metrics">
-          <article>
-            <span>Journeys</span>
-            <strong>{overview.journeys.length}</strong>
-          </article>
-          <article>
-            <span>Audience entries</span>
-            <strong>{overview.journeys.reduce((total, journey) => total + journey.entries, 0)}</strong>
-          </article>
-          <article>
-            <span>Active runs</span>
-            <strong>{overview.journeys.reduce((total, journey) => total + journey.activeExecutions, 0)}</strong>
-          </article>
-          <article>
-            <span>Failed runs</span>
-            <strong>{overview.totals.failedExecutions}</strong>
-          </article>
-        </div>
-      </section>
+    <>
+      <PageHeader
+        eyebrow="Marketing"
+        title="Journeys"
+        intro="Automated email sequences for families who have opted in. Each version is approved before it runs, and you can see where runs are getting stuck."
+        actions={
+          canCreate || canHolidays ? (
+            <>
+              {canCreate ? <LinkButton href={"#new" as Route}>Create a journey</LinkButton> : null}
+              {canHolidays ? (
+                <LinkButton href={"/app/journeys/holidays" as Route} variant="secondary">
+                  School holiday calendar
+                </LinkButton>
+              ) : null}
+            </>
+          ) : undefined
+        }
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Journeys", value: overview.journeys.length },
+            { label: "Audience entries", value: entries },
+            { label: "Active runs", value: activeRuns, tone: activeRuns > 0 ? "info" : "neutral" },
+            { label: "Failed runs", value: overview.totals.failedExecutions, tone: overview.totals.failedExecutions > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
 
       {canCreate ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">New journey</p>
-          <h2>Create a journey</h2>
+        <Panel eyebrow="New journey" title="Create a journey" id="new">
           <form action={createJourneyAction.bind(null, context)} className="franchise-form journey-builder-form">
             <JourneyBuilderFields
               initial={{
@@ -71,83 +77,97 @@ export default async function JourneysPage({ searchParams }: PageProps) {
               }}
               territoryOptions={territoryOptions}
             />
-            <button type="submit">Create journey</button>
+            <button type="submit" className="r2-button r2-button--primary">
+              Create journey
+            </button>
           </form>
-        </section>
+        </Panel>
       ) : null}
 
       {canCreate ? (
-        <section className="app-panel franchise-panel" aria-label="Ready-made journeys">
-          <p className="eyebrow">Ready-made</p>
-          <h2>Start from a ready-made journey</h2>
-          <p>Reviewed copy, timing and email caps. A new one is a draft: you still review, approve and activate it before anyone is emailed.</p>
-          <div className="franchise-list">
+        <Panel
+          eyebrow="Ready-made"
+          title="Start from a ready-made journey"
+          intro="Reviewed copy, timing and email caps. A new one is a draft: you still review, approve and activate it before anyone is emailed."
+          id="templates"
+        >
+          <RecordList>
             {journeyTemplates.map((template) => (
-              <div key={template.key}>
-                <strong>{template.name}</strong>
-                <span>{template.description}</span>
-                <span className="muted">At most {template.frequencyCap.maxPerContact} email{template.frequencyCap.maxPerContact === 1 ? "" : "s"} per person {template.frequencyCap.window === "lifetime" ? "ever" : `in ${template.frequencyCap.window}`}.</span>
+              <RecordCard
+                key={template.key}
+                title={template.name}
+                lines={[
+                  template.description,
+                  `At most ${formatCount(template.frequencyCap.maxPerContact, "email")} per person ${capWindow[template.frequencyCap.window] ?? `in ${template.frequencyCap.window}`}.`
+                ]}
+              >
                 <form action={createJourneyFromTemplateAction.bind(null, context, template.key)} className="franchise-form">
-                  <label>Area
+                  <label>
+                    Area
                     <select name="territoryId" defaultValue={context.territoryId ?? ""}>
                       {territoryOptions.length > 0 && !context.territoryId ? <option value="">Every area</option> : null}
-                      {territoryOptions.map((option) => (<option key={option.id} value={option.id}>{option.name}</option>))}
+                      {territoryOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{option.name}</option>
+                      ))}
                     </select>
                   </label>
-                  <button type="submit">Create draft</button>
+                  <button type="submit" className="r2-button r2-button--secondary">
+                    Create draft
+                  </button>
                 </form>
-              </div>
+              </RecordCard>
             ))}
-          </div>
-        </section>
+          </RecordList>
+        </Panel>
       ) : null}
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Configured journeys</p>
-        <h2>Execution health</h2>
-        <div className="franchise-list">
-          {overview.journeys.length === 0 ? (
-            <div>
-              <strong>No journeys configured</strong>
-              <span>Approved journeys will appear here once automation is configured.</span>
-            </div>
-          ) : (
-            overview.journeys.map((view) => (
-              <div key={view.journey.id}>
-                <strong>{view.journey.name}</strong>
-                <span>
-                  <StatusBadge status={view.journey.status} /> · version{" "}
-                  {view.activeVersion?.versionNumber ?? "not approved"}
-                </span>
-                <span>
-                  {view.entries} entries - {view.activeExecutions} active -{" "}
-                  {view.failedExecutions} failed
-                </span>
-                <span>{view.journey.description ?? "No journey description provided."}</span>
-
-                {view.journey.status === "draft" ? (
-                  <span>
-                    <Link href={`/app/journeys/${view.journey.id}` as Route}>Open draft to edit and approve</Link>
-                  </span>
+      <Panel eyebrow="Journeys" title="All journeys" id="journeys">
+        {overview.journeys.length === 0 ? (
+          <EmptyState title="No journeys yet">
+            {canCreate ? "Create one above; it starts as a draft you can edit and approve." : "Journeys will appear here once Head Office has set one up."}
+          </EmptyState>
+        ) : (
+          <RecordList>
+            {overview.journeys.map((view) => (
+              <RecordCard
+                key={view.journey.id}
+                title={view.journey.name}
+                status={view.journey.status}
+                lines={[
+                  view.activeVersion ? `Version ${view.activeVersion.versionNumber}` : "No approved version yet",
+                  `${formatCount(view.entries, "entry", "entries")} · ${view.activeExecutions} active · ${view.failedExecutions} failed`,
+                  view.journey.description ?? "No description yet."
+                ]}
+              >
+                {view.journey.status === "draft" || (canActivate && view.journey.status === "approved") || (canPause && (view.journey.status === "active" || view.journey.status === "approved")) ? (
+                  <Actions>
+                    {view.journey.status === "draft" ? (
+                      <LinkButton href={`/app/journeys/${view.journey.id}` as Route} variant="secondary">
+                        Open draft to edit and approve
+                      </LinkButton>
+                    ) : null}
+                    {canActivate && view.journey.status === "approved" ? (
+                      <form action={activateJourneyAction.bind(null, context, view.journey.id)}>
+                        <button type="submit" className="r2-button r2-button--primary">
+                          Activate
+                        </button>
+                      </form>
+                    ) : null}
+                    {canPause && (view.journey.status === "active" || view.journey.status === "approved") ? (
+                      <form action={pauseJourneyAction.bind(null, context, view.journey.id)}>
+                        <button type="submit" className="r2-button r2-button--secondary">
+                          Pause
+                        </button>
+                      </form>
+                    ) : null}
+                  </Actions>
                 ) : null}
-
-                {canActivate && view.journey.status === "approved" ? (
-                  <form action={activateJourneyAction.bind(null, context, view.journey.id)}>
-                    <button type="submit">Activate</button>
-                  </form>
-                ) : null}
-
-                {canPause && (view.journey.status === "active" || view.journey.status === "approved") ? (
-                  <form action={pauseJourneyAction.bind(null, context, view.journey.id)}>
-                    <button type="submit">Pause</button>
-                  </form>
-                ) : null}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </AppShell>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -181,20 +201,4 @@ async function loadJourneys(request: Awaited<ReturnType<typeof requestFromSearch
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

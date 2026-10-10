@@ -416,3 +416,15 @@ function createRepositoryWithSession(input: {
     ]
   });
 }
+
+describe("stored working context", () => {
+  it("falls back to the default context when a remembered context no longer fits, but refuses one asked for explicitly", async () => {
+    const stale = { sessionKey: "superadmin", organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
+
+    const remembered = await resolveShell({ ...stale, contextSource: "stored" });
+    expect(remembered).toMatchObject({ kind: "authenticated", activeContext: { organisationId: fixtureIds.organisations.hq } });
+
+    const asked = await resolveShell({ ...stale, contextSource: "query" });
+    expect(asked.kind).toBe("invalid_context");
+  });
+});
