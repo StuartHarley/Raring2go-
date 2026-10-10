@@ -7,6 +7,8 @@ import { requireShellPermission } from "../../../../lib/app-shell";
 import type { RequestedShellContext } from "../../../../lib/app-shell";
 import {
   DuplicateAdvertiserError,
+  changeTaskRecord,
+  createTaskRecord,
   addContactRecord,
   createAdvertiserRecord,
   createOpportunityRecord,
@@ -136,6 +138,17 @@ export async function logActivityAction(request: RequestedShellContext, advertis
   await perform(request, `/app/advertisers/${advertiserId}`, "saved", (actor) =>
     logActivityRecord(actor, advertiserId, { activityType: text(formData, "activityType") || "note", title: text(formData, "title"), body: text(formData, "body") })
   );
+}
+
+export async function createTaskAction(request: RequestedShellContext, advertiserId: string, formData: FormData) {
+  await perform(request, `/app/advertisers/${advertiserId}`, "created", (actor) =>
+    createTaskRecord(actor, { advertiserId, opportunityId: text(formData, "opportunityId"), title: text(formData, "title"), notes: text(formData, "notes"), dueOn: text(formData, "dueOn") })
+  );
+}
+
+export async function changeTaskAction(request: RequestedShellContext, advertiserId: string, taskId: string, step: "complete" | "cancel" | "reopen") {
+  if (step !== "complete" && step !== "cancel" && step !== "reopen") throw new Error("Unknown step.");
+  await perform(request, `/app/advertisers/${advertiserId}`, "saved", (actor) => changeTaskRecord(actor, taskId, step));
 }
 
 export async function refreshMetricsAction(request: RequestedShellContext, advertiserId: string) {

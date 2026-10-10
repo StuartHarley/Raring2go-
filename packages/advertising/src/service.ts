@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import { auditActions } from "@raring2go/audit";
 import { evaluatePermission, requirePermission, type PermissionData } from "@raring2go/permissions";
 import { advertisingCapabilities, type AdvertisingCapability } from "./permissions";
+import { scoreOpportunity, signalsFor } from "./scoring";
 import type {
   Advertiser360,
   AdvertiserActivityEvent,
   AdvertiserContact,
+  AdvertiserTask,
   AdvertiserDomainEvent,
   AdvertiserCreditNote,
   AdvertiserCreditNoteLine,
@@ -328,6 +330,119 @@ export async function recordAdvertiserActivity(
   }));
   return event;
 }
+
+/** Tasks the actor may see: those on advertisers in their territory (everything for a network user). */
+export function listAdvertiserTasks(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  data: AdvertisingData,
+  filter: { advertiserId?: string; assignedToUserId?: string; status?: AdvertiserTask["status"] } = {}
+) {
+  requireAdvertisingPermission(context, permissions, "opportunityView");
+  const visibleTerritoryIds = visibleTerritories(context, data);
+  return data.tasks
+    .filter((task) => !task.deletedAt)
+    .filter((task) => visibleTerritoryIds == null || visibleTerritoryIds.has(task.territoryId))
+    .filter((task) => !filter.advertiserId || task.advertiserId === filter.advertiserId)
+    .filter((task) => !filter.assignedToUserId || task.assignedToUserId === filter.assignedToUserId)
+    .filter((task) => !filter.status || task.status === filter.status)
+    .sort((a, b) => (a.dueOn ?? "9999-12-31").localeCompare(b.dueOn ?? "9999-12-31") || a.title.localeCompare(b.title));
+}
+
+/** Another person can only be given a task if they hold a role that covers the advertiser's territory. */
+function assigneeCanWorkTerritory(permissions: PermissionData, userId: string, territoryId: string) {
+  return permissions.roleAssignments.some(
+    (assignment) => assignment.userId === userId && (!assignment.territoryId || assignment.territoryId === territoryId)
+  );
+}
+
+function validDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value) {
+    throw new Error("The due date is not a valid date.");
+  }
+  return value;
+}
+
+export async function createAdvertiserTask(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  input: { advertiserId: string; opportunityId?: string | null; title: string; notes?: string | null; dueOn?: string | null; assignedToUserId?: string | null }
+) {
+  requireAdvertisingPermission(context, permissions, "opportunityEdit");
+  const advertiser = requireAdvertiser(data, input.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
+  const title = input.title.trim();
+  if (!title || title.length > 200) {
+    throw new Error("Give the task a title of up to 200 characters.");
+  }
+  if (input.opportunityId) {
+    const opportunity = data.opportunities.find((candidate) => candidate.id === input.opportunityId && !candidate.deletedAt);
+    if (!opportunity || opportunity.advertiserId !== advertiser.id) {
+      throw new Error("That opportunity does not belong to this advertiser.");
+    }
+  }
+  const assignee = input.assignedToUserId ?? context.userId;
+  if (assignee !== context.userId && !assigneeCanWorkTerritory(permissions, assignee, advertiser.owningTerritoryId)) {
+    throw new Error("That person does not work in this territory.");
+  }
+  const task: AdvertiserTask = {
+    id: randomUUID(),
+    advertiserId: advertiser.id,
+    opportunityId: input.opportunityId ?? null,
+    territoryId: advertiser.owningTerritoryId,
+    assignedToUserId: assignee,
+    title,
+    notes: input.notes?.trim().slice(0, 2000) || null,
+    dueOn: validDate(input.dueOn),
+    status: "open",
+    createdByUserId: context.userId
+  };
+  data.tasks.push(task);
+  await audit.record(auditEvent(context, auditActions.advertiserTaskManage, advertiser, { action: "create_task", taskId: task.id, assignedToUserId: assignee, dueOn: task.dueOn }));
+  return task;
+}
+
+function requireTask(data: AdvertisingData, taskId: string) {
+  const task = data.tasks.find((candidate) => candidate.id === taskId && !candidate.deletedAt);
+  if (!task) {
+    throw new Error("Task was not found.");
+  }
+  return task;
+}
+
+async function changeTask(
+  context: AdvertisingActorContext,
+  permissions: PermissionData,
+  audit: AdvertisingAuditRecorder,
+  data: AdvertisingData,
+  taskId: string,
+  change: { from: AdvertiserTask["status"][]; to: AdvertiserTask["status"]; action: string }
+) {
+  requireAdvertisingPermission(context, permissions, "opportunityEdit");
+  const task = requireTask(data, taskId);
+  const advertiser = requireAdvertiser(data, task.advertiserId);
+  ensureContextCanAccessAdvertiser(context, advertiser, data);
+  if (!change.from.includes(task.status)) {
+    throw new Error(`A task that is ${task.status} cannot be ${change.action === "complete_task" ? "completed" : change.action === "cancel_task" ? "cancelled" : "reopened"}.`);
+  }
+  task.status = change.to;
+  task.completedAt = change.to === "done" ? new Date() : null;
+  task.completedByUserId = change.to === "done" ? context.userId : null;
+  await audit.record(auditEvent(context, auditActions.advertiserTaskManage, advertiser, { action: change.action, taskId: task.id }));
+  return task;
+}
+
+export const completeAdvertiserTask = (context: AdvertisingActorContext, permissions: PermissionData, audit: AdvertisingAuditRecorder, data: AdvertisingData, taskId: string) =>
+  changeTask(context, permissions, audit, data, taskId, { from: ["open"], to: "done", action: "complete_task" });
+
+export const cancelAdvertiserTask = (context: AdvertisingActorContext, permissions: PermissionData, audit: AdvertisingAuditRecorder, data: AdvertisingData, taskId: string) =>
+  changeTask(context, permissions, audit, data, taskId, { from: ["open"], to: "cancelled", action: "cancel_task" });
+
+export const reopenAdvertiserTask = (context: AdvertisingActorContext, permissions: PermissionData, audit: AdvertisingAuditRecorder, data: AdvertisingData, taskId: string) =>
+  changeTask(context, permissions, audit, data, taskId, { from: ["done", "cancelled"], to: "open", action: "reopen_task" });
 
 export function listPipeline(
   context: AdvertisingActorContext,
@@ -2082,6 +2197,7 @@ function assembleAdvertiser360(data: AdvertisingData, advertiser: AdvertiserReco
     campaignFulfilments: data.campaignFulfilments.filter((fulfilment) => fulfilment.advertiserId === advertiser.id && !fulfilment.deletedAt),
     proofPacks: data.proofPacks.filter((proofPack) => proofPack.advertiserId === advertiser.id && !proofPack.deletedAt),
     renewalPrompts: data.renewalPrompts.filter((renewal) => renewal.advertiserId === advertiser.id && !renewal.deletedAt),
+    tasks: data.tasks.filter((task) => task.advertiserId === advertiser.id && !task.deletedAt).sort((a, b) => Number(a.status !== "open") - Number(b.status !== "open") || (a.dueOn ?? "9999-12-31").localeCompare(b.dueOn ?? "9999-12-31")),
     financeSummary: financeSummary(data, advertiser.id),
     activity: data.activityEvents
       .filter((event) => event.advertiserId === advertiser.id && !event.deletedAt)
@@ -2104,7 +2220,8 @@ function assembleOpportunityView(data: AdvertisingData, opportunity: Opportunity
     stage,
     weightedValueMinor: Math.round((opportunity.estimatedValueMinor * opportunity.probability) / 100),
     state: stage.outcome === "won" ? "won" : stage.outcome === "lost" ? "lost" : "open",
-    attention: opportunityAttention(opportunity)
+    attention: opportunityAttention(opportunity),
+    score: scoreOpportunity(opportunity, stage, signalsFor(opportunity.advertiserId, data))
   };
 }
 

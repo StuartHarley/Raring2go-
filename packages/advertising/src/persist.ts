@@ -32,6 +32,7 @@ import {
   priceBooks,
   proofPacks,
   renewalPrompts,
+  advertiserTasks,
   advertiserTaxRates
 } from "@raring2go/db";
 import { eq, getTableColumns } from "drizzle-orm";
@@ -76,6 +77,7 @@ export const persistedCollections: Array<[CollectionKey, PgTable]> = [
   ["campaignFulfilments", campaignFulfilments],
   ["proofPacks", proofPacks],
   ["renewalPrompts", renewalPrompts],
+  ["tasks", advertiserTasks],
   ["taxRates", advertiserTaxRates]
 ];
 

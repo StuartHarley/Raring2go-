@@ -1,6 +1,6 @@
 import type { Route } from "next";
 import type { ResolvedShell } from "./app-shell";
-import { listAdvertiser360Rows, readPipeline } from "./advertising-runtime";
+import { listAdvertiser360Rows, readMyOpenTasks, readPipeline } from "./advertising-runtime";
 import { readTasksAndApprovals } from "./automation-runtime";
 import { listComplianceOverview, listOnboardingOverview } from "./franchise-runtime";
 import {
@@ -91,10 +91,23 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
   }
 
   if (visible.has("advertisers")) {
-    const [advertisers, pipeline] = await Promise.all([
+    const [advertisers, pipeline, myTasks] = await Promise.all([
       listAdvertiser360Rows(context).catch(() => []),
-      readPipeline(context).catch(() => undefined)
+      readPipeline(context).catch(() => undefined),
+      readMyOpenTasks(context).catch(() => [])
     ]);
+    const todayDate = new Date().toISOString().slice(0, 10);
+    const dueTasks = myTasks.filter((entry) => entry.task.dueOn && entry.task.dueOn <= todayDate);
+    for (const entry of dueTasks.slice(0, 5)) {
+      attention.push({
+        id: `task-${entry.task.id}`,
+        priority: (entry.task.dueOn ?? todayDate) < todayDate ? "warning" : "info",
+        area: "Commercial",
+        title: entry.task.title,
+        detail: `${entry.advertiserName}; ${(entry.task.dueOn ?? todayDate) < todayDate ? "overdue since" : "due"} ${entry.task.dueOn}`,
+        href: `/app/advertisers/${entry.task.advertiserId}#tasks` as Route
+      });
+    }
     const outstandingMinor = advertisers.reduce(
       (total, row) => total + row.financeSummary.outstandingMinor,
       0

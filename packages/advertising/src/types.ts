@@ -41,6 +41,7 @@ export type AdvertiserContact = {
 
 export type AdvertiserActivityEvent = {
   id: string;
+  createdAt?: Date | string | null;
   advertiserId: string;
   territoryId: string;
   actorUserId?: string | null;
@@ -103,7 +104,34 @@ export type Opportunity = {
   deletedAt?: Date | null;
 };
 
+export type AdvertiserTask = {
+  id: string;
+  advertiserId: string;
+  opportunityId?: string | null;
+  territoryId: string;
+  assignedToUserId?: string | null;
+  title: string;
+  notes?: string | null;
+  dueOn?: string | null;
+  status: "open" | "done" | "cancelled" | (string & {});
+  completedAt?: Date | string | null;
+  completedByUserId?: string | null;
+  createdByUserId?: string | null;
+  deletedAt?: Date | null;
+};
+
+export type ScoreFactor = { key: string; label: string; points: number; detail: string };
+
+/** An opportunity's score, with every point explained, so a salesperson can see why it ranks where it does. */
+export type OpportunityScore = {
+  version: string;
+  score: number;
+  band: "hot" | "warm" | "cold";
+  factors: ScoreFactor[];
+};
+
 export type OpportunityView = {
+  score: OpportunityScore | null;
   opportunity: Opportunity;
   advertiser: AdvertiserRecord;
   organisation: AdvertisingOrganisation;
@@ -576,6 +604,7 @@ export type AdvertisingData = {
   campaignFulfilments: CampaignFulfilment[];
   proofPacks: ProofPack[];
   renewalPrompts: RenewalPrompt[];
+  tasks: AdvertiserTask[];
   organisations: AdvertisingOrganisation[];
   territories: AdvertisingTerritory[];
 };
@@ -598,6 +627,7 @@ export type Advertiser360 = {
   campaignFulfilments: CampaignFulfilment[];
   proofPacks: ProofPack[];
   renewalPrompts: RenewalPrompt[];
+  tasks: AdvertiserTask[];
   financeSummary: {
     lifetimeInvoicedMinor: number;
     lifetimePaidMinor: number;

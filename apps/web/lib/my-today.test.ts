@@ -3,6 +3,7 @@ import type { ResolvedShell } from "./app-shell";
 import { buildMyToday } from "./my-today";
 
 vi.mock("./advertising-runtime", () => ({
+  readMyOpenTasks: vi.fn(async () => []),
   listAdvertiser360Rows: vi.fn(async () => [
     {
       financeSummary: {
@@ -106,6 +107,24 @@ vi.mock("./publishing-runtime", () => ({
     ]
   }))
 }));
+
+describe("buildMyToday tasks", () => {
+  it("lists the user's due and overdue advertiser tasks, and not future ones", async () => {
+    const { readMyOpenTasks } = await import("./advertising-runtime");
+    const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    vi.mocked(readMyOpenTasks).mockResolvedValueOnce([
+      { task: { id: "t1", advertiserId: "a1", title: "Chase artwork", dueOn: day(-2) }, advertiserName: "Cafe One" },
+      { task: { id: "t2", advertiserId: "a1", title: "Ring about page 5", dueOn: day(0) }, advertiserName: "Cafe One" },
+      { task: { id: "t3", advertiserId: "a2", title: "Next quarter", dueOn: day(30) }, advertiserName: "Cafe Two" },
+      { task: { id: "t4", advertiserId: "a2", title: "Undated", dueOn: null }, advertiserName: "Cafe Two" }
+    ] as never);
+    const today = await buildMyToday(shellWithNavigation(["advertisers"]));
+    const tasks = today.attention.filter((item) => item.id.startsWith("task-"));
+    expect(tasks.map((item) => [item.title, item.priority])).toEqual([["Chase artwork", "warning"], ["Ring about page 5", "info"]]);
+    expect(tasks[0]!.detail).toContain("overdue since");
+    expect(tasks[0]!.href).toBe("/app/advertisers/a1#tasks");
+  });
+});
 
 describe("buildMyToday", () => {
   it("builds an attention queue from visible capability areas", async () => {

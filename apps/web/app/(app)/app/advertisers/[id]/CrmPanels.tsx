@@ -1,7 +1,7 @@
 import type { RequestedShellContext } from "../../../../../lib/app-shell";
 import { addContactAction, logActivityAction, refreshMetricsAction, updateAdvertiserAction } from "../actions";
 
-export type CrmAccess = { edit: boolean; contactManage: boolean; activityRecord: boolean };
+export type CrmAccess = { edit: boolean; contactManage: boolean; activityRecord: boolean; taskManage: boolean };
 
 const statuses = ["prospect", "active", "paused", "archived"] as const;
 const activityTypes = ["note", "call", "meeting", "email"] as const;

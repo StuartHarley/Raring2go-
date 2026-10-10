@@ -92,6 +92,7 @@ export const auditActions = {
   advertiserUpdate: "advertiser.update",
   advertiserContactUpdate: "advertiser.contact.update",
   advertiserActivityRecord: "advertiser.activity.record",
+  advertiserTaskManage: "advertiser.task.manage",
   advertiserOpportunityCreate: "advertiser.opportunity.create",
   advertiserOpportunityUpdate: "advertiser.opportunity.update",
   advertiserOpportunityStageChange: "advertiser.opportunity.stage.change",

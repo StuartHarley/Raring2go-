@@ -2,6 +2,7 @@ import { ShellAccessError, requireShellPermission } from "../../../../../lib/app
 import { readPipeline } from "../../../../../lib/advertising-runtime";
 import { AppShell } from "../../../layout";
 import { CrmBanner } from "../CrmBanner";
+import { ScoreBadge } from "../ScoreBadge";
 import { createOpportunityAction, moveOpportunityStageAction, updateOpportunityAction } from "../actions";
 import { listAdvertiser360Rows } from "../../../../../lib/advertising-runtime";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -19,6 +20,11 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
   if ("error" in result) {
     return protectedOutcome(result.error);
   }
+
+  const ranked = result.pipeline.stages
+    .flatMap((stage) => stage.opportunities)
+    .sort((a, b) => (b.score?.score ?? -1) - (a.score?.score ?? -1) || b.opportunity.estimatedValueMinor - a.opportunity.estimatedValueMinor)
+    .slice(0, 10);
 
   return (
     <AppShell request={request}>
@@ -86,6 +92,22 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
         )}
       </section>
 
+      <section id="priorities" className="app-panel franchise-panel" aria-label="Priorities">
+        <p className="eyebrow">Priorities</p>
+        <h2>Where to spend today</h2>
+        <p>Open opportunities ranked by score. Open a score to see exactly what is behind it.</p>
+        <div className="franchise-list">
+          {ranked.length === 0 ? <p>No open opportunities.</p> : null}
+          {ranked.map((view) => (
+            <div key={view.opportunity.id}>
+              <strong>{view.opportunity.title}</strong>
+              <span>{view.organisation.name} - {formatMoney(view.opportunity.estimatedValueMinor)} - {view.stage.name}</span>
+              <ScoreBadge score={view.score} />
+            </div>
+          ))}
+        </div>
+      </section>
+
       {result.pipeline.stages.map((stage) => (
         <section key={stage.stage.id} className="app-panel franchise-panel">
           <p className="eyebrow">{stage.stage.name}</p>
@@ -96,6 +118,7 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
               <div key={view.opportunity.id}>
                 <strong>{view.opportunity.title}</strong>
                 <span>{view.organisation.name} - {formatMoney(view.opportunity.estimatedValueMinor)} at {view.opportunity.probability}% - {view.attention.replaceAll("_", " ")}</span>
+                <ScoreBadge score={view.score} />
                 <span>Next: {view.opportunity.nextAction ?? "none set"} {view.opportunity.nextActionDate ? `(${view.opportunity.nextActionDate})` : ""}</span>
                 <form action={moveOpportunityStageAction.bind(null, request, view.opportunity.id)} className="franchise-form">
                   <label>
