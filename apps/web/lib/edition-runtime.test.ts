@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { auditEvents, createDb, editionPages, fixtureIds, editionContentItems, territoryEditionContent, editionPageRevisions, preflightResults, magazineTemplateVersions, magazineTemplates, masterEditions, publicationOutputs, seasons, territoryEditions } from "@raring2go/db";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
-import { approvePageAsActor, readStudioPage, returnPageAsActor, runPreflightAsActor, savePageAsActor, snapshotFromForm, submitPageAsActor, assignPageAsActor, createLocalContentAsActor, movePageAsActor, readFlatplan, approveEditionAsActor, approveMasterAsActor, createFlatplanAsActor, createSeasonAsActor, generateEditionsAsActor, readSeasonPlanner, releaseEditionAsActor, reopenEditionAsActor, submitEditionAsActor, approveTemplateVersionAsActor, createTemplateAsActor, publishTemplateVersionAsActor, readTemplateLibrary, reviseTemplateAsActor } from "./edition-runtime";
+import { runBulkEditionAction, approvePageAsActor, readStudioPage, returnPageAsActor, runPreflightAsActor, savePageAsActor, snapshotFromForm, submitPageAsActor, assignPageAsActor, createLocalContentAsActor, movePageAsActor, readFlatplan, approveEditionAsActor, approveMasterAsActor, createFlatplanAsActor, createSeasonAsActor, generateEditionsAsActor, readSeasonPlanner, releaseEditionAsActor, reopenEditionAsActor, submitEditionAsActor, approveTemplateVersionAsActor, createTemplateAsActor, publishTemplateVersionAsActor, readTemplateLibrary, reviseTemplateAsActor } from "./edition-runtime";
 import { withFinanceGuardsDisabled } from "./finance-test-support";
 
 const spec = {
@@ -220,5 +220,46 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("flatplan editing (postgres)", () => 
     await expect(readFlatplan(solihull, edition!.id)).rejects.toThrow();
     await expect(assignPageAsActor(solihull, page3.id, { templateVersionId: version })).rejects.toThrow();
     await expect(createLocalContentAsActor(solihull, edition!.id, { title: "x", contentType: "article", headline: "", body: "" })).rejects.toThrow();
+  });
+});
+
+describe.skipIf(!process.env.RUN_DB_TESTS)("bulk edition actions (postgres)", () => {
+  const { db, sql } = createDb();
+  const hq = { userId: fixtureIds.users.superAdmin, organisationId: fixtureIds.organisations.hq, territoryId: null };
+  const sutton = { userId: fixtureIds.users.franchisee, organisationId: fixtureIds.organisations.franchise, territoryId: fixtureIds.territories.suttonColdfield };
+  const tag = randomUUID().slice(0, 8);
+  let seasonId = "";
+
+  afterAll(async () => {
+    const editionIds = seasonId ? (await db.select({ id: territoryEditions.id }).from(territoryEditions).where(eq(territoryEditions.seasonId, seasonId))).map((e) => e.id) : [];
+    const masters = seasonId ? (await db.select({ id: masterEditions.id }).from(masterEditions).where(eq(masterEditions.seasonId, seasonId))).map((m) => m.id) : [];
+    await withFinanceGuardsDisabled(db, async () => {
+      await db.delete(auditEvents).where(inArray(auditEvents.entityId, [...editionIds, ...masters]));
+    });
+    if (editionIds.length) {
+      await db.delete(editionPages).where(inArray(editionPages.territoryEditionId, editionIds));
+      await db.delete(territoryEditions).where(inArray(territoryEditions.id, editionIds));
+    }
+    if (seasonId) {
+      await db.delete(masterEditions).where(eq(masterEditions.seasonId, seasonId));
+      await db.delete(seasons).where(eq(seasons.id, seasonId));
+    }
+    await sql.end();
+  });
+
+  it("applies an action edition by edition: ready ones go through, the rest are skipped, and an unpermitted actor changes nothing", async () => {
+    seasonId = await createSeasonAsActor(hq, { key: `bulk-${tag}`, name: `Bulk ${tag}`, year: "2099", season: "autumn", accent: "#aa3300", pageCount: "8" });
+    const master = (await readSeasonPlanner(hq)).find((e) => e.season.id === seasonId)!.masters[0]!.master;
+    await approveMasterAsActor(hq, master.id);
+    const created = await generateEditionsAsActor(hq, master.id, [fixtureIds.territories.suttonColdfield, fixtureIds.territories.solihull]);
+    expect(created).toHaveLength(2);
+    await createFlatplanAsActor(hq, created[0]!.id);
+
+    expect(await runBulkEditionAction(sutton, "submit", created.map((e) => e.id))).toEqual({ succeeded: 0, refused: 2 });
+    expect(await runBulkEditionAction(hq, "submit", created.map((e) => e.id))).toEqual({ succeeded: 1, refused: 1 });
+    expect(await runBulkEditionAction(hq, "approve", created.map((e) => e.id))).toEqual({ succeeded: 0, refused: 2 });
+    const rows = await db.select({ id: territoryEditions.id, status: territoryEditions.status }).from(territoryEditions).where(inArray(territoryEditions.id, created.map((e) => e.id)));
+    expect(rows.map((r) => r.status).sort()).toEqual(["draft", "review"]);
+    expect(await runBulkEditionAction(hq, "digital", created.map((e) => e.id))).toEqual({ succeeded: 0, refused: 2 });
   });
 });

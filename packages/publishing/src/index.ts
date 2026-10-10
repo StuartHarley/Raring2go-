@@ -13,3 +13,4 @@ export * from "./render-provider";
 export * from "./persist-editions";
 export * from "./template-spec";
 export * from "./season-spec";
+export * from "./control-room";
