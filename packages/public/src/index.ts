@@ -1,5 +1,6 @@
 import { loadAdvertisingData } from "@raring2go/advertising";
-import { foundationSeed } from "@raring2go/db";
+import { foundationSeed, publicHomepageTemplates } from "@raring2go/db";
+import { HOMEPAGE_TEMPLATE_KEY, defaultHomepageSlots, usableHomepageSlots } from "./homepage-template";
 import { loadMarketingData } from "@raring2go/marketing";
 import { loadPublishingData } from "@raring2go/publishing";
 
@@ -67,11 +68,15 @@ export type PublicHomepage = {
     key: string;
     version: number;
     slots: PublicHomepageSlot[];
+    /** "published" when HQ has published a layout, "default" when the built-in one is in use. */
+    origin: "published" | "default";
   };
   hero?: PublicContentCard;
   stories: PublicContentCard[];
   whatsOn: PublicContentCard[];
   thingsToDo: PublicContentCard[];
+  offers: PublicContentCard[];
+  competitions: PublicContentCard[];
   magazine?: {
     id: string;
     slug: string;
@@ -238,21 +243,26 @@ type PublicTerritoryRecord = {
 type PublicProjectionData = Awaited<ReturnType<typeof loadPublishingData>>;
 
 export const publicHomepageTemplate: PublicHomepage["template"] = {
-  key: "r2go-territory-homepage",
+  key: HOMEPAGE_TEMPLATE_KEY,
   version: 1,
-  slots: [
-    slot("hero", "Your local family guide", 1),
-    slot("stories", "Latest local stories", 4),
-    slot("whats_on", "What's on near you", 6),
-    slot("things_to_do", "Things to do", 6),
-    slot("magazine", "Latest digital magazine", 1),
-    slot("offers", "Offers families will love", 4, "sponsored"),
-    slot("competitions", "Competitions", 4, "sponsored"),
-    slot("advertisers", "Recommended local businesses", 4, "sponsored"),
-    slot("newsletter", "Get the local family edit", 1),
-    slot("community", "Community and social", 3)
-  ]
+  slots: defaultHomepageSlots(),
+  origin: "default"
 };
+
+/** The live layout: the highest published version HQ has made, or the built-in default when there is none (or the stored one is unusable). */
+export async function loadActiveHomepageTemplate(db: PublicDb): Promise<PublicHomepage["template"]> {
+  const rows = (await (db as unknown as { select(): { from(table: unknown): Promise<Array<Record<string, unknown>>> } }).select().from(publicHomepageTemplates))
+    .filter((row) => row.key === HOMEPAGE_TEMPLATE_KEY && row.status === "published")
+    .sort((a, b) => Number(b.version) - Number(a.version));
+  const live = rows[0];
+  if (!live) return publicHomepageTemplate;
+  const usable = usableHomepageSlots(live.slots);
+  if (!usable.fromStored) {
+    console.error("The published homepage layout is not valid; using the default", { version: live.version });
+    return publicHomepageTemplate;
+  }
+  return { key: HOMEPAGE_TEMPLATE_KEY, version: Number(live.version), slots: usable.slots, origin: "published" };
+}
 
 export const websitePublishingDecision = {
   canonicalPublicExperience: "nextjs",
@@ -652,45 +662,61 @@ export function assertPublicNewsletterSocialLinkage(
   return socialLinked;
 }
 
+/** Items for a section, honouring where HQ says they come from: local first then network, local only, or network only. */
+function pickBySource(items: PublicContentCard[], source: PublicHomepageSlot["source"], count: number) {
+  const local = items.filter((item) => item.source === "local");
+  const network = items.filter((item) => item.source === "network");
+  const ordered = source === "local_only" ? local : source === "network" ? network : [...local, ...network];
+  return ordered.slice(0, count);
+}
+
 export async function getPublicHomepage(db: PublicDb, slug: string): Promise<PublicHomepage | undefined> {
   const territory = await territoryFromSlugForDb(db, slug);
   if (!territory) {
     return undefined;
   }
 
-  const [publishing, advertising] = await Promise.all([
+  const [publishing, advertising, template] = await Promise.all([
     loadPublishingData(db),
-    loadAdvertisingData(db)
+    loadAdvertisingData(db),
+    loadActiveHomepageTemplate(db)
   ]);
+  const slotOf = (kind: PublicHomepageSlot["kind"]) => template.slots.find((candidate) => candidate.kind === kind);
+  const shown = (kind: PublicHomepageSlot["kind"]) => {
+    const found = slotOf(kind);
+    return found && found.visible ? found : undefined;
+  };
   const approvedContent = publicContentProjections(publishing, territory);
-  const localStories = approvedContent.filter((item) => item.source === "local");
-  const networkStories = approvedContent.filter((item) => item.source === "network");
-  const stories = [...localStories, ...networkStories].slice(0, 4);
-  const magazine = latestPublishedMagazine(publishing, territory);
-  const placements = publicAdvertiserPlacements(advertising, publishing, territory).slice(0, 4);
+  const forSlot = (kind: PublicHomepageSlot["kind"], items: PublicContentCard[]) => {
+    const found = shown(kind);
+    return found ? pickBySource(items, found.source, found.itemCount) : [];
+  };
+  const stories = forSlot("stories", approvedContent);
+  // The hero is the lead story from where HQ says the hero draws from, even if the stories section is hidden.
+  const heroSlot = shown("hero");
+  const hero = heroSlot ? pickBySource(approvedContent, heroSlot.source, 1)[0] : undefined;
+  const magazine = shown("magazine") ? latestPublishedMagazine(publishing, territory) : undefined;
+  const advertisersSlot = shown("advertisers");
+  const placements = advertisersSlot ? publicAdvertiserPlacements(advertising, publishing, territory).slice(0, advertisersSlot.itemCount) : [];
+  const offers = forSlot("offers", approvedContent.filter((item) => item.type === "offer" || item.type === "advertiser_sponsored"));
+  const competitions = forSlot("competitions", approvedContent.filter((item) => item.type === "competition"));
   const emptyStates: PublicHomepage["emptyStates"] = [];
+  const empty = (kind: PublicHomepageSlot["kind"], message: string) => emptyStates.push({ slot: kind, message });
 
-  if (stories.length === 0) {
-    emptyStates.push({
-      slot: "stories",
-      message: "Approved local stories will appear here once they are published."
-    });
-  }
-
-  if (placements.length === 0) {
-    emptyStates.push({
-      slot: "advertisers",
-      message: "Local business placements will appear here when booked and approved."
-    });
-  }
+  if (shown("stories") && stories.length === 0) empty("stories", "Approved local stories will appear here once they are published.");
+  if (advertisersSlot && placements.length === 0) empty("advertisers", "Local business placements will appear here when booked and approved.");
+  if (shown("offers") && offers.length === 0) empty("offers", "Approved offers will appear here once they are published.");
+  if (shown("competitions") && competitions.length === 0) empty("competitions", "Approved competitions will appear here once they are published.");
 
   return {
     territory,
-    template: publicHomepageTemplate,
-    hero: stories[0],
+    template,
+    hero,
     stories,
-    whatsOn: approvedContent.filter((item) => item.type === "event").slice(0, 6),
-    thingsToDo: approvedContent.filter((item) => ["article", "guide"].includes(item.type)).slice(0, 6),
+    whatsOn: forSlot("whats_on", approvedContent.filter((item) => item.type === "event")),
+    thingsToDo: forSlot("things_to_do", approvedContent.filter((item) => ["article", "guide"].includes(item.type))),
+    offers,
+    competitions,
     magazine: magazine
       ? {
           id: magazine.edition.id,
@@ -1336,3 +1362,5 @@ export async function getPublicBusiness(db: PublicDb, slug: string, advertiserId
     }
   };
 }
+
+export * from "./homepage-template";

@@ -61,8 +61,7 @@ describe("@raring2go/public homepage", () => {
       "offers",
       "competitions",
       "advertisers",
-      "newsletter",
-      "community"
+      "newsletter"
     ]);
   });
 

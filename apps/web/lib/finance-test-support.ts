@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 
-/** The tables whose rows the database refuses to change or delete (migrations 0049 and 0050). */
-const GUARDED = ["advertiser_invoices", "advertiser_invoice_lines", "advertiser_credit_notes", "advertiser_credit_note_lines", "advertiser_payment_allocations", "advertiser_proposal_acceptances", "audit_events"];
+/** The tables whose rows the database refuses to change or delete (migrations 0049, 0050 and 0057). */
+const GUARDED = ["advertiser_invoices", "advertiser_invoice_lines", "advertiser_credit_notes", "advertiser_credit_note_lines", "advertiser_payment_allocations", "advertiser_proposal_acceptances", "audit_events", "public_homepage_templates"];
 
 type Executor = { execute: (query: ReturnType<typeof sql.raw>) => Promise<unknown> };
 
