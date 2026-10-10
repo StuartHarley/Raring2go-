@@ -5,7 +5,7 @@ import { eq, inArray, sql as rawSql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { HomepageNotAllowedError, HomepageStateError, discardHomepageDraft, publishHomepageDraft, readHomepageTemplates, saveHomepageDraft, startHomepageDraftFrom } from "./homepage-template-runtime";
 import { withFinanceGuardsDisabled } from "./finance-test-support";
-import { slotsFromForm } from "../app/(app)/app/content/homepage/actions";
+import { slotsFromForm } from "../app/(app)/app/content/homepage/form";
 
 const input = () => defaultHomepageSlots().map(({ kind, heading, visible, itemCount, source }) => ({ kind, heading, visible, itemCount, source }));
 
