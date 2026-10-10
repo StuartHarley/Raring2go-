@@ -91,7 +91,32 @@ Neon Postgres is the selected managed PostgreSQL provider for the pilot.
 - `DATABASE_MIGRATION_URL` should use Neon's direct endpoint for migrations/admin tasks where available.
 - `DATABASE_DIRECT_URL` is accepted as a compatibility alias when `DATABASE_MIGRATION_URL` is not set.
 
-Production seeding is blocked by default by the database package. Do not configure `ALLOW_PRODUCTION_SEED=true` except for an approved, documented recovery operation.
+## Setting up and releasing a real environment
+
+The development seed (`pnpm db:seed`) is for local and preview only: it creates demo users, territories, franchises, advertisers and content, and it refuses to run in production. Real environments use **`pnpm db:bootstrap`**, which creates no demo data.
+
+Every run syncs reference data (head-office organisation, roles, the permission catalogue and role grants, the workflow automation system user, CRM pipeline stages, tax rates, compliance requirements, onboarding templates). It only adds, never removes, so access an administrator granted by hand is kept. Given `BOOTSTRAP_ADMIN_EMAIL` it also creates that person as head-office Super Admin on first run, and refuses if any other real user already exists. After that, everyone else is invited from the Roles page.
+
+First set-up of an environment (run from a machine with the Neon *direct* URL as `DATABASE_MIGRATION_URL`):
+
+```bash
+pnpm db:migrate
+BOOTSTRAP_ADMIN_EMAIL=you@example.com BOOTSTRAP_ADMIN_NAME="Your Name" pnpm db:bootstrap
+```
+
+**Every release** that adds a migration or a permission: `pnpm db:migrate` then `pnpm db:bootstrap` (no email) against that environment, before or straight after promoting the deployment. Skipping the bootstrap leaves a new screen's permission ungranted, so it shows "access denied" to everyone.
+
+Not created by the bootstrap, and for head office to configure: agreement templates (counsel-approved wording), royalty rules, commercial catalogue and price books, magazine templates (Edition Factory), territories and franchises (use the franchise import or the franchise screens), and provider connections.
+
+## Render service (Railway)
+
+The print/digital PDF renderer (`services/pdf-render`, Chromium + Ghostscript) runs as its own service. Railway builds it from the repository root with `services/pdf-render/Dockerfile`; it must not be exposed without its secret.
+
+- Service variables: `RENDER_API_KEY` (a long random secret), `PORT` (Railway sets it), optional `OUTPUT_INTENT_ICC` and `OUTPUT_INTENT_NAME` (the printer's CMYK profile; without it print renders are refused and only proof output is produced), `RENDER_TIMEOUT_MS`.
+- Vercel variables: `RENDER_SERVICE_URL` (the service's https address) and `RENDER_API_KEY` (the same value).
+- Check: `GET /health` on the service, then render a digital output from an edition in the app.
+
+Production seeding of demo data is blocked by default by the database package. Do not configure `ALLOW_PRODUCTION_SEED=true` except for an approved, documented recovery operation.
 
 ## Cloudflare DNS
 
