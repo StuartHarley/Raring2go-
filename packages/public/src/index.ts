@@ -331,6 +331,23 @@ export async function createPublicAnalyticsEventForDb(
   return createPublicAnalyticsEventForTerritory(input, territory, occurredAt);
 }
 
+/** For events the server itself observes (a save, a confirmed subscription), where the territory is known by id, not slug. */
+export async function createPublicAnalyticsEventForTerritoryId(
+  db: PublicDb,
+  territoryId: string,
+  input: Omit<PublicAnalyticsInput, "territorySlug">,
+  occurredAt = new Date()
+): Promise<PublicAnalyticsEvent> {
+  const publishing = await loadPublishingData(db);
+  const record = publishing.territories.find((candidate) => candidate.id === territoryId);
+  const territory = record ? publicTerritoryFromRecord(record, territorySlug(record.name)) : undefined;
+  // A path may say {slug}, so a caller that only knows the territory id still records a real page path.
+  return createPublicAnalyticsEventForTerritory({ ...input, path: input.path.replace("{slug}", territory?.slug ?? ""), territorySlug: territory?.slug ?? "" }, territory, occurredAt);
+}
+
+/** Events only the server may record: a client cannot claim someone saved something or confirmed a subscription. */
+export const serverOnlyAnalyticsEventTypes: PublicAnalyticsEventType[] = ["content_saved", "newsletter_signup_completed"];
+
 function createPublicAnalyticsEventForTerritory(
   input: PublicAnalyticsInput,
   territory: PublicTerritory | undefined,
@@ -1254,7 +1271,7 @@ export async function getPublicMagazineEdition(db: PublicDb, slug: string, editi
 
 export type PublicMagazinePageView = {
   territory: PublicTerritory;
-  edition: Pick<PublicMagazineEdition, "slug" | "title" | "pageCount">;
+  edition: Pick<PublicMagazineEdition, "id" | "slug" | "title" | "pageCount">;
   page: { pageNumber: number; title: string };
   /** The page's article, when it has public content. */
   content?: PublicContentCard;
@@ -1281,7 +1298,7 @@ export async function getPublicMagazinePage(db: PublicDb, slug: string, editionS
 
   return {
     territory: view.territory,
-    edition: { slug: view.edition.slug, title: view.edition.title, pageCount: view.edition.pageCount },
+    edition: { id: view.edition.id, slug: view.edition.slug, title: view.edition.title, pageCount: view.edition.pageCount },
     page: { pageNumber: page.pageNumber, title: page.title },
     content,
     previous: pages[index - 1] ? { pageNumber: pages[index - 1]!.pageNumber, title: pages[index - 1]!.title } : undefined,

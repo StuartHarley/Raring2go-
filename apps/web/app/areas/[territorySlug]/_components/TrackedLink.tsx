@@ -24,8 +24,8 @@ export function TrackedLink({
   className?: string;
   territorySlug: string;
   path: string;
-  eventType: "discovery_item_clicked" | "commercial_placement_clicked";
-  entityType: "content" | "advertiser";
+  eventType: "discovery_item_clicked" | "commercial_placement_clicked" | "magazine_page_interaction";
+  entityType: "content" | "advertiser" | "edition";
   entityId?: string;
   component: string;
   children: ReactNode;

@@ -41,8 +41,8 @@ const rowsOf = (result: unknown) => result as Row[];
 export type ContentEngagement = {
   windowDays: number;
   /** Which event kinds have ever been recorded in the window, so an absent metric reads "not tracked", not 0. */
-  tracked: { views: boolean; clicks: boolean; signups: boolean };
-  totals: { territoryViews: number; contentViews: number; contentClicks: number; placementClicks: number; signupsCompleted: number };
+  tracked: { views: boolean; clicks: boolean; signups: boolean; saves: boolean; magazine: boolean };
+  totals: { territoryViews: number; contentViews: number; contentClicks: number; placementClicks: number; signupsCompleted: number; saves: number; magazineOpens: number; magazinePageTurns: number };
   topContent: Array<{ contentId: string; title: string; views: number; clicks: number }>;
   attribution: Array<{ source: string; visits: number; contentViews: number; signups: number }>;
   notTracked: string[];
@@ -82,10 +82,13 @@ export async function readContentEngagement(context: MarketingActorContext, now:
     const contentViews = count("content_viewed");
     const contentClicks = count("discovery_item_clicked");
     const signups = count("newsletter_signup_completed");
+    const saves = count("content_saved");
+    const magazineOpens = count("magazine_opened");
+    const magazineTurns = count("magazine_page_interaction");
     return {
       windowDays: ENGAGEMENT_WINDOW_DAYS,
-      tracked: { views: contentViews + count("territory_viewed") > 0, clicks: contentClicks + count("commercial_placement_clicked") > 0, signups: signups > 0 },
-      totals: { territoryViews: count("territory_viewed"), contentViews, contentClicks, placementClicks: count("commercial_placement_clicked"), signupsCompleted: signups },
+      tracked: { views: contentViews + count("territory_viewed") > 0, clicks: contentClicks + count("commercial_placement_clicked") > 0, signups: signups > 0, saves: saves > 0, magazine: magazineOpens + magazineTurns > 0 },
+      totals: { territoryViews: count("territory_viewed"), contentViews, contentClicks, placementClicks: count("commercial_placement_clicked"), signupsCompleted: signups, saves, magazineOpens, magazinePageTurns: magazineTurns },
       topContent: topRows.map((row) => ({ contentId: String(row.entity_id), title: String(row.title), views: Number(row.views), clicks: Number(row.clicks) })),
       attribution: attributionRows.map((row) => ({ source: String(row.source), visits: Number(row.visits), contentViews: Number(row.content_views), signups: Number(row.signups) })),
       notTracked: [

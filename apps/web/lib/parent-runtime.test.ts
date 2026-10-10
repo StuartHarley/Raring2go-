@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { deleteAudienceContactsForTests, contentChannelVariantVersions, contentChannelVariants, contentItems, audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions, authSessions, createDb, fixtureIds, users } from "@raring2go/db";
-import { eq } from "drizzle-orm";
+import { eq, sql as rawSql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDevelopmentSession, createFixtureIdentity, setIdentityForTests } from "./auth-runtime";
 import {
@@ -34,11 +34,16 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("parent self-service runtime (postgre
   const sutton = fixtureIds.territories.suttonColdfield;
   const emails = [`parent-a-${tag}@example.test`, `parent-b-${tag}@example.test`];
   const tokens = [randomUUID(), randomUUID()];
+  const startedAt = new Date();
+  const eventsOf = async (type: string, entityId?: string) =>
+    db.execute(rawSql`select entity_type, entity_id, session_id, parent_user_id, path from public_analytics_events
+      where event_type = ${type} and territory_id = ${sutton} and occurred_at >= ${startedAt.toISOString()}::timestamptz ${entityId ? rawSql`and entity_id = ${entityId}` : rawSql``}`);
 
   // The suite's default identity is in-memory; this test needs the real database users.
   beforeAll(() => setIdentityForTests(undefined));
 
   afterAll(async () => {
+    await db.execute(rawSql`delete from public_analytics_events where event_type in ('content_saved', 'newsletter_signup_completed') and territory_id = ${sutton} and occurred_at >= ${startedAt.toISOString()}::timestamptz`);
     setIdentityForTests(createFixtureIdentity());
     for (const email of emails) {
       const [user] = await db.select().from(users).where(eq(users.email, email));
@@ -55,6 +60,14 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("parent self-service runtime (postgre
 
     await changeParentEmailSubscription(tokens[0], { territoryId: sutton, subscribed: true });
     await saveParentPreferences(tokens[0], { ...prefs, interests: ["crafts"] });
+
+    // The completed signup is recorded once, without who did it; repeating it or unsubscribing adds nothing.
+    const signups = await eventsOf("newsletter_signup_completed");
+    expect(signups).toHaveLength(1);
+    expect(signups[0]).toMatchObject({ entity_type: "newsletter", session_id: null, parent_user_id: null, path: "/areas/sutton-coldfield/preferences" });
+    await changeParentEmailSubscription(tokens[0], { territoryId: sutton, subscribed: true });
+    await changeParentEmailSubscription(tokens[1], { territoryId: sutton, subscribed: false });
+    expect(await eventsOf("newsletter_signup_completed")).toHaveLength(1);
 
     const a = await readParentAccount(tokens[0]);
     const b = await readParentAccount(tokens[1]);
@@ -80,12 +93,18 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("parent self-service runtime (postgre
     try {
       const first = await savePublicContentForParent({ sessionToken: tokens[0], territorySlug: "sutton-coldfield", contentId: ids.item });
       expect(first.saved).toBe(true);
+      // A new save is recorded as one event about the content, with nothing about the parent.
+      const saves = await eventsOf("content_saved", ids.item);
+      expect(saves).toHaveLength(1);
+      expect(saves[0]).toMatchObject({ entity_type: "content", session_id: null, parent_user_id: null });
       // Saving twice keeps one row.
       expect((await savePublicContentForParent({ sessionToken: tokens[0], territorySlug: "sutton-coldfield", contentId: ids.item })).id).toBe(first.id);
       expect((await readParentAccount(tokens[0]))?.saved.map((item) => item.title)).toEqual([`Save Test ${tag}`]);
       expect((await readParentAccount(tokens[1]))?.saved).toEqual([]);
 
+      expect(await eventsOf("content_saved", ids.item)).toHaveLength(1);
       await expect(savePublicContentForParent({ sessionToken: tokens[0], territorySlug: "sutton-coldfield", contentId: ids.draft })).rejects.toThrow(/public content/);
+      expect(await eventsOf("content_saved", ids.draft)).toHaveLength(0);
 
       await unsavePublicContentForParent({ sessionToken: tokens[0], contentId: ids.item });
       expect((await readParentAccount(tokens[0]))?.saved).toEqual([]);
