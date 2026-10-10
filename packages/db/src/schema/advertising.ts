@@ -821,6 +821,36 @@ export const advertiserTasks = pgTable(
   ]
 );
 
+/**
+ * A bulk import of advertisers into one territory: the file is checked (dry run), then applied, then optionally rolled back.
+ * Holds the rows only until the import is applied; afterwards just the report, the ids it created and the counts.
+ */
+export const advertiserImports = pgTable(
+  "advertiser_imports",
+  {
+    id,
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    source: text("source").notNull(),
+    fileName: text("file_name").notNull(),
+    fileHash: text("file_hash").notNull(),
+    status: text("status").notNull().default("dry_run"),
+    totalRows: integer("total_rows").notNull().default(0),
+    createdCount: integer("created_count").notNull().default(0),
+    rejectedCount: integer("rejected_count").notNull().default(0),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    appliedByUserId: uuid("applied_by_user_id").references(() => users.id),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("advertiser_imports_territory_file_uidx").on(table.territoryId, table.fileHash),
+    index("advertiser_imports_territory_id_idx").on(table.territoryId),
+    index("advertiser_imports_status_idx").on(table.status)
+  ]
+);
+
 export const renewalPrompts = pgTable(
   "renewal_prompts",
   {

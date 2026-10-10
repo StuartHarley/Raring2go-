@@ -26,6 +26,8 @@ export const routeManifest: Record<string, RouteEntry> = {
   "api/files/development/[...path]/route.ts": { protection: "dev_only", reason: "Local disk storage backend: unauthenticated, so disabled in production builds." },
   "(app)/app/editions/[id]/outputs/[outputId]/route.ts": { protection: "session", reason: "Edition output PDF download: needs edition view for that edition, then a short-lived storage link.", extraMarkers: [/module: "edition"/, /no-store/] },
   "api/editions/[id]/images/route.ts": { protection: "session", reason: "Page studio images: list and upload for an edition the caller can edit, per-user rate limited, type and size checked, scanned.", extraMarkers: [/firstRateLimitRefusal\(/, /edit_local/] },
+  "api/advertisers/import/route.ts": { protection: "session", reason: "Advertiser CSV dry run: needs advertiser.import manage for the territory, per-user rate limited, size and format checked, changes no advertiser record.", extraMarkers: [/firstRateLimitRefusal\(/, /advertiser\.import/] },
+  "(app)/app/advertisers/import/[id]/report/route.ts": { protection: "session", reason: "Advertiser import reject report: needs advertiser.import manage for that import's territory (a foreign import looks like it does not exist).", extraMarkers: [/advertiser\.import/, /no-store/] },
   "api/files/list/route.ts": { protection: "session", reason: "Lists the caller's own uploaded images." },
   "api/files/upload/route.ts": { protection: "session", reason: "Newsletter image upload, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
   "api/health/route.ts": { protection: "public_static", reason: "Uptime status only; per-check detail needs the cron secret.", extraMarkers: [/isAuthorizedCronRequest\(/] },

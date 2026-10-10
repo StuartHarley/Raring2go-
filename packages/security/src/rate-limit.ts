@@ -124,6 +124,7 @@ export const rateLimitRules = {
   fileUploadUser: { name: "file-upload:user", limit: 60, windowSeconds: 600, onStoreError: "deny" },
   franchiseDocumentUploadUser: { name: "franchise-document-upload:user", limit: 30, windowSeconds: 600, onStoreError: "deny" },
   paymentLinkUser: { name: "payment-link:user", limit: 20, windowSeconds: 600, onStoreError: "deny" },
+  advertiserImportUser: { name: "advertiser-import:user", limit: 20, windowSeconds: 3600, onStoreError: "deny" },
   audienceImportUser: { name: "audience-import:user", limit: 20, windowSeconds: 3600, onStoreError: "deny" },
   artworkUploadUser: { name: "artwork-upload:user", limit: 30, windowSeconds: 600, onStoreError: "deny" },
   aiAssistUser: { name: "ai-assist:territory", limit: 20, windowSeconds: 3600, onStoreError: "deny" }

@@ -121,6 +121,7 @@ export const fixtureIds = {
     homepageManage: "00000000-0000-4000-8000-000000000579",
     calendarManage: "00000000-0000-4000-8000-000000000580",
     competitionDraw: "00000000-0000-4000-8000-000000000581",
+    advertiserImportManage: "00000000-0000-4000-8000-000000000582",
     franchiseTeamView: "00000000-0000-4000-8000-000000000575",
     franchiseTeamManage: "00000000-0000-4000-8000-000000000576",
     emailView: "00000000-0000-4000-8000-000000000492",
@@ -1062,6 +1063,12 @@ export const foundationSeed = {
       module: "marketing.segment",
       action: "manage",
       description: "Create and manage audience segment definitions."
+    },
+    {
+      id: fixtureIds.permissions.advertiserImportManage,
+      module: "advertiser.import",
+      action: "manage",
+      description: "Import a list of advertisers into a territory, and reverse the import."
     },
     {
       id: fixtureIds.permissions.competitionDraw,
@@ -3068,6 +3075,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     fixtureIds.permissions.homepageManage,
     fixtureIds.permissions.calendarManage,
     fixtureIds.permissions.competitionDraw,
+    fixtureIds.permissions.advertiserImportManage,
     fixtureIds.permissions.proposalView,
     fixtureIds.permissions.proposalCreate,
     fixtureIds.permissions.bookingAccept,
@@ -3379,6 +3387,12 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
   {
     roleId: fixtureIds.roles.franchisee,
     permissionId: fixtureIds.permissions.competitionDraw,
+    scope: "own_territory",
+    constraints: {}
+  },
+  {
+    roleId: fixtureIds.roles.franchisee,
+    permissionId: fixtureIds.permissions.advertiserImportManage,
     scope: "own_territory",
     constraints: {}
   },
