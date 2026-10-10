@@ -15,6 +15,7 @@ import {
   snapshotFromForm,
   submitPageAsActor
 } from "../../../../../../../lib/edition-runtime";
+import { resolveSnapshotImages } from "../../../../../../../lib/studio-images";
 
 async function actor(request: RequestedShellContext, module: string, action: string) {
   const shell = await requireShellPermission(request, { module, action });
@@ -25,7 +26,7 @@ async function save(request: RequestedShellContext, editionId: string, pageId: s
   const who = await actor(request, "edition.content", "edit_local");
   const studio = await readStudioPage(who, editionId, pageId);
   if (!studio.layout) throw new Error("Assign a template to this page first.");
-  const snapshot = snapshotFromForm(formData, studio.layout.zones.map((zone) => ({ id: zone.id, kind: zone.kind })));
+  const snapshot = await resolveSnapshotImages(who, editionId, snapshotFromForm(formData, studio.layout.zones.map((zone) => ({ id: zone.id, kind: zone.kind }))));
   const { revision } = await savePageAsActor(who, pageId, snapshot);
   return revision.warnings.length;
 }

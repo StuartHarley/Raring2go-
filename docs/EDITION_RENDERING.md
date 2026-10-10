@@ -69,3 +69,9 @@ Page preflight derives its facts from the layout, not from a guess: colour is CM
 **Not handled, and needs your printer's spec before a real run:** creep (shingling), gripper margin, press-sheet size and n-up beyond a two-page spread, perfect-bound and other binding orders, and any press-specific marks (colour bars, registration targets).
 
 The pdf-lib steps are tested on real PDFs. Chromium and Ghostscript are still replaced by a fake in tests, so the whole chain is **still unverified on a real press-grade run**.
+
+## Images in the studio
+
+Editors choose an image from the territory's uploads or upload one in the studio. Uploads are checked for type (PNG, JPEG, WebP), size (4MB, the serverless request cap) and that the bytes really are that kind of image; the pixel size is read from the file and stored, and the file is scanned before it can be used. Files are stored against the edition's territory, so everyone working on that edition can use them and no other territory can. Saving a page takes the stored size, never the form's, so print preflight (resolution = pixels over the zone width) cannot be fooled.
+
+At render time each placed file is resolved to a short-lived download link, after re-checking that it exists, is clean and belongs to the edition's territory; a missing or foreign image stops the render. The output's idempotency key is made from the layout with stable placeholders for the files, so a refreshed link reuses the existing output and a different picture makes a new version. The render service needs outbound access to the storage provider's download links; no images are embedded in the request.

@@ -25,6 +25,7 @@ export const routeManifest: Record<string, RouteEntry> = {
   "api/franchise/documents/route.ts": { protection: "session", reason: "Franchise document or new version upload: scanned and stored, needs the document upload permission for that franchise, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
   "api/files/development/[...path]/route.ts": { protection: "dev_only", reason: "Local disk storage backend: unauthenticated, so disabled in production builds." },
   "(app)/app/editions/[id]/outputs/[outputId]/route.ts": { protection: "session", reason: "Edition output PDF download: needs edition view for that edition, then a short-lived storage link.", extraMarkers: [/module: "edition"/, /no-store/] },
+  "api/editions/[id]/images/route.ts": { protection: "session", reason: "Page studio images: list and upload for an edition the caller can edit, per-user rate limited, type and size checked, scanned.", extraMarkers: [/firstRateLimitRefusal\(/, /edit_local/] },
   "api/files/list/route.ts": { protection: "session", reason: "Lists the caller's own uploaded images." },
   "api/files/upload/route.ts": { protection: "session", reason: "Newsletter image upload, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
   "api/health/route.ts": { protection: "public_static", reason: "Uptime status only; per-check detail needs the cron secret.", extraMarkers: [/isAuthorizedCronRequest\(/] },

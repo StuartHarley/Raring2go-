@@ -15,3 +15,4 @@ export * from "./template-spec";
 export * from "./season-spec";
 export * from "./control-room";
 export * from "./imposition";
+export * from "./image-meta";

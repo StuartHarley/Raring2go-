@@ -23,6 +23,7 @@ import { assertFileIsDownloadable, createScannerProviderFromEnv, createStoragePr
 import { createDrizzleJobStore, defineJobHandler, enqueueJob, PermanentJobError, RetryableJobError } from "@raring2go/workflows";
 import type { JobHandler, WorkflowsDb } from "@raring2go/workflows";
 import { getPermissionData } from "./permission-source";
+import { resolveImageUrlsForRender } from "./studio-images";
 import { readTerritoryEdition } from "./publishing-runtime";
 
 export const GENERATE_OUTPUT_KIND = "publishing.generate_output";
@@ -95,6 +96,7 @@ export function outputIdempotencyKey(kind: string, editionId: string, html: stri
 type Deps = {
   provider?: RenderProvider | null;
   db?: ReturnType<typeof createDb>;
+  images?: { storage?: ReturnType<typeof createStorageProviderFromEnv> };
   files?: { storage: ReturnType<typeof createStorageProviderFromEnv>; scanner: ReturnType<typeof createScannerProviderFromEnv>; fetch?: typeof fetch };
 };
 
@@ -121,17 +123,29 @@ export async function generateEditionOutput(payload: GenerateOutputPayload, deps
       }
     })();
     const { edition, model } = prepared;
+    // The key is made from the HTML with stable placeholders for uploaded images, so a changed picture (a new file id) makes
+    // a new version but a refreshed download link does not.
     const html = renderEditionHtml(model, payload.kind);
     const key = outputIdempotencyKey(payload.kind, edition.id, html);
 
     const existing = (await loadPublishingData(db)).publicationOutputs.find((output) => output.idempotencyKey === key && !output.deletedAt);
     if (existing) return { outputId: existing.id, reused: true };
 
+    const fileIds = model.pages.flatMap((page) => page.zones.map((zone) => zone.image?.fileId).filter((id): id is string => Boolean(id)));
+    let renderHtml = html;
+    if (fileIds.length > 0) {
+      try {
+        renderHtml = renderEditionHtml(model, payload.kind, { imageUrls: await resolveImageUrlsForRender(edition.territoryId, fileIds, deps.images) });
+      } catch (error) {
+        throw new PermanentJobError(error instanceof Error ? error.message : "A placed image could not be found.", "image_unavailable");
+      }
+    }
+
     const bleedMm = payload.kind === "print" ? model.geometry.bleed : 0;
     const marginMm = payload.kind === "print" ? printMarginMm(model.geometry.bleed) : 0;
     const request: RenderRequest = {
       kind: payload.kind,
-      html,
+      html: renderHtml,
       sheetWidthMm: model.geometry.trimWidth + marginMm * 2,
       sheetHeightMm: model.geometry.trimHeight + marginMm * 2,
       bleedMm,
