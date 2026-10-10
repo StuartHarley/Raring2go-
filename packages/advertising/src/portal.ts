@@ -114,6 +114,8 @@ export type PortalView = {
 
 const SUBMITTABLE: ArtworkRequirement["status"][] = ["requested", "changes_requested", "rejected"];
 const todayOf = (now: Date) => now.toISOString().slice(0, 10);
+/** Dates in sentences shown to advertisers read as "10 Aug 2026", never as ISO strings. */
+const readable = (iso: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" }).format(new Date(`${iso}T00:00:00Z`));
 const text = (value: unknown) => (typeof value === "string" && value ? value : null);
 
 function numericMetrics(value: Record<string, unknown>): Record<string, number> {
@@ -216,10 +218,10 @@ export function buildPortalView(identity: PortalIdentity, data: AdvertisingData,
   }));
 
   const needsAction: PortalNeedsAction[] = [
-    ...proposalViews.filter((proposal) => proposal.canRespond).map((proposal): PortalNeedsAction => ({ kind: "proposal", title: `Respond to proposal: ${proposal.title}`, detail: proposal.validUntil ? `Valid until ${proposal.validUntil}` : "Awaiting your response", recordId: proposal.id })),
+    ...proposalViews.filter((proposal) => proposal.canRespond).map((proposal): PortalNeedsAction => ({ kind: "proposal", title: `Respond to proposal: ${proposal.title}`, detail: proposal.validUntil ? `Valid until ${readable(proposal.validUntil)}` : "Awaiting your response", recordId: proposal.id })),
     ...campaigns.flatMap((campaign) => campaign.artwork.flatMap((artwork): PortalNeedsAction[] => [
-      ...(artwork.awaitingProofApproval ? [{ kind: "proof" as const, title: "Approve your proof", detail: artwork.deadline ? `Needed by ${artwork.deadline}` : "A proof is ready for your approval", recordId: artwork.requirementId }] : []),
-      ...(artwork.canSubmit ? [{ kind: "artwork" as const, title: artwork.status === "requested" ? "Send your artwork" : "Send revised artwork", detail: artwork.deadline ? `Needed by ${artwork.deadline}` : "Artwork is needed for this booking", recordId: artwork.requirementId }] : [])
+      ...(artwork.awaitingProofApproval ? [{ kind: "proof" as const, title: "Approve your proof", detail: artwork.deadline ? `Needed by ${readable(artwork.deadline)}` : "A proof is ready for your approval", recordId: artwork.requirementId }] : []),
+      ...(artwork.canSubmit ? [{ kind: "artwork" as const, title: artwork.status === "requested" ? "Send your artwork" : "Send revised artwork", detail: artwork.deadline ? `Needed by ${readable(artwork.deadline)}` : "Artwork is needed for this booking", recordId: artwork.requirementId }] : [])
     ])),
     ...invoices.filter((invoice) => invoice.overdue).map((invoice): PortalNeedsAction => ({ kind: "invoice", title: `Invoice ${invoice.invoiceNumber} is overdue`, detail: `Balance due: ${(invoice.balanceMinor / 100).toFixed(2)} ${invoice.currency}`, recordId: invoice.id }))
   ];

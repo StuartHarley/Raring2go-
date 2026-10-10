@@ -34,8 +34,6 @@ const money = (minor: number, currency: string) => new Intl.NumberFormat("en-GB"
 const figure = (value: number) => new Intl.NumberFormat("en-GB").format(value);
 
 /** The to-do list from the domain carries ISO dates ("Needed by 2026-03-01"); show them as words. */
-const withReadableDates = (text: string) => text.replace(/\d{4}-\d{2}-\d{2}/g, (date) => formatDate(date));
-
 /** Colour artwork by what the advertiser needs to do: green when done, red when it needs re-sending, amber while it waits. */
 function artworkTone(status: string): Tone {
   if (status === "approved" || status === "production_ready") return "success";
@@ -84,7 +82,7 @@ export default async function PortalPage({ searchParams }: PageProps) {
         ) : (
           <RecordList>
             {view.needsAction.map((item) => (
-              <RecordCard key={`${item.kind}:${item.recordId}`} title={item.title} lines={[withReadableDates(item.detail)]} />
+              <RecordCard key={`${item.kind}:${item.recordId}`} title={item.title} lines={[item.detail]} />
             ))}
           </RecordList>
         )}

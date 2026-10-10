@@ -9,7 +9,7 @@ import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 
-export const metadata = { title: "Marketing command centre" };
+export const metadata = { title: "Marketing overview" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -33,7 +33,7 @@ export default async function MarketingCommandPage({ searchParams }: PageProps) 
     <AppShell request={request}>
       <PageHeader
         eyebrow="Marketing"
-        title="Marketing command centre"
+        title="Marketing overview"
         intro="How audience, newsletters, journeys and social are doing across the areas you look after, and what needs attention first."
         actions={
           <>

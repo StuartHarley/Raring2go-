@@ -90,7 +90,7 @@ All five P1 findings are addressed, and the shell items from the P2 list that fi
 | P2 7 One browser title | Done. Every page exports a title, templated as "Page · Raring2go!". |
 | P2 8 Repetitive top bar | Done. One context control (switcher when there is a choice) and one account control. |
 | P2 9 Breadcrumbs / heading levels | Done. Every page has one `h1` from PageHeader; every record page has breadcrumbs back to its list. |
-| P2 10 Label vocabulary | Not started (needs a naming decision). |
+| P2 10 Label vocabulary | Done. Named product areas keep their names in Title Case (My Today, Action Centre, Content Studio, Edition Factory); everything else is a plain noun in sentence case. "Commercial Command" is now "Commercial health", "Marketing Command" is "Marketing overview", "Job Console" is "Background jobs", "Audit Activity" is "Audit trail", "Scorecard" is "Franchise scorecard". |
 
 ## Notes for the next reviewer
 

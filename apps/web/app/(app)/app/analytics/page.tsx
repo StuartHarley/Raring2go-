@@ -14,7 +14,7 @@ import { bandLabels, benchmarkLabels, formatChange, formatMetric } from "./forma
 import { getPermissionData } from "../../../../lib/permission-source";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 
-export const metadata = { title: "Scorecard" };
+export const metadata = { title: "Franchise scorecard" };
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   snapshot_generated: { tone: "success", text: "Snapshot generated for today." },

@@ -9,7 +9,7 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
-export const metadata = { title: "Commercial command centre" };
+export const metadata = { title: "Commercial health" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;

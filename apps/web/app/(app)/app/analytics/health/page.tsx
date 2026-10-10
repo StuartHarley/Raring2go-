@@ -55,7 +55,7 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
 
   return (
     <AppShell request={request}>
-      <Breadcrumbs items={[{ label: "Scorecard", href: back }, { label: "Franchise health settings" }]} />
+      <Breadcrumbs items={[{ label: "Franchise scorecard", href: back }, { label: "Franchise health settings" }]} />
       <PageHeader
         eyebrow="Analytics"
         title="Franchise Health Score settings"

@@ -14,7 +14,7 @@ import { cancelJobAction, retryJobAction } from "./actions";
 import { getPermissionData } from "../../../../../lib/permission-source";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
 
-export const metadata = { title: "Job console" };
+export const metadata = { title: "Background jobs" };
 
 const resultMessages: Record<string, { tone: "success" | "error"; text: string }> = {
   retried: { tone: "success", text: "Job re-queued. It will run on the next worker tick." },
@@ -66,7 +66,7 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
     <AppShell request={request}>
       <PageHeader
         eyebrow="System"
-        title="Job console"
+        title="Background jobs"
         intro="The background work behind publishing, email and automation. A job that has used up its retries lands here as dead-lettered, and you can re-run it from the record it belongs to."
       />
 
@@ -109,7 +109,7 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
         </Panel>
       ) : null}
 
-      <Panel eyebrow="Queue" title="Background jobs">
+      <Panel eyebrow="Queue" title="Every job">
         {jobs.length === 0 ? (
           <EmptyState title={status ? `No ${(statusLabels[status] ?? formatLabel(status)).toLowerCase()} jobs` : "No background jobs yet"}>
             Jobs appear here as workers pick up publishing, email and automation work.

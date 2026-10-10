@@ -8,7 +8,7 @@ import { protectedOutcome } from "../../../../lib/protected-outcome";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 
-export const metadata = { title: "Audit activity" };
+export const metadata = { title: "Audit trail" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -48,7 +48,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
     <AppShell request={request}>
       <PageHeader
         eyebrow="System"
-        title="Audit activity"
+        title="Audit trail"
         intro="Who changed what, and when: a read-only trail of the system, security, franchise, commercial, publishing and marketing actions that matter."
       />
 

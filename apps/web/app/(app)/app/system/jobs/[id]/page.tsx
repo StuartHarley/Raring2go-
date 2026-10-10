@@ -39,7 +39,7 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
 
   return (
     <AppShell request={request}>
-      <Breadcrumbs items={[{ label: "Job console", href: "/app/system/jobs" as Route }, { label: formatCode(job.kind) }]} />
+      <Breadcrumbs items={[{ label: "Background jobs", href: "/app/system/jobs" as Route }, { label: formatCode(job.kind) }]} />
 
       <PageHeader eyebrow="Job" title={formatCode(job.kind)} intro={`Created ${formatDateTime(job.createdAt)}.`} />
 

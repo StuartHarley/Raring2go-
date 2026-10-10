@@ -121,7 +121,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "portal",
-    label: "My Campaigns",
+    label: "My campaigns",
     href: "/app/portal",
     capability: {
       module: "portal.advertiser",
@@ -132,7 +132,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "tasks",
-    label: "Tasks & Approvals",
+    label: "Tasks & approvals",
     href: "/app/tasks",
     capability: {
       module: "automation.task",
@@ -220,7 +220,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "marketing-analytics",
-    label: "Marketing Analytics",
+    label: "Marketing analytics",
     href: "/app/marketing-analytics",
     capability: {
       module: "marketing.analytics",
@@ -231,7 +231,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "marketing-command",
-    label: "Marketing Command",
+    label: "Marketing overview",
     href: "/app/marketing-command",
     capability: {
       module: "marketing.analytics",
@@ -253,7 +253,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "event-discovery",
-    label: "Event Discovery",
+    label: "Event discovery",
     href: "/app/content/events",
     capability: {
       module: "content.event_suggestion",
@@ -264,7 +264,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "social",
-    label: "Social Queue",
+    label: "Social queue",
     href: "/app/social",
     capability: {
       module: "social",
@@ -275,7 +275,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "commercial-command",
-    label: "Commercial Command",
+    label: "Commercial health",
     href: "/app/advertisers/command-centre",
     capability: {
       module: "advertiser.analytics",
@@ -308,7 +308,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "roles",
-    label: "Roles & Permissions",
+    label: "Roles & permissions",
     href: "/app/roles",
     capability: {
       module: "roles",
@@ -341,7 +341,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "ai-runs",
-    label: "AI Runs",
+    label: "AI runs",
     href: "/app/system/ai",
     capability: {
       module: "ai.run",
@@ -363,7 +363,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "scorecard",
-    label: "Scorecard",
+    label: "Franchise scorecard",
     href: "/app/analytics",
     capability: {
       module: "analytics.scorecard",
@@ -374,7 +374,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "privacy",
-    label: "Privacy Requests",
+    label: "Privacy requests",
     href: "/app/privacy",
     capability: {
       module: "privacy.request",
@@ -385,7 +385,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "jobs",
-    label: "Job Console",
+    label: "Background jobs",
     href: "/app/system/jobs",
     capability: {
       module: "system.jobs",
@@ -396,7 +396,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "activity",
-    label: "Audit Activity",
+    label: "Audit trail",
     href: "/app/activity",
     capability: {
       module: "system",

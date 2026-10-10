@@ -56,3 +56,7 @@ Every operator page under `apps/web/app/(app)/app` now uses the anatomy, includi
 Values deliberately shown raw are identifiers people search or type: permission codes on the role page, job and correlation ids on the job page, audit action codes under their formatted label, and tax-rate codes needed to add a successor rate.
 
 Brand assets: no production logo vector has been supplied yet. `BrandMark` and `app/icon.svg` are interim marks set in the brand colours and type stack; replace both when the logo files arrive, without touching pages.
+
+## Naming
+
+Named product areas keep their names and Title Case: My Today, Action Centre, Content Studio, Edition Factory. Every other destination, panel and button is a plain noun in sentence case ("Tasks & approvals", "Background jobs", "Audit trail", "Franchise scorecard", "Newsletter factory"). Avoid metaphors ("command centre", "control room", "360") in navigation; use them, if at all, only in an intro sentence.
