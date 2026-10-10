@@ -1,6 +1,7 @@
 import type { Route } from "next";
-import { requireShellPermission } from "../../../../../lib/app-shell";
+import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { hasContentAiCapability } from "../../../../../lib/publishing-runtime";
+import { PageHeader, Panel } from "../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -27,29 +28,20 @@ export default async function NewAiContentPage({ searchParams }: PageProps) {
   }
 
   if (!canUseAi) {
-    return (
-      <main className="app-outcome app-outcome-unauthorised">
-        <section>
-          <p className="eyebrow">unauthorised</p>
-          <h1>Access denied</h1>
-          <p>You do not have permission to draft content with AI.</p>
-        </section>
-      </main>
-    );
+    return protectedOutcome(new ShellAccessError("unauthorised", "You do not have permission to draft content with AI."), request);
   }
 
   return (
     <AppShell request={request}>
       <Breadcrumbs items={[{ label: "Content Studio", href: "/app/content" as Route }, { label: "New AI draft" }]} />
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Content Studio</p>
-        <h2>Draft content with AI</h2>
-        <p>
-          Describe what you want to publish. You will review the draft first; accepting it creates a new <strong>draft</strong>
-          content item that goes through the normal approval steps. Nothing is published automatically.
-        </p>
+      <PageHeader
+        eyebrow="Content Studio"
+        title="Draft content with AI"
+        intro="Describe what you want to publish. You review the draft first; accepting it creates a new draft content item that goes through the normal approval steps. Nothing is published automatically."
+      />
+      <Panel>
         <ContentDraftForm action={generateContentDraftAction.bind(null, request, null)} revising={false} defaultType="article" />
-      </section>
+      </Panel>
     </AppShell>
   );
 }

@@ -1,5 +1,9 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { listNetworkTerritories, readNewsletterFactoryOverview, readSegments } from "../../../../../lib/marketing-runtime";
+import { displayName, formatCount, formatLabel } from "../../../../../lib/format";
+import { Actions, EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import {
@@ -31,41 +35,34 @@ export default async function NewsletterFactoryPage({ searchParams }: PageProps)
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">HQ newsletter factory</p>
-        <h2>Network-to-local newsletters</h2>
-        <p>
-          Create once at HQ, generate territory-specific editions, and keep local
-          overrides separate from the network master.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Masters</span>
-            <strong>{factory.totals.masters}</strong>
-          </article>
-          <article>
-            <span>Territory editions</span>
-            <strong>{factory.totals.editions}</strong>
-          </article>
-          <article>
-            <span>Ready</span>
-            <strong>{factory.totals.ready}</strong>
-          </article>
-          <article>
-            <span>Needs review</span>
-            <strong>{factory.totals.needsReview}</strong>
-          </article>
-          <article>
-            <span>Blocked</span>
-            <strong>{factory.totals.blocked}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Head Office"
+        title="Newsletter factory"
+        intro="Write one newsletter at Head Office, generate an edition for each area, and keep each area's local additions separate from the master."
+        actions={
+          <>
+            {isNetworkView ? <LinkButton href={"#new-master" as Route}>Create a master</LinkButton> : null}
+            <LinkButton href={"/app/newsletters" as Route} variant="secondary">
+              Newsletters
+            </LinkButton>
+          </>
+        }
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Masters", value: factory.totals.masters },
+            { label: "Area editions", value: factory.totals.editions },
+            { label: "Ready to send", value: factory.totals.ready, tone: factory.totals.ready > 0 ? "success" : "neutral" },
+            { label: "Needs review", value: factory.totals.needsReview, tone: factory.totals.needsReview > 0 ? "warning" : "neutral" },
+            { label: "Blocked", value: factory.totals.blocked, tone: factory.totals.blocked > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
 
       {isNetworkView ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">HQ</p>
-          <h2>Create a newsletter master</h2>
+        <Panel eyebrow="New master" title="Create a newsletter master" id="new-master">
           <form action={createNewsletterMasterAction.bind(null, context)} className="franchise-form">
             <label>
               Title
@@ -76,31 +73,39 @@ export default async function NewsletterFactoryPage({ searchParams }: PageProps)
               <input type="text" name="seasonKey" placeholder="e.g. autumn" />
             </label>
             <label>
-              <input type="checkbox" name="requireLocalContent" /> Require each territory to add local picks before sending
+              <input type="checkbox" name="requireLocalContent" /> Require each area to add local picks before sending
             </label>
-            <button type="submit">Create master</button>
+            <button type="submit" className="r2-button r2-button--primary">
+              Create master
+            </button>
           </form>
-        </section>
+        </Panel>
       ) : null}
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Masters</p>
-        <h2>Approved network content</h2>
-        <div className="franchise-list">
-          {factory.masters.length === 0 ? (
-            <div>
-              <strong>No visible masters</strong>
-              <span>Approved HQ newsletter masters will appear here.</span>
-            </div>
-          ) : (
-            factory.masters.map((master) => (
-              <div key={master.id}>
-                <strong>{master.title}</strong>
-                <span>{master.status} - {master.seasonKey ?? "no season"}</span>
-                <span>{master.localEditableBlocks.length} local editable block(s)</span>
+      <Panel eyebrow="Masters" title="Network masters" id="masters">
+        {factory.masters.length === 0 ? (
+          <EmptyState title="No masters yet">
+            {isNetworkView ? "Create a master above and approve it to generate area editions." : "Approved Head Office masters will appear here."}
+          </EmptyState>
+        ) : (
+          <RecordList>
+            {factory.masters.map((master) => (
+              <RecordCard
+                key={master.id}
+                title={master.title}
+                status={master.status}
+                lines={[
+                  master.seasonKey ? `${formatLabel(master.seasonKey)} season` : "No season set",
+                  formatCount(master.localEditableBlocks.length, "block areas can edit locally", "blocks areas can edit locally")
+                ]}
+              >
                 {isNetworkView && master.status === "draft" ? (
                   <form action={approveMasterAction.bind(null, context, master.id)}>
-                    <button type="submit">Approve master</button>
+                    <Actions>
+                      <button type="submit" className="r2-button r2-button--primary">
+                        Approve master
+                      </button>
+                    </Actions>
                   </form>
                 ) : null}
                 {isNetworkView && (master.status === "approved" || master.status === "generated") ? (
@@ -110,77 +115,75 @@ export default async function NewsletterFactoryPage({ searchParams }: PageProps)
                         <input type="checkbox" name="territoryIds" value={territory.id} defaultChecked /> {territory.name}
                       </label>
                     ))}
-                    <button type="submit">Generate territory editions</button>
+                    <button type="submit" className="r2-button r2-button--primary">
+                      Generate area editions
+                    </button>
                   </form>
                 ) : null}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Territory editions</p>
-        <h2>Local readiness</h2>
-        <div className="franchise-list">
-          {factory.editions.length === 0 ? (
-            <div>
-              <strong>No generated editions yet</strong>
-              <span>Approve a master and generate editions to see territory readiness here.</span>
-            </div>
-          ) : (
-            factory.editions.map((edition) => {
+      <Panel eyebrow="Area editions" title="Local readiness" id="editions">
+        {factory.editions.length === 0 ? (
+          <EmptyState title="No editions generated yet">Approve a master and generate its editions to see the readiness of each area here.</EmptyState>
+        ) : (
+          <RecordList>
+            {factory.editions.map((edition) => {
               const segment = segments.find((candidate) => candidate.territoryId === edition.territoryId);
               const canEdit = !context.territoryId || context.territoryId === edition.territoryId;
 
               return (
-                <div key={edition.id}>
-                  <strong>{territoryName(territories, edition.territoryId)}</strong>
-                  <span>{edition.status} - {edition.warnings.length} warning(s)</span>
-                  <span>{Object.keys(edition.localOverrides).length} local override(s)</span>
-                  {edition.emailCampaignId ? (
-                    <span>
-                      Linked to campaign {edition.emailCampaignId} - manage sending from{" "}
-                      <a href="/app/newsletters">Newsletters</a>
-                    </span>
-                  ) : (
-                    <>
-                      {canEdit ? (
-                        <form action={addEditionOverrideAction.bind(null, context, edition.id)} className="franchise-form">
-                          <label>
-                            Local picks (one per line)
-                            <textarea name="localPicks" rows={3} />
-                          </label>
-                          <button type="submit">Save local content</button>
-                        </form>
-                      ) : null}
-                      {canEdit && edition.status !== "blocked" && segment ? (
-                        <form
-                          action={createCampaignFromEditionAction.bind(null, context, edition.id, segment.id)}
-                          className="franchise-form"
-                        >
-                          <label>
-                            Subject
-                            <input type="text" name="subject" required />
-                          </label>
-                          <label>
-                            Preheader
-                            <input type="text" name="preheader" />
-                          </label>
-                          <button type="submit">Create campaign from this edition</button>
-                        </form>
-                      ) : null}
-                      {canEdit && edition.status !== "blocked" && !segment ? (
-                        <span>No audience segment is configured for this territory yet.</span>
-                      ) : null}
-                    </>
-                  )}
-                </div>
+                <RecordCard
+                  key={edition.id}
+                  title={territoryName(territories, edition.territoryId)}
+                  status={edition.status}
+                  lines={[
+                    `${formatCount(edition.warnings.length, "warning")} · ${formatCount(Object.keys(edition.localOverrides).length, "local override")}`,
+                    edition.emailCampaignId ? (
+                      <>
+                        A campaign has been created from this edition - manage sending from <Link href={"/app/newsletters" as Route}>Newsletters</Link>
+                      </>
+                    ) : null,
+                    !edition.emailCampaignId && canEdit && edition.status !== "blocked" && !segment
+                      ? "No audience segment is configured for this area yet."
+                      : null
+                  ]}
+                >
+                  {!edition.emailCampaignId && canEdit ? (
+                    <form action={addEditionOverrideAction.bind(null, context, edition.id)} className="franchise-form">
+                      <label>
+                        Local picks (one per line)
+                        <textarea name="localPicks" rows={3} />
+                      </label>
+                      <button type="submit" className="r2-button r2-button--secondary">
+                        Save local content
+                      </button>
+                    </form>
+                  ) : null}
+                  {!edition.emailCampaignId && canEdit && edition.status !== "blocked" && segment ? (
+                    <form action={createCampaignFromEditionAction.bind(null, context, edition.id, segment.id)} className="franchise-form">
+                      <label>
+                        Subject
+                        <input type="text" name="subject" required />
+                      </label>
+                      <label>
+                        Preheader
+                        <input type="text" name="preheader" />
+                      </label>
+                      <button type="submit" className="r2-button r2-button--primary">
+                        Create campaign from this edition
+                      </button>
+                    </form>
+                  ) : null}
+                </RecordCard>
               );
-            })
-          )}
-        </div>
-      </section>
+            })}
+          </RecordList>
+        )}
+      </Panel>
     </AppShell>
   );
 }
@@ -214,5 +217,5 @@ async function loadFactory(request: Awaited<ReturnType<typeof requestFromSearchP
 }
 
 function territoryName(territories: Array<{ id: string; name: string }>, territoryId: string) {
-  return territories.find((territory) => territory.id === territoryId)?.name ?? territoryId;
+  return displayName(territories.find((territory) => territory.id === territoryId)?.name, "Area not named yet");
 }

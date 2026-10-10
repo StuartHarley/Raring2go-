@@ -2,7 +2,7 @@ import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasAutomationCapability, readTasksAndApprovals } from "../../../../lib/automation-runtime";
 import type { AutomationActorContext } from "../../../../lib/automation-runtime";
 import { formatDate, formatDateTime } from "../../../../lib/format";
-import { EmptyState, Metrics, PageHeader, Panel } from "../../../../lib/page-ui";
+import { EmptyState, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { completeTaskAction, decideApprovalAction } from "./actions";
@@ -60,17 +60,17 @@ export default async function TasksPage({ searchParams }: PageProps) {
       </Panel>
 
       <Panel eyebrow="Approvals" title="Needs a decision" id="approvals">
-        <div className="franchise-list">
-          {approvals.length === 0 ? (
-            <EmptyState title="Nothing is waiting for a decision">Approvals raised by workflows will appear here with their deadline.</EmptyState>
-          ) : (
-            approvals.map((approval) => (
-              <div key={approval.id}>
-                <strong>{approval.title}</strong>
-                <span>
-                  {approval.description ?? "A workflow is paused until this is decided."}
-                  {approval.expiresAt ? ` Expires ${formatDate(approval.expiresAt)}.` : ""}
-                </span>
+        {approvals.length === 0 ? (
+          <EmptyState title="Nothing is waiting for a decision">Approvals raised by workflows will appear here with their deadline.</EmptyState>
+        ) : (
+          <RecordList>
+            {approvals.map((approval) => (
+              <RecordCard
+                key={approval.id}
+                title={approval.title}
+                status="pending"
+                lines={[`${approval.description ?? "A workflow is paused until this is decided."}${approval.expiresAt ? ` Expires ${formatDate(approval.expiresAt)}.` : ""}`]}
+              >
                 {hasAutomationCapability(permissions, context, "approvalDecide") ? (
                   <form className="franchise-form">
                     <label>
@@ -87,26 +87,27 @@ export default async function TasksPage({ searchParams }: PageProps) {
                     </div>
                   </form>
                 ) : null}
-              </div>
-            ))
-          )}
-        </div>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
       </Panel>
 
       <Panel eyebrow="Tasks" title="Open tasks" id="tasks">
-        <div className="franchise-list">
-          {tasks.length === 0 ? (
-            <EmptyState title="No open tasks">You are up to date. New tasks arrive as workflows run.</EmptyState>
-          ) : (
-            tasks.map((task) => {
+        {tasks.length === 0 ? (
+          <EmptyState title="No open tasks">You are up to date. New tasks arrive as workflows run.</EmptyState>
+        ) : (
+          <RecordList>
+            {tasks.map((task) => {
               const isOverdue = Boolean(task.dueDate && task.dueDate < today);
               return (
-                <div key={task.id}>
-                  <strong>{task.title}</strong>
-                  <span>
-                    {task.assigneeScope === "hq" ? "Head Office" : "Territory team"} · Due {formatDate(task.dueDate, "No due date")}
-                    {isOverdue ? " · Overdue" : ""}
-                  </span>
+                <RecordCard
+                  key={task.id}
+                  title={task.title}
+                  status={isOverdue ? "overdue" : "open"}
+                  tone={isOverdue ? "danger" : "info"}
+                  lines={[`${task.assigneeScope === "hq" ? "Head Office" : "Territory team"} · Due ${formatDate(task.dueDate, "No due date")}`]}
+                >
                   {task.link ? <a href={task.link}>Open related record</a> : null}
                   {hasAutomationCapability(permissions, context, "taskComplete") ? (
                     <form action={completeTaskAction.bind(null, request, task.id)}>
@@ -115,29 +116,25 @@ export default async function TasksPage({ searchParams }: PageProps) {
                       </button>
                     </form>
                   ) : null}
-                </div>
+                </RecordCard>
               );
-            })
-          )}
-        </div>
+            })}
+          </RecordList>
+        )}
       </Panel>
 
       <Panel eyebrow="Recent" title="Notifications" id="notifications">
-        <div className="franchise-list">
-          {notifications.length === 0 ? (
-            <EmptyState title="No notifications yet" />
-          ) : (
-            notifications.map((note) => (
-              <div key={note.id}>
-                <strong>{note.title}</strong>
-                <span>
-                  {note.body ?? ""} {formatDateTime(note.createdAt)}
-                </span>
+        {notifications.length === 0 ? (
+          <EmptyState title="No notifications yet" />
+        ) : (
+          <RecordList>
+            {notifications.map((note) => (
+              <RecordCard key={note.id} title={note.title} lines={[note.body ?? null, formatDateTime(note.createdAt)]}>
                 {note.link ? <a href={note.link}>Open</a> : null}
-              </div>
-            ))
-          )}
-        </div>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
       </Panel>
     </AppShell>
   );

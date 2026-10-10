@@ -1,6 +1,8 @@
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { hasMarketingCapability, listNetworkTerritories, readJourneyDetail } from "../../../../../lib/marketing-runtime";
-import { Breadcrumbs, StatusBadge } from "../../../../../lib/workflow-ui";
+import { formatLabel } from "../../../../../lib/format";
+import { Metrics, Notice, PageHeader, Panel, toneForStatus } from "../../../../../lib/page-ui";
+import { Breadcrumbs } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { JourneyBuilderFields } from "../JourneyBuilderFields";
@@ -28,62 +30,62 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
   const { context, detail, territoryOptions, canEdit, canApprove, canActivate, canPause } = result;
   const { journey, latestVersion } = detail;
   const isDraft = journey.status === "draft";
+  const showApprove = canApprove && isDraft && latestVersion;
+  const showActivate = canActivate && journey.status === "approved";
+  const showPause = canPause && (journey.status === "active" || journey.status === "approved");
 
   return (
     <AppShell request={request}>
       <Breadcrumbs items={[{ label: "Journeys", href: "/app/journeys" }, { label: journey.name }]} />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Journey</p>
-        <h2>{journey.name}</h2>
-        <p>{journey.description ?? "No journey description provided."}</p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Status</span>
-            <strong><StatusBadge status={journey.status} /></strong>
-          </article>
-          <article>
-            <span>Version</span>
-            <strong>{latestVersion?.versionNumber ?? "-"}</strong>
-          </article>
-          <article>
-            <span>Entries</span>
-            <strong>{detail.entries}</strong>
-          </article>
-          <article>
-            <span>Active runs</span>
-            <strong>{detail.activeExecutions}</strong>
-          </article>
-          <article>
-            <span>Failed runs</span>
-            <strong>{detail.failedExecutions}</strong>
-          </article>
-        </div>
+      <PageHeader
+        eyebrow="Journey"
+        title={journey.name}
+        intro={journey.description ?? "No description yet."}
+        actions={
+          showApprove || showActivate || showPause ? (
+            <>
+              {showApprove ? (
+                <form action={approveJourneyAction.bind(null, context, journey.id, latestVersion.id)}>
+                  <button type="submit" className="r2-button r2-button--primary">
+                    Approve this version
+                  </button>
+                </form>
+              ) : null}
+              {showActivate ? (
+                <form action={activateJourneyAction.bind(null, context, journey.id)}>
+                  <button type="submit" className="r2-button r2-button--primary">
+                    Activate
+                  </button>
+                </form>
+              ) : null}
+              {showPause ? (
+                <form action={pauseJourneyAction.bind(null, context, journey.id)}>
+                  <button type="submit" className="r2-button r2-button--secondary">
+                    Pause
+                  </button>
+                </form>
+              ) : null}
+            </>
+          ) : undefined
+        }
+      />
 
-        <div className="franchise-actions">
-          {canApprove && isDraft && latestVersion ? (
-            <form action={approveJourneyAction.bind(null, context, journey.id, latestVersion.id)}>
-              <button type="submit">Approve this version</button>
-            </form>
-          ) : null}
-          {canActivate && journey.status === "approved" ? (
-            <form action={activateJourneyAction.bind(null, context, journey.id)}>
-              <button type="submit">Activate</button>
-            </form>
-          ) : null}
-          {canPause && (journey.status === "active" || journey.status === "approved") ? (
-            <form action={pauseJourneyAction.bind(null, context, journey.id)}>
-              <button type="submit">Pause</button>
-            </form>
-          ) : null}
-        </div>
-      </section>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Status", value: formatLabel(journey.status), tone: toneForStatus(journey.status) },
+            { label: "Version", value: latestVersion?.versionNumber ?? "None yet" },
+            { label: "Entries", value: detail.entries },
+            { label: "Active runs", value: detail.activeExecutions, tone: detail.activeExecutions > 0 ? "info" : "neutral" },
+            { label: "Failed runs", value: detail.failedExecutions, tone: detail.failedExecutions > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
 
       {isDraft && latestVersion ? (
         canEdit ? (
-          <section className="app-panel franchise-panel">
-            <p className="eyebrow">Draft</p>
-            <h2>Edit journey</h2>
+          <Panel eyebrow="Draft" title="Edit journey" id="edit">
             <form action={updateJourneyDraftAction.bind(null, context, journey.id)} className="franchise-form journey-builder-form">
               <JourneyBuilderFields
                 initial={{
@@ -95,29 +97,34 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
                 }}
                 territoryOptions={territoryOptions}
               />
-              <button type="submit">Save changes</button>
+              <button type="submit" className="r2-button r2-button--primary">
+                Save changes
+              </button>
             </form>
-          </section>
+          </Panel>
         ) : (
-          <p className="franchise-readonly">This draft is read-only in the current context.</p>
+          <Panel eyebrow="Draft" title="Edit journey">
+            <Notice tone="info">This draft is read-only in your current working context.</Notice>
+          </Panel>
         )
       ) : latestVersion ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Approved content</p>
-          <h2>Steps</h2>
-          <p>
-            This journey is {journey.status} - its approved content can no longer be edited. Pause and create a
-            replacement journey to make changes.
-          </p>
+        <Panel
+          eyebrow="Approved content"
+          title="Steps"
+          intro={`This journey is ${formatLabel(journey.status).toLowerCase()}, so its approved content can no longer be edited. Pause it and create a replacement journey to make changes.`}
+          id="steps"
+        >
           <ol className="franchise-activity">
             {latestVersion.steps.map((step, index) => (
               <li key={step.key}>
-                <strong>Step {index + 1}: {step.email.subject}</strong>
+                <strong>
+                  Step {index + 1}: {step.email.subject}
+                </strong>
                 <span>{index === 0 ? "Runs immediately on entry" : `Waits ${step.delayMinutes} minute(s) after the previous step`}</span>
               </li>
             ))}
           </ol>
-        </section>
+        </Panel>
       ) : null}
     </AppShell>
   );

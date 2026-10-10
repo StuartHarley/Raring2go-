@@ -82,14 +82,14 @@ All five P1 findings are addressed, and the shell items from the P2 list that fi
 | Finding | Status |
 | --- | --- |
 | P1 1 No sign-out or account control | Done. Account menu in the top bar (name, context, Search, Sign out, Sign out of all devices); ⌘K palette also offers Sign out. |
-| P1 2 Design system unused by the product | Done for the shell and the main landing pages (My Today, Action Centre, Tasks, Search, Franchisees, Advertisers, Content Studio, System) through `lib/page-ui.tsx`; every page now gets the brand focus ring and link colour. Remaining pages migrate vertical by vertical. |
-| P1 3 Raw identifiers and enum values | Done on the migrated pages and in My Today / Action Centre via `lib/format.ts` and directory lookups. Edition Factory and record pages still show some raw values and belong to the next pass. |
+| P1 2 Design system unused by the product | Done. Every operator page and companion panel uses `lib/page-ui.tsx` (PageHeader, Panel, Metrics, RecordList/RecordCard, StatusBadge, EmptyState, Notice, FilterTabs, FactList, Table, Actions). Second pass completed 2026-10-10. |
+| P1 3 Raw identifiers and enum values | Done. Statuses, kinds and dates go through `lib/format.ts`; territory, organisation and user ids resolve to names through the directory. Identifiers people search or type (permission codes, job ids, audit action codes, tax-rate codes) are shown deliberately as code under a formatted label. |
 | P1 4 Unbranded dead ends | Done. Branded `not-found.tsx` and `error.tsx`; refusals render inside the shell with a way back; unauthenticated requests go to sign-in. `loading.tsx` is deliberately not added: pages render the shell themselves, so a route-level loader would blank the navigation on every transition. Moving the shell into the layout is the prerequisite. |
 | P1 5 Placeholders in nav | Done. Territory Dashboard removed from the nav (route redirects to My Today); System is now an administration hub with a health link. |
 | P2 6 Flat wall of links | Done. Collapsible groups with icons; the active group stays open; ⌘K quick navigation. |
 | P2 7 One browser title | Done. Every page exports a title, templated as "Page · Raring2go!". |
 | P2 8 Repetitive top bar | Done. One context control (switcher when there is a choice) and one account control. |
-| P2 9 Breadcrumbs / heading levels | Partly. Migrated pages have a real `h1`; the sidebar no longer claims it. Breadcrumbs on every record page remain to do. |
+| P2 9 Breadcrumbs / heading levels | Done. Every page has one `h1` from PageHeader; every record page has breadcrumbs back to its list. |
 | P2 10 Label vocabulary | Not started (needs a naming decision). |
 
 ## Notes for the next reviewer

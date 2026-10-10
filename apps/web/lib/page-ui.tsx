@@ -126,6 +126,9 @@ const STATUS_TONE: Record<string, Tone> = {
   generated: "success",
   healthy: "success",
   live: "success",
+  not_connected: "neutral",
+  not_created: "neutral",
+  on_track: "success",
   overdue: "danger",
   paused: "warning",
   pending: "warning",
@@ -197,5 +200,88 @@ export function RecordLink({
         </span>
       ))}
     </Link>
+  );
+}
+
+/** The result of an action just taken (from a `?result=` code): success or error, in one line. */
+export function Notice({ tone, children }: { tone: "success" | "error" | "info" | "warning"; children: ReactNode }) {
+  return (
+    <p role={tone === "error" ? "alert" : "status"} className={`notice notice--${tone}`}>
+      {children}
+    </p>
+  );
+}
+
+/** Pill links that filter a list; the current one is marked for assistive tech and styled. */
+export function FilterTabs({ items, label = "Filter" }: { items: Array<{ label: string; href: Route; current?: boolean }>; label?: string }) {
+  return (
+    <nav className="filter-tabs" aria-label={label}>
+      {items.map((item) => (
+        <Link key={item.label} href={item.href} aria-current={item.current ? "page" : undefined}>
+          {item.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/** Key facts about a record as a definition list of small tiles. */
+export function FactList({ items }: { items: Array<{ label: string; value: ReactNode }> }) {
+  return (
+    <dl className="fact-list">
+      {items.map((item) => (
+        <div key={item.label}>
+          <dt>{item.label}</dt>
+          <dd>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** A row of buttons or links under a form or a heading. */
+export function Actions({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={["action-row", className].filter(Boolean).join(" ")}>{children}</div>;
+}
+
+/** A semantic data table that scrolls sideways on narrow screens. Columns are rendered by the caller. */
+export function Table({ caption, children }: { caption?: string; children: ReactNode }) {
+  return (
+    <div className="table-scroll">
+      <table className="r2-table">
+        {caption ? <caption>{caption}</caption> : null}
+        {children}
+      </table>
+    </div>
+  );
+}
+
+/** The non-link twin of RecordLink: a record row that holds its own forms or buttons. */
+export function RecordCard({
+  title,
+  status,
+  tone,
+  lines = [],
+  children
+}: {
+  title: ReactNode;
+  status?: string | null;
+  tone?: Tone;
+  lines?: ReadonlyArray<ReactNode>;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="record-card">
+      <span className="record-card__head">
+        <strong>{title}</strong>
+        {status ? <StatusBadge status={status} tone={tone} /> : null}
+      </span>
+      {lines.filter(Boolean).map((line, index) => (
+        <span key={index} className="record-card__line">
+          {line}
+        </span>
+      ))}
+      {children}
+    </div>
   );
 }

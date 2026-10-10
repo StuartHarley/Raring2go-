@@ -1,5 +1,7 @@
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { listNetworkTerritories, readSegmentsWithAudienceCounts } from "../../../../../lib/marketing-runtime";
+import { formatCount } from "../../../../../lib/format";
+import { EmptyState, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { SegmentRuleBuilder } from "./SegmentRuleBuilder";
@@ -28,18 +30,13 @@ export default async function SegmentsPage({ searchParams }: PageProps) {
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Audience</p>
-        <h2>Segment builder</h2>
-        <p>
-          Build a reusable audience rule with nested AND/OR conditions — territory, subscription status, tags,
-          consent, interests and recent activity — with a live count as you edit.
-        </p>
-      </section>
+      <PageHeader
+        eyebrow="Audience"
+        title="Segments"
+        intro="Reusable groups of contacts built from rules such as area, subscription status, tags, consent, interests and recent activity, with a live count as you edit."
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">New segment</p>
-        <h2>Create a segment</h2>
+      <Panel eyebrow="New segment" title="Create a segment">
         <form action={createSegmentAction.bind(null, context)} className="franchise-form segment-builder-form">
           <label>
             Key
@@ -57,50 +54,53 @@ export default async function SegmentsPage({ searchParams }: PageProps) {
               previewAction={previewSegmentAudienceAction}
             />
           </div>
-          <button type="submit">Create segment</button>
+          <button type="submit" className="r2-button r2-button--primary">
+            Create segment
+          </button>
         </form>
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Existing segments</p>
-        <h2>Segments</h2>
+      <Panel eyebrow="Existing segments" title="Saved segments">
         {segments.length === 0 ? (
-          <p>No segments yet. Create one above to get started.</p>
+          <EmptyState title="No segments yet">Create one above and it will appear here with how many people it reaches.</EmptyState>
         ) : (
-          <div className="franchise-list">
+          <RecordList>
             {segments.map(({ segment, recipientCount }) => (
-              <details key={segment.id}>
-                <summary>
-                  <strong>{segment.name}</strong>
-                  <span>
-                    {segment.key} - {recipientCount} recipient{recipientCount === 1 ? "" : "s"}
-                    {segment.territoryId ? "" : " (national)"}
-                  </span>
-                </summary>
+              <RecordCard
+                key={segment.id}
+                title={segment.name}
+                status={segment.status}
+                lines={[`${segment.key} · ${formatCount(recipientCount, "recipient")}${segment.territoryId ? "" : " · National"}`]}
+              >
                 {segment.segmentType === "dynamic" ? (
-                  <form action={updateSegmentAction.bind(null, context, segment.id)} className="franchise-form segment-builder-form">
-                    <label>
-                      Name
-                      <input type="text" name="name" defaultValue={segment.name} required />
-                    </label>
-                    <div className="segment-builder-field">
-                      <SegmentRuleBuilder
-                        initialRoot={normalizeForEditing(segment.definition)}
-                        territoryOptions={segment.territoryId ? territoryOptions.filter((option) => option.id === segment.territoryId) : territoryOptions}
-                        defaultTerritoryId={segment.territoryId ?? null}
-                        previewAction={previewSegmentAudienceAction}
-                      />
-                    </div>
-                    <button type="submit">Save changes</button>
-                  </form>
+                  <details>
+                    <summary>Edit the rules</summary>
+                    <form action={updateSegmentAction.bind(null, context, segment.id)} className="franchise-form segment-builder-form">
+                      <label>
+                        Name
+                        <input type="text" name="name" defaultValue={segment.name} required />
+                      </label>
+                      <div className="segment-builder-field">
+                        <SegmentRuleBuilder
+                          initialRoot={normalizeForEditing(segment.definition)}
+                          territoryOptions={segment.territoryId ? territoryOptions.filter((option) => option.id === segment.territoryId) : territoryOptions}
+                          defaultTerritoryId={segment.territoryId ?? null}
+                          previewAction={previewSegmentAudienceAction}
+                        />
+                      </div>
+                      <button type="submit" className="r2-button r2-button--secondary">
+                        Save changes
+                      </button>
+                    </form>
+                  </details>
                 ) : (
                   <p>This is a static segment and can&apos;t be edited here.</p>
                 )}
-              </details>
+              </RecordCard>
             ))}
-          </div>
+          </RecordList>
         )}
-      </section>
+      </Panel>
     </AppShell>
   );
 }

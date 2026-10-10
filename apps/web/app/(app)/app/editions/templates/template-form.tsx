@@ -80,7 +80,7 @@ export function TemplateForm({ action, initial, withIdentity, submitLabel }: { a
           </tbody>
         </table>
       </fieldset>
-      <button type="submit">{submitLabel}</button>
+      <button type="submit" className="r2-button r2-button--primary">{submitLabel}</button>
     </form>
   );
 }

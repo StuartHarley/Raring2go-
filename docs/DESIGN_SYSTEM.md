@@ -51,6 +51,8 @@ Rules that follow from it:
 
 The shell itself (`apps/web/app/(app)/layout.tsx`) provides the brand mark, grouped collapsible navigation with group icons (`SidebarNav`), the working-context switcher and account menu (`Disclosure`, native `<details>` with outside-click and Escape handling), and ⌘K quick navigation over the permission-filtered destinations (`ShellCommandPalette`, built on the ui package's `CommandPalette`).
 
-Pages migrated to the anatomy so far: My Today, Action Centre, Tasks & approvals, Search, Franchisees, Advertisers, Content Studio, System. The remaining pages keep their earlier `app-panel` / `franchise-*` markup and inherit the global focus ring and link colour; migrate them vertical by vertical using the same components.
+Every operator page under `apps/web/app/(app)/app` now uses the anatomy, including the companion panels (CRM, sales, fulfilment, finance assistant) and the advertiser portal. The only legacy classes still in use are the form grid (`franchise-form`), the attention list on My Today (`today-item`), purpose-built editors (`block-editor-*`, `segment-builder-*`, `newsletter-compose-*`, `journey-builder-*`, `edition-flatplan`) and `code-block` for payloads. New pages start from `PageHeader` + `Panel`; a grep for `className="app-panel`, `franchise-list`, `franchise-metrics`, `app-link-button`, `toLocale` or `.replace("_"` in a page is a review finding.
+
+Values deliberately shown raw are identifiers people search or type: permission codes on the role page, job and correlation ids on the job page, audit action codes under their formatted label, and tax-rate codes needed to add a successor rate.
 
 Brand assets: no production logo vector has been supplied yet. `BrandMark` and `app/icon.svg` are interim marks set in the brand colours and type stack; replace both when the logo files arrive, without touching pages.

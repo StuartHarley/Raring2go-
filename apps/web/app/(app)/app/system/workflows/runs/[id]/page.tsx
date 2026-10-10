@@ -3,7 +3,9 @@ import { JobAccessError } from "@raring2go/workflows";
 import { ShellAccessError, requireShellPermission } from "../../../../../../../lib/app-shell";
 import { readWorkflowRun } from "../../../../../../../lib/automation-runtime";
 import type { AutomationActorContext } from "../../../../../../../lib/automation-runtime";
-import { Breadcrumbs, StatusBadge } from "../../../../../../../lib/workflow-ui";
+import { formatDateTime, formatLabel } from "../../../../../../../lib/format";
+import { EmptyState, Metrics, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../../../../lib/page-ui";
+import { Breadcrumbs } from "../../../../../../../lib/workflow-ui";
 import { AppShell } from "../../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../../page";
 import { protectedOutcome } from "../../../../../../../lib/protected-outcome";
@@ -15,7 +17,8 @@ type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const stepTone: Record<string, string> = { pending: "queued", completed: "completed", waiting: "paused", skipped: "neutral", failed: "failed" };
+const runTone = { pending: "warning", running: "info", waiting: "warning", completed: "success", failed: "danger", cancelled: "neutral" } as const;
+const stepTone = { pending: "warning", completed: "success", waiting: "warning", skipped: "neutral", failed: "danger" } as const;
 
 export default async function WorkflowRunPage({ params, searchParams }: PageProps) {
   const { id } = await params;
@@ -28,70 +31,66 @@ export default async function WorkflowRunPage({ params, searchParams }: PageProp
   }
 
   const { run, steps, definition, version } = result;
+  const name = definition?.name ?? "Workflow";
+  const plannedSteps = version?.steps ?? [];
 
   return (
     <AppShell request={request}>
       <Breadcrumbs items={[{ label: "Workflows", href: "/app/system/workflows" as Route }, { label: definition?.name ?? "Run" }]} />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Workflow run{run.isTest ? " (test)" : ""}</p>
-        <h2>{definition?.name ?? "Workflow"}</h2>
-        <div className="franchise-metrics">
-          <article>
-            <span>Status</span>
-            <strong>
-              <StatusBadge status={run.status === "waiting" ? "paused" : run.status} />
-            </strong>
-          </article>
-          <article>
-            <span>Version</span>
-            <strong>{version ? `v${version.versionNumber}` : "-"}</strong>
-          </article>
-          <article>
-            <span>Outcome</span>
-            <strong>{run.outcome ?? "-"}</strong>
-          </article>
-          <article>
-            <span>Resumes</span>
-            <strong>{run.resumeAt ? run.resumeAt.toLocaleString("en-GB") : "-"}</strong>
-          </article>
-        </div>
-        {run.lastError ? <p role="alert" className="notice notice--error">{run.lastError}</p> : null}
-      </section>
+      <PageHeader
+        eyebrow={run.isTest ? "Workflow run (test)" : "Workflow run"}
+        title={name}
+        intro={`Started ${formatDateTime(run.createdAt)}${run.isTest ? ". A test run records what each step would do without sending anything." : "."}`}
+      />
 
-      <section className="app-panel audit-table" aria-label="Steps">
-        <div className="table-scroll">
-          <table>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Status", value: formatLabel(run.status), tone: runTone[run.status] },
+            { label: "Version", value: version ? `Version ${version.versionNumber}` : "-" },
+            { label: "Outcome", value: run.outcome ? formatLabel(run.outcome) : run.waitingOn ? `Waiting on ${formatLabel(run.waitingOn).toLowerCase()}` : "-" },
+            { label: "Resumes", value: run.resumeAt ? formatDateTime(run.resumeAt) : "-" }
+          ]}
+        />
+        {run.lastError ? <Notice tone="error">{run.lastError}</Notice> : null}
+      </Panel>
+
+      <Panel eyebrow="Progress" title="Steps">
+        {plannedSteps.length === 0 ? (
+          <EmptyState title="No steps recorded">The version this run used has no steps, so there is nothing to show.</EmptyState>
+        ) : (
+          <Table caption="Steps in this run, in order">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Step</th>
-                <th>Status</th>
-                <th>Attempts</th>
-                <th>Result</th>
-                <th>Error</th>
+                <th scope="col">#</th>
+                <th scope="col">Step</th>
+                <th scope="col">Status</th>
+                <th scope="col">Attempts</th>
+                <th scope="col">Result</th>
+                <th scope="col">Error</th>
               </tr>
             </thead>
             <tbody>
-              {(version?.steps ?? []).map((step, index) => {
+              {plannedSteps.map((step, index) => {
                 const saved = steps.find((candidate) => candidate.stepIndex === index);
                 return (
                   <tr key={index}>
                     <td>{index + 1}</td>
-                    <td>{step.type.replace("_", " ")}</td>
+                    <td>{formatLabel(step.type)}</td>
                     <td>
-                      <StatusBadge status={saved ? stepTone[saved.status] ?? saved.status : "queued"} />
+                      <StatusBadge status={saved ? saved.status : "pending"} tone={saved ? stepTone[saved.status] : "warning"} />
                     </td>
                     <td>{saved?.attempts ?? 0}</td>
-                    <td>{saved && Object.keys(saved.result).length > 0 ? JSON.stringify(saved.result) : "-"}</td>
+                    <td>{saved && Object.keys(saved.result).length > 0 ? <code>{JSON.stringify(saved.result)}</code> : "-"}</td>
                     <td>{saved?.error ?? "-"}</td>
                   </tr>
                 );
               })}
             </tbody>
-          </table>
-        </div>
-      </section>
+          </Table>
+        )}
+      </Panel>
     </AppShell>
   );
 }

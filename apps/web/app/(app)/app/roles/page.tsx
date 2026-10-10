@@ -3,6 +3,8 @@ import type { Route } from "next";
 import { requireShellPermission } from "../../../../lib/app-shell";
 import { explainAccessAsActor, readAccessOverview } from "../../../../lib/access-runtime";
 import type { AccessActorContext } from "../../../../lib/access-runtime";
+import { formatDate } from "../../../../lib/format";
+import { Actions, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../lib/page-ui";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { assignRoleAction, createRoleAction, inviteAction, revokeAssignmentAction, revokeInvitationAction } from "./actions";
@@ -62,47 +64,45 @@ export default async function RolesPage({ searchParams }: PageProps) {
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Roles &amp; permissions</p>
-        <h2>Who can do what</h2>
-        <p>
-          Access is defined by roles: each holds permissions at a scope (own record, organisation, territory, network or system), and people are given roles for an organisation or territory. Changes take effect without a
-          deploy, are audited, and you can never give out more access than you hold yourself. At least one Super Admin always remains.
-        </p>
-        {banner ? (
-          <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
-            {banner.text}
-          </p>
-        ) : null}
-      </section>
+      <PageHeader
+        eyebrow="System"
+        title="Roles & permissions"
+        intro="Who can do what: the roles people hold, where each one applies, and the invitations still waiting to be accepted."
+      />
+      {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
 
-      <section className="app-panel audit-table" aria-label="Roles">
-        <p className="eyebrow">Roles</p>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>Type</th>
-                <th>Permissions</th>
-                <th>People</th>
+      <Panel
+        eyebrow="Roles"
+        title="Roles"
+        intro="Each role holds permissions at a scope (own record, organisation, territory, network or system). Changes take effect straight away, are audited, and you can never give out more access than you hold yourself. At least one Super Admin always remains."
+      >
+        <Table caption="Roles and how many people hold them">
+          <thead>
+            <tr>
+              <th scope="col">Role</th>
+              <th scope="col">Type</th>
+              <th scope="col">Permissions</th>
+              <th scope="col">People</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roles.map((role) => (
+              <tr key={role.id}>
+                <th scope="row">
+                  <Link href={`/app/roles/${role.id}${query}` as Route}>{role.name}</Link>
+                  {role.description ? (
+                    <div>
+                      <small>{role.description}</small>
+                    </div>
+                  ) : null}
+                </th>
+                <td>{role.isSystem ? "Built-in" : "Custom"}</td>
+                <td>{role.grantCount}</td>
+                <td>{role.assignmentCount}</td>
               </tr>
-            </thead>
-            <tbody>
-              {roles.map((role) => (
-                <tr key={role.id}>
-                  <td>
-                    <Link href={`/app/roles/${role.id}${query}` as Route}>{role.name}</Link>
-                    {role.description ? <div className="muted">{role.description}</div> : null}
-                  </td>
-                  <td>{role.isSystem ? "Built-in" : "Custom"}</td>
-                  <td>{role.grantCount}</td>
-                  <td>{role.assignmentCount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </Table>
         {can.manage ? (
           <form action={createRoleAction.bind(null, request)} className="franchise-form">
             <h3>Create a role</h3>
@@ -118,61 +118,68 @@ export default async function RolesPage({ searchParams }: PageProps) {
               Description
               <input name="description" type="text" maxLength={300} />
             </label>
-            <div className="franchise-actions">
-              <button type="submit">Create role</button>
-            </div>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--primary">
+                Create role
+              </button>
+            </Actions>
           </form>
         ) : null}
-      </section>
+      </Panel>
 
-      <section className="app-panel audit-table" aria-label="People and their roles">
-        <p className="eyebrow">People</p>
-        <div className="table-scroll">
-          <table>
-            <thead>
+      <Panel eyebrow="People" title="People and their roles">
+        <Table caption="Who holds which role, and where">
+          <thead>
+            <tr>
+              <th scope="col">Person</th>
+              <th scope="col">Role</th>
+              <th scope="col">Where</th>
+              <th scope="col">Ends</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {live.length === 0 ? (
               <tr>
-                <th>Person</th>
-                <th>Role</th>
-                <th>Where</th>
-                <th>Ends</th>
-                <th>Actions</th>
+                <td colSpan={5}>Nobody holds a role yet. Give someone a role below.</td>
               </tr>
-            </thead>
-            <tbody>
-              {live.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>Nobody holds a role yet.</td>
+            ) : (
+              live.map((assignment) => (
+                <tr key={assignment.id}>
+                  <th scope="row">
+                    {assignment.userName ?? assignment.userEmail}
+                    <div>
+                      <small>{assignment.userEmail}</small>
+                    </div>
+                    {assignment.userStatus !== "active" ? (
+                      <div>
+                        <StatusBadge status={assignment.userStatus} />
+                      </div>
+                    ) : null}
+                  </th>
+                  <td>{assignment.roleName}</td>
+                  <td>{[assignment.organisationName, assignment.territoryName].filter(Boolean).join(" › ") || "Network"}</td>
+                  <td>{formatDate(assignment.endsAt, "No end date")}</td>
+                  <td>
+                    {can.assign ? (
+                      <form action={revokeAssignmentAction.bind(null, request, assignment.id)}>
+                        <button type="submit" className="r2-button r2-button--danger">
+                          End role
+                        </button>
+                      </form>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                 </tr>
-              ) : (
-                live.map((assignment) => (
-                  <tr key={assignment.id}>
-                    <td>
-                      {assignment.userName ?? assignment.userEmail}
-                      <div className="muted">{assignment.userEmail}</div>
-                      {assignment.userStatus !== "active" ? <div className="muted">Account {assignment.userStatus}</div> : null}
-                    </td>
-                    <td>{assignment.roleName}</td>
-                    <td>{[assignment.organisationName, assignment.territoryName].filter(Boolean).join(" › ") || "Network"}</td>
-                    <td>{assignment.endsAt ? assignment.endsAt.toLocaleDateString("en-GB") : "No end date"}</td>
-                    <td>
-                      {can.assign ? (
-                        <form action={revokeAssignmentAction.bind(null, request, assignment.id)}>
-                          <button type="submit">End role</button>
-                        </form>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </Table>
         {can.assign ? (
           <form action={assignRoleAction.bind(null, request)} className="franchise-form">
             <h3>Give someone a role</h3>
-            <p className="muted">They must already belong to the organisation: invite them below if they do not.</p>
+            <p>They must already belong to the organisation: invite them below if they do not.</p>
             <label>
               Their email address
               <input name="email" type="email" required maxLength={254} />
@@ -197,53 +204,54 @@ export default async function RolesPage({ searchParams }: PageProps) {
               Ends on (optional)
               <input name="endsAt" type="date" />
             </label>
-            <div className="franchise-actions">
-              <button type="submit">Give role</button>
-            </div>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--primary">
+                Give role
+              </button>
+            </Actions>
           </form>
         ) : null}
-      </section>
+      </Panel>
 
-      <section className="app-panel audit-table" aria-label="Invitations">
-        <p className="eyebrow">Invitations</p>
-        <div className="table-scroll">
-          <table>
-            <thead>
+      <Panel eyebrow="Invitations" title="Invitations">
+        <Table caption="Invitations waiting to be accepted">
+          <thead>
+            <tr>
+              <th scope="col">Email</th>
+              <th scope="col">Role</th>
+              <th scope="col">Where</th>
+              <th scope="col">Expires</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pending.length === 0 ? (
               <tr>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Where</th>
-                <th>Expires</th>
-                <th>Actions</th>
+                <td colSpan={5}>No invitations are waiting. Invite someone below.</td>
               </tr>
-            </thead>
-            <tbody>
-              {pending.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>No pending invitations.</td>
+            ) : (
+              pending.map((invitation) => (
+                <tr key={invitation.id}>
+                  <th scope="row">{invitation.email}</th>
+                  <td>{invitation.roleName ?? "Membership only"}</td>
+                  <td>{[invitation.organisationName, invitation.territoryName].filter(Boolean).join(" › ")}</td>
+                  <td>{formatDate(invitation.expiresAt)}</td>
+                  <td>
+                    {can.invite ? (
+                      <form action={revokeInvitationAction.bind(null, request, invitation.id)}>
+                        <button type="submit" className="r2-button r2-button--secondary">
+                          Withdraw
+                        </button>
+                      </form>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                 </tr>
-              ) : (
-                pending.map((invitation) => (
-                  <tr key={invitation.id}>
-                    <td>{invitation.email}</td>
-                    <td>{invitation.roleName ?? "Membership only"}</td>
-                    <td>{[invitation.organisationName, invitation.territoryName].filter(Boolean).join(" › ")}</td>
-                    <td>{invitation.expiresAt.toLocaleDateString("en-GB")}</td>
-                    <td>
-                      {can.invite ? (
-                        <form action={revokeInvitationAction.bind(null, request, invitation.id)}>
-                          <button type="submit">Withdraw</button>
-                        </form>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </Table>
         {can.invite ? (
           <form action={inviteAction.bind(null, request)} className="franchise-form">
             <h3>Invite someone</h3>
@@ -268,16 +276,16 @@ export default async function RolesPage({ searchParams }: PageProps) {
                 ))}
               </select>
             </label>
-            <div className="franchise-actions">
-              <button type="submit">Send invitation</button>
-            </div>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--primary">
+                Send invitation
+              </button>
+            </Actions>
           </form>
         ) : null}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel" aria-label="Explain access">
-        <p className="eyebrow">Check access</p>
-        <h2>Why can or can&apos;t someone do something?</h2>
+      <Panel eyebrow="Check access" title="Why can or can't someone do something?" intro="Pick a person and a capability to see whether they are allowed, and why.">
         <form method="get" className="franchise-form">
           {request.sessionKey ? <input type="hidden" name="session" value={request.sessionKey} /> : null}
           <label>
@@ -304,17 +312,19 @@ export default async function RolesPage({ searchParams }: PageProps) {
               {whereOptions}
             </select>
           </label>
-          <div className="franchise-actions">
-            <button type="submit">Check</button>
-          </div>
+          <Actions>
+            <button type="submit" className="r2-button r2-button--primary">
+              Check
+            </button>
+          </Actions>
         </form>
         {explanation ? (
-          <p role="status" className={`notice notice--${explanation.allowed ? "success" : "error"}`}>
+          <Notice tone={explanation.allowed ? "success" : "error"}>
             {explanation.allowed ? "Allowed. " : "Not allowed. "}
             {explanation.explanation}
-          </p>
+          </Notice>
         ) : null}
-      </section>
+      </Panel>
     </AppShell>
   );
 }

@@ -31,7 +31,7 @@ export function RepurposeForm({ action }: { action: (previous: RepurposeFormStat
         Each variant is written only from this article&apos;s facts and starts as a draft that you review and approve. Anything that looks like a new date, time, price or link is flagged.
       </p>
       <div className="franchise-actions">
-        <button type="submit" disabled={pending}>{pending ? "Writing…" : "Create variants with AI"}</button>
+        <button type="submit" className="r2-button r2-button--primary" disabled={pending}>{pending ? "Writing…" : "Create variants with AI"}</button>
       </div>
     </form>
   );

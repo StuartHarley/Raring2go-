@@ -84,3 +84,8 @@ export function initials(name: string | null | undefined): string {
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
 }
+
+/** Dotted event and job codes as words: "advertiser.invoice.created" → "Advertiser invoice created". */
+export function formatCode(value: string | null | undefined, fallback = "Unknown"): string {
+  return formatLabel(value?.replace(/\./g, " "), fallback);
+}

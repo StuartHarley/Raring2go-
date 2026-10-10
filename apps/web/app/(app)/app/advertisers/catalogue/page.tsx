@@ -1,5 +1,8 @@
+import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readCatalogue } from "../../../../../lib/advertising-runtime";
+import { formatCount, formatLabel } from "../../../../../lib/format";
+import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
@@ -18,80 +21,89 @@ export default async function AdvertiserCataloguePage({ searchParams }: PageProp
     return protectedOutcome(result.error, request);
   }
 
+  const { catalogue } = result;
+
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Commercial catalogue</p>
-        <h2>Products, pricing and inventory</h2>
-        <p>
-          Configurable sellable products, package definitions, network price
-          books and Edition Factory inventory slots for future bookings.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Products</span>
-            <strong>{result.catalogue.products.length}</strong>
-          </article>
-          <article>
-            <span>Packages</span>
-            <strong>{result.catalogue.packages.length}</strong>
-          </article>
-          <article>
-            <span>Price books</span>
-            <strong>{result.catalogue.priceBooks.length}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Commercial"
+        title="Catalogue"
+        intro="What you can sell, what it costs in this area, and which edition slots are still free to book."
+        actions={
+          <>
+            <LinkButton href={"/app/advertisers/pipeline" as Route}>Open pipeline</LinkButton>
+            <LinkButton href={"/app/advertisers" as Route} variant="secondary">
+              All advertisers
+            </LinkButton>
+          </>
+        }
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Products</p>
-        <h2>Sellable catalogue</h2>
-        <div className="franchise-list">
-          {result.catalogue.products.map((product) => {
-            const item = result.catalogue.priceBookItems.find((candidate) => candidate.productId === product.id);
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Products", value: catalogue.products.length },
+            { label: "Packages", value: catalogue.packages.length },
+            { label: "Price books", value: catalogue.priceBooks.length }
+          ]}
+        />
+      </Panel>
 
-            return (
-              <div key={product.id}>
-                <strong>{product.name}</strong>
-                <span>{product.channel} - {product.requiresInventory ? "inventory-backed" : "non-inventory"}</span>
-                <span>
-                  {item
-                    ? `${formatMoney(item.standardPriceMinor, item.currency)} standard, ${formatMoney(item.minimumPriceMinor, item.currency)} minimum`
-                    : "No active price"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <Panel eyebrow="Products" title="What you can sell">
+        {catalogue.products.length === 0 ? (
+          <EmptyState title="No products yet">Products and their prices are set up by Head Office before they can be sold.</EmptyState>
+        ) : (
+          <RecordList>
+            {catalogue.products.map((product) => {
+              const item = catalogue.priceBookItems.find((candidate) => candidate.productId === product.id);
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Edition inventory</p>
-        <h2>Available slots</h2>
-        <div className="franchise-facts">
-          {result.catalogue.inventorySlots.map((slot) => (
-            <div key={slot.id}>
-              <dt>{slot.slotKey}</dt>
-              <dd>{slot.status}</dd>
-              <small>{slot.inventoryClass} - {slot.exclusive ? "exclusive" : "shareable"}</small>
-            </div>
-          ))}
-        </div>
-      </section>
+              return (
+                <RecordCard
+                  key={product.id}
+                  title={product.name}
+                  status={product.status}
+                  lines={[
+                    `${formatLabel(product.channel)} · ${product.requiresInventory ? "Takes an edition slot" : "No slot needed"}`,
+                    item
+                      ? `${formatMoney(item.standardPriceMinor, item.currency)} standard, ${formatMoney(item.minimumPriceMinor, item.currency)} minimum`
+                      : "No active price in this area"
+                  ]}
+                />
+              );
+            })}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Packages</p>
-        <h2>Commercial bundles</h2>
-        <div className="franchise-list">
-          {result.catalogue.packages.map((bundle) => (
-            <div key={bundle.id}>
-              <strong>{bundle.name}</strong>
-              <span>{bundle.status}</span>
-              <span>{bundle.lines.length} line item{bundle.lines.length === 1 ? "" : "s"}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <Panel eyebrow="Edition inventory" title="Slots">
+        {catalogue.inventorySlots.length === 0 ? (
+          <EmptyState title="No slots yet">Slots appear once an edition has been planned for this area.</EmptyState>
+        ) : (
+          <RecordList>
+            {catalogue.inventorySlots.map((slot) => (
+              <RecordCard
+                key={slot.id}
+                title={slot.slotKey}
+                status={slot.status}
+                tone={slot.status === "available" ? "success" : undefined}
+                lines={[`${formatLabel(slot.inventoryClass)} · ${slot.exclusive ? "Exclusive to one advertiser" : "Can be shared"}`]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+
+      <Panel eyebrow="Packages" title="Bundles">
+        {catalogue.packages.length === 0 ? (
+          <EmptyState title="No packages yet">A package bundles several products at one price.</EmptyState>
+        ) : (
+          <RecordList>
+            {catalogue.packages.map((bundle) => (
+              <RecordCard key={bundle.id} title={bundle.name} status={bundle.status} lines={[formatCount(bundle.lines.length, "line item")]} />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
     </AppShell>
   );
 }

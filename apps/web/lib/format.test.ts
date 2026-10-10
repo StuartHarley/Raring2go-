@@ -57,3 +57,12 @@ describe("names", () => {
     expect(initials(undefined)).toBe("?");
   });
 });
+
+describe("formatCode", () => {
+  it("turns dotted codes into words", async () => {
+    const { formatCode } = await import("./format");
+    expect(formatCode("advertiser.invoice.created")).toBe("Advertiser invoice created");
+    expect(formatCode("finance.sync_accounting")).toBe("Finance sync accounting");
+    expect(formatCode(undefined)).toBe("Unknown");
+  });
+});

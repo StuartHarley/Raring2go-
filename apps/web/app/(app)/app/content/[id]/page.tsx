@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { hasContentAiCapability, readContentWorkspaceView } from "../../../../../lib/publishing-runtime";
+import { getDirectory } from "../../../../../lib/directory";
+import { displayName, formatCount, formatLabel, formatLabels } from "../../../../../lib/format";
+import { EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, toneForStatus } from "../../../../../lib/page-ui";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -15,6 +18,7 @@ import { protectedOutcome } from "../../../../../lib/protected-outcome";
 export const metadata = { title: "Content" };
 
 const channels = ["magazine", "website", "newsletter", "facebook", "instagram", "linkedin"];
+const socialChannels = ["facebook", "instagram", "linkedin"];
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -33,189 +37,199 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
   }
 
   const { libraryItem, versions, variantVersions, aiTasks, websiteJobs } = result.workspace;
+  const directory = getDirectory();
+  const territoryNames = new Map(
+    await Promise.all(
+      libraryItem.localisations.map(async (localisation) => [localisation.territoryId, await directory.territoryName(localisation.territoryId)] as const)
+    )
+  );
+  const aiTaskById = new Map(aiTasks.map((task) => [task.id, task]));
 
   return (
     <AppShell request={request}>
       <Breadcrumbs items={[
-        { label: "Publishing", href: "/app/content" },
-        { label: "Content Studio", href: "/app/content" },
+        { label: "Content Studio", href: "/app/content" as Route },
         { label: libraryItem.item.title }
       ]} />
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Source</p>
-        <h2>{libraryItem.item.title}</h2>
-        <p>{libraryItem.item.standfirst}</p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Versions</span>
-            <strong>{versions.length}</strong>
-          </article>
-          <article>
-            <span>AI tasks</span>
-            <strong>{aiTasks.length}</strong>
-          </article>
-          <article>
-            <span>Localisations</span>
-            <strong>{libraryItem.localisations.length}</strong>
-          </article>
-          <article>
-            <span>Website jobs</span>
-            <strong>{websiteJobs.length}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow={`${formatLabel(libraryItem.item.contentType)} · ${libraryItem.item.ownerLevel === "network" ? "Network content" : "Local content"}`}
+        title={libraryItem.item.title}
+        intro={libraryItem.item.standfirst || "No standfirst yet."}
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Status", value: formatLabel(libraryItem.item.status), tone: toneForStatus(libraryItem.item.status) },
+            { label: "Versions", value: versions.length },
+            { label: "AI tasks", value: aiTasks.length },
+            { label: "Localisations", value: libraryItem.localisations.length },
+            { label: "Website jobs", value: websiteJobs.length }
+          ]}
+        />
+      </Panel>
 
       {libraryItem.item.contentType === "competition" ? <CompetitionPanel request={request} contentId={libraryItem.item.id} resultCode={resultCode} /> : null}
 
       {libraryItem.item.status === "draft" && result.canUseAi ? (
-        <section className="app-panel franchise-panel" aria-label="Revise with AI">
-          <p className="eyebrow">AI</p>
-          <h2>Revise this draft with AI</h2>
-          <p>Describe the change. You will review the result before it becomes a new draft version; approved and published content is never changed this way.</p>
+        <Panel
+          eyebrow="AI"
+          title="Revise this draft with AI"
+          intro="Describe the change. You review the result before it becomes a new draft version; approved and published content is never changed this way."
+        >
           <ContentDraftForm action={generateContentDraftAction.bind(null, request, libraryItem.item.id)} revising defaultType={libraryItem.item.contentType} />
-        </section>
+        </Panel>
       ) : null}
 
       {["approved", "published"].includes(libraryItem.item.status) && result.canUseAi ? (
-        <section className="app-panel franchise-panel" aria-label="Repurpose with AI">
-          <p className="eyebrow">AI</p>
-          <h2>Repurpose this article</h2>
+        <Panel eyebrow="AI" title="Repurpose this article" intro="Write channel variants from the approved source. Each one is reviewed before it is approved.">
           <RepurposeForm action={repurposeContentAction.bind(null, request, libraryItem.item.id)} />
-        </section>
+        </Panel>
       ) : null}
 
-      <section className="app-panel franchise-panel" aria-label="Variants">
-        <p className="eyebrow">Channel variants</p>
-        <h2>Variants and approval</h2>
-        <div className="franchise-list">
-          {libraryItem.variants.length === 0 ? (
-            <div>
-              <strong>No variants yet.</strong>
-            </div>
-          ) : (
-            libraryItem.variants.map((variant) => {
+      <Panel eyebrow="Channel variants" title="Variants and approval">
+        {libraryItem.variants.length === 0 ? (
+          <EmptyState title="No variants yet">Channel variants appear here once the article is repurposed for a channel.</EmptyState>
+        ) : (
+          <RecordList>
+            {libraryItem.variants.map((variant) => {
               const current = variantVersions.find((version) => version.id === variant.currentVersionId);
               const unsupported = Array.isArray(current?.provenance.unsupportedFacts) ? (current!.provenance.unsupportedFacts as string[]) : [];
               // JSONB does not keep key order, so preview the longest text field rather than the first.
               const preview = current ? Object.values(current.snapshot).filter((value): value is string => typeof value === "string").sort((a, b) => b.length - a.length)[0] : undefined;
               return (
-                <div key={variant.id}>
-                  <strong>{variant.channel} · {variant.status.replace("_", " ")}</strong>
-                  {typeof preview === "string" ? <span>{preview.slice(0, 220)}{preview.length > 220 ? "…" : ""}</span> : null}
-                  <span>
-                    {current?.provenance.generatedBy === "ai" ? `AI draft from "${libraryItem.item.title}"` : "Source: this article"}
-                    {current?.provenance.aiRunId ? <> · <Link href={`/app/system/ai/${String(current.provenance.aiRunId)}` as Route}>AI run</Link></> : null}
-                  </span>
+                <RecordCard
+                  key={variant.id}
+                  title={formatLabel(variant.channel)}
+                  status={variant.status}
+                  lines={[
+                    typeof preview === "string" ? `${preview.slice(0, 220)}${preview.length > 220 ? "…" : ""}` : null,
+                    <>
+                      {current?.provenance.generatedBy === "ai" ? `AI draft from "${libraryItem.item.title}"` : "Source: this article"}
+                      {current?.provenance.aiRunId ? <> · <Link href={`/app/system/ai/${String(current.provenance.aiRunId)}` as Route}>AI run</Link></> : null}
+                    </>
+                  ]}
+                >
                   {unsupported.length > 0 ? (
-                    <span role="note" className="notice notice--error">Check before approving: not found in the source — {unsupported.join(", ")}</span>
+                    <Notice tone="warning">Check before approving: not found in the source — {unsupported.join(", ")}</Notice>
                   ) : null}
                   {["ai_draft", "needs_review"].includes(variant.status) && result.canUseAi ? (
                     <form action={approveVariantAction.bind(null, request, libraryItem.item.id, variant.id)}>
-                      <button type="submit">Approve this variant</button>
+                      <button type="submit" className="r2-button r2-button--secondary">Approve this variant</button>
                     </form>
                   ) : null}
-                </div>
+                </RecordCard>
               );
-            })
-          )}
-        </div>
-      </section>
+            })}
+          </RecordList>
+        )}
+      </Panel>
 
       <RelatedRecords
         title="Editorial distribution"
         records={[
           {
             label: "Edition",
-            title: `${libraryItem.localisations.length} territory derivation(s)`,
+            title: formatCount(libraryItem.localisations.length, "territory derivation"),
             description: "Magazine placement and local override context",
             href: "/app/editions"
           },
           {
             label: "Website",
-            title: `${websiteJobs.length} publishing job(s)`,
+            title: formatCount(websiteJobs.length, "publishing job"),
             description: "Website-ready state from approved content variants"
           },
           {
             label: "Newsletter",
-            title: `${libraryItem.variants.filter((variant) => variant.channel === "newsletter").length} newsletter variant(s)`,
+            title: formatCount(libraryItem.variants.filter((variant) => variant.channel === "newsletter").length, "newsletter variant"),
             description: "Reusable blocks for network or local newsletters",
             href: "/app/newsletters"
           },
           {
             label: "Social",
-            title: `${libraryItem.variants.filter((variant) => ["facebook", "instagram", "linkedin"].includes(variant.channel)).length} social variant(s)`,
+            title: formatCount(libraryItem.variants.filter((variant) => socialChannels.includes(variant.channel)).length, "social variant"),
             description: "Approved social variants feed the publishing queue",
             href: "/app/social"
           }
         ]}
       />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Channels</p>
-        <h2>Repurpose everywhere</h2>
-        <div className="franchise-metrics">
-          {channels.map((channel) => {
+      <Panel eyebrow="Channels" title="Where this content is going">
+        <Metrics
+          items={channels.map((channel) => {
+            const variant = libraryItem.variants.find((candidate) => candidate.channel === channel);
+            return {
+              label: formatLabel(channel),
+              value: variant ? formatLabel(variant.status) : "Not created",
+              tone: variant ? toneForStatus(variant.status) : undefined
+            };
+          })}
+        />
+      </Panel>
+
+      <Panel eyebrow="Social queue" title="Social variants" intro="Approved social variants are scheduled from the Social queue.">
+        <RecordList>
+          {socialChannels.map((channel) => {
             const variant = libraryItem.variants.find((candidate) => candidate.channel === channel);
             return (
-              <article key={channel}>
-                <span>{channel}</span>
-                <strong>{variant?.status.replace("_", " ") ?? "Not created"}</strong>
-              </article>
+              <RecordCard
+                key={channel}
+                title={formatLabel(channel)}
+                status={variant?.status ?? "not_created"}
+                lines={[variant?.status === "approved" ? "Ready to add to the Social queue." : "Review and approve the variant first."]}
+              >
+                {variant?.status === "approved" ? <Link href={"/app/social" as Route}>Open the Social queue</Link> : null}
+              </RecordCard>
             );
           })}
-        </div>
-      </section>
+        </RecordList>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Social queue</p>
-        <h2>Approved social variants</h2>
-        <div className="franchise-list">
-          {["facebook", "instagram", "linkedin"].map((channel) => {
-            const variant = libraryItem.variants.find((candidate) => candidate.channel === channel);
-            return (
-              <div key={channel}>
-                <strong>{channel}</strong>
-                <span>{variant?.status === "approved" ? `Add ${channel} to queue` : "Review and approve variant first"}</span>
-                <span>MKT-005 schedules approved variants through /app/social.</span>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <Panel eyebrow="Network distribution" title="Territory derivations">
+        {libraryItem.localisations.length === 0 ? (
+          <EmptyState title="No territory derivations">Network distribution creates controlled local records rather than unrelated copies.</EmptyState>
+        ) : (
+          <RecordList>
+            {libraryItem.localisations.map((localisation) => (
+              <RecordCard
+                key={localisation.id}
+                title={displayName(territoryNames.get(localisation.territoryId), "Territory not named")}
+                status={localisation.state}
+                lines={[
+                  `From master version ${localisation.masterVersionNumber}`,
+                  `Locked: ${localisation.lockedFields.length ? formatLabels(localisation.lockedFields) : "none"} · Editable: ${localisation.editableFields.length ? formatLabels(localisation.editableFields) : "none"}`
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Network distribution</p>
-        <h2>Territory derivations</h2>
-        <div className="franchise-list">
-          {libraryItem.localisations.length === 0 ? (
-            <div>
-              <strong>No territory derivations</strong>
-              <span>Network distribution creates controlled local records rather than unrelated copies.</span>
-            </div>
-          ) : (
-            libraryItem.localisations.map((localisation) => (
-              <div key={localisation.id}>
-                <strong>{localisation.territoryId}</strong>
-                <span>{localisation.state.replace("_", " ")} - master v{localisation.masterVersionNumber}</span>
-                <span>Locked: {localisation.lockedFields.join(", ") || "none"} - editable: {localisation.editableFields.join(", ") || "none"}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Provenance</p>
-        <h2>AI and version history</h2>
-        <div className="franchise-list">
-          {variantVersions.map((version) => (
-            <div key={version.id}>
-              <strong>Variant version {version.versionNumber}</strong>
-              <span>{version.status} - generated task {version.generatedByTaskId ?? "none"}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <Panel eyebrow="Provenance" title="AI and version history">
+        {variantVersions.length === 0 ? (
+          <EmptyState title="No variant versions yet">Each AI draft or edit of a channel variant is recorded here.</EmptyState>
+        ) : (
+          <RecordList>
+            {variantVersions.map((version) => {
+              const task = version.generatedByTaskId ? aiTaskById.get(version.generatedByTaskId) : undefined;
+              return (
+                <RecordCard
+                  key={version.id}
+                  title={`Variant version ${version.versionNumber}`}
+                  status={version.status}
+                  lines={[
+                    task
+                      ? `Generated by AI (${formatLabel(task.task)}, ${formatLabel(task.status).toLowerCase()})`
+                      : version.generatedByTaskId
+                        ? "Generated by an AI task"
+                        : "Created without AI"
+                  ]}
+                />
+              );
+            })}
+          </RecordList>
+        )}
+      </Panel>
     </AppShell>
   );
 }

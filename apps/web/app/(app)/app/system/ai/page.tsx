@@ -3,7 +3,9 @@ import type { Route } from "next";
 import type { AiApprovalState } from "@raring2go/ai";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readAiRuns } from "../../../../../lib/ai-runtime";
-import { StatusBadge } from "../../../../../lib/workflow-ui";
+import { getDirectory } from "../../../../../lib/directory";
+import { displayName, formatCode, formatDateTime, formatLabel } from "../../../../../lib/format";
+import { EmptyState, FilterTabs, Metrics, PageHeader, Panel, StatusBadge, Table } from "../../../../../lib/page-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
@@ -13,8 +15,9 @@ export const metadata = { title: "AI runs" };
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 const STATES: AiApprovalState[] = ["pending", "approved", "rejected", "not_required"];
-const stateLabel: Record<AiApprovalState, string> = { pending: "Awaiting decision", approved: "Approved", rejected: "Rejected", not_required: "Informational" };
-const stateTone: Record<AiApprovalState, string> = { pending: "paused", approved: "completed", rejected: "failed", not_required: "draft" };
+const stateLabel: Record<AiApprovalState, string> = { pending: "Awaiting decision", approved: "Approved", rejected: "Rejected", not_required: "No decision needed" };
+
+/** "content.draft_article" → "Content draft article": dotted task codes read as words. */
 
 export default async function AiRunsPage({ searchParams }: PageProps) {
   const params = await searchParams;
@@ -38,83 +41,98 @@ export default async function AiRunsPage({ searchParams }: PageProps) {
     return query.toString() ? `?${query.toString()}` : "";
   };
   const spend = runs.reduce((total, run) => total + run.estimatedCostMinor, 0);
+  const awaiting = runs.filter((run) => run.approvalState === "pending").length;
+  const failed = runs.filter((run) => run.status === "failed").length;
+  const requesterNames = await resolveNames(runs.map((run) => run.actorUserId));
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">AI</p>
-        <h2>AI runs</h2>
-        <p>
-          Every AI call that matters is recorded here: who asked, why, which records it used, what it returned and
-          whether a person accepted it. AI prepares and suggests; people decide.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Awaiting decision</span>
-            <strong>{runs.filter((run) => run.approvalState === "pending").length}</strong>
-          </article>
-          <article>
-            <span>Failed calls</span>
-            <strong>{runs.filter((run) => run.status === "failed").length}</strong>
-          </article>
-          <article>
-            <span>Estimated cost (shown runs)</span>
-            <strong>${(spend / 100).toFixed(2)}</strong>
-          </article>
-        </div>
-        <nav className="filter-tabs" aria-label="Filter by decision">
-          <Link href={`/app/system/ai${link()}` as Route} aria-current={state ? undefined : "page"}>All</Link>
-          {STATES.map((candidate) => (
-            <Link key={candidate} href={`/app/system/ai${link({ state: candidate })}` as Route} aria-current={state === candidate ? "page" : undefined}>
-              {stateLabel[candidate]}
-            </Link>
-          ))}
-        </nav>
-      </section>
+      <PageHeader
+        eyebrow="AI"
+        title="AI runs"
+        intro="Every AI call that matters: who asked, why, which records it used, what came back and whether a person accepted it. AI suggests; people decide."
+      />
 
-      <section className="app-panel audit-table" aria-label="AI runs">
-        <div className="table-scroll">
-          <table>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Awaiting decision", value: awaiting, tone: awaiting > 0 ? "warning" : "success" },
+            { label: "Failed calls", value: failed, tone: failed > 0 ? "danger" : "success" },
+            { label: "Estimated cost of the runs shown", value: formatMoney(spend) }
+          ]}
+        />
+        <FilterTabs
+          label="Filter by decision"
+          items={[
+            { label: "All", href: `/app/system/ai${link()}` as Route, current: !state },
+            ...STATES.map((candidate) => ({
+              label: stateLabel[candidate],
+              href: `/app/system/ai${link({ state: candidate })}` as Route,
+              current: state === candidate
+            }))
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="History" title="Runs">
+        {runs.length === 0 ? (
+          <EmptyState title="No AI runs match">Runs appear here as soon as AI assist is used somewhere in the platform.</EmptyState>
+        ) : (
+          <Table caption="AI runs, newest first">
             <thead>
               <tr>
-                <th>When</th>
-                <th>Purpose</th>
-                <th>Requested by</th>
-                <th>Model</th>
-                <th>Decision</th>
-                <th>Cost</th>
+                <th scope="col">When</th>
+                <th scope="col">Purpose</th>
+                <th scope="col">Requested by</th>
+                <th scope="col">Model</th>
+                <th scope="col">Decision</th>
+                <th scope="col">Cost</th>
               </tr>
             </thead>
             <tbody>
-              {runs.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>No AI runs match. They appear here as soon as AI assist is used.</td>
+              {runs.map((run) => (
+                <tr key={run.id}>
+                  <td>{formatDateTime(run.createdAt)}</td>
+                  <td>
+                    <Link href={`/app/system/ai/${run.id}${link()}` as Route}>{run.purpose}</Link>
+                    <br />
+                    <small>
+                      {formatCode(run.taskKey)}
+                      {run.risk === "high" ? " · High risk" : ""}
+                    </small>
+                  </td>
+                  <td>{run.actorType === "automation" ? "Automation" : displayName(run.actorUserId ? requesterNames.get(run.actorUserId) : undefined, "A person")}</td>
+                  <td>
+                    {formatLabel(run.providerKey)} <small>{run.modelReference}</small>
+                  </td>
+                  <td>
+                    <StatusBadge status={run.status === "failed" ? "failed" : run.approvalState} />{" "}
+                    <small>
+                      {run.status === "failed" ? "Call failed" : stateLabel[run.approvalState]}
+                      {run.appliedAt ? " · Applied" : ""}
+                    </small>
+                  </td>
+                  <td>{formatMoney(run.estimatedCostMinor)}</td>
                 </tr>
-              ) : (
-                runs.map((run) => (
-                  <tr key={run.id}>
-                    <td>{run.createdAt.toLocaleString("en-GB")}</td>
-                    <td>
-                      <Link href={`/app/system/ai/${run.id}${link()}` as Route}>{run.purpose}</Link>
-                      <br />
-                      <small>{run.taskKey}{run.risk === "high" ? " · high risk" : ""}</small>
-                    </td>
-                    <td>{run.actorType === "automation" ? "Automation" : run.actorUserId ?? "-"}</td>
-                    <td>{run.providerKey} / {run.modelReference}</td>
-                    <td>
-                      {run.status === "failed" ? <StatusBadge status="failed" /> : <StatusBadge status={stateTone[run.approvalState]} />}{" "}
-                      <small>{run.status === "failed" ? "Call failed" : stateLabel[run.approvalState]}{run.appliedAt ? " · applied" : ""}</small>
-                    </td>
-                    <td>${(run.estimatedCostMinor / 100).toFixed(2)}</td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
-          </table>
-        </div>
-      </section>
+          </Table>
+        )}
+      </Panel>
     </AppShell>
   );
+}
+
+function formatMoney(minor: number) {
+  return `$${(minor / 100).toFixed(2)}`;
+}
+
+/** The display names behind the user ids in a list, looked up once per distinct id. */
+async function resolveNames(userIds: Array<string | null | undefined>) {
+  const directory = getDirectory();
+  const distinct = [...new Set(userIds.filter((id): id is string => Boolean(id)))];
+  const names = await Promise.all(distinct.map(async (id) => [id, await directory.userName(id)] as const));
+  return new Map(names);
 }
 
 async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>, state: AiApprovalState | undefined) {

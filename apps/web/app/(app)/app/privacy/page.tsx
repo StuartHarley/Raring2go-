@@ -3,6 +3,8 @@ import type { PrivacyRequestRecord } from "@raring2go/security";
 import { requireShellPermission } from "../../../../lib/app-shell";
 import { can, readPrivacyRequests } from "../../../../lib/privacy-runtime";
 import type { PrivacyActorContext } from "../../../../lib/privacy-runtime";
+import { formatDate } from "../../../../lib/format";
+import { Actions, EmptyState, Metrics, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../lib/page-ui";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { decideAction, openRequestAction } from "./actions";
@@ -50,34 +52,28 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Privacy</p>
-        <h2>Data-subject requests</h2>
-        <p>
-          Subscribers can ask for a copy of the data held about them, or for it to be erased. A response is due within one month. Subscribers are shared across territories, so only Head Office handles these. An erasure needs a second
-          person to approve it, and what remains afterwards is only the suppression entry that stops them being emailed again.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Open</span>
-            <strong>{open.length}</strong>
-          </article>
-          <article>
-            <span>Overdue</span>
-            <strong>{overdue.length}</strong>
-          </article>
-        </div>
-        {banner ? (
-          <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
-            {banner.text}
-          </p>
-        ) : null}
-      </section>
+      {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
+      <PageHeader
+        eyebrow="Privacy"
+        title="Data-subject requests"
+        intro="Subscribers asking for a copy of the data held about them, or for it to be erased. Each one is due within one month."
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Open", value: open.length, tone: open.length > 0 ? "warning" : "success" },
+            { label: "Overdue", value: overdue.length, tone: overdue.length > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
 
       {can(permissions, context, "create") ? (
-        <section className="app-panel franchise-panel" aria-label="Open a request">
-          <p className="eyebrow">New</p>
-          <h2>Open a request</h2>
+        <Panel
+          eyebrow="New"
+          title="Open a request"
+          intro="Subscribers are shared across territories, so only Head Office handles these. An erasure needs a second person to approve it; afterwards only the suppression entry that stops them being emailed again remains."
+        >
           <form action={openRequestAction.bind(null, request)} className="franchise-form">
             <label>
               Subscriber&apos;s email address
@@ -94,50 +90,56 @@ export default async function PrivacyRequestsPage({ searchParams }: PageProps) {
               Note (how their identity was checked, where the request came from)
               <input name="note" type="text" maxLength={500} />
             </label>
-            <div className="franchise-actions">
-              <button type="submit">Open request</button>
-            </div>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--primary">
+                Open request
+              </button>
+            </Actions>
           </form>
-        </section>
+        </Panel>
       ) : null}
 
-      <section className="app-panel audit-table" aria-label="Requests">
-        <div className="table-scroll">
-          <table>
+      <Panel eyebrow="Requests" title="All requests">
+        {requests.length === 0 ? (
+          <EmptyState title="No requests yet">Requests you open appear here with their deadline and outcome.</EmptyState>
+        ) : (
+          <Table caption="Data-subject requests with their deadlines and outcomes">
             <thead>
               <tr>
-                <th>Opened</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Due</th>
-                <th>Outcome</th>
-                <th>Actions</th>
+                <th scope="col">Opened</th>
+                <th scope="col">Type</th>
+                <th scope="col">Status</th>
+                <th scope="col">Due</th>
+                <th scope="col">Outcome</th>
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {requests.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>No requests yet.</td>
-                </tr>
-              ) : (
-                requests.map((entry) => (
+              {requests.map((entry) => {
+                const isOverdue = entry.status === "requested" && entry.dueAt.getTime() < now;
+                return (
                   <tr key={entry.id}>
-                    <td>{entry.createdAt.toLocaleDateString("en-GB")}</td>
+                    <td>{formatDate(entry.createdAt)}</td>
                     <td>{kindLabels[entry.kind]}</td>
-                    <td>{statusLabels[entry.status]}</td>
                     <td>
-                      {entry.dueAt.toLocaleDateString("en-GB")}
-                      {entry.status === "requested" && entry.dueAt.getTime() < now ? " (overdue)" : ""}
+                      <StatusBadge
+                        status={statusLabels[entry.status]}
+                        tone={entry.status === "requested" ? (isOverdue ? "danger" : "warning") : entry.status === "completed" ? "success" : "neutral"}
+                      />
+                    </td>
+                    <td>
+                      {formatDate(entry.dueAt)}
+                      {isOverdue ? " (overdue)" : ""}
                     </td>
                     <td>{describeOutcome(entry)}</td>
                     <td>{actionsFor(entry, permissions, context, request, query)}</td>
                   </tr>
-                ))
-              )}
+                );
+              })}
             </tbody>
-          </table>
-        </div>
-      </section>
+          </Table>
+        )}
+      </Panel>
     </AppShell>
   );
 }
@@ -157,20 +159,28 @@ function describeOutcome(entry: PrivacyRequestRecord) {
 
 function actionsFor(entry: PrivacyRequestRecord, permissions: PermissionData, context: PrivacyActorContext, request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>, query: string) {
   if (entry.kind === "export" && entry.subjectContactId && entry.status !== "rejected" && can(permissions, context, "export")) {
-    return <a href={`/app/privacy/${entry.id}/export${query}`}>Download data (JSON)</a>;
+    return (
+      <a className="r2-button r2-button--secondary" href={`/app/privacy/${entry.id}/export${query}`}>
+        Download data (JSON)
+      </a>
+    );
   }
   if (entry.kind === "erasure" && entry.status === "requested" && can(permissions, context, "decide")) {
     if (entry.requestedByUserId === context.userId) return <span>Waiting for a second person to approve</span>;
     return (
-      <div className="franchise-actions">
+      <Actions>
         <form action={decideAction.bind(null, request, entry.id, "approve")}>
           <input name="note" type="text" maxLength={500} placeholder="Note (optional)" aria-label="Decision note" />
-          <button type="submit">Approve and erase</button>
+          <button type="submit" className="r2-button r2-button--danger">
+            Approve and erase
+          </button>
         </form>
         <form action={decideAction.bind(null, request, entry.id, "reject")}>
-          <button type="submit">Reject</button>
+          <button type="submit" className="r2-button r2-button--secondary">
+            Reject
+          </button>
         </form>
-      </div>
+      </Actions>
     );
   }
   return "—";

@@ -3,7 +3,8 @@ import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readWorkflowOverview } from "../../../../../lib/automation-runtime";
 import type { AutomationActorContext } from "../../../../../lib/automation-runtime";
-import { StatusBadge } from "../../../../../lib/workflow-ui";
+import { formatCode, formatDateTime, formatLabel } from "../../../../../lib/format";
+import { EmptyState, Metrics, PageHeader, Panel, StatusBadge, Table } from "../../../../../lib/page-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
@@ -12,7 +13,9 @@ export const metadata = { title: "Workflows" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-const runTone: Record<string, string> = { pending: "queued", running: "processing", waiting: "paused", completed: "completed", failed: "failed", cancelled: "rejected" };
+/** "finance.invoice.overdue" → "Finance invoice overdue": dotted event codes read as words. */
+
+const runTone = { pending: "warning", running: "info", waiting: "warning", completed: "success", failed: "danger", cancelled: "neutral" } as const;
 
 export default async function WorkflowsPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(await searchParams);
@@ -28,42 +31,39 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
   if (request.organisationId) query.set("organisationId", request.organisationId);
   if (request.territoryId) query.set("territoryId", request.territoryId);
   const suffix = query.toString() ? `?${query.toString()}` : "";
+  const waiting = runs.filter(({ run }) => run.status === "waiting").length;
+  const failed = runs.filter(({ run }) => run.status === "failed").length;
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Automation</p>
-        <h2>Workflows</h2>
-        <p>
-          Lifecycle automation that reacts to what happens in the platform. Each run records the exact version of the
-          rules it used, every step it took, and why it stopped.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Workflows</span>
-            <strong>{definitions.length}</strong>
-          </article>
-          <article>
-            <span>Waiting</span>
-            <strong>{runs.filter(({ run }) => run.status === "waiting").length}</strong>
-          </article>
-          <article>
-            <span>Failed runs</span>
-            <strong>{runs.filter(({ run }) => run.status === "failed").length}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Automation"
+        title="Workflows"
+        intro="The automations that react to what happens in the platform. Each run keeps the exact version of the rules it used, every step it took and why it stopped."
+      />
 
-      <section className="app-panel audit-table" aria-label="Workflow definitions">
-        <div className="table-scroll">
-          <table>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Workflows", value: definitions.length },
+            { label: "Waiting", value: waiting, tone: waiting > 0 ? "warning" : "neutral" },
+            { label: "Failed runs", value: failed, tone: failed > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="Definitions" title="Workflows">
+        {definitions.length === 0 ? (
+          <EmptyState title="No workflows yet">Workflows are created from the builder and appear here with their trigger and active version.</EmptyState>
+        ) : (
+          <Table caption="Workflow definitions">
             <thead>
               <tr>
-                <th>Workflow</th>
-                <th>Trigger</th>
-                <th>Active version</th>
-                <th>Steps</th>
-                <th>Status</th>
+                <th scope="col">Workflow</th>
+                <th scope="col">Trigger</th>
+                <th scope="col">Active version</th>
+                <th scope="col">Steps</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -76,8 +76,8 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
                     <br />
                     <small>{definition.description}</small>
                   </td>
-                  <td>{activeVersion?.triggerEvent ?? "-"}</td>
-                  <td>{activeVersion ? `v${activeVersion.versionNumber}` : "none"}</td>
+                  <td>{activeVersion ? formatCode(activeVersion.triggerEvent) : "-"}</td>
+                  <td>{activeVersion ? `Version ${activeVersion.versionNumber}` : "None"}</td>
                   <td>{activeVersion?.steps.length ?? 0}</td>
                   <td>
                     <StatusBadge status={definition.status === "enabled" && activeVersion ? "active" : "paused"} />
@@ -85,49 +85,45 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
-      </section>
+          </Table>
+        )}
+      </Panel>
 
-      <section className="app-panel audit-table" aria-label="Recent runs">
-        <div className="table-scroll">
-          <table>
+      <Panel eyebrow="History" title="Recent runs">
+        {runs.length === 0 ? (
+          <EmptyState title="No workflow has run yet">Runs appear here as soon as a trigger event happens.</EmptyState>
+        ) : (
+          <Table caption="Recent workflow runs, newest first">
             <thead>
               <tr>
-                <th>Started</th>
-                <th>Workflow</th>
-                <th>Status</th>
-                <th>Outcome</th>
-                <th>Step</th>
-                <th>Subject</th>
+                <th scope="col">Started</th>
+                <th scope="col">Workflow</th>
+                <th scope="col">Status</th>
+                <th scope="col">Outcome</th>
+                <th scope="col">Step</th>
+                <th scope="col">Subject</th>
               </tr>
             </thead>
             <tbody>
-              {runs.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>No workflow has run yet. Runs appear here as soon as a trigger event happens.</td>
+              {runs.map(({ run, workflowName }) => (
+                <tr key={run.id}>
+                  <td>{formatDateTime(run.createdAt)}</td>
+                  <td>
+                    <Link href={`/app/system/workflows/runs/${run.id}${suffix}` as Route}>{workflowName}</Link>
+                    {run.isTest ? " (test)" : ""}
+                  </td>
+                  <td>
+                    <StatusBadge status={run.status} tone={runTone[run.status]} />
+                  </td>
+                  <td>{run.outcome ? formatLabel(run.outcome) : run.waitingOn ? `Waiting on ${formatLabel(run.waitingOn).toLowerCase()}` : "-"}</td>
+                  <td>Step {run.currentStep + (run.status === "completed" ? 0 : 1)}</td>
+                  <td>{run.subjectType ? formatLabel(run.subjectType) : "-"}</td>
                 </tr>
-              ) : (
-                runs.map(({ run, workflowName }) => (
-                  <tr key={run.id}>
-                    <td>{run.createdAt.toLocaleString("en-GB")}</td>
-                    <td>
-                      <Link href={`/app/system/workflows/runs/${run.id}${suffix}` as Route}>{workflowName}</Link>
-                      {run.isTest ? " (test)" : ""}
-                    </td>
-                    <td>
-                      <StatusBadge status={runTone[run.status] ?? run.status} />
-                    </td>
-                    <td>{run.outcome ?? (run.waitingOn ? `waiting on ${run.waitingOn}` : "-")}</td>
-                    <td>{run.currentStep + (run.status === "completed" ? 0 : 1)}</td>
-                    <td>{run.subjectType ? `${run.subjectType}:${run.subjectId ?? ""}` : "-"}</td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
-          </table>
-        </div>
-      </section>
+          </Table>
+        )}
+      </Panel>
     </AppShell>
   );
 }

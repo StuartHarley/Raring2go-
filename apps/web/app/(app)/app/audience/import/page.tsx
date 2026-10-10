@@ -1,8 +1,9 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { listAudienceImports } from "../../../../../lib/audience-import-runtime";
 import { getDirectory } from "../../../../../lib/directory";
+import { formatCount, formatDate } from "../../../../../lib/format";
+import { EmptyState, LinkButton, PageHeader, Panel, RecordLink, RecordList } from "../../../../../lib/page-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { ImportUploadForm } from "./ImportUploadForm";
@@ -25,36 +26,45 @@ export default async function AudienceImportPage({ searchParams }: PageProps) {
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Audience</p>
-        <h2>Import contacts</h2>
-        <p>
-          Bring in an existing list safely. The file is checked first and nothing changes until you approve it. Only people with
-          recorded consent are made subscribers; everyone else is added as &quot;not emailed&quot;. You can reverse an import afterwards.
-        </p>
-        <Link href={`/app/audience${queryString}` as Route} className="app-link-button">Back to audience</Link>
-      </section>
+      <PageHeader
+        eyebrow="Audience"
+        title="Import contacts"
+        intro="Bring in an existing list safely: the file is checked first, nothing changes until you approve it, and you can reverse an import afterwards."
+        actions={
+          <LinkButton href={`/app/audience${queryString}` as Route} variant="secondary">
+            Back to audience
+          </LinkButton>
+        }
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">New import</p>
-        <h2>Check a file</h2>
+      <Panel
+        eyebrow="New import"
+        title="Check a file"
+        intro="Only people with recorded consent are made subscribers; everyone else is added as &quot;not emailed&quot; until they confirm themselves."
+      >
         <ImportUploadForm territories={result.territories} defaultTerritoryId={request.territoryId} queryString={queryString} />
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">History</p>
-        <h2>Previous imports</h2>
-        {result.imports.length === 0 ? <p>No imports yet.</p> : null}
-        <div className="franchise-list">
-          {result.imports.map((record) => (
-            <div key={record.id}>
-              <strong>{record.source}</strong>
-              <span>{record.status.replaceAll("_", " ")} - {record.totalRows} rows - {record.importedRows} added - {record.errorRows} rejected - {record.createdAt.toISOString().slice(0, 10)}</span>
-              <Link href={`/app/audience/import/${record.id}${queryString}` as Route}>Open</Link>
-            </div>
-          ))}
-        </div>
-      </section>
+      <Panel eyebrow="History" title="Previous imports">
+        {result.imports.length === 0 ? (
+          <EmptyState title="No imports yet">Check a file above to see what an import would do before anything changes.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.imports.map((record) => (
+              <RecordLink
+                key={record.id}
+                href={`/app/audience/import/${record.id}${queryString}` as Route}
+                title={record.source}
+                status={record.status}
+                lines={[
+                  `${formatCount(record.totalRows, "row")} · ${record.importedRows} added · ${record.errorRows} rejected`,
+                  `Uploaded ${formatDate(record.createdAt)}`
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
     </AppShell>
   );
 }

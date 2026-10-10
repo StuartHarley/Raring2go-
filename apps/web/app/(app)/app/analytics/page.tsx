@@ -1,10 +1,12 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { MIN_PEER_COHORT, metricCatalogue } from "@raring2go/analytics";
 import type { ScorecardMetric } from "@raring2go/analytics";
 import { requireShellPermission } from "../../../../lib/app-shell";
 import { hasAnalyticsCapability, readScorecardForActor } from "../../../../lib/analytics-runtime";
 import type { AnalyticsActorContext } from "../../../../lib/analytics-runtime";
+import { formatDate, formatDateTime, formatLabel } from "../../../../lib/format";
+import { EmptyState, LinkButton, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, Table } from "../../../../lib/page-ui";
+import type { Tone } from "../../../../lib/page-ui";
 import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { generateSnapshotAction } from "./actions";
@@ -26,6 +28,9 @@ const domainLabels: Record<string, string> = {
   franchise: "Franchise",
   operations: "Operations"
 };
+
+/** The colour a health band carries: at risk is danger, watch is warning, healthy is success. */
+const bandTones: Record<keyof typeof bandLabels, Tone> = { green: "success", amber: "warning", red: "danger", unrated: "neutral" };
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -50,182 +55,182 @@ export default async function ScorecardPage({ searchParams }: PageProps) {
   const canConfigure = hasAnalyticsCapability(permissions, context, "healthConfigManage");
   const query = withContext(request);
   const byDomain = Object.keys(domainLabels).map((domain) => ({ domain, metrics: view.metrics.filter((metric) => metric.definition.domain === domain) }));
+  const health = view.health;
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Business in a Box</p>
-        <h2>{view.scope === "network" ? "Network scorecard" : `${view.territory?.name ?? "Territory"} scorecard`}</h2>
-        <p>
-          Every figure here comes from one shared set of definitions (version {view.definitionsVersion}), so the Head Office and territory views always reconcile.
-          Calculated {view.collectedAt.toLocaleString("en-GB")}.
-        </p>
-        {banner ? (
-          <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
-            {banner.text}
-          </p>
-        ) : null}
-        <div className="franchise-actions">
-          {canConfigure ? <Link href={`/app/analytics/health${query}` as Route}>Health score settings</Link> : null}
-          {canGenerate ? (
-            <form action={generateSnapshotAction.bind(null, request)}>
-              <button type="submit">Generate today&apos;s snapshot</button>
-            </form>
-          ) : null}
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Analytics"
+        title={view.scope === "network" ? "Network scorecard" : `${view.territory?.name ?? "Territory"} scorecard`}
+        intro={`How the business is doing, from one shared set of definitions (version ${view.definitionsVersion}) so Head Office and territory views always agree; last calculated ${formatDateTime(view.collectedAt)}.`}
+        actions={
+          canGenerate || canConfigure ? (
+            <>
+              {canGenerate ? (
+                <form action={generateSnapshotAction.bind(null, request)}>
+                  <button type="submit" className="r2-button r2-button--primary">
+                    Generate today&apos;s snapshot
+                  </button>
+                </form>
+              ) : null}
+              {canConfigure ? (
+                <LinkButton href={`/app/analytics/health${query}` as Route} variant="secondary">
+                  Health score settings
+                </LinkButton>
+              ) : null}
+            </>
+          ) : undefined
+        }
+      />
+      {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
 
-      {view.health ? (
-        <section className="app-panel franchise-panel" aria-label="Franchise health score">
-          <p className="eyebrow">Franchise Health Score</p>
-          <h2>
-            {view.health.result.score == null ? "Not enough data yet" : `${Math.round(view.health.result.score)} / 100`}{" "}
-            <span className={`status-badge status-${view.health.result.band}`}>{bandLabels[view.health.result.band]}</span>
-          </h2>
-          <p>
-            Healthy from {view.health.thresholds.green}, watch from {view.health.thresholds.amber}. Scoring configuration version {view.health.configVersion}. Factors with no data are left out and the rest re-weighted, never counted as zero.
-          </p>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Factor</th>
-                  <th>Your value</th>
-                  <th>Factor score</th>
-                  <th>Weight</th>
-                  <th>Points</th>
-                </tr>
-              </thead>
-              <tbody>
-                {view.health.result.factors.map((factor) => {
-                  const definition = metricCatalogue.find((metric) => metric.key === factor.metric);
-                  return (
-                    <tr key={factor.metric}>
-                      <td>{factor.label}</td>
-                      <td>{formatMetric(factor.raw, definition?.unit ?? "count")}</td>
-                      <td>{factor.normalised == null ? "No data" : `${Math.round(factor.normalised)} / 100`}</td>
-                      <td>{factor.state === "scored" ? `${Math.round(factor.effectiveWeight * 10) / 10}%` : "Excluded"}</td>
-                      <td>{factor.state === "scored" ? Math.round(factor.contribution * 10) / 10 : "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+      {health ? (
+        <Panel
+          eyebrow="Franchise health"
+          title="Franchise Health Score"
+          intro={`Healthy from ${health.thresholds.green}, watch from ${health.thresholds.amber} (scoring version ${health.configVersion}). Factors with no data are left out and the rest re-weighted, never counted as zero.`}
+        >
+          <Metrics
+            items={[
+              {
+                label: "Score",
+                value: health.result.score == null ? "No score yet" : `${Math.round(health.result.score)} / 100`,
+                detail: health.result.score == null ? "Not enough data yet" : bandLabels[health.result.band],
+                tone: bandTones[health.result.band]
+              }
+            ]}
+          />
+          <Table caption="How each factor contributes to the score">
+            <thead>
+              <tr>
+                <th scope="col">Factor</th>
+                <th scope="col">Your value</th>
+                <th scope="col">Factor score</th>
+                <th scope="col">Weight</th>
+                <th scope="col">Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              {health.result.factors.map((factor) => {
+                const definition = metricCatalogue.find((metric) => metric.key === factor.metric);
+                return (
+                  <tr key={factor.metric}>
+                    <th scope="row">{factor.label}</th>
+                    <td>{formatMetric(factor.raw, definition?.unit ?? "count")}</td>
+                    <td>{factor.normalised == null ? "No data" : `${Math.round(factor.normalised)} / 100`}</td>
+                    <td>{factor.state === "scored" ? `${Math.round(factor.effectiveWeight * 10) / 10}%` : "Excluded"}</td>
+                    <td>{factor.state === "scored" ? Math.round(factor.contribution * 10) / 10 : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
           {history.length > 1 ? (
             <p>
               Recent scores:{" "}
               {[...history]
                 .reverse()
-                .map((point) => `${Math.round(point.score)} (${point.snapshotDate.toISOString().slice(5, 10)})`)
+                .map((point) => `${Math.round(point.score)} (${formatDate(point.snapshotDate)})`)
                 .join(" → ")}
             </p>
           ) : null}
-        </section>
+        </Panel>
       ) : null}
 
       {view.distribution && view.territories ? (
-        <section className="app-panel franchise-panel" aria-label="Territory health">
-          <p className="eyebrow">Territories</p>
-          <h2>Franchise health across the network</h2>
-          <div className="franchise-metrics">
-            {(["red", "amber", "green", "unrated"] as const).map((band) => (
-              <article key={band}>
-                <span>{bandLabels[band]}</span>
-                <strong>{view.distribution?.[band] ?? 0}</strong>
-              </article>
-            ))}
-          </div>
-          <div className="table-scroll">
-            <table>
+        <Panel eyebrow="Territories" title="Franchise health across the network">
+          <Metrics
+            items={(["red", "amber", "green", "unrated"] as const).map((band) => {
+              const count = view.distribution?.[band] ?? 0;
+              return { label: bandLabels[band], value: count, tone: band === "unrated" || count === 0 ? "neutral" : bandTones[band] };
+            })}
+          />
+          {view.territories.length === 0 ? (
+            <EmptyState title="No territories yet">Territory scores appear here once the first snapshot has been generated.</EmptyState>
+          ) : (
+            <Table caption="Each territory's score and the figures behind it">
               <thead>
                 <tr>
-                  <th>Territory</th>
-                  <th>Score</th>
-                  <th>Band</th>
-                  <th>Bookings (30d)</th>
-                  <th>Subscribers</th>
-                  <th>Overdue compliance</th>
+                  <th scope="col">Territory</th>
+                  <th scope="col">Score</th>
+                  <th scope="col">Band</th>
+                  <th scope="col">Bookings (30d)</th>
+                  <th scope="col">Subscribers</th>
+                  <th scope="col">Overdue compliance</th>
                 </tr>
               </thead>
               <tbody>
-                {view.territories.length === 0 ? (
-                  <tr>
-                    <td colSpan={6}>No territories yet.</td>
+                {view.territories.map((row) => (
+                  <tr key={row.territoryId}>
+                    <th scope="row">{row.name}</th>
+                    <td>{row.score == null ? "—" : Math.round(row.score)}</td>
+                    <td>{bandLabels[row.band]}</td>
+                    <td>{formatMetric(row.metrics["commercial.bookings_value_30d"] ?? null, "minor_currency")}</td>
+                    <td>{formatMetric(row.metrics["audience.subscribers"] ?? null, "count")}</td>
+                    <td>{formatMetric(row.metrics["franchise.overdue_compliance_actions"] ?? null, "count")}</td>
                   </tr>
-                ) : (
-                  view.territories.map((row) => (
-                    <tr key={row.territoryId}>
-                      <td>{row.name}</td>
-                      <td>{row.score == null ? "—" : Math.round(row.score)}</td>
-                      <td>{bandLabels[row.band]}</td>
-                      <td>{formatMetric(row.metrics["commercial.bookings_value_30d"] ?? null, "minor_currency")}</td>
-                      <td>{formatMetric(row.metrics["audience.subscribers"] ?? null, "count")}</td>
-                      <td>{formatMetric(row.metrics["franchise.overdue_compliance_actions"] ?? null, "count")}</td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
-            </table>
-          </div>
-        </section>
+            </Table>
+          )}
+        </Panel>
       ) : null}
 
       {view.benchmarks ? (
-        <section className="app-panel franchise-panel" aria-label="Peer benchmarks">
-          <p className="eyebrow">Peer benchmarks</p>
-          <h2>How you compare</h2>
-          <p>
-            Comparisons use the middle of the network and its quartiles only. No other territory&apos;s figures or names are ever shown, and a comparison is withheld when fewer than {MIN_PEER_COHORT} peers have data.
-          </p>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Metric</th>
-                  <th>You</th>
-                  <th>Network median</th>
-                  <th>Middle half of peers</th>
-                  <th>Position</th>
-                </tr>
-              </thead>
-              <tbody>
-                {view.benchmarks.map((benchmark) => {
-                  const definition = metricCatalogue.find((metric) => metric.key === benchmark.metric);
-                  const unit = definition?.unit ?? "count";
-                  return (
-                    <tr key={benchmark.metric}>
-                      <td>{definition?.label ?? benchmark.metric}</td>
-                      {benchmark.suppressed ? (
-                        <td colSpan={4}>Not enough peer data to compare yet.</td>
-                      ) : (
-                        <>
-                          <td>{formatMetric(benchmark.own, unit)}</td>
-                          <td>{formatMetric(benchmark.median, unit)}</td>
-                          <td>
-                            {formatMetric(benchmark.lowerQuartile, unit)} to {formatMetric(benchmark.upperQuartile, unit)}
-                          </td>
-                          <td>{benchmarkLabels[benchmark.band]}</td>
-                        </>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <Panel
+          eyebrow="Peer benchmarks"
+          title="How you compare"
+          intro={`Comparisons use the middle of the network and its quartiles only. No other territory's figures or names are ever shown, and a comparison is withheld when fewer than ${MIN_PEER_COHORT} peers have data.`}
+        >
+          <Table caption="Your figures against the network median and middle half of peers">
+            <thead>
+              <tr>
+                <th scope="col">Metric</th>
+                <th scope="col">You</th>
+                <th scope="col">Network median</th>
+                <th scope="col">Middle half of peers</th>
+                <th scope="col">Position</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.benchmarks.map((benchmark) => {
+                const definition = metricCatalogue.find((metric) => metric.key === benchmark.metric);
+                const unit = definition?.unit ?? "count";
+                return (
+                  <tr key={benchmark.metric}>
+                    <th scope="row">{definition?.label ?? formatLabel(benchmark.metric)}</th>
+                    {benchmark.suppressed ? (
+                      <td colSpan={4}>Not enough peer data to compare yet.</td>
+                    ) : (
+                      <>
+                        <td>{formatMetric(benchmark.own, unit)}</td>
+                        <td>{formatMetric(benchmark.median, unit)}</td>
+                        <td>
+                          {formatMetric(benchmark.lowerQuartile, unit)} to {formatMetric(benchmark.upperQuartile, unit)}
+                        </td>
+                        <td>{benchmarkLabels[benchmark.band]}</td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </Panel>
       ) : null}
 
       {byDomain.map(({ domain, metrics }) => (
-        <section key={domain} className="app-panel franchise-panel" aria-label={`${domainLabels[domain]} metrics`}>
-          <p className="eyebrow">{domainLabels[domain]}</p>
-          <div className="franchise-list">
-            {metrics.map((metric) => (
-              <MetricRow key={metric.definition.key} metric={metric} />
-            ))}
-          </div>
-        </section>
+        <Panel key={domain} eyebrow="Metrics" title={domainLabels[domain]}>
+          {metrics.length === 0 ? (
+            <EmptyState title={`No ${domainLabels[domain]?.toLowerCase()} metrics yet`}>Figures appear here once a snapshot has been generated.</EmptyState>
+          ) : (
+            <RecordList>
+              {metrics.map((metric) => (
+                <MetricRow key={metric.definition.key} metric={metric} />
+              ))}
+            </RecordList>
+          )}
+        </Panel>
       ))}
     </AppShell>
   );
@@ -235,12 +240,7 @@ function MetricRow({ metric }: { metric: ScorecardMetric }) {
   const { definition } = metric;
   const change = formatChange(metric.value, metric.previous, definition.unit);
   return (
-    <div>
-      <strong>{definition.label}</strong>
-      <span>
-        {formatMetric(metric.value, definition.unit)}
-        {change ? ` · ${change}` : ""}
-      </span>
+    <RecordCard title={definition.label} lines={[`${formatMetric(metric.value, definition.unit)}${change ? ` · ${change}` : ""}`]}>
       <details>
         <summary>How this is calculated</summary>
         <p>{definition.description}</p>
@@ -251,7 +251,7 @@ function MetricRow({ metric }: { metric: ScorecardMetric }) {
           <strong>Source:</strong> {definition.source} · <strong>Window:</strong> {definition.window}
         </p>
       </details>
-    </div>
+    </RecordCard>
   );
 }
 

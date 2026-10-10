@@ -1,9 +1,11 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { metricCatalogue } from "@raring2go/analytics";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readHealthConfigsForActor } from "../../../../../lib/analytics-runtime";
 import type { AnalyticsActorContext } from "../../../../../lib/analytics-runtime";
+import { formatDate, formatLabel } from "../../../../../lib/format";
+import { Actions, EmptyState, FactList, LinkButton, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
+import { Breadcrumbs } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { activateAction, saveDraftAction } from "./actions";
@@ -21,6 +23,8 @@ const resultMessages: Record<string, { tone: "success" | "error"; text: string }
 };
 
 const scoredMetrics = metricCatalogue.filter((metric) => metric.direction !== "neutral").map((metric) => ({ key: metric.key, label: metric.label }));
+
+const metricLabel = (key: string) => metricCatalogue.find((metric) => metric.key === key)?.label ?? formatLabel(key);
 
 type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -51,44 +55,40 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Business in a Box</p>
-        <h2>Franchise Health Score settings</h2>
-        <p>
-          The score is a weighted blend of scorecard metrics. Each factor scores 0 to 100 between two anchors; weights set how much each carries. Published versions never change: edit a draft and activate it
-          to apply new rules, and every stored score records which version produced it. Money anchors are in pence (for example 500000 is £5,000); percentages are 0 to 100.
-        </p>
-        <p>
-          <Link href={back}>Back to the scorecard</Link>
-        </p>
-        {banner ? (
-          <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
-            {banner.text}
-          </p>
-        ) : null}
-      </section>
+      <Breadcrumbs items={[{ label: "Scorecard", href: back }, { label: "Franchise health settings" }]} />
+      <PageHeader
+        eyebrow="Analytics"
+        title="Franchise Health Score settings"
+        intro="The rules behind the health score: which metrics count, how much each one weighs, and the anchors that turn a figure into a score out of 100."
+        actions={
+          <LinkButton href={back} variant="secondary">
+            Back to the scorecard
+          </LinkButton>
+        }
+      />
+      {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
+      <Notice tone="info">
+        Published versions never change: edit a draft and activate it to apply new rules, and every stored score records which version produced it. Money anchors are in pence (for example 500000 is £5,000);
+        percentages are 0 to 100.
+      </Notice>
 
       {active ? (
-        <section className="app-panel franchise-panel" aria-label="Active version">
-          <p className="eyebrow">Active</p>
-          <h2>Version {active.versionNumber}</h2>
-          <p>
-            {active.changeNote ?? "No note"} · Healthy from {active.config.thresholds.green}, watch from {active.config.thresholds.amber}
-          </p>
-          <ul>
-            {active.config.factors.map((factor) => (
-              <li key={factor.metric}>
-                {metricCatalogue.find((metric) => metric.key === factor.metric)?.label ?? factor.metric}: weight {factor.weight}, 0 at {factor.bad}, 100 at {factor.good}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Panel
+          eyebrow="Active"
+          title={`Version ${active.versionNumber}`}
+          intro={`${active.changeNote ?? "No note"} · Healthy from ${active.config.thresholds.green}, watch from ${active.config.thresholds.amber}`}
+        >
+          <FactList
+            items={active.config.factors.map((factor) => ({
+              label: metricLabel(factor.metric),
+              value: `Weight ${factor.weight} · scores 0 at ${factor.bad}, 100 at ${factor.good}`
+            }))}
+          />
+        </Panel>
       ) : null}
 
       {drafts.map((draft) => (
-        <section key={draft.id} className="app-panel franchise-panel" aria-label={`Draft version ${draft.versionNumber}`}>
-          <p className="eyebrow">Draft</p>
-          <h2>Version {draft.versionNumber}</h2>
+        <Panel key={draft.id} eyebrow="Draft" title={`Version ${draft.versionNumber}`} intro="Save your changes, then activate the version when it is ready to use.">
           <ConfigEditor
             action={saveDraftAction.bind(null, request, draft.id)}
             metrics={scoredMetrics}
@@ -98,15 +98,21 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
             submitLabel="Save draft"
           />
           <form action={activateAction.bind(null, request, draft.id)}>
-            <button type="submit">Activate version {draft.versionNumber}</button>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--secondary">
+                Activate version {draft.versionNumber}
+              </button>
+            </Actions>
           </form>
-        </section>
+        </Panel>
       ))}
 
       {base ? (
-        <section className="app-panel franchise-panel" aria-label="New draft">
-          <p className="eyebrow">New version</p>
-          <h2>Start a new draft from version {base.versionNumber}</h2>
+        <Panel
+          eyebrow="New version"
+          title={`Start a new draft from version ${base.versionNumber}`}
+          intro="Each factor scores 0 to 100 between its two anchors; the weight sets how much it carries in the final score."
+        >
           <ConfigEditor
             action={saveDraftAction.bind(null, request, null)}
             metrics={scoredMetrics}
@@ -115,25 +121,25 @@ export default async function HealthConfigPage({ searchParams }: PageProps) {
             changeNote=""
             submitLabel="Create draft"
           />
-        </section>
+        </Panel>
       ) : null}
 
-      <section className="app-panel franchise-panel" aria-label="Version history">
-        <p className="eyebrow">History</p>
-        <h2>Earlier versions</h2>
+      <Panel eyebrow="History" title="Earlier versions">
         {retired.length === 0 ? (
-          <p>No earlier versions yet.</p>
+          <EmptyState title="No earlier versions yet">Versions you replace by activating a new draft are kept here.</EmptyState>
         ) : (
-          <ul>
+          <RecordList>
             {retired.map((config) => (
-              <li key={config.id}>
-                Version {config.versionNumber}: {config.changeNote ?? "No note"}
-                {config.activatedAt ? ` (active from ${config.activatedAt.toLocaleDateString("en-GB")})` : ""}
-              </li>
+              <RecordCard
+                key={config.id}
+                title={`Version ${config.versionNumber}`}
+                status={config.status}
+                lines={[config.changeNote ?? "No note", config.activatedAt ? `Active from ${formatDate(config.activatedAt)}` : null]}
+              />
             ))}
-          </ul>
+          </RecordList>
         )}
-      </section>
+      </Panel>
     </AppShell>
   );
 }

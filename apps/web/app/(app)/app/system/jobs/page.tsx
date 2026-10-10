@@ -4,7 +4,8 @@ import { requireShellPermission } from "../../../../../lib/app-shell";
 import { hasJobCapability, hasNetworkJobAccess, readJobConsole } from "../../../../../lib/jobs-runtime";
 import type { JobActorContext } from "../../../../../lib/jobs-runtime";
 import { readSystemHealth } from "../../../../../lib/health-runtime";
-import { StatusBadge } from "../../../../../lib/workflow-ui";
+import { formatCode, formatDateTime, formatLabel, formatLabels } from "../../../../../lib/format";
+import { EmptyState, FilterTabs, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, StatusBadge, Table } from "../../../../../lib/page-ui";
 import { jobStatuses, retryableLegacySources } from "@raring2go/workflows";
 import type { JobSource, JobStatus, TrackedJob } from "@raring2go/workflows";
 import { AppShell } from "../../../layout";
@@ -29,6 +30,10 @@ const sourceLabels: Record<JobSource, string> = {
   website_publish: "Website publish",
   publication_output: "Edition output"
 };
+
+const statusLabels: Partial<Record<JobStatus, string>> = { dead: "Dead-lettered" };
+
+/** "finance.sync_accounting" → "Finance sync accounting": dotted job kinds read as words. */
 
 function isRetryable(job: TrackedJob, registeredKinds: string[]) {
   if (job.source === "jobs") {
@@ -59,120 +64,116 @@ export default async function JobConsolePage({ searchParams }: PageProps) {
 
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">System</p>
-        <h2>Job console</h2>
-        <p>
-          Background work for publishing, email and automation. Failed jobs are retried
-          with backoff and land here as dead-lettered once their attempts are spent; each
-          one links back to the record it belongs to.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Needs attention</span>
-            <strong>{needsAttention}</strong>
-          </article>
-          <article>
-            <span>Queued</span>
-            <strong>{counts.queued}</strong>
-          </article>
-          <article>
-            <span>Running</span>
-            <strong>{counts.running}</strong>
-          </article>
-          <article>
-            <span>Succeeded</span>
-            <strong>{counts.succeeded}</strong>
-          </article>
-        </div>
-        {health ? (
-          <div className="franchise-list" aria-label="System health">
-            {health.checks.map((check) => (
-              <div key={check.name}>
-                <strong>{check.name.replace("_", " ")}</strong>
-                <StatusBadge status={check.status === "ok" ? "completed" : check.status === "degraded" ? "paused" : "failed"} />
-                <span>{check.detail}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {banner ? (
-          <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
-            {banner.text}
-          </p>
-        ) : null}
-        <nav className="filter-tabs" aria-label="Filter jobs by status">
-          <Link href={withParams(request, undefined)} aria-current={status ? undefined : "page"}>All</Link>
-          {jobStatuses.map((candidate) => (
-            <Link key={candidate} href={withParams(request, candidate)} aria-current={status === candidate ? "page" : undefined}>
-              {candidate === "dead" ? "Dead-lettered" : candidate}
-              {` (${counts[candidate]})`}
-            </Link>
-          ))}
-        </nav>
-      </section>
+      <PageHeader
+        eyebrow="System"
+        title="Job console"
+        intro="The background work behind publishing, email and automation. A job that has used up its retries lands here as dead-lettered, and you can re-run it from the record it belongs to."
+      />
 
-      <section className="app-panel audit-table" aria-label="Background jobs">
-        <div className="table-scroll">
-          <table>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Needs attention", value: needsAttention, tone: needsAttention > 0 ? "danger" : "success" },
+            { label: "Queued", value: counts.queued, tone: counts.queued > 0 ? "info" : "neutral" },
+            { label: "Running", value: counts.running, tone: counts.running > 0 ? "info" : "neutral" },
+            { label: "Succeeded", value: counts.succeeded }
+          ]}
+        />
+        {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
+        <FilterTabs
+          label="Filter jobs by status"
+          items={[
+            { label: "All", href: withParams(request, undefined), current: !status },
+            ...jobStatuses.map((candidate) => ({
+              label: `${statusLabels[candidate] ?? formatLabel(candidate)} (${counts[candidate]})`,
+              href: withParams(request, candidate),
+              current: status === candidate
+            }))
+          ]}
+        />
+      </Panel>
+
+      {health ? (
+        <Panel eyebrow="Health" title="Is everything running?">
+          <RecordList>
+            {health.checks.map((check) => (
+              <RecordCard
+                key={check.name}
+                title={formatLabel(check.name)}
+                status={check.status === "ok" ? "healthy" : check.status === "degraded" ? "degraded" : "failed"}
+                tone={check.status === "ok" ? "success" : check.status === "degraded" ? "warning" : "danger"}
+                lines={[check.detail]}
+              />
+            ))}
+          </RecordList>
+        </Panel>
+      ) : null}
+
+      <Panel eyebrow="Queue" title="Background jobs">
+        {jobs.length === 0 ? (
+          <EmptyState title={status ? `No ${(statusLabels[status] ?? formatLabel(status)).toLowerCase()} jobs` : "No background jobs yet"}>
+            Jobs appear here as workers pick up publishing, email and automation work.
+            {registeredKinds.length > 0 ? ` Registered job kinds: ${formatLabels(registeredKinds.map((kind) => kind.replace(/\./g, " ")))}.` : ""}
+          </EmptyState>
+        ) : (
+          <Table caption="Background jobs, newest first">
             <thead>
               <tr>
-                <th>Created</th>
-                <th>Source</th>
-                <th>Kind</th>
-                <th>Status</th>
-                <th>Attempts</th>
-                <th>Subject</th>
-                <th>Last error</th>
-                <th>Actions</th>
+                <th scope="col">Created</th>
+                <th scope="col">Source</th>
+                <th scope="col">Kind</th>
+                <th scope="col">Status</th>
+                <th scope="col">Attempts</th>
+                <th scope="col">Subject</th>
+                <th scope="col">Last error</th>
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {jobs.length === 0 ? (
-                <tr>
-                  <td colSpan={8}>
-                    {status ? `No ${status} jobs.` : "No background jobs yet."} Registered job kinds: {registeredKinds.join(", ") || "none"}.
+              {jobs.map((job) => (
+                <tr key={`${job.source}:${job.id}`}>
+                  <td>{formatDateTime(job.createdAt)}</td>
+                  <td>{sourceLabels[job.source]}</td>
+                  <td>
+                    {job.source === "jobs" ? (
+                      <Link href={detailHref(request, job.id)}>{formatCode(job.kind)}</Link>
+                    ) : job.traceHref ? (
+                      <Link href={job.traceHref as Route}>{formatCode(job.kind)}</Link>
+                    ) : (
+                      formatCode(job.kind)
+                    )}
+                  </td>
+                  <td>
+                    <StatusBadge
+                      status={statusLabels[job.status] ?? job.status}
+                      tone={job.status === "dead" ? "danger" : job.status === "succeeded" ? "success" : job.status === "running" ? "info" : undefined}
+                    />
+                  </td>
+                  <td>{job.maxAttempts != null ? `${job.attempts} of ${job.maxAttempts}` : "-"}</td>
+                  <td>{job.subjectType ? formatLabel(job.subjectType) : "-"}</td>
+                  <td>{job.lastError ?? "-"}</td>
+                  <td>
+                    {isRetryable(job, registeredKinds) && hasJobCapability(permissions, context, "retry", job) ? (
+                      <form action={retryJobAction.bind(null, request, job.source, job.id)}>
+                        <button type="submit" className="r2-button r2-button--secondary">
+                          Retry
+                        </button>
+                      </form>
+                    ) : null}
+                    {job.source === "jobs" && job.status === "queued" && hasJobCapability(permissions, context, "cancel", job) ? (
+                      <form action={cancelJobAction.bind(null, request, job.id)}>
+                        <button type="submit" className="r2-button r2-button--danger">
+                          Cancel
+                        </button>
+                      </form>
+                    ) : null}
                   </td>
                 </tr>
-              ) : (
-                jobs.map((job) => (
-                  <tr key={`${job.source}:${job.id}`}>
-                    <td>{job.createdAt.toLocaleString("en-GB")}</td>
-                    <td>{sourceLabels[job.source]}</td>
-                    <td>
-                      {job.source === "jobs" ? (
-                        <Link href={detailHref(request, job.id)}>{job.kind}</Link>
-                      ) : job.traceHref ? (
-                        <Link href={job.traceHref as Route}>{job.kind}</Link>
-                      ) : (
-                        job.kind
-                      )}
-                    </td>
-                    <td>
-                      <StatusBadge status={job.status === "dead" ? "failed" : job.status === "succeeded" ? "completed" : job.status} />
-                    </td>
-                    <td>{job.maxAttempts != null ? `${job.attempts}/${job.maxAttempts}` : "-"}</td>
-                    <td>{job.subjectType ? `${job.subjectType}:${job.subjectId ?? ""}` : "-"}</td>
-                    <td>{job.lastError ?? "-"}</td>
-                    <td>
-                      {isRetryable(job, registeredKinds) && hasJobCapability(permissions, context, "retry", job) ? (
-                        <form action={retryJobAction.bind(null, request, job.source, job.id)}>
-                          <button type="submit">Retry</button>
-                        </form>
-                      ) : null}
-                      {job.source === "jobs" && job.status === "queued" && hasJobCapability(permissions, context, "cancel", job) ? (
-                        <form action={cancelJobAction.bind(null, request, job.id)}>
-                          <button type="submit">Cancel</button>
-                        </form>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
-          </table>
-        </div>
-      </section>
+          </Table>
+        )}
+      </Panel>
     </AppShell>
   );
 }

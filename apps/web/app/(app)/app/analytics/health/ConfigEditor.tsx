@@ -87,7 +87,7 @@ export function ConfigEditor({
         <input name="changeNote" type="text" maxLength={300} defaultValue={changeNote} />
       </label>
       <div className="franchise-actions">
-        <button type="submit" disabled={pending}>
+        <button type="submit" className="r2-button r2-button--primary" disabled={pending}>
           {pending ? "Saving…" : submitLabel}
         </button>
       </div>

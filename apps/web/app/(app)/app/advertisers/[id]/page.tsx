@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readAdvertiser360, readCatalogue } from "../../../../../lib/advertising-runtime";
@@ -6,6 +5,8 @@ import { readSalesPanel } from "../../../../../lib/assistants-sales";
 import { getPermissionData } from "../../../../../lib/permission-source";
 import { getDirectory } from "../../../../../lib/directory";
 import { evaluatePermission } from "@raring2go/permissions";
+import { formatCount, formatDate, formatLabel } from "../../../../../lib/format";
+import { EmptyState, FactList, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList, toneForStatus, type Tone } from "../../../../../lib/page-ui";
 import { SalesAssistantPanel } from "./SalesAssistantPanel";
 import { CrmBanner } from "../CrmBanner";
 import { CrmPanels } from "./CrmPanels";
@@ -25,6 +26,21 @@ type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+/** The colour of an opportunity's attention flag: overdue is a problem, closing soon is worth watching. */
+const attentionTone: Record<string, Tone> = {
+  overdue_follow_up: "danger",
+  closing_soon: "warning",
+  stale: "warning",
+  normal: "neutral"
+};
+
+/** A mix snapshot ({ printDigital: 3 }) as words: "Print digital 3". */
+function describeMix(mix: Record<string, unknown> | undefined): string {
+  const entries = Object.entries(mix ?? {});
+  if (entries.length === 0) return "No data yet";
+  return entries.map(([key, value]) => `${formatLabel(key)} ${String(value)}`).join(", ");
+}
+
 export default async function Advertiser360Page({ params, searchParams }: PageProps) {
   const search = await searchParams;
   const request = await requestFromSearchParamsAndCookies(search);
@@ -36,6 +52,11 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
     return protectedOutcome(result.error, request);
   }
 
+  const openArtwork = result.artworkRequirements.filter((item) => item.status !== "production_ready").length;
+  const openFulfilment = result.campaignFulfilments.filter((item) => item.status !== "fulfilled").length;
+  const openRenewals = result.renewalPrompts.filter((item) => item.status === "open").length;
+  const pipelineValue = result.opportunities.reduce((sum, view) => sum + view.opportunity.estimatedValueMinor, 0);
+
   return (
     <AppShell request={request}>
       <CrmBanner result={resultCode} />
@@ -43,63 +64,37 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
         { label: "Commercial", href: "/app/advertisers" as Route },
         { label: result.organisation.name }
       ]} />
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Advertiser 360</p>
-        <h2>{result.organisation.name}</h2>
-        <p>
-          Canonical advertiser relationship record for contacts, activity,
-          commercial value and future bookings.
-        </p>
-        <Link href={`/app/advertisers/${result.advertiser.id}/acceptance` as Route} className="app-link-button">
-          Review acceptance
-        </Link>
-        <div className="franchise-metrics">
-          <article>
-            <span>Relationship</span>
-            <strong>{result.advertiser.relationshipState}</strong>
-          </article>
-          <article>
-            <span>Average sale</span>
-            <strong>{formatMoney(result.advertiser.averageSaleValueMinor)}</strong>
-          </article>
-          <article>
-            <span>Annual value</span>
-            <strong>{formatMoney(result.advertiser.annualAdvertiserValueMinor)}</strong>
-          </article>
-          <article>
-            <span>Debt</span>
-            <strong>{formatMoney(result.financeSummary.outstandingMinor)}</strong>
-          </article>
-          <article>
-            <span>Pipeline</span>
-            <strong>{formatMoney(result.opportunities.reduce((sum, view) => sum + view.opportunity.estimatedValueMinor, 0))}</strong>
-          </article>
-          <article>
-            <span>Proposals</span>
-            <strong>{result.proposals.length}</strong>
-          </article>
-          <article>
-            <span>Bookings</span>
-            <strong>{result.bookings.length}</strong>
-          </article>
-          <article>
-            <span>Acceptances</span>
-            <strong>{result.acceptances.length}</strong>
-          </article>
-          <article>
-            <span>Artwork</span>
-            <strong>{result.artworkRequirements.filter((item) => item.status !== "production_ready").length}</strong>
-          </article>
-          <article>
-            <span>Fulfilment</span>
-            <strong>{result.campaignFulfilments.filter((item) => item.status !== "fulfilled").length}</strong>
-          </article>
-          <article>
-            <span>Renewals</span>
-            <strong>{result.renewalPrompts.filter((item) => item.status === "open").length}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Advertiser"
+        title={result.organisation.name}
+        intro="Everything about this advertiser in one place: who to talk to, what they have bought, what they owe and what happens next."
+        actions={
+          <>
+            <LinkButton href={`/app/advertisers/${result.advertiser.id}/acceptance` as Route}>Review acceptance</LinkButton>
+            <LinkButton href={"/app/advertisers/pipeline" as Route} variant="secondary">
+              Pipeline
+            </LinkButton>
+          </>
+        }
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Relationship", value: formatLabel(result.advertiser.relationshipState), tone: toneForStatus(result.advertiser.relationshipState) },
+            { label: "Average sale", value: formatMoney(result.advertiser.averageSaleValueMinor) },
+            { label: "Annual value", value: formatMoney(result.advertiser.annualAdvertiserValueMinor) },
+            { label: "Owed", value: formatMoney(result.financeSummary.outstandingMinor), tone: result.financeSummary.overdueMinor > 0 ? "danger" : result.financeSummary.outstandingMinor > 0 ? "warning" : "success" },
+            { label: "Pipeline", value: formatMoney(pipelineValue) },
+            { label: "Proposals", value: result.proposals.length },
+            { label: "Bookings", value: result.bookings.length },
+            { label: "Acceptances", value: result.acceptances.length },
+            { label: "Artwork open", value: openArtwork, tone: openArtwork > 0 ? "warning" : "neutral" },
+            { label: "Fulfilment open", value: openFulfilment, tone: openFulfilment > 0 ? "warning" : "neutral" },
+            { label: "Renewals open", value: openRenewals, tone: openRenewals > 0 ? "warning" : "neutral" }
+          ]}
+        />
+      </Panel>
 
       {result.sales ? (
         <SalesAssistantPanel request={request} advertiserId={result.advertiser.id} panel={result.sales.panel} canAssist={result.sales.canAssist} senderName={result.sales.senderName} resultCode={resultCode} />
@@ -110,27 +105,27 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
         records={[
           {
             label: "Pipeline",
-            title: `${result.opportunities.length} opportunity record(s)`,
+            title: formatCount(result.opportunities.length, "opportunity", "opportunities"),
             description: "Lead and sales follow-up context",
             href: "/app/advertisers/pipeline" as Route
           },
           {
             label: "Acceptance",
-            title: `${result.acceptances.length} commercial acceptance(s)`,
+            title: formatCount(result.acceptances.length, "commercial acceptance"),
             description: "Proposal acceptance and booking confirmation",
             href: `/app/advertisers/${result.advertiser.id}/acceptance` as Route
           },
           {
             label: "Edition Factory",
-            title: `${result.bookings.length} booking(s) feeding inventory`,
+            title: `${formatCount(result.bookings.length, "booking")} feeding inventory`,
             description: "Accepted bookings reserve edition inventory and production handoff",
             href: "/app/editions" as Route
           },
           {
             label: "Proof Pack",
-            title: `${result.proofPacks.length} proof pack(s)`,
+            title: formatCount(result.proofPacks.length, "proof pack"),
             description: "Campaign evidence, proof and renewal context",
-            status: result.renewalPrompts.some((prompt) => prompt.status === "open") ? "Renewal attention" : "No open renewal"
+            status: openRenewals > 0 ? "Renewal attention" : "No open renewal"
           }
         ]}
       />
@@ -149,234 +144,195 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
 
       <FulfilmentPanels request={request} view={result} access={result.fulfilmentAccess} />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Contacts</p>
-        <h2>People</h2>
-        <div className="franchise-list">
-          {result.contacts.map((contact) => (
-            <div key={contact.id}>
-              <strong>{contact.name ?? contact.label}</strong>
-              <span>{contact.role} - {contact.email ?? "linked platform user"}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <Panel eyebrow="Contacts" title="People">
+        {result.contacts.length === 0 ? (
+          <EmptyState title="No contacts yet">Add the people you deal with so proposals and proofs reach the right person.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.contacts.map((contact) => (
+              <RecordCard
+                key={contact.id}
+                title={contact.name ?? contact.label}
+                status={contact.isPrimary ? "primary contact" : undefined}
+                tone="info"
+                lines={[`${contact.role} · ${contact.email ?? "Linked platform user"}`]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Opportunities</p>
-        <h2>Commercial pipeline</h2>
-        <div className="franchise-list">
-          {result.opportunities.length === 0 ? (
-            <div>
-              <strong>No open opportunities yet</strong>
-              <span>Add one from the pipeline page.</span>
-            </div>
-          ) : (
-            result.opportunities.map((view) => (
-              <div key={view.opportunity.id}>
-                <strong>{view.opportunity.title}</strong>
-                <span>{view.stage.name} - {formatMoney(view.opportunity.estimatedValueMinor)} - {view.attention.replaceAll("_", " ")}</span>
-                <ScoreBadge score={view.score} />
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <Panel eyebrow="Opportunities" title="Pipeline">
+        {result.opportunities.length === 0 ? (
+          <EmptyState title="No open opportunities yet" action={<LinkButton href={"/app/advertisers/pipeline#new" as Route} variant="secondary">Add an opportunity</LinkButton>}>
+            Add one from the pipeline page.
+          </EmptyState>
+        ) : (
+          <RecordList>
+            {result.opportunities.map((view) => (
+              <RecordCard
+                key={view.opportunity.id}
+                title={view.opportunity.title}
+                status={view.attention}
+                tone={attentionTone[view.attention]}
+                lines={[`${view.stage.name} · ${formatMoney(view.opportunity.estimatedValueMinor)}`]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Proposals and bookings</p>
-        <h2>Commercial workflow</h2>
-        <div className="franchise-list">
-          {result.proposals.length === 0 ? (
-            <div>
-              <strong>No proposals yet</strong>
-              <span>Proposal generation and booking acceptance are introduced in ADV-004.</span>
-            </div>
-          ) : (
-            result.proposals.map((proposal) => (
-              <div key={proposal.id}>
-                <strong>{proposal.title}</strong>
-                <span>{proposal.status} - valid until {proposal.validUntil ?? "not set"}</span>
-                <span>{formatMoney(proposal.totalValueMinor)}</span>
-              </div>
-            ))
-          )}
-        </div>
-        <div className="franchise-facts">
-          <div>
-            <dt>Commercial acceptances</dt>
-            <dd>{result.acceptances.length}</dd>
-          </div>
-          <div>
-            <dt>Accepted bookings</dt>
-            <dd>{result.bookings.length}</dd>
-          </div>
-          <div>
-            <dt>Production requests</dt>
-            <dd>{result.productionRequests.length}</dd>
-          </div>
-        </div>
-      </section>
+      <Panel eyebrow="Proposals and bookings" title="Proposals">
+        {result.proposals.length === 0 ? (
+          <EmptyState title="No proposals yet">Proposals appear here once one has been created for this advertiser.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.proposals.map((proposal) => (
+              <RecordCard
+                key={proposal.id}
+                title={proposal.title}
+                status={proposal.status}
+                lines={[`${formatMoney(proposal.totalValueMinor)} · Valid until ${formatDate(proposal.validUntil, "not set")}`]}
+              />
+            ))}
+          </RecordList>
+        )}
+        <FactList
+          items={[
+            { label: "Commercial acceptances", value: result.acceptances.length },
+            { label: "Accepted bookings", value: result.bookings.length },
+            { label: "Production requests", value: result.productionRequests.length }
+          ]}
+        />
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Commercial foundations</p>
-        <h2>Metrics and deferred workflows</h2>
-        <div className="franchise-facts">
-          <div>
-            <dt>Package mix</dt>
-            <dd>{JSON.stringify(result.latestMetrics?.packageMix ?? {})}</dd>
-          </div>
-          <div>
-            <dt>Digital mix</dt>
-            <dd>{JSON.stringify(result.latestMetrics?.digitalMix ?? {})}</dd>
-          </div>
-          <div>
-            <dt>Conversion</dt>
-            <dd>{result.latestMetrics?.conversionState ?? "unknown"}</dd>
-          </div>
-          <div>
-            <dt>Churn risk</dt>
-            <dd>{result.latestMetrics?.churnRisk ?? "unknown"}</dd>
-          </div>
-        </div>
-        <div className="franchise-tabs">
-          <span>Advertiser acceptance deferred to ADV-005</span>
-          <span>Invoices deferred to ADV-006</span>
-          <span>Artwork intake deferred to ADV-007</span>
-          <span>Campaign proof and renewal records introduced in ADV-008</span>
-        </div>
-      </section>
+      <Panel eyebrow="Performance" title="Latest metrics" intro="Recalculated from this advertiser's bookings.">
+        <FactList
+          items={[
+            { label: "Package mix", value: describeMix(result.latestMetrics?.packageMix) },
+            { label: "Digital mix", value: describeMix(result.latestMetrics?.digitalMix) },
+            { label: "Conversion", value: formatLabel(result.latestMetrics?.conversionState, "Not yet known") },
+            { label: "Churn risk", value: formatLabel(result.latestMetrics?.churnRisk, "Not yet known") }
+          ]}
+        />
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Artwork</p>
-        <h2>Production handoff</h2>
-        <div className="franchise-list">
-          {result.artworkRequirements.length === 0 ? (
-            <div>
-              <strong>No artwork requirements yet</strong>
-              <span>Artwork requirements are created from confirmed booking items.</span>
-            </div>
-          ) : (
-            result.artworkRequirements.map((requirement) => (
-              <div key={requirement.id}>
-                <strong>{requirement.sourceType.replaceAll("_", " ")}</strong>
-                <span>{requirement.status.replaceAll("_", " ")} - deadline {requirement.deadline ?? "not set"}</span>
-                <span>{requirement.editionPageId ? "Edition placement linked" : "Awaiting page placement"}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <Panel eyebrow="Artwork" title="Production handoff">
+        {result.artworkRequirements.length === 0 ? (
+          <EmptyState title="No artwork requirements yet">Artwork requirements are created from confirmed booking items.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.artworkRequirements.map((requirement) => (
+              <RecordCard
+                key={requirement.id}
+                title={formatLabel(requirement.sourceType)}
+                status={requirement.status}
+                lines={[
+                  `Deadline ${formatDate(requirement.deadline, "not set")}`,
+                  requirement.editionPageId ? "Edition placement linked" : "Awaiting page placement"
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Fulfilment</p>
-        <h2>Campaign delivery</h2>
-        <div className="franchise-list">
-          {result.campaignFulfilments.length === 0 ? (
-            <div>
-              <strong>No fulfilment records yet</strong>
-              <span>Fulfilment records are created after production-ready artwork is placed or delivered.</span>
-            </div>
-          ) : (
-            result.campaignFulfilments.map((fulfilment) => (
-              <div key={fulfilment.id}>
-                <strong>{fulfilment.channel}</strong>
-                <span>{fulfilment.status.replaceAll("_", " ")} - scheduled {fulfilment.scheduledOn ?? "not set"}</span>
-                <span>{fulfilment.editionPageId ? "Edition placement linked" : "Awaiting placement reference"}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <Panel eyebrow="Fulfilment" title="Campaign delivery">
+        {result.campaignFulfilments.length === 0 ? (
+          <EmptyState title="No fulfilment records yet">Fulfilment records are created after production-ready artwork is placed or delivered.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.campaignFulfilments.map((fulfilment) => (
+              <RecordCard
+                key={fulfilment.id}
+                title={formatLabel(fulfilment.channel)}
+                status={fulfilment.status}
+                lines={[
+                  `Scheduled ${formatDate(fulfilment.scheduledOn, "not set")}`,
+                  fulfilment.editionPageId ? "Edition placement linked" : "Awaiting placement reference"
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Proof packs and renewals</p>
-        <h2>Proof of value</h2>
-        <div className="franchise-list">
-          {result.proofPacks.length === 0 ? (
-            <div>
-              <strong>No proof packs yet</strong>
-              <span>Proof packs snapshot fulfilled campaign evidence for advertiser follow-up.</span>
-            </div>
-          ) : (
-            result.proofPacks.map((proofPack) => (
-              <div key={proofPack.id}>
-                <strong>{proofPack.status.replaceAll("_", " ")}</strong>
-                <span>Issued {proofPack.issuedAt ?? "not issued"} - delivered {proofPack.deliveredAt ?? "not delivered"}</span>
-                <span>{proofPack.renewalPromptId ? "Renewal prompt linked" : "No renewal prompt yet"}</span>
-              </div>
-            ))
-          )}
-        </div>
-        <div className="franchise-list">
-          {result.renewalPrompts.length === 0 ? (
-            <div>
-              <strong>No renewal prompts yet</strong>
-              <span>Renewal prompts are created from completed proof packs.</span>
-            </div>
-          ) : (
-            result.renewalPrompts.map((renewal) => (
-              <div key={renewal.id}>
-                <strong>{renewal.status.replaceAll("_", " ")}</strong>
-                <span>Due {renewal.dueOn ?? "not set"}</span>
-                <span>{renewal.opportunityId ? "Opportunity linked" : "Awaiting sales follow-up"}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <Panel eyebrow="Proof packs and renewals" title="Proof of value">
+        {result.proofPacks.length === 0 ? (
+          <EmptyState title="No proof packs yet">Proof packs snapshot fulfilled campaign evidence for advertiser follow-up.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.proofPacks.map((proofPack) => (
+              <RecordCard
+                key={proofPack.id}
+                title="Proof pack"
+                status={proofPack.status}
+                lines={[
+                  `Issued ${formatDate(proofPack.issuedAt, "not issued")} · Delivered ${formatDate(proofPack.deliveredAt, "not delivered")}`,
+                  proofPack.renewalPromptId ? "Renewal prompt linked" : "No renewal prompt yet"
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+        {result.renewalPrompts.length === 0 ? (
+          <EmptyState title="No renewal prompts yet">Renewal prompts are created from completed proof packs.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.renewalPrompts.map((renewal) => (
+              <RecordCard
+                key={renewal.id}
+                title="Renewal prompt"
+                status={renewal.status}
+                lines={[`Due ${formatDate(renewal.dueOn, "not set")}`, renewal.opportunityId ? "Opportunity linked" : "Awaiting sales follow-up"]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Finance</p>
-        <h2>Invoices and payments</h2>
-        <div className="franchise-metrics">
-          <article>
-            <span>Invoiced</span>
-            <strong>{formatMoney(result.financeSummary.lifetimeInvoicedMinor)}</strong>
-          </article>
-          <article>
-            <span>Paid</span>
-            <strong>{formatMoney(result.financeSummary.lifetimePaidMinor)}</strong>
-          </article>
-          <article>
-            <span>Outstanding</span>
-            <strong>{formatMoney(result.financeSummary.outstandingMinor)}</strong>
-          </article>
-          <article>
-            <span>Overdue</span>
-            <strong>{formatMoney(result.financeSummary.overdueMinor)}</strong>
-          </article>
-        </div>
-        <div className="franchise-list">
-          {result.invoices.length === 0 ? (
-            <div>
-              <strong>No invoices yet</strong>
-              <span>Invoices are generated from confirmed bookings in ADV-006.</span>
-            </div>
-          ) : (
-            result.invoices.map((invoice) => (
-              <div key={invoice.id}>
-                <strong>{invoice.invoiceNumber}</strong>
-                <span>{invoice.status} - due {invoice.dueDate ?? "not set"}</span>
-                <span>{formatMoney(invoice.totalMinor)} total - {formatMoney(invoice.balanceMinor)} outstanding</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <Panel eyebrow="Finance" title="Invoices and payments">
+        <Metrics
+          items={[
+            { label: "Invoiced", value: formatMoney(result.financeSummary.lifetimeInvoicedMinor) },
+            { label: "Paid", value: formatMoney(result.financeSummary.lifetimePaidMinor) },
+            { label: "Outstanding", value: formatMoney(result.financeSummary.outstandingMinor), tone: result.financeSummary.outstandingMinor > 0 ? "warning" : "success" },
+            { label: "Overdue", value: formatMoney(result.financeSummary.overdueMinor), tone: result.financeSummary.overdueMinor > 0 ? "danger" : "success" }
+          ]}
+        />
+        {result.invoices.length === 0 ? (
+          <EmptyState title="No invoices yet">Invoices are raised from confirmed bookings.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.invoices.map((invoice) => (
+              <RecordCard
+                key={invoice.id}
+                title={invoice.invoiceNumber}
+                status={invoice.status}
+                lines={[
+                  `Due ${formatDate(invoice.dueDate, "not set")}`,
+                  `${formatMoney(invoice.totalMinor)} total · ${formatMoney(invoice.balanceMinor)} outstanding`
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Activity</p>
-        <h2>Timeline</h2>
-        <ol className="franchise-activity">
-          {result.activity.map((event) => (
-            <li key={event.id}>
-              <strong>{event.title}</strong>
-              <span>{event.activityType}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <Panel eyebrow="Activity" title="Timeline">
+        {result.activity.length === 0 ? (
+          <EmptyState title="Nothing logged yet">Calls, meetings, emails and notes logged against this advertiser appear here.</EmptyState>
+        ) : (
+          <ol className="franchise-activity">
+            {result.activity.map((event) => (
+              <li key={event.id}>
+                <strong>{event.title}</strong>
+                <span>{formatLabel(event.activityType)}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Panel>
     </AppShell>
   );
 }

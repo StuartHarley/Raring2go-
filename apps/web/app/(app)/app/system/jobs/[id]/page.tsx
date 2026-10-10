@@ -3,7 +3,9 @@ import { JobAccessError } from "@raring2go/workflows";
 import { ShellAccessError, requireShellPermission } from "../../../../../../lib/app-shell";
 import { hasJobCapability, readJobDetail, registeredJobKinds } from "../../../../../../lib/jobs-runtime";
 import type { JobActorContext } from "../../../../../../lib/jobs-runtime";
-import { Breadcrumbs, StatusBadge } from "../../../../../../lib/workflow-ui";
+import { formatCode, formatDateTime, formatLabel } from "../../../../../../lib/format";
+import { Actions, EmptyState, FactList, Metrics, Notice, PageHeader, Panel, StatusBadge, Table } from "../../../../../../lib/page-ui";
+import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
 import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { cancelJobAction, retryJobAction } from "../actions";
@@ -17,6 +19,8 @@ type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+/** "finance.sync_accounting" → "Finance sync accounting": dotted job kinds read as words. */
+
 export default async function JobDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const request = await requestFromSearchParamsAndCookies(await searchParams);
@@ -28,108 +32,95 @@ export default async function JobDetailPage({ params, searchParams }: PageProps)
   }
 
   const { context, permissions, job, attempts } = result;
+  const statusLabel = job.status === "dead" ? "Dead-lettered" : formatLabel(job.status);
+  const statusTone = job.status === "dead" ? "danger" : job.status === "succeeded" ? "success" : job.status === "running" ? "info" : job.status === "queued" ? "warning" : "neutral";
+  const canRetry = (job.status === "dead" || job.status === "cancelled") && registeredJobKinds.includes(job.kind) && hasJobCapability(permissions, context, "retry", job);
+  const canCancel = job.status === "queued" && hasJobCapability(permissions, context, "cancel", job);
 
   return (
     <AppShell request={request}>
-      <Breadcrumbs items={[{ label: "Job console", href: "/app/system/jobs" as Route }, { label: job.kind }]} />
+      <Breadcrumbs items={[{ label: "Job console", href: "/app/system/jobs" as Route }, { label: formatCode(job.kind) }]} />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Job</p>
-        <h2>{job.kind}</h2>
-        <div className="franchise-metrics">
-          <article>
-            <span>Status</span>
-            <strong>
-              <StatusBadge status={job.status === "dead" ? "failed" : job.status === "succeeded" ? "completed" : job.status} />
-            </strong>
-          </article>
-          <article>
-            <span>Attempts</span>
-            <strong>
-              {job.attempts}/{job.maxAttempts}
-            </strong>
-          </article>
-          <article>
-            <span>Next run</span>
-            <strong>{job.status === "queued" ? job.runAfter.toLocaleString("en-GB") : "-"}</strong>
-          </article>
-          <article>
-            <span>Subject</span>
-            <strong>{job.subjectType ? `${job.subjectType}` : "-"}</strong>
-          </article>
-        </div>
-        <dl>
-          <dt>Job id</dt>
-          <dd>{job.id}</dd>
-          <dt>Idempotency key</dt>
-          <dd>{job.idempotencyKey}</dd>
-          {job.subjectId ? (
-            <>
-              <dt>Subject id</dt>
-              <dd>{job.subjectId}</dd>
-            </>
-          ) : null}
-          {job.correlationId ? (
-            <>
-              <dt>Correlation id</dt>
-              <dd>{job.correlationId}</dd>
-            </>
-          ) : null}
-          {job.lastError ? (
-            <>
-              <dt>Last error ({job.lastErrorCode ?? "error"})</dt>
-              <dd>{job.lastError}</dd>
-            </>
-          ) : null}
-        </dl>
-        <div className="franchise-actions">
-          {(job.status === "dead" || job.status === "cancelled") && registeredJobKinds.includes(job.kind) && hasJobCapability(permissions, context, "retry", job) ? (
-            <form action={retryJobAction.bind(null, request, "jobs", job.id)}>
-              <button type="submit">Retry job</button>
-            </form>
-          ) : null}
-          {job.status === "queued" && hasJobCapability(permissions, context, "cancel", job) ? (
-            <form action={cancelJobAction.bind(null, request, job.id)}>
-              <button type="submit">Cancel job</button>
-            </form>
-          ) : null}
-        </div>
-      </section>
+      <PageHeader eyebrow="Job" title={formatCode(job.kind)} intro={`Created ${formatDateTime(job.createdAt)}.`} />
 
-      <section className="app-panel audit-table" aria-label="Attempts">
-        <div className="table-scroll">
-          <table>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Status", value: statusLabel, tone: statusTone },
+            { label: "Attempts", value: `${job.attempts} of ${job.maxAttempts}`, tone: job.attempts >= job.maxAttempts && job.status === "dead" ? "danger" : "neutral" },
+            { label: "Next run", value: job.status === "queued" ? formatDateTime(job.runAfter) : "-" },
+            { label: "Subject", value: job.subjectType ? formatLabel(job.subjectType) : "-" }
+          ]}
+        />
+        {job.lastError ? (
+          <Notice tone="error">
+            {formatLabel(job.lastErrorCode, "Error")}: {job.lastError}
+          </Notice>
+        ) : null}
+        <FactList
+          items={[
+            { label: "Kind", value: <code>{job.kind}</code> },
+            { label: "Job id", value: <code>{job.id}</code> },
+            { label: "Idempotency key", value: <code>{job.idempotencyKey}</code> },
+            ...(job.subjectId ? [{ label: "Subject id", value: <code>{job.subjectId}</code> }] : []),
+            ...(job.correlationId ? [{ label: "Correlation id", value: <code>{job.correlationId}</code> }] : [])
+          ]}
+        />
+        {canRetry || canCancel ? (
+          <Actions>
+            {canRetry ? (
+              <form action={retryJobAction.bind(null, request, "jobs", job.id)}>
+                <button type="submit" className="r2-button r2-button--primary">
+                  Retry job
+                </button>
+              </form>
+            ) : null}
+            {canCancel ? (
+              <form action={cancelJobAction.bind(null, request, job.id)}>
+                <button type="submit" className="r2-button r2-button--danger">
+                  Cancel job
+                </button>
+              </form>
+            ) : null}
+          </Actions>
+        ) : null}
+      </Panel>
+
+      <Panel eyebrow="History" title="Attempts">
+        {attempts.length === 0 ? (
+          <EmptyState title="Not attempted yet">A worker has not picked this job up. Each attempt is listed here with its outcome and how long it took.</EmptyState>
+        ) : (
+          <Table caption="Attempts at running this job">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Started</th>
-                <th>Worker</th>
-                <th>Outcome</th>
-                <th>Duration</th>
-                <th>Error</th>
+                <th scope="col">#</th>
+                <th scope="col">Started</th>
+                <th scope="col">Worker</th>
+                <th scope="col">Outcome</th>
+                <th scope="col">Duration</th>
+                <th scope="col">Error</th>
               </tr>
             </thead>
             <tbody>
-              {attempts.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>This job has not been attempted yet.</td>
+              {attempts.map((attempt) => (
+                <tr key={attempt.id}>
+                  <td>{attempt.attemptNumber}</td>
+                  <td>{formatDateTime(attempt.startedAt)}</td>
+                  <td>{attempt.workerId}</td>
+                  <td>
+                    <StatusBadge
+                      status={attempt.outcome}
+                      tone={attempt.outcome === "succeeded" ? "success" : attempt.outcome === "running" ? "info" : attempt.outcome === "failed" || attempt.outcome === "dead" || attempt.outcome === "timed_out" ? "danger" : "neutral"}
+                    />
+                  </td>
+                  <td>{attempt.durationMs != null ? `${attempt.durationMs}ms` : "-"}</td>
+                  <td>{attempt.error ?? "-"}</td>
                 </tr>
-              ) : (
-                attempts.map((attempt) => (
-                  <tr key={attempt.id}>
-                    <td>{attempt.attemptNumber}</td>
-                    <td>{attempt.startedAt.toLocaleString("en-GB")}</td>
-                    <td>{attempt.workerId}</td>
-                    <td>{attempt.outcome}</td>
-                    <td>{attempt.durationMs != null ? `${attempt.durationMs}ms` : "-"}</td>
-                    <td>{attempt.error ?? "-"}</td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
-          </table>
-        </div>
-      </section>
+          </Table>
+        )}
+      </Panel>
     </AppShell>
   );
 }

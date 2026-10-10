@@ -2,7 +2,10 @@ import type { Route } from "next";
 import { AiRunAccessError } from "@raring2go/ai";
 import { ShellAccessError, requireShellPermission } from "../../../../../../lib/app-shell";
 import { hasAiRunCapability, readAiRun } from "../../../../../../lib/ai-runtime";
-import { Breadcrumbs, StatusBadge } from "../../../../../../lib/workflow-ui";
+import { getDirectory } from "../../../../../../lib/directory";
+import { displayName, formatCode, formatDateTime, formatLabel } from "../../../../../../lib/format";
+import { Actions, FactList, Metrics, Notice, PageHeader, Panel } from "../../../../../../lib/page-ui";
+import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
 import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { decideAiRunAction } from "../actions";
@@ -23,6 +26,10 @@ const resultMessages: Record<string, { tone: "success" | "error"; text: string }
   wrong_state: { tone: "error", text: "This can no longer be decided: it was already decided, or high-risk output needs a different approver than the requester." }
 };
 
+const decisionLabel: Record<string, string> = { pending: "Awaiting decision", approved: "Approved", rejected: "Rejected", not_required: "No decision needed" };
+
+/** "content.draft_article" → "Content draft article": dotted task codes read as words. */
+
 export default async function AiRunPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const search = await searchParams;
@@ -38,68 +45,54 @@ export default async function AiRunPage({ params, searchParams }: PageProps) {
   const resultParam = Array.isArray(search.result) ? search.result[0] : search.result;
   const banner = resultParam ? resultMessages[resultParam] : undefined;
   const pretty = (value: unknown) => JSON.stringify(value, null, 2);
+  const directory = getDirectory();
+  const [requesterName, deciderName] = await Promise.all([
+    run.actorUserId ? directory.userName(run.actorUserId) : undefined,
+    run.decidedByUserId ? directory.userName(run.decidedByUserId) : undefined
+  ]);
+  const decision = decisionLabel[run.approvalState] ?? formatLabel(run.approvalState);
 
   return (
     <AppShell request={request}>
       <Breadcrumbs items={[{ label: "AI runs", href: "/app/system/ai" as Route }, { label: run.purpose }]} />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">AI run</p>
-        <h2>{run.purpose}</h2>
-        <div className="franchise-metrics">
-          <article>
-            <span>Result</span>
-            <strong>
-              <StatusBadge status={run.status === "failed" ? "failed" : "completed"} />
-            </strong>
-          </article>
-          <article>
-            <span>Decision</span>
-            <strong>{run.approvalState.replace("_", " ")}</strong>
-          </article>
-          <article>
-            <span>Risk</span>
-            <strong>{run.risk}</strong>
-          </article>
-          <article>
-            <span>Tokens in / out</span>
-            <strong>{run.inputTokens} / {run.outputTokens}</strong>
-          </article>
-        </div>
-        {banner ? (
-          <p role={banner.tone === "error" ? "alert" : "status"} className={`notice notice--${banner.tone}`}>
-            {banner.text}
-          </p>
-        ) : null}
-        {run.error ? <p role="alert" className="notice notice--error">{run.error}</p> : null}
-        <dl>
-          <dt>Task</dt>
-          <dd>{run.taskKey} ({run.promptVersion})</dd>
-          <dt>Model</dt>
-          <dd>{run.providerKey} / {run.modelReference}</dd>
-          <dt>Requested by</dt>
-          <dd>{run.actorType === "automation" ? "Automation" : run.actorUserId ?? "-"}</dd>
-          <dt>Created</dt>
-          <dd>{run.createdAt.toLocaleString("en-GB")}{run.latencyMs != null ? ` (${run.latencyMs}ms)` : ""}</dd>
-          {run.subjectType ? (
-            <>
-              <dt>For record</dt>
-              <dd>{run.subjectType}: {run.subjectId}</dd>
-            </>
-          ) : null}
-          {run.decidedAt ? (
-            <>
-              <dt>Decided</dt>
-              <dd>{run.decidedAt.toLocaleString("en-GB")} by {run.decidedByUserId}{run.decisionNote ? ` — ${run.decisionNote}` : ""}</dd>
-            </>
-          ) : null}
-          {run.appliedAt ? (
-            <>
-              <dt>Applied</dt>
-              <dd>{run.appliedAt.toLocaleString("en-GB")}</dd>
-            </>
-          ) : null}
-        </dl>
+      <PageHeader eyebrow="AI run" title={run.purpose} intro={`${formatCode(run.taskKey)}, requested ${formatDateTime(run.createdAt)}.`} />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Result", value: run.status === "failed" ? "Failed" : "Completed", tone: run.status === "failed" ? "danger" : "success" },
+            { label: "Decision", value: decision, tone: run.approvalState === "pending" ? "warning" : run.approvalState === "rejected" ? "danger" : run.approvalState === "approved" ? "success" : "neutral" },
+            { label: "Risk", value: formatLabel(run.risk), tone: run.risk === "high" ? "warning" : "neutral" },
+            { label: "Tokens in / out", value: `${run.inputTokens} / ${run.outputTokens}` }
+          ]}
+        />
+        {banner ? <Notice tone={banner.tone}>{banner.text}</Notice> : null}
+        {run.error ? <Notice tone="error">{run.error}</Notice> : null}
+        <FactList
+          items={[
+            { label: "Task", value: `${formatCode(run.taskKey)} (prompt ${run.promptVersion})` },
+            { label: "Model", value: `${formatLabel(run.providerKey)} / ${run.modelReference}` },
+            { label: "Requested by", value: run.actorType === "automation" ? "Automation" : displayName(requesterName, "A person") },
+            { label: "Created", value: `${formatDateTime(run.createdAt)}${run.latencyMs != null ? ` (${run.latencyMs}ms)` : ""}` },
+            ...(run.subjectType
+              ? [
+                  {
+                    label: "For record",
+                    value: (
+                      <>
+                        {formatLabel(run.subjectType)} <code>{run.subjectId}</code>
+                      </>
+                    )
+                  }
+                ]
+              : []),
+            ...(run.decidedAt
+              ? [{ label: "Decided", value: `${formatDateTime(run.decidedAt)} by ${displayName(deciderName, "a person")}${run.decisionNote ? ` — ${run.decisionNote}` : ""}` }]
+              : []),
+            ...(run.appliedAt ? [{ label: "Applied", value: formatDateTime(run.appliedAt) }] : [])
+          ]}
+        />
 
         {run.approvalState === "pending" && canDecide ? (
           <form className="franchise-form">
@@ -107,26 +100,25 @@ export default async function AiRunPage({ params, searchParams }: PageProps) {
               Note (optional)
               <input name="note" maxLength={500} />
             </label>
-            <div className="franchise-actions">
-              <button type="submit" formAction={decideAiRunAction.bind(null, request, run.id, "approved")}>Approve</button>
-              <button type="submit" formAction={decideAiRunAction.bind(null, request, run.id, "rejected")}>Reject</button>
-            </div>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--primary" formAction={decideAiRunAction.bind(null, request, run.id, "approved")}>
+                Approve
+              </button>
+              <button type="submit" className="r2-button r2-button--danger" formAction={decideAiRunAction.bind(null, request, run.id, "rejected")}>
+                Reject
+              </button>
+            </Actions>
           </form>
         ) : null}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel" aria-label="Sources">
-        <p className="eyebrow">What it was given</p>
-        <h2>Sources and input</h2>
-        <p>References to the records used (never copies), and a bounded summary of the request.</p>
+      <Panel eyebrow="What it was given" title="Sources and input" intro="References to the records used (never copies), and a bounded summary of the request.">
         <pre className="code-block">{pretty({ sources: run.sourceRefs, input: run.input })}</pre>
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel" aria-label="Output">
-        <p className="eyebrow">What it returned</p>
-        <h2>Output</h2>
+      <Panel eyebrow="What it returned" title="Output">
         <pre className="code-block">{pretty(run.output)}</pre>
-      </section>
+      </Panel>
     </AppShell>
   );
 }

@@ -1,7 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Route } from "next";
-import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList, StatusBadge, toneForStatus } from "./page-ui";
+import { EmptyState, FactList, FilterTabs, LinkButton, Metrics, Notice, PageHeader, Panel, RecordCard, RecordLink, RecordList, StatusBadge, Table, toneForStatus } from "./page-ui";
 
 describe("page anatomy on the design system", () => {
   it("renders a page header with one h1 and right-aligned actions", () => {
@@ -46,6 +46,40 @@ describe("page anatomy on the design system", () => {
     expect(html).toContain("Sutton Coldfield");
     expect(html).toContain("Active");
     expect((html.match(/record-link__line/g) ?? []).length).toBe(2);
+  });
+
+  it("renders notices, filter tabs, facts, tables and record cards consistently", () => {
+    expect(renderToString(<Notice tone="error">Not allowed.</Notice>)).toContain('role="alert"');
+    expect(renderToString(<Notice tone="success">Saved.</Notice>)).toContain('class="notice notice--success"');
+
+    const tabs = renderToString(<FilterTabs items={[{ label: "All", href: "/app/x" as Route, current: true }, { label: "Open", href: "/app/x?f=open" as Route }]} />);
+    expect(tabs).toContain('aria-current="page"');
+    expect(tabs).toContain('aria-label="Filter"');
+
+    const facts = renderToString(<FactList items={[{ label: "Season", value: "Autumn 2026" }]} />);
+    expect(facts).toContain("<dt>Season</dt>");
+    expect(facts).toContain("<dd>Autumn 2026</dd>");
+
+    const table = renderToString(
+      <Table caption="Roles">
+        <thead>
+          <tr>
+            <th scope="col">Role</th>
+          </tr>
+        </thead>
+      </Table>
+    );
+    expect(table).toContain('class="table-scroll"');
+    expect(table).toContain("<caption>Roles</caption>");
+
+    const card = renderToString(
+      <RecordCard title="Approve the autumn package" status="pending" lines={["Expires 10 Aug 2026"]}>
+        <button type="button">Approve</button>
+      </RecordCard>
+    );
+    expect(card).toContain("record-card__head");
+    expect(card).toContain("Pending");
+    expect(card).toContain("<button");
   });
 
   it("gives empty states a status role so screen readers announce them", () => {

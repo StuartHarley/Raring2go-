@@ -1,8 +1,11 @@
+import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readPreflightPanel, readTerritoryEdition } from "../../../../../lib/publishing-runtime";
 import { AiPreparedNote, AssistantBanner, fixabilityLabels } from "../../../../../lib/assistant-ui";
 import { explainPreflightAction, generateOutputAction, lifecycleAction } from "./actions";
 import { readOutputReadiness } from "../../../../../lib/edition-output";
+import { formatCount, formatDate, formatLabel } from "../../../../../lib/format";
+import { EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
@@ -26,47 +29,42 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
     return protectedOutcome(result.error, request);
   }
 
+  const pagesNeedingAttention = result.pages.filter((page) => page.readiness !== "ready").length;
+  const outputQuery = new URLSearchParams();
+  if (request.sessionKey) outputQuery.set("session", request.sessionKey);
+  if (request.organisationId) outputQuery.set("organisationId", request.organisationId);
+  if (request.territoryId) outputQuery.set("territoryId", request.territoryId);
+
   return (
     <AppShell request={request}>
       <Breadcrumbs items={[
-        { label: "Publishing", href: "/app/editions" },
-        { label: "Edition Factory", href: "/app/editions" },
+        { label: "Edition Factory", href: "/app/editions" as Route },
         { label: result.row.territoryEdition.title }
       ]} />
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Edition Studio</p>
-        <h2>{result.row.territoryEdition.title}</h2>
-        <p>
-          Visual flatplan and readiness snapshot for the single territory edition
-          that will drive print and digital publication.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Season</span>
-            <strong>{result.row.season.name}</strong>
-          </article>
-          <article>
-            <span>Readiness</span>
-            <strong>{result.row.completionPercent}%</strong>
-          </article>
-          <article>
-            <span>Print</span>
-            <strong>{result.row.printStatus}</strong>
-          </article>
-          <article>
-            <span>Digital</span>
-            <strong>{result.row.digitalStatus}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Edition"
+        title={result.row.territoryEdition.title}
+        intro="The flatplan and readiness of this territory edition: the one record that drives its print and digital output."
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Season", value: result.row.season.name },
+            { label: "Readiness", value: `${result.row.completionPercent}%`, tone: result.row.completionPercent === 100 ? "success" : undefined },
+            { label: "Print", value: formatLabel(result.row.printStatus), tone: result.row.printStatus === "generated" ? "success" : undefined },
+            { label: "Digital", value: formatLabel(result.row.digitalStatus), tone: result.row.digitalStatus === "generated" ? "success" : undefined }
+          ]}
+        />
+      </Panel>
 
       <RelatedRecords
         title="Edition workflow"
         records={[
           {
             label: "Content",
-            title: `${result.content.length} content item(s)`,
-            description: "Assigned inherited/local content for this edition",
+            title: formatCount(result.content.length, "content item"),
+            description: "Inherited and local content assigned to this edition",
             href: "/app/content"
           },
           {
@@ -77,165 +75,146 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
           },
           {
             label: "Preflight",
-            title: `${result.pages.filter((page) => page.readiness !== "ready").length} page(s) need readiness attention`,
+            title: `${formatCount(pagesNeedingAttention, "page")} need readiness attention`,
             description: "Print readiness checks before output generation",
-            status: result.pages.some((page) => page.readiness === "blocked") ? "Needs attention" : "No blocking page failures"
+            href: "#preflight",
+            status: result.pages.some((page) => page.readiness === "blocked") ? "blocked" : "clear"
           },
           {
             label: "Outputs",
-            title: `${result.outputs.length} publication output(s)`,
-            description: "Print and digital artefacts from the same edition snapshot"
+            title: formatCount(result.outputs.length, "publication output"),
+            description: "Print and digital files from the same edition snapshot",
+            href: "#outputs"
           }
         ]}
       />
 
-      <section id="lifecycle" className="app-panel franchise-panel" aria-label="Edition lifecycle">
-        <p className="eyebrow">Lifecycle</p>
-        <h2>Status: {result.row.territoryEdition.status}</h2>
-        {resultCode?.startsWith("edition_") ? (
-          resultCode.endsWith("_refused") ? <p role="alert">That step is not available yet: check the requirements below.</p> : <p role="status">Done.</p>
-        ) : null}
-        <p className="muted">Draft, then flatplan, review, approval, digital output, publication. Approval needs every page ready; publication needs a generated digital edition. A published edition is public and cannot be reopened.</p>
-        <div className="franchise-list">
-          {result.pages.length === 0 && result.can.flatplan ? (
-            <form action={lifecycleAction.bind(null, request, id, "flatplan")}><button type="submit">Create flatplan ({result.row.territoryEdition.pageCount} pages)</button></form>
-          ) : null}
-          {["draft", "localising"].includes(result.row.territoryEdition.status) && result.pages.length > 0 && result.can.submit ? (
-            <form action={lifecycleAction.bind(null, request, id, "submit")}><button type="submit">Submit for review</button></form>
-          ) : null}
-          {result.row.territoryEdition.status === "review" && result.can.approve ? (
-            <form action={lifecycleAction.bind(null, request, id, "approve")}><button type="submit">Approve edition</button></form>
-          ) : null}
-          {["review", "approved"].includes(result.row.territoryEdition.status) && result.can.approve ? (
-            <form action={lifecycleAction.bind(null, request, id, "reopen")}>
-              <label>Reason for reopening<input name="reason" required maxLength={500} /></label>
-              <button type="submit">Reopen for changes</button>
-            </form>
-          ) : null}
-          {result.row.territoryEdition.status === "approved" && result.can.release ? (
-            <form action={lifecycleAction.bind(null, request, id, "release")}><button type="submit">Publish edition</button></form>
-          ) : null}
-        </div>
-      </section>
+      <Panel eyebrow="Flatplan" title="Page assembly">
+        {result.pages.length === 0 ? (
+          <EmptyState title="No pages yet">Pages appear here once the flatplan has been built from the master edition.</EmptyState>
+        ) : (
+          <div className="edition-flatplan">
+            {result.pages.map((page) => (
+              <article key={page.id} className={`edition-page-tile edition-page-${page.readiness}`}>
+                <span>Page {page.pageNumber}</span>
+                <strong>{formatLabel(page.status)}</strong>
+                <small>{formatLabel(page.sourceMarker)} · {formatLabel(page.side)} page</small>
+                <small>{page.assignedContentId ? "Content assigned" : "Needs content"}</small>
+              </article>
+            ))}
+          </div>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Flatplan</p>
-        <h2>Page assembly</h2>
-        {result.pages.length > 0 ? <p><Link href={`/app/editions/${id}/flatplan` as Route}>Edit the flatplan</Link></p> : null}
-        <div className="edition-flatplan">
-          {result.pages.map((page) => (
-            <article key={page.id} className={`edition-page-tile edition-page-${page.readiness}`}>
-              <span>Page {page.pageNumber}</span>
-              <strong>{page.status.replaceAll("_", " ")}</strong>
-              <small>{page.sourceMarker} - {page.side}</small>
-              <small>{page.assignedContentId ? "Content assigned" : "Needs content"}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="preflight" className="app-panel franchise-panel" aria-label="Preflight">
-        <p className="eyebrow">Preflight</p>
-        <h2>Print readiness</h2>
-        <p>
-          What the print checks found, in plain English. The findings and the fix verdicts come straight from the preflight, and a failing file is never described as print-ready. An optional AI explanation can reword
-          them for the person preparing the artwork.
-        </p>
+      <Panel
+        id="preflight"
+        eyebrow="Preflight"
+        title="Print readiness"
+        intro="What the print checks found, in plain English. The findings and the fix verdicts come straight from the preflight, and a failing file is never described as print-ready. An optional AI explanation can reword them for the person preparing the artwork."
+      >
         <AssistantBanner code={resultCode} />
         {result.preflight.results.length === 0 ? (
-          <p>No preflight has been run on this edition yet.</p>
+          <EmptyState title="No preflight has been run on this edition yet">Results for each page appear here after the first preflight.</EmptyState>
         ) : (
-          result.preflight.results.map((entry) => (
-            <article key={entry.id} className="franchise-list" aria-label={`Preflight for page ${entry.pageNumber ?? ""}`}>
-              <div>
-                <strong>
-                  {entry.pageNumber ? `Page ${entry.pageNumber}` : "Edition artwork"}: {entry.analysis.readyForPrint ? "ready for print" : "not ready for print"}
-                </strong>
-                <span>{entry.ai ? entry.ai.output.summary : entry.analysis.summary}</span>
+          <RecordList>
+            {result.preflight.results.map((entry) => (
+              <RecordCard
+                key={entry.id}
+                title={entry.pageNumber ? `Page ${entry.pageNumber}` : "Edition artwork"}
+                status={entry.analysis.readyForPrint ? "ready for print" : "not ready for print"}
+                tone={entry.analysis.readyForPrint ? "success" : "danger"}
+                lines={[entry.ai ? entry.ai.output.summary : entry.analysis.summary]}
+              >
                 {entry.ai ? <AiPreparedNote run={entry.ai.run} /> : null}
-              </div>
-              {entry.analysis.items.map((item) => {
-                const said = entry.ai?.output.items.find((candidate) => candidate.code === item.code);
-                const steps = said?.steps?.length ? said.steps : item.steps;
-                return (
-                  <div key={item.code}>
-                    <strong>
-                      {item.title} <span className="muted">({item.severity})</span>
-                    </strong>
-                    <span>{said?.explanation ?? item.explanation}</span>
-                    <span className="muted">{fixabilityLabels[item.fixability]}</span>
-                    <details>
-                      <summary>What to do</summary>
-                      <ol>
-                        {steps.map((step) => (
-                          <li key={step}>{step}</li>
-                        ))}
-                      </ol>
-                      <p className="muted">Preflight said: {item.engineMessage}</p>
-                    </details>
-                  </div>
-                );
-              })}
-              {entry.analysis.items.length > 0 && result.preflight.canAssist ? (
-                result.preflight.aiConfigured ? (
-                  <form action={explainPreflightAction.bind(null, request, id, entry.id)}>
-                    <button type="submit">{entry.ai ? "Refresh AI explanation" : "Add AI explanation"}</button>
-                  </form>
-                ) : (
-                  <p className="muted">AI explanations are not switched on for this environment.</p>
-                )
-              ) : null}
-            </article>
-          ))
+                {entry.analysis.items.map((item) => {
+                  const said = entry.ai?.output.items.find((candidate) => candidate.code === item.code);
+                  const steps = said?.steps?.length ? said.steps : item.steps;
+                  return (
+                    <div key={item.code}>
+                      <strong>
+                        {item.title} <span className="muted">({formatLabel(item.severity)})</span>
+                      </strong>
+                      <p>{said?.explanation ?? item.explanation}</p>
+                      <p className="muted">{fixabilityLabels[item.fixability] ?? formatLabel(item.fixability)}</p>
+                      <details>
+                        <summary>What to do</summary>
+                        <ol>
+                          {steps.map((step) => (
+                            <li key={step}>{step}</li>
+                          ))}
+                        </ol>
+                        <p className="muted">Preflight said: {item.engineMessage}</p>
+                      </details>
+                    </div>
+                  );
+                })}
+                {entry.analysis.items.length > 0 && result.preflight.canAssist ? (
+                  result.preflight.aiConfigured ? (
+                    <form action={explainPreflightAction.bind(null, request, id, entry.id)}>
+                      <button type="submit" className="r2-button r2-button--secondary">
+                        {entry.ai ? "Refresh AI explanation" : "Add AI explanation"}
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="muted">AI explanations are not switched on for this environment.</p>
+                  )
+                ) : null}
+              </RecordCard>
+            ))}
+          </RecordList>
         )}
-      </section>
+      </Panel>
 
-      <section id="outputs" className="app-panel franchise-panel" aria-label="Outputs">
-        <p className="eyebrow">Outputs</p>
-        <h2>Print and digital artefacts</h2>
-        {resultCode === "output_queued" ? <p role="status">Queued. The file is rendered in the background and appears below when it is ready; progress is in Jobs.</p> : null}
-        {resultCode === "output_not_ready" ? <p role="alert">That output could not be queued. See what is blocking it below.</p> : null}
-        <div className="franchise-list">
+      <Panel id="outputs" eyebrow="Outputs" title="Print and digital files">
+        {resultCode === "output_queued" ? (
+          <Notice tone="success">Queued. The file is rendered in the background and appears below when it is ready; progress is in Jobs.</Notice>
+        ) : null}
+        {resultCode === "output_not_ready" ? <Notice tone="error">That output could not be queued. See what is blocking it below.</Notice> : null}
+        <RecordList>
           {(["print", "digital"] as const).map((kind) => {
             const state = result.readiness[kind];
             return (
-              <div key={kind}>
-                <strong>{kind === "print" ? "Press-ready print PDF" : "Digital edition PDF"}</strong>
+              <RecordCard
+                key={kind}
+                title={kind === "print" ? "Press-ready print PDF" : "Digital edition PDF"}
+                lines={state.allowed ? [] : [`Not available: ${state.blocker}`]}
+              >
                 {state.allowed ? (
                   <form action={generateOutputAction.bind(null, request, id, kind)}>
-                    <button type="submit">Generate {kind}</button>
+                    <button type="submit" className="r2-button r2-button--primary">
+                      Generate {kind}
+                    </button>
                   </form>
-                ) : (
-                  <span className="muted">Not available: {state.blocker}</span>
-                )}
-              </div>
+                ) : null}
+              </RecordCard>
             );
           })}
-          {result.outputs.length === 0 ? (
-            <div>
-              <strong>No outputs generated yet</strong>
-              <span>Generation is gated by approval and, for print, a successful preflight on every page.</span>
-            </div>
-          ) : (
-            result.outputs.map((output) => {
+        </RecordList>
+        {result.outputs.length === 0 ? (
+          <EmptyState title="No outputs generated yet">Generation is gated by approval and, for print, a successful preflight on every page.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.outputs.map((output) => {
               const proofOnly = output.artifact.proofOnly === true;
               const hasFile = typeof output.artifact.fileId === "string";
-              const query = new URLSearchParams();
-              if (request.sessionKey) query.set("session", request.sessionKey);
-              if (request.organisationId) query.set("organisationId", request.organisationId);
-              if (request.territoryId) query.set("territoryId", request.territoryId);
               return (
-                <div key={output.id}>
-                  <strong>{output.outputType} v{output.version}{proofOnly ? " - proof only, not press-ready" : ""}</strong>
-                  <span>{output.status} - generated {output.generatedAt ?? "date not set"}{typeof output.artifact.pageCount === "number" ? ` - ${output.artifact.pageCount} pages` : ""}</span>
-                  {hasFile ? <a href={`/app/editions/${id}/outputs/${output.id}${query.size ? `?${query.toString()}` : ""}`}>Download PDF</a> : null}
-                  {typeof (output.artifact.imposed as { fileId?: unknown } | undefined)?.fileId === "string" ? <a href={`/app/editions/${id}/outputs/${output.id}?${new URLSearchParams([...query.entries(), ["file", "imposed"]]).toString()}`}>Download imposed booklet (press sheets)</a> : null}
-                </div>
+                <RecordCard
+                  key={output.id}
+                  title={`${formatLabel(output.outputType)} v${output.version}${proofOnly ? " (proof only, not press-ready)" : ""}`}
+                  status={output.status}
+                  lines={[
+                    `Generated ${formatDate(output.generatedAt, "date not set")}${typeof output.artifact.pageCount === "number" ? ` · ${formatCount(output.artifact.pageCount, "page")}` : ""}`
+                  ]}
+                >
+                  {hasFile ? (
+                    <a href={`/app/editions/${id}/outputs/${output.id}${outputQuery.size ? `?${outputQuery.toString()}` : ""}`}>Download PDF</a>
+                  ) : null}
+                </RecordCard>
               );
-            })
-          )}
-        </div>
-      </section>
+            })}
+          </RecordList>
+        )}
+      </Panel>
     </AppShell>
   );
 }

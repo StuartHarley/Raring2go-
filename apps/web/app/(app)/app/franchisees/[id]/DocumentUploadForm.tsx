@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Actions, Notice } from "../../../../../lib/page-ui";
 
 /** Uploads a real file to the vault: a new document, or (with documentId) a new version of one. */
 export function DocumentUploadForm({ franchiseId, documentId, queryString, label }: { franchiseId: string; documentId?: string; queryString: string; label: string }) {
@@ -39,8 +40,8 @@ export function DocumentUploadForm({ franchiseId, documentId, queryString, label
 
   return (
     <form onSubmit={submit} className="franchise-form">
-      {state.error ? <p role="alert" className="notice notice--error">{state.error}</p> : null}
-      {state.ok ? <p role="status" className="notice notice--success">Saved.</p> : null}
+      {state.error ? <Notice tone="error">{state.error}</Notice> : null}
+      {state.ok ? <Notice tone="success">Saved.</Notice> : null}
       {documentId ? null : (
         <>
           <label>Title<input name="title" maxLength={160} placeholder="Insurance certificate 2026" /></label>
@@ -62,9 +63,9 @@ export function DocumentUploadForm({ franchiseId, documentId, queryString, label
         File (PDF, PNG, JPEG or Word .docx, up to 4MB)
         <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.docx,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required />
       </label>
-      <div className="franchise-actions">
-        <button type="submit" disabled={pending}>{pending ? "Uploading and scanning…" : label}</button>
-      </div>
+      <Actions>
+        <button type="submit" className="r2-button r2-button--primary" disabled={pending}>{pending ? "Uploading and scanning…" : label}</button>
+      </Actions>
     </form>
   );
 }

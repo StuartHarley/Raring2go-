@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Actions, Notice } from "../../../../../lib/page-ui";
 
 type Territory = { id: string; name: string };
 
@@ -34,7 +35,7 @@ export function ImportUploadForm({ territories, defaultTerritoryId, queryString 
 
   return (
     <form onSubmit={submit} className="franchise-form">
-      {error ? <p role="alert" className="notice notice--error">{error}</p> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
       <label>
         Territory
         <select name="territoryId" required defaultValue={defaultTerritoryId ?? ""}>
@@ -59,9 +60,11 @@ export function ImportUploadForm({ territories, defaultTerritoryId, queryString 
         CSV file (up to 2 MB, 5,000 rows). Columns: email, first_name, last_name, consent_date, consent_source, tags.
         <input type="file" name="file" accept=".csv,text/csv" required />
       </label>
-      <div className="franchise-actions">
-        <button type="submit" disabled={pending}>{pending ? "Checking…" : "Check the file (dry run)"}</button>
-      </div>
+      <Actions>
+        <button type="submit" className="r2-button r2-button--primary" disabled={pending}>
+          {pending ? "Checking…" : "Check the file (dry run)"}
+        </button>
+      </Actions>
       <small>Checking changes nothing. You review the result first.</small>
     </form>
   );

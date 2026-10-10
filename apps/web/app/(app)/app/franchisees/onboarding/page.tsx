@@ -1,7 +1,8 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { requireShellPermission } from "../../../../../lib/app-shell";
+import { displayName, formatCount, formatDate } from "../../../../../lib/format";
 import { listOnboardingOverview } from "../../../../../lib/franchise-runtime";
+import { EmptyState, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../../lib/page-ui";
 import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
@@ -20,33 +21,52 @@ export default async function FranchiseOnboardingPage({ searchParams }: PageProp
     return protectedOutcome(result.error, request);
   }
 
+  const launching = result.rows.filter((row) => row.riskStatus !== "launched").length;
+  const atRisk = result.rows.filter((row) => row.riskStatus === "at_risk").length;
+  const blocked = result.rows.filter((row) => row.riskStatus === "blocked").length;
+  const overdue = result.rows.reduce((total, row) => total + row.overdueTasks, 0);
+
   return (
     <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">HQ onboarding overview</p>
-        <h2>Launch readiness across the network</h2>
-        <p>
-          Live onboarding programmes, risk signals and current launch phases for permitted franchise records.
-        </p>
-        <div className="franchise-list">
-          {result.rows.length > 0 ? (
-            result.rows.map((row) => (
-              <Link key={row.franchise.id} href={`/app/franchisees/${row.franchise.id}#onboarding` as Route}>
-                <strong>{row.territory?.name ?? row.franchise.primaryTerritoryId}</strong>
-                <span>{row.riskStatus} - {row.progress}% complete</span>
-                <span>
-                  {row.currentPhase ?? "No active phase"}; target {row.targetLaunchDate ?? "not set"}
-                </span>
-                <span>
-                  {row.overdueTasks} overdue, {row.blockedTasks} blocked
-                </span>
-              </Link>
-            ))
-          ) : (
-            <p>No onboarding programmes are available in the current context.</p>
-          )}
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Franchise"
+        title="Onboarding"
+        intro="Every franchise launch in progress: how far along each one is, its target date, and which ones are slipping or stuck."
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Launches in progress", value: launching, detail: formatCount(result.rows.length - launching, "franchise launched") },
+            { label: "At risk", value: atRisk, tone: atRisk > 0 ? "warning" : "success" },
+            { label: "Blocked", value: blocked, tone: blocked > 0 ? "danger" : "success" },
+            { label: "Overdue tasks", value: overdue, tone: overdue > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="Network" title="Launch readiness">
+        {result.rows.length === 0 ? (
+          <EmptyState title="No onboarding programmes in this context">A programme appears here once a franchise starts its launch plan.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.rows.map((row) => (
+              <RecordLink
+                key={row.franchise.id}
+                href={`/app/franchisees/${row.franchise.id}#onboarding` as Route}
+                title={displayName(row.territory?.name, "Territory not named yet")}
+                status={row.riskStatus}
+                tone={row.riskStatus === "blocked" ? "danger" : row.riskStatus === "at_risk" ? "warning" : row.riskStatus === "on_track" ? "info" : undefined}
+                lines={[
+                  `${row.progress}% complete · ${row.currentPhase ?? "No active phase"}`,
+                  `Target launch ${formatDate(row.targetLaunchDate)}`,
+                  `${formatCount(row.overdueTasks, "overdue task")} · ${formatCount(row.blockedTasks, "blocked task")}`
+                ]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
     </AppShell>
   );
 }

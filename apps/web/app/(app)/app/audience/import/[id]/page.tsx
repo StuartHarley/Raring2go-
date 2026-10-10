@@ -1,7 +1,9 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { requireShellPermission } from "../../../../../../lib/app-shell";
 import { readAudienceImport } from "../../../../../../lib/audience-import-runtime";
+import { formatDate, formatLabel } from "../../../../../../lib/format";
+import { Actions, FactList, LinkButton, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../../lib/page-ui";
+import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
 import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { commitImportAction, rollbackImportAction } from "../actions";
@@ -51,80 +53,104 @@ export default async function AudienceImportDetailPage({ params, searchParams }:
   if (request.territoryId) query.set("territoryId", request.territoryId);
   const queryString = query.size > 0 ? `?${query.toString()}` : "";
   const banner = resultCode && Object.hasOwn(messages, resultCode) ? messages[resultCode as ImportResult] : undefined;
+  const bannerTone = resultCode === "committed" || resultCode === "rolled_back" ? "success" : "error";
+  const rollback = record.metadata.rollback;
 
   return (
     <AppShell request={request}>
-      {banner ? <p className={resultCode === "committed" || resultCode === "rolled_back" ? "notice notice--success" : "notice notice--error"} role="status">{banner}</p> : null}
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Import</p>
-        <h2>{record.source}</h2>
-        <p>
-          {record.status === "dry_run" ? "This is a dry run: nothing has been added yet." : `Status: ${record.status.replaceAll("_", " ")}.`}{" "}
-          File: {record.metadata.fileName}.{" "}
-          {record.metadata.basis === "consent_evidenced" ? "Declared as: people agreed, with consent recorded in the file." : "Declared as: no consent record. Nobody will be emailed."}
-        </p>
-        {summary ? (
-          <div className="franchise-metrics">
-            <article><span>Rows</span><strong>{summary.total}</strong></article>
-            <article><span>New subscribers</span><strong>{summary.newSubscribed}</strong></article>
-            <article><span>New, not emailed</span><strong>{summary.newPending}</strong></article>
-            <article><span>Existing, joined</span><strong>{summary.addedToTerritory}</strong></article>
-            <article><span>Already here</span><strong>{summary.alreadySubscribed}</strong></article>
-            <article><span>Rejected</span><strong>{summary.rejected}</strong></article>
-          </div>
-        ) : null}
-        {hasReport ? (
-          <a className="app-link-button" href={`/app/audience/import/${record.id}/report${queryString}`}>Download the report of rejected and not-emailed rows</a>
-        ) : null}
-      </section>
+      {banner ? <Notice tone={bannerTone}>{banner}</Notice> : null}
+      <Breadcrumbs
+        items={[
+          { label: "Audience", href: `/app/audience${queryString}` as Route },
+          { label: "Import", href: `/app/audience/import${queryString}` as Route },
+          { label: record.source }
+        ]}
+      />
+      <PageHeader
+        eyebrow="Import"
+        title={record.source}
+        intro={
+          <>
+            {record.status === "dry_run" ? "This is a dry run: nothing has been added yet." : `Status: ${formatLabel(record.status)}.`} File: {record.metadata.fileName}.{" "}
+            {record.metadata.basis === "consent_evidenced"
+              ? "Declared as: people agreed, with consent recorded in the file."
+              : "Declared as: no consent record. Nobody will be emailed."}
+          </>
+        }
+        actions={
+          <>
+            {hasReport ? (
+              <a className="r2-button r2-button--secondary" href={`/app/audience/import/${record.id}/report${queryString}`}>
+                Download the report
+              </a>
+            ) : null}
+            <LinkButton href={`/app/audience/import${queryString}` as Route} variant="secondary">
+              All imports
+            </LinkButton>
+          </>
+        }
+      />
+
+      {summary ? (
+        <Panel eyebrow="Outcome" title="What this import does" intro={hasReport ? "The report lists every rejected and not-emailed row with the reason." : undefined}>
+          <Metrics
+            items={[
+              { label: "Rows", value: summary.total },
+              { label: "New subscribers", value: summary.newSubscribed, tone: summary.newSubscribed > 0 ? "success" : "neutral" },
+              { label: "New, not emailed", value: summary.newPending },
+              { label: "Existing, joined", value: summary.addedToTerritory },
+              { label: "Already here", value: summary.alreadySubscribed },
+              { label: "Rejected", value: summary.rejected, tone: summary.rejected > 0 ? "warning" : "success" }
+            ]}
+          />
+        </Panel>
+      ) : null}
 
       {record.status === "dry_run" ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Preview</p>
-          <h2>What would happen</h2>
-          <div className="franchise-list">
+        <Panel eyebrow="Preview" title="What would happen" intro={`Showing the first ${sample.length} rows. The report has every one.`}>
+          <RecordList>
             {sample.map((row) => (
-              <div key={row.line}>
-                <strong>Line {row.line}: {row.email}</strong>
-                <span>{outcomeLabels[row.outcome] ?? row.outcome}</span>
-                <span>{row.reason}</span>
-              </div>
+              <RecordCard key={row.line} title={`Line ${row.line}: ${row.email}`} lines={[outcomeLabels[row.outcome] ?? formatLabel(row.outcome), row.reason]} />
             ))}
-          </div>
-          <p>Showing the first {sample.length} rows. The report has every one.</p>
+          </RecordList>
           <form action={commitImportAction.bind(null, request, record.id)}>
             <p>Importing re-checks everyone against the audience at this moment, so anyone who unsubscribed since the upload is still left out.</p>
-            <button type="submit">Import now</button>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--primary">
+                Import now
+              </button>
+            </Actions>
           </form>
-        </section>
+        </Panel>
       ) : null}
 
       {record.status === "committed" ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Reverse</p>
-          <h2>Roll back this import</h2>
-          <p>
-            Withdraws the subscriptions this import created and records the withdrawal in each person&apos;s consent history. People who
-            have since confirmed or changed their subscription themselves are left alone, and anyone already emailed cannot be un-emailed.
-            The contact records stay (with nothing eligible to send); removing the people themselves is an erasure request.
-          </p>
+        <Panel
+          eyebrow="Reverse"
+          title="Roll back this import"
+          intro="Withdraws the subscriptions this import created and records the withdrawal in each person's consent history. People who have since confirmed or changed their subscription themselves are left alone, and anyone already emailed cannot be un-emailed. The contact records stay (with nothing eligible to send); removing the people themselves is an erasure request."
+        >
           <form action={rollbackImportAction.bind(null, request, record.id)}>
-            <button type="submit">Roll back this import</button>
+            <Actions>
+              <button type="submit" className="r2-button r2-button--danger">
+                Roll back this import
+              </button>
+            </Actions>
           </form>
-        </section>
+        </Panel>
       ) : null}
 
-      {record.metadata.rollback ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Rolled back</p>
-          <p>
-            {record.metadata.rollback.subscriptionsWithdrawn} subscription(s) withdrawn, {record.metadata.rollback.leftAlone} left alone because
-            the person had changed them, {record.metadata.rollback.alreadyEmailed} person/people had already been emailed.
-          </p>
-        </section>
+      {rollback ? (
+        <Panel eyebrow="Rolled back" title="This import was reversed" intro={`Rolled back ${formatDate(rollback.at)}.`}>
+          <FactList
+            items={[
+              { label: "Subscriptions withdrawn", value: rollback.subscriptionsWithdrawn },
+              { label: "Left alone (person had changed them)", value: rollback.leftAlone },
+              { label: "Already emailed", value: rollback.alreadyEmailed }
+            ]}
+          />
+        </Panel>
       ) : null}
-
-      <Link href={`/app/audience/import${queryString}` as Route} className="app-link-button">All imports</Link>
     </AppShell>
   );
 }
