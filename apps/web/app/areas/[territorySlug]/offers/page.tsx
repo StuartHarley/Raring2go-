@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { TrackedLink } from "../_components/TrackedLink";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import type { Route } from "next";
 import { readPublicCommercialDiscovery, territoryFromSlug } from "../../../../lib/public-runtime";
+import { PublicNav } from "../_components/PublicNav";
+import { formatCount } from "../../../../lib/format";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const territory = territoryFromSlug((await params).territorySlug);
 
   return {
-    title: territory ? `Offers in ${territory.name} | Raring2go!` : "Offers | Raring2go!",
+    title: { absolute: territory ? `Offers in ${territory.name} | Raring2go!` : "Offers | Raring2go!" },
     description: territory
       ? `Family offers and sponsored local recommendations around ${territory.name}.`
       : "Family offers and sponsored local recommendations from Raring2go!"
@@ -34,7 +34,7 @@ export default async function OffersPage({ params }: PageProps) {
         <div>
           <p className="public-kicker">Raring2go! {discovery.territory.name}</p>
           <h1>{discovery.heading}</h1>
-          <p>Approved local offers and sponsored family recommendations, clearly labelled and scoped to this area.</p>
+          <p>Money off days out, classes and treats from local businesses. Sponsored offers are always marked.</p>
         </div>
       </section>
       <CommercialGrid discovery={discovery} />
@@ -44,16 +44,7 @@ export default async function OffersPage({ params }: PageProps) {
 
 function CommercialHeader({ slug }: { slug: string }) {
   return (
-    <header className="public-nav">
-      <Link href={`/areas/${slug}` as Route} className="public-logo">Raring2go!</Link>
-      <nav aria-label="Public navigation">
-        <Link href={`/areas/${slug}/whats-on` as Route}>What&apos;s On</Link>
-        <Link href={`/areas/${slug}/activities` as Route}>Activities</Link>
-        <Link href={`/areas/${slug}/offers` as Route}>Offers</Link>
-        <Link href={`/areas/${slug}/competitions` as Route}>Competitions</Link>
-        <Link href={`/areas/${slug}/businesses` as Route}>Businesses</Link>
-      </nav>
-    </header>
+    <PublicNav slug={slug} current="offers" />
   );
 }
 
@@ -66,7 +57,7 @@ function CommercialGrid({
     <section className="public-section">
       <div className="public-section-heading">
         <p className="public-kicker">Commercial discovery</p>
-        <h2>{discovery.items.length + discovery.placements.length} public placements</h2>
+        <h2>{formatCount(discovery.items.length + discovery.placements.length, "offer")}</h2>
       </div>
       <div className="public-card-grid">
         {discovery.emptyState ? <p className="public-empty">{discovery.emptyState}</p> : null}

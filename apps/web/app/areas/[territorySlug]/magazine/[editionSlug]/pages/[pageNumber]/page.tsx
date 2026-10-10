@@ -16,10 +16,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { territorySlug, editionSlug, pageNumber } = await params;
   const number = parsePageNumber(pageNumber);
   const view = number ? await readPublicMagazinePage(territorySlug, editionSlug, number) : undefined;
-  if (!view) return { title: "Not found | Raring2go!", robots: { index: false } };
+  if (!view) return { title: { absolute: "Not found | Raring2go!" }, robots: { index: false } };
 
   return {
-    title: `${view.page.title} | ${view.edition.title}`,
+    title: { absolute: `${view.page.title} | ${view.edition.title} | Raring2go!` },
     alternates: { canonical: `${siteUrl()}/areas/${view.territory.slug}/magazine/${view.edition.slug}/pages/${view.page.pageNumber}` }
   };
 }

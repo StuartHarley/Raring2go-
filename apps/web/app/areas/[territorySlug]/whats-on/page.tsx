@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { TrackedLink } from "../_components/TrackedLink";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import type { Route } from "next";
 import { toggleSavedContentAction } from "../preferences/actions";
 import { readPublicDiscovery, territoryFromSlug } from "../../../../lib/public-runtime";
+import { PublicNav } from "../_components/PublicNav";
+import { formatCount } from "../../../../lib/format";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const territory = territoryFromSlug((await params).territorySlug);
 
   return {
-    title: territory ? `What's On in ${territory.name} | Raring2go!` : "What's On | Raring2go!",
+    title: { absolute: territory ? `What's On in ${territory.name} | Raring2go!` : "What's On | Raring2go!" },
     description: territory
       ? `Family events and local things to do around ${territory.name}.`
       : "Family events and local things to do from Raring2go!"
@@ -37,11 +37,11 @@ export default async function WhatsOnPage({ params, searchParams }: PageProps) {
 
   return (
     <main className="public-site public-season-autumn">
-      <PublicHeader slug={discovery.territory.slug} />
+      <PublicNav slug={discovery.territory.slug} current="whats-on" />
       <DiscoveryHero
         kicker={`Raring2go! ${discovery.territory.name}`}
         title={discovery.heading}
-        summary="Find approved local family events without exposing draft editorial work or unpublished listings."
+        summary="Family events near you this week and beyond: classes, shows, festivals and days out."
       />
       <DiscoveryFilters
         slug={discovery.territory.slug}
@@ -54,7 +54,7 @@ export default async function WhatsOnPage({ params, searchParams }: PageProps) {
       <section className="public-section">
         <div className="public-section-heading">
           <p className="public-kicker">Local discovery</p>
-          <h2>{discovery.items.length} public events</h2>
+          <h2>{formatCount(discovery.items.length, "event")}</h2>
         </div>
         <div className="public-card-grid">
           {discovery.emptyState ? <p className="public-empty">{discovery.emptyState}</p> : null}
@@ -81,19 +81,6 @@ function filterDate(value?: string) {
   return value === "today" || value === "weekend" || value === "school_holidays" ? value : "all";
 }
 
-function PublicHeader({ slug }: { slug: string }) {
-  return (
-    <header className="public-nav">
-      <Link href={`/areas/${slug}` as Route} className="public-logo">Raring2go!</Link>
-      <nav aria-label="Public navigation">
-        <Link href={`/areas/${slug}/whats-on` as Route}>What&apos;s On</Link>
-        <Link href={`/areas/${slug}/activities` as Route}>Activities</Link>
-        <Link href={`/areas/${slug}/offers` as Route}>Offers</Link>
-        <Link href={`/areas/${slug}/magazine` as Route}>Magazine</Link>
-      </nav>
-    </header>
-  );
-}
 
 function DiscoveryHero({ kicker, title, summary }: { kicker: string; title: string; summary: string }) {
   return (

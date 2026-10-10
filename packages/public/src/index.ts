@@ -703,10 +703,19 @@ export async function getPublicHomepage(db: PublicDb, slug: string): Promise<Pub
   const emptyStates: PublicHomepage["emptyStates"] = [];
   const empty = (kind: PublicHomepageSlot["kind"], message: string) => emptyStates.push({ slot: kind, message });
 
-  if (shown("stories") && stories.length === 0) empty("stories", "Approved local stories will appear here once they are published.");
-  if (advertisersSlot && placements.length === 0) empty("advertisers", "Local business placements will appear here when booked and approved.");
-  if (shown("offers") && offers.length === 0) empty("offers", "Approved offers will appear here once they are published.");
-  if (shown("competitions") && competitions.length === 0) empty("competitions", "Approved competitions will appear here once they are published.");
+  if (stories.length === 0) {
+    emptyStates.push({
+      slot: "stories",
+      message: "Local stories are on their way. Check back soon, or pick up the latest magazine."
+    });
+  }
+
+  if (placements.length === 0) {
+    emptyStates.push({
+      slot: "advertisers",
+      message: "Local businesses recommended by Raring2go! will appear here soon."
+    });
+  }
 
   return {
     territory,
@@ -730,7 +739,7 @@ export async function getPublicHomepage(db: PublicDb, slug: string): Promise<Pub
     newsletter: {
       territoryId: territory.id,
       heading: `Get ${territory.name} family ideas in your inbox`,
-      consentText: "Subscribe to Raring2go updates for this area. Consent is recorded in the native audience model."
+      consentText: `Family ideas, what's on and offers for ${territory.name}, straight to your inbox. We only email you about this area, and you can stop at any time.`
     },
     emptyStates
   };
@@ -779,7 +788,7 @@ export async function getPublicDiscovery(
     availableCategories: categories,
     items: publicItems,
     emptyState: publicItems.length === 0
-      ? "Nothing public matches those filters yet. Approved local discovery content will appear here when it is ready."
+      ? "Nothing public matches those filters yet. Try another week or category, or clear the filters."
       : undefined
   };
 }
@@ -821,7 +830,7 @@ export async function getPublicCommercialDiscovery(
     placements: visiblePlacements,
     labels,
     emptyState: items.length === 0 && visiblePlacements.length === 0
-      ? "Commercial discovery will appear here when approved offers, competitions or advertiser placements are available."
+      ? "Offers and competitions for this area will appear here as soon as they go live."
       : undefined
   };
 }
@@ -837,7 +846,7 @@ export async function getPublicMagazine(db: PublicDb, slug: string): Promise<Pub
   if (!magazine) {
     return {
       territory,
-      emptyState: "The digital magazine for this area is not public yet. Published generated outputs will appear here."
+      emptyState: `The next ${territory.name} magazine is being put together. It will appear here as soon as it is published.`
     };
   }
 
@@ -945,7 +954,7 @@ export async function getPublicParentHub(
           personalisationEnabled: profile.personalisationEnabled
         }
       : undefined,
-    emptyState: savedContent.length === 0 ? "Saved content will appear here when this parent saves public articles, events or offers." : undefined
+    emptyState: savedContent.length === 0 ? "Things you save will appear here, ready for later." : undefined
   };
 }
 
@@ -992,7 +1001,7 @@ export async function getPublicRecommendations(
       ...item,
       reasons: item.reasons.length > 0 ? item.reasons : ["Popular local Raring2go content"]
     })),
-    emptyState: items.length === 0 ? "Recommendations will appear here when public local content matches your preferences." : undefined
+    emptyState: items.length === 0 ? "As soon as there is local content that matches your interests, it will appear here." : undefined
   };
 }
 

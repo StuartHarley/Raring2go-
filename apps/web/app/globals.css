@@ -2402,3 +2402,105 @@ summary.app-context:hover {
 .page-header {
   min-width: 0;
 }
+
+/* Public site: section headings with a "see all" link, designed empty states, phone layout */
+.public-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.public-more {
+  color: var(--r2-brand-purple);
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.public-more:hover {
+  text-decoration: underline;
+}
+
+.public-empty {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  border: 1px dashed #e2c98e;
+  border-radius: 12px;
+  background: #fffaf0;
+  padding: 22px 24px;
+}
+
+.public-empty p {
+  margin: 0;
+  color: #5a4c66;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.public-empty a {
+  color: var(--r2-brand-purple);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.public-nav nav a[aria-current="page"] {
+  color: var(--r2-brand-purple);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+@media (max-width: 760px) {
+  .public-nav {
+    gap: 10px;
+    padding: 14px 18px;
+  }
+
+  /* One scrollable row of sections instead of three wrapped lines above the hero. */
+  .public-nav nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 18px;
+    margin: 0 -18px;
+    overflow-x: auto;
+    padding: 4px 18px 6px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .public-nav nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .public-nav nav a {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .public-hero {
+    align-items: start;
+    min-height: 0;
+    padding: 36px 18px 40px;
+  }
+
+  .public-hero h1 {
+    font-size: clamp(2.2rem, 11vw, 3rem);
+  }
+
+  .public-hero-compact {
+    min-height: 0;
+  }
+
+  .public-section-heading {
+    align-items: flex-start;
+  }
+}
+
+/* List pages put the kicker and heading directly in the heading row: keep each on its own line. */
+.public-section-heading > .public-kicker,
+.public-section-heading > h2 {
+  flex: 1 1 100%;
+}
