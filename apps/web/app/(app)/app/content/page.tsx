@@ -26,6 +26,7 @@ export default async function ContentLibraryPage({ searchParams }: PageProps) {
       <section className="app-panel franchise-panel">
         <p className="eyebrow">Content Studio</p>
         <h2>Canonical content library</h2>
+        {result.canHomepage ? <p><Link href={"/app/content/homepage" as Route}>Website homepage layout</Link></p> : null}
         <p>
           Create once, localise, repurpose and review channel variants while
           keeping source provenance intact.
@@ -86,7 +87,12 @@ async function loadContent(request: Awaited<ReturnType<typeof requestFromSearchP
     };
     const items = await listContentLibraryItems(actor);
 
-    return { items, canUseAi: hasContentAiCapability(await getPermissionData(), actor) };
+    const canHomepage = await requireShellPermission(request, { module: "public.homepage", action: "manage" }).then(() => true, (error) => {
+      if (error instanceof ShellAccessError) return false;
+      throw error;
+    });
+
+    return { items, canUseAi: hasContentAiCapability(await getPermissionData(), actor), canHomepage };
   } catch (error) {
     return { error };
   }

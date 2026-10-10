@@ -118,6 +118,7 @@ export const fixtureIds = {
     proposalSend: "00000000-0000-4000-8000-000000000574",
     paymentRequest: "00000000-0000-4000-8000-000000000577",
     inventoryManage: "00000000-0000-4000-8000-000000000578",
+    homepageManage: "00000000-0000-4000-8000-000000000579",
     franchiseTeamView: "00000000-0000-4000-8000-000000000575",
     franchiseTeamManage: "00000000-0000-4000-8000-000000000576",
     emailView: "00000000-0000-4000-8000-000000000492",
@@ -1059,6 +1060,12 @@ export const foundationSeed = {
       module: "marketing.segment",
       action: "manage",
       description: "Create and manage audience segment definitions."
+    },
+    {
+      id: fixtureIds.permissions.homepageManage,
+      module: "public.homepage",
+      action: "manage",
+      description: "Choose which sections the public territory homepage shows and in what order."
     },
     {
       id: fixtureIds.permissions.inventoryManage,
@@ -3044,6 +3051,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     fixtureIds.permissions.pricingManage,
     fixtureIds.permissions.inventoryReserve,
     fixtureIds.permissions.inventoryManage,
+    fixtureIds.permissions.homepageManage,
     fixtureIds.permissions.proposalView,
     fixtureIds.permissions.proposalCreate,
     fixtureIds.permissions.bookingAccept,

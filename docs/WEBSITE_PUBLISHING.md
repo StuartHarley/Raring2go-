@@ -48,3 +48,20 @@ A future bridge may export provider-neutral public projections to another websit
 ## Pilot Implication
 
 For controlled pilot, the Next.js public site is GREEN as the strategic direction. Any WordPress migration/import/export work should be treated as a later transitional operations task, not a product dependency for the pilot.
+
+## Territory homepage layout (HQ-controlled)
+
+HQ chooses what every territory homepage shows at **Content Studio, Website homepage layout** (`/app/content/homepage`, permission `public.homepage manage`, HQ only). The page is drawn from the live layout, section by section, in the order HQ sets.
+
+HQ controls, per section: whether it shows, its position, its heading (up to 80 characters), how many items (within a per-section limit) and where items come from (local then network, local only, network only). The sections are the top banner, latest stories, what's on, things to do, the digital magazine, offers, competitions, recommended local businesses and the newsletter sign-up.
+
+Rules that cannot be changed from the editor (they live in `packages/public/src/homepage-template.ts`, so every path obeys them):
+- the **top banner and the newsletter sign-up always stay**, and are always visible;
+- each section appears **at most once**;
+- **offers, competitions and local businesses always carry the "Sponsored" label**, whatever is submitted;
+- ids, seasonal treatment and the sponsored flag are set by the code, never taken from the form;
+- a section the site cannot yet draw (the old "community" slot) cannot be chosen.
+
+Versions: saving makes or updates one **draft**; publishing makes it live for every territory and retires the previous live version, which is kept as history. A published or retired version can never be edited, deleted or revived (a database trigger enforces it, migration 0057): bringing an old look back means starting a new draft from it. Every save, publish and discard is audited. If the live layout were ever unusable, the site falls back to the built-in default, so the homepage cannot go blank.
+
+Not built: a different layout per territory (one layout applies to all), scheduled publishing, and a preview of the draft on a real territory page before it goes live.

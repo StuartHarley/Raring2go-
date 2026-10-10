@@ -670,3 +670,28 @@ export const eventSuggestions = pgTable(
     index("event_suggestions_ai_run_id_idx").on(table.aiRunId)
   ]
 );
+
+/**
+ * The public territory homepage layout HQ controls: which sections appear, in what order, with what heading and how many
+ * items. Versioned; a published version never changes (a database trigger enforces it) and the highest published version is
+ * the live one. With none published the site uses the built-in default.
+ */
+export const publicHomepageTemplates = pgTable(
+  "public_homepage_templates",
+  {
+    id,
+    key: text("key").notNull().default("r2go-territory-homepage"),
+    version: integer("version").notNull(),
+    status: text("status").notNull().default("draft"),
+    slots: jsonb("slots").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    notes: text("notes"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    publishedByUserId: uuid("published_by_user_id").references(() => users.id),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("public_homepage_templates_key_version_uidx").on(table.key, table.version),
+    index("public_homepage_templates_status_idx").on(table.status)
+  ]
+);

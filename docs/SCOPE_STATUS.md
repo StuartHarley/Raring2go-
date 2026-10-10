@@ -27,7 +27,7 @@ As of 10 October 2026, from the repository (`main`), `docs/BUILD_SPEC.md`, `docs
 | Audience, native email, newsletters | Built; email live run pending | Postmark adapter and webhook; consent, suppression, newsletter factory. |
 | Social | Partial | Facebook pages live in code (queue, approve, schedule, retry, crash handling). Instagram and LinkedIn have no adapter and fail closed. |
 | Journeys and automation | Partial | Engine, caps and suppression built; welcome, re-engagement and digital-magazine journeys defined; the rest not. Automation builder built. |
-| Public site and parent experience | Built, two gaps | Territory sites, discovery, magazine reader, SEO, parent accounts, and conversion analytics (clicks, saves, confirmed sign-ups, magazine page turns, proof pack evidence; see `ANALYTICS.md`). Homepage template is a code constant, not HQ-editable. |
+| Public site and parent experience | Built, two gaps | Territory sites, discovery, magazine reader, SEO, parent accounts, and conversion analytics (clicks, saves, confirmed sign-ups, magazine page turns, proof pack evidence; see `ANALYTICS.md`). The homepage layout is HQ-editable with versioning (`WEBSITE_PUBLISHING.md`). |
 | Finance, royalties, benchmarks, health score | Built; accounting live run pending | Royalty statements, scorecard, benchmarks, health score, Xero. |
 | AI | Built; live model checks pending | Gateway with audit, content GPT and events GPT adapters, repurposing, suggest-only rules. |
 | Operations and security | Built; owners and restore rehearsal are yours | Health alerting, runbook, support playbook, provider failure drills, rate limits, tenant-isolation tests. |
@@ -54,5 +54,5 @@ Gaps inside it, stated plainly:
 
 1. Fix what UAT finds in the Edition Factory screens.
 2. Upload-library images in the studio; creep, gripper margin and press-sheet imposition once the printer's spec is known.
-3. Instagram and LinkedIn adapters; remaining journeys; HQ-editable homepage template.
+3. Instagram and LinkedIn adapters; remaining journeys.
 4. Data rehearsal tooling for franchise, advertiser and publishing imports (UAT-003).
