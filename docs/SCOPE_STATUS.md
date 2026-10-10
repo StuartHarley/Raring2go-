@@ -39,7 +39,6 @@ EDT-001 to EDT-008 are all built and now have screens, not just domain functions
 Gaps inside it, stated plainly:
 - No real Chromium or Ghostscript run yet, so no press-grade PDF has been checked in Acrobat Pro or pdfToolbox, and the printer's ICC profile and PDF/X flavour are not agreed.
 - Imposition is basic saddle-stitch only (no creep, gripper margin or press-sheet size); crop marks and trim and bleed boxes are built; no text flow between zones or pages; no brand fonts in the render image.
-- The studio takes images by https link plus pixel size; it does not yet pick from the upload library.
 - Not load-tested at the spec's 80+ editions.
 - Pages have not been clicked through in a browser by a person.
 
@@ -53,6 +52,6 @@ Gaps inside it, stated plainly:
 ## Remaining build, in priority order
 
 1. Fix what UAT finds in the Edition Factory screens.
-2. Upload-library images in the studio; creep, gripper margin and press-sheet imposition once the printer's spec is known.
+2. Creep, gripper margin and press-sheet imposition once the printer's spec is known.
 3. Instagram and LinkedIn adapters; sponsored-campaign journeys (need advertiser campaign events first).
-4. Data rehearsal tooling for franchise and publishing imports (UAT-003); audience and advertiser imports are built (`AUDIENCE_IMPORT.md`, `ADVERTISER_IMPORT.md`).
+4. Publishing-content migration from the old system (UAT-003); audience, advertiser and franchise/territory imports are built (`AUDIENCE_IMPORT.md`, `ADVERTISER_IMPORT.md`, `FRANCHISE_IMPORT.md`).

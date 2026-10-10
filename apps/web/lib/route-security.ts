@@ -22,6 +22,8 @@ export type RouteEntry = { protection: RouteProtection; reason: string; extraMar
 
 export const routeManifest: Record<string, RouteEntry> = {
   "api/audience/import/route.ts": { protection: "session", reason: "Audience CSV upload (dry run only): needs marketing.import.manage for the territory, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
+  "api/franchisees/import/route.ts": { protection: "session", reason: "Franchise CSV dry run: head office only (franchise.import manage), per-user rate limited, size and format checked, changes no franchise or territory record.", extraMarkers: [/firstRateLimitRefusal\(/, /franchise\.import/] },
+  "(app)/app/franchisees/import/[id]/report/route.ts": { protection: "session", reason: "Franchise import reject report: head office only; for anyone else the import looks like it does not exist.", extraMarkers: [/franchise\.import/, /no-store/] },
   "api/franchise/documents/route.ts": { protection: "session", reason: "Franchise document or new version upload: scanned and stored, needs the document upload permission for that franchise, per-user rate limited.", extraMarkers: [/firstRateLimitRefusal\(/] },
   "api/files/development/[...path]/route.ts": { protection: "dev_only", reason: "Local disk storage backend: unauthenticated, so disabled in production builds." },
   "(app)/app/editions/[id]/outputs/[outputId]/route.ts": { protection: "session", reason: "Edition output PDF download: needs edition view for that edition, then a short-lived storage link.", extraMarkers: [/module: "edition"/, /no-store/] },

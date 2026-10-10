@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
 import { users } from "./identity";
 import { organisations, territories } from "./tenancy";
@@ -592,4 +592,29 @@ export const franchiseOnboardingBlockers = pgTable(
     index("franchise_onboarding_blockers_status_idx").on(table.status),
     index("franchise_onboarding_blockers_deleted_at_idx").on(table.deletedAt)
   ]
+);
+
+/**
+ * One franchise/territory import (UAT-003). Network-level, so it has no territory of its own.
+ * Holds the parsed rows only until the import is applied; afterwards just the report, the ids it created and the counts.
+ */
+export const franchiseImports = pgTable(
+  "franchise_imports",
+  {
+    id,
+    source: text("source").notNull(),
+    fileName: text("file_name").notNull(),
+    fileHash: text("file_hash").notNull(),
+    status: text("status").notNull().default("dry_run"),
+    totalRows: integer("total_rows").notNull().default(0),
+    createdCount: integer("created_count").notNull().default(0),
+    rejectedCount: integer("rejected_count").notNull().default(0),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    appliedByUserId: uuid("applied_by_user_id").references(() => users.id),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [uniqueIndex("franchise_imports_file_hash_uidx").on(table.fileHash), index("franchise_imports_status_idx").on(table.status)]
 );

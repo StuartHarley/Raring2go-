@@ -26,6 +26,7 @@ export default async function FranchiseesPage({ searchParams }: PageProps) {
           Canonical operating relationships linking franchise organisations,
           territory ownership and platform users.
         </p>
+        {result.canImport ? <p><Link href={"/app/franchisees/import" as Route}>Import franchises and territories</Link></p> : null}
         <div className="franchise-list">
           {result.franchises.map((franchise) => (
             <Link key={franchise.id} href={`/app/franchisees/${franchise.id}` as Route}>
@@ -70,7 +71,12 @@ async function loadFranchisees(request: Awaited<ReturnType<typeof requestFromSea
     };
     const complianceOverview = await listComplianceOverview(context).catch(() => []);
 
-    return { franchises, complianceOverview };
+    const canImport = await requireShellPermission(request, { module: "franchise.import", action: "manage" }).then(() => true, (error) => {
+      if (error instanceof ShellAccessError) return false;
+      throw error;
+    });
+
+    return { franchises, complianceOverview, canImport };
   } catch (error) {
     return { error };
   }

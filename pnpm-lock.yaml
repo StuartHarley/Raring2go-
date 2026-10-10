@@ -347,6 +347,9 @@ importers:
       '@raring2go/db':
         specifier: workspace:*
         version: link:../db
+      '@raring2go/marketing':
+        specifier: workspace:*
+        version: link:../marketing
       '@raring2go/permissions':
         specifier: workspace:*
         version: link:../permissions

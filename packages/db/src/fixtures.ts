@@ -122,6 +122,7 @@ export const fixtureIds = {
     calendarManage: "00000000-0000-4000-8000-000000000580",
     competitionDraw: "00000000-0000-4000-8000-000000000581",
     advertiserImportManage: "00000000-0000-4000-8000-000000000582",
+    franchiseImportManage: "00000000-0000-4000-8000-000000000583",
     franchiseTeamView: "00000000-0000-4000-8000-000000000575",
     franchiseTeamManage: "00000000-0000-4000-8000-000000000576",
     emailView: "00000000-0000-4000-8000-000000000492",
@@ -1069,6 +1070,12 @@ export const foundationSeed = {
       module: "advertiser.import",
       action: "manage",
       description: "Import a list of advertisers into a territory, and reverse the import."
+    },
+    {
+      id: fixtureIds.permissions.franchiseImportManage,
+      module: "franchise.import",
+      action: "manage",
+      description: "Import franchises and their territories from a list, and reverse the import. Head office only."
     },
     {
       id: fixtureIds.permissions.competitionDraw,
@@ -3076,6 +3083,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     fixtureIds.permissions.calendarManage,
     fixtureIds.permissions.competitionDraw,
     fixtureIds.permissions.advertiserImportManage,
+    fixtureIds.permissions.franchiseImportManage,
     fixtureIds.permissions.proposalView,
     fixtureIds.permissions.proposalCreate,
     fixtureIds.permissions.bookingAccept,
