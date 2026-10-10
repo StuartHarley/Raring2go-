@@ -34,11 +34,11 @@ import {
   TemplateSpecError,
   zonesOf
 } from "@raring2go/publishing";
-import type { SeasonFormInput } from "@raring2go/publishing";
+import type { BulkAction, SeasonFormInput } from "@raring2go/publishing";
 import type { MagazineTemplate, MagazineTemplateVersion, PublishingActorContext, PublishingData, TemplateSpecInput } from "@raring2go/publishing";
 import type { PermissionData } from "@raring2go/permissions";
 import { randomUUID } from "node:crypto";
-import { editionAuditFor } from "./edition-output";
+import { editionAuditFor, queueEditionOutput } from "./edition-output";
 import { getPermissionData } from "./permission-source";
 import { readTerritoryEdition } from "./publishing-runtime";
 import { evaluatePermission } from "@raring2go/permissions";
@@ -314,3 +314,25 @@ export const runPreflightAsActor = (context: PublishingActorContext, pageId: str
 
 export const applyPreflightFixesAsActor = (context: PublishingActorContext, resultId: string) =>
   mutateEditions((data, audit, permissions) => applySafePreflightFixes(context, permissions, audit, data, resultId));
+
+export type BulkOutcome = { succeeded: number; refused: number };
+
+/**
+ * Runs one action over many editions. Each edition is its own transaction and its own authorisation, so one that is
+ * not ready (or not the actor's) is refused without touching the rest. Outputs are queued as jobs, not rendered here.
+ */
+export async function runBulkEditionAction(context: PublishingActorContext, action: BulkAction, editionIds: string[]): Promise<BulkOutcome> {
+  const outcome: BulkOutcome = { succeeded: 0, refused: 0 };
+  for (const id of editionIds) {
+    try {
+      if (action === "submit") await submitEditionAsActor(context, id);
+      else if (action === "approve") await approveEditionAsActor(context, id);
+      else if (action === "release") await releaseEditionAsActor(context, id);
+      else await queueEditionOutput({ territoryEditionId: id, kind: action, actor: context });
+      outcome.succeeded += 1;
+    } catch {
+      outcome.refused += 1;
+    }
+  }
+  return outcome;
+}
