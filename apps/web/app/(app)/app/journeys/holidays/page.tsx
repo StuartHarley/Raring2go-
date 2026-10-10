@@ -1,71 +1,118 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { holidayErrorText } from "@raring2go/marketing";
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readHolidayCalendar } from "../../../../../lib/holiday-calendar-runtime";
+import { formatCount, formatDate } from "../../../../../lib/format";
+import { EmptyState, LinkButton, Notice, PageHeader, Panel, RecordCard, RecordList, type Tone } from "../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { addHolidayAction, removeHolidayAction } from "./actions";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "School holiday calendar" };
+
+type PageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 const banners: Record<string, string> = { added: "Holiday added.", removed: "Holiday removed." };
 
-export default async function HolidayCalendarPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+/** Where a holiday sits against today: finished ones are history, one on now is live, the rest are coming up. */
+const timingTone: Record<string, Tone> = { finished: "neutral", on_now: "success", upcoming: "info" };
+
+export default async function HolidayCalendarPage({ searchParams }: PageProps) {
   const search = await searchParams;
   const request = await requestFromSearchParamsAndCookies(search);
   const code = Array.isArray(search.result) ? search.result[0] : search.result;
-  let data;
-  try {
-    const shell = await requireShellPermission(request, { module: "marketing.calendar", action: "manage" });
-    data = await readHolidayCalendar({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId });
-  } catch (error) {
-    if (error instanceof ShellAccessError) {
-      return <main className={`app-outcome app-outcome-${error.kind}`}><section><h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1><p>{error.message}</p></section></main>;
-    }
-    throw error;
+  const result = await load(request);
+
+  if ("error" in result) {
+    return protectedOutcome(result.error);
   }
+
+  const { data } = result;
   const message = code ? banners[code] ?? (holidayErrorText as Record<string, string>)[code] : undefined;
   const isError = Boolean(code && !banners[code]);
+  // ISO day strings compare correctly as text; this is only used to place each holiday against today.
   const today = new Date().toISOString().slice(0, 10);
+  const timing = (period: { startsOn: string; endsOn: string }) => (period.endsOn < today ? "finished" : period.startsOn <= today ? "on_now" : "upcoming");
 
   return (
-    <AppShell request={request}>
+    <>
       <Breadcrumbs items={[{ label: "Journeys", href: "/app/journeys" as Route }, { label: "School holiday calendar" }]} />
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Marketing automation</p>
-        <h2>School holiday calendar</h2>
-        <p>The dates the school-holiday countdown emails run from. A holiday with no area applies to every area; one with an area applies only there. Each subscriber gets one countdown per holiday, a set number of days before it starts, naming the holiday and its dates.</p>
-        {message ? <p role={isError ? "alert" : "status"}>{message}</p> : null}
-      </section>
-      <section className="app-panel franchise-panel">
-        <h2>Add a holiday</h2>
+      <PageHeader
+        eyebrow="Marketing"
+        title="School holiday calendar"
+        intro="The dates the school-holiday countdown emails run from. A holiday with no area applies to every area; one with an area applies only there. Each subscriber gets one countdown per holiday, a set number of days before it starts, naming the holiday and its dates."
+        actions={
+          <LinkButton href={"/app/journeys" as Route} variant="secondary">
+            Back to journeys
+          </LinkButton>
+        }
+      />
+
+      {message ? <Notice tone={isError ? "error" : "success"}>{message}</Notice> : null}
+
+      <Panel eyebrow="New holiday" title="Add a holiday" id="new">
         <form action={addHolidayAction.bind(null, request)} className="franchise-form">
-          <label>Name<input name="name" required maxLength={80} placeholder="Autumn half term" /></label>
-          <label>First day<input name="startsOn" type="date" required /></label>
-          <label>Last day<input name="endsOn" type="date" required /></label>
-          <label>Area
+          <label>
+            Name
+            <input name="name" required maxLength={80} placeholder="Autumn half term" />
+          </label>
+          <label>
+            First day
+            <input name="startsOn" type="date" required />
+          </label>
+          <label>
+            Last day
+            <input name="endsOn" type="date" required />
+          </label>
+          <label>
+            Area
             <select name="territoryId" defaultValue="">
               <option value="">Every area</option>
-              {data.areas.map((area) => (<option key={area.id} value={area.id}>{area.name}</option>))}
+              {data.areas.map((area) => (
+                <option key={area.id} value={area.id}>{area.name}</option>
+              ))}
             </select>
           </label>
-          <button type="submit">Add holiday</button>
+          <button type="submit" className="r2-button r2-button--primary">
+            Add holiday
+          </button>
         </form>
-      </section>
-      <section className="app-panel franchise-panel" aria-label="Holidays">
-        <h2>In the calendar ({data.periods.length})</h2>
-        {data.periods.length === 0 ? <p>No holidays yet. Without any, no countdown emails are sent.</p> : null}
-        <div className="franchise-list">
-          {data.periods.map((period) => (
-            <div key={period.id}>
-              <strong>{period.name}</strong>
-              <span>{period.startsOn} to {period.endsOn} - {period.areaName}{period.endsOn < today ? " - finished" : period.startsOn <= today ? " - on now" : ""}</span>
-              <form action={removeHolidayAction.bind(null, request, period.id)}><button type="submit">Remove</button></form>
-            </div>
-          ))}
-        </div>
-      </section>
-      <p><Link href={"/app/journeys" as Route}>Back to journeys</Link></p>
-    </AppShell>
+      </Panel>
+
+      <Panel eyebrow="Calendar" title="In the calendar" intro={formatCount(data.periods.length, "holiday")} id="holidays">
+        {data.periods.length === 0 ? (
+          <EmptyState title="No holidays yet">Without any, no countdown emails are sent. Add the next school holiday above.</EmptyState>
+        ) : (
+          <RecordList>
+            {data.periods.map((period) => (
+              <RecordCard
+                key={period.id}
+                title={period.name}
+                status={timing(period)}
+                tone={timingTone[timing(period)]}
+                lines={[`${formatDate(period.startsOn)} to ${formatDate(period.endsOn)} · ${period.areaName}`]}
+              >
+                <form action={removeHolidayAction.bind(null, request, period.id)}>
+                  <button type="submit" className="r2-button r2-button--danger">
+                    Remove
+                  </button>
+                </form>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+    </>
   );
+}
+
+async function load(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
+  try {
+    const shell = await requireShellPermission(request, { module: "marketing.calendar", action: "manage" });
+    const data = await readHolidayCalendar({ userId: shell.userId, organisationId: shell.activeContext.organisationId, territoryId: shell.activeContext.territoryId });
+    return { data };
+  } catch (error) {
+    return { error };
+  }
 }

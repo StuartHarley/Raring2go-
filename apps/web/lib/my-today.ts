@@ -2,6 +2,8 @@ import type { Route } from "next";
 import type { ResolvedShell } from "./app-shell";
 import { listAdvertiser360Rows, readMyOpenTasks, readPipeline } from "./advertising-runtime";
 import { readTasksAndApprovals } from "./automation-runtime";
+import { getDirectory } from "./directory";
+import { displayName, formatDate } from "./format";
 import { listComplianceOverview, listOnboardingOverview } from "./franchise-runtime";
 import {
   readJourneyOverview,
@@ -25,6 +27,8 @@ export type TodayMetric = {
   label: string;
   value: string;
   detail: string;
+  /** What the number means right now, so the tile can be coloured: danger for blocked or failed work, warning for things to watch. */
+  tone?: "neutral" | "success" | "warning" | "danger" | "info";
 };
 
 export type TodayWorkflow = {
@@ -67,7 +71,8 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
     metrics.push({
       label: "Compliance actions",
       value: String(openCompliance),
-      detail: `${compliance.length} franchise record${compliance.length === 1 ? "" : "s"} in scope`
+      detail: `${compliance.length} franchise record${compliance.length === 1 ? "" : "s"} in scope`,
+      tone: openCompliance > 0 ? "warning" : "success"
     });
     workflows.push({
       label: "Franchisee 360",
@@ -116,7 +121,8 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
     metrics.push({
       label: "Advertisers",
       value: String(advertisers.length),
-      detail: `${formatMoney(outstandingMinor)} outstanding`
+      detail: `${formatMoney(outstandingMinor)} outstanding`,
+      tone: outstandingMinor > 0 ? "warning" : "neutral"
     });
     workflows.push({
       label: "Advertiser workflow",
@@ -130,7 +136,7 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
         priority: "warning",
         area: "Commercial",
         title: row.opportunity.title,
-        detail: `${row.organisation.name}; next action ${row.opportunity.nextActionDate ?? "not set"}`,
+        detail: `${row.organisation.name}; next action ${formatDate(row.opportunity.nextActionDate)}`,
         href: "/app/advertisers/pipeline" as Route
       });
     }
@@ -144,7 +150,8 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
     metrics.push({
       label: "Editions at risk",
       value: String(blocked.length + watch.length),
-      detail: `${blocked.length} blocked; ${watch.length} need watch`
+      detail: `${blocked.length} blocked; ${watch.length} need watch`,
+      tone: blocked.length > 0 ? "danger" : watch.length > 0 ? "warning" : "success"
     });
     workflows.push({
       label: "Edition Factory",
@@ -158,7 +165,7 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
         priority: "critical",
         area: "Publishing",
         title: `${row.territory?.name ?? row.territoryEdition.title} edition blocked`,
-        detail: `${row.blockedPages} blocked page${row.blockedPages === 1 ? "" : "s"}; next deadline ${row.nextDeadline ?? "not set"}`,
+        detail: `${row.blockedPages} blocked page${row.blockedPages === 1 ? "" : "s"}; next deadline ${formatDate(row.nextDeadline)}`,
         href: `/app/editions/${row.territoryEdition.id}` as Route
       });
     }
@@ -170,7 +177,8 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
       metrics.push({
         label: "Newsletter readiness",
         value: String(newsletter.totals.ready),
-        detail: `${newsletter.totals.blocked} blocked; ${newsletter.totals.needsReview} need review`
+        detail: `${newsletter.totals.blocked} blocked; ${newsletter.totals.needsReview} need review`,
+        tone: newsletter.totals.blocked > 0 ? "danger" : newsletter.totals.needsReview > 0 ? "warning" : "neutral"
       });
       workflows.push({
         label: "Newsletter Factory",
@@ -213,7 +221,8 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
       metrics.push({
         label: "Journey failures",
         value: String(journeys.totals.failedExecutions),
-        detail: `${journeys.totals.active} active journey${journeys.totals.active === 1 ? "" : "s"}`
+        detail: `${journeys.totals.active} active journey${journeys.totals.active === 1 ? "" : "s"}`,
+        tone: journeys.totals.failedExecutions > 0 ? "danger" : "success"
       });
       workflows.push({
         label: "Journeys",
@@ -225,13 +234,15 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
 
   if (visible.has("marketing-command")) {
     const command = await readMarketingCommandCentre(context).catch(() => undefined);
+    const directory = getDirectory();
     for (const item of command?.actionItems.slice(0, 3) ?? []) {
+      const territoryName = item.territoryId ? await directory.territoryName(item.territoryId).catch(() => undefined) : undefined;
       attention.push({
         id: `marketing-${item.id}`,
         priority: item.severity,
         area: "Marketing",
         title: item.title,
-        detail: item.territoryId ? `Territory ${item.territoryId}` : "Network-wide",
+        detail: item.territoryId ? displayName(territoryName, "One territory") : "Network-wide",
         href: "/app/marketing-command" as Route
       });
     }
@@ -247,7 +258,8 @@ export async function buildMyToday(shell: ResolvedShell): Promise<MyTodayView> {
       metrics.push({
         label: "Open tasks",
         value: String(automation.tasks.length),
-        detail: `${overdue.length} overdue, ${automation.approvals.length} awaiting approval`
+        detail: `${overdue.length} overdue, ${automation.approvals.length} awaiting approval`,
+        tone: overdue.length > 0 ? "danger" : automation.approvals.length > 0 ? "warning" : "neutral"
       });
       workflows.push({
         label: "Tasks & Approvals",

@@ -1,9 +1,14 @@
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import type { Route } from "next";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { readCommercialCommandCentre } from "../../../../../lib/advertising-runtime";
 import { readDebtPanel } from "../../../../../lib/assistants-finance";
+import { displayName, formatCount } from "../../../../../lib/format";
+import { EmptyState, FactList, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
 import { DebtAssistantPanel } from "./DebtAssistantPanel";
-import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
+import { protectedOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Commercial health" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -20,125 +25,106 @@ export default async function CommercialCommandCentrePage({ searchParams }: Page
   }
 
   const { commandCentre, debt } = result;
+  const { totals, attention } = commandCentre;
+  const percent = (value: number | null | undefined) => (value == null ? "No data" : `${value}%`);
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Commercial command centre</p>
-        <h2>{commandCentre.scope === "network" ? "Network commercial health" : "Territory commercial health"}</h2>
-        <p>
-          Capability-scoped advertiser, pipeline, booking, finance, artwork,
-          fulfilment and renewal benchmarks.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Advertisers</span>
-            <strong>{commandCentre.totals.advertisers}</strong>
-          </article>
-          <article>
-            <span>Pipeline</span>
-            <strong>{formatMoney(commandCentre.totals.pipelineValueMinor)}</strong>
-          </article>
-          <article>
-            <span>Booked</span>
-            <strong>{formatMoney(commandCentre.totals.bookedValueMinor)}</strong>
-          </article>
-          <article>
-            <span>Invoiced</span>
-            <strong>{formatMoney(commandCentre.totals.invoicedMinor)}</strong>
-          </article>
-          <article>
-            <span>Paid</span>
-            <strong>{formatMoney(commandCentre.totals.paidMinor)}</strong>
-          </article>
-          <article>
-            <span>Overdue debt</span>
-            <strong>{formatMoney(commandCentre.totals.overdueDebtMinor)}</strong>
-          </article>
-          <article>
-            <span>Artwork</span>
-            <strong>{commandCentre.totals.openArtwork}</strong>
-          </article>
-          <article>
-            <span>Renewals</span>
-            <strong>{commandCentre.totals.openRenewals}</strong>
-          </article>
-        </div>
-      </section>
+    <>
+      <PageHeader
+        eyebrow="Commercial"
+        title="Commercial health"
+        intro={
+          commandCentre.scope === "network"
+            ? "How advertising is performing across the network: pipeline, bookings, money in and what needs chasing."
+            : "How advertising is performing in your area: pipeline, bookings, money in and what needs chasing."
+        }
+        actions={
+          <>
+            <LinkButton href={"/app/advertisers/pipeline" as Route}>Open pipeline</LinkButton>
+            <LinkButton href={"/app/advertisers" as Route} variant="secondary">
+              All advertisers
+            </LinkButton>
+          </>
+        }
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Benchmarking</p>
-        <h2>Territory performance</h2>
-        <div className="franchise-list">
-          {commandCentre.territoryBenchmarks.map((territory) => (
-            <div key={territory.territoryId}>
-              <strong>{territory.territoryName ?? territory.territoryId}</strong>
-              <span>
-                {territory.advertisers} advertisers - {formatMoney(territory.bookedValueMinor)} booked - {territory.retentionRate}% retained
-              </span>
-              <span>
-                ASV {formatMoney(territory.averageSaleValueMinor)} - overdue {formatMoney(territory.overdueDebtMinor)} - renewals {territory.openRenewals}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Advertisers", value: totals.advertisers },
+            { label: "Pipeline", value: formatMoney(totals.pipelineValueMinor) },
+            { label: "Booked", value: formatMoney(totals.bookedValueMinor) },
+            { label: "Invoiced", value: formatMoney(totals.invoicedMinor) },
+            { label: "Paid", value: formatMoney(totals.paidMinor) },
+            { label: "Overdue debt", value: formatMoney(totals.overdueDebtMinor), tone: totals.overdueDebtMinor > 0 ? "danger" : "success" },
+            { label: "Artwork outstanding", value: totals.openArtwork, tone: totals.openArtwork > 0 ? "warning" : "success" },
+            { label: "Open renewals", value: totals.openRenewals, tone: totals.openRenewals > 0 ? "warning" : "neutral" }
+          ]}
+        />
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Retention and mix</p>
-        <h2>Churn and what is being sold</h2>
-        <div className="franchise-metrics">
-          <article>
-            <span>Churn (12 months)</span>
-            <strong>{commandCentre.churn.ratePercent == null ? "No data" : `${commandCentre.churn.ratePercent}%`}</strong>
-            <small>{commandCentre.churn.lost} of {commandCentre.churn.baseAYearAgo} advertisers lost</small>
-          </article>
-          <article>
-            <span>Package share (90 days)</span>
-            <strong>{commandCentre.mix.packageSharePercent == null ? "No data" : `${commandCentre.mix.packageSharePercent}%`}</strong>
-            <small>{formatMoney(commandCentre.mix.packageMinor)} of {formatMoney(commandCentre.mix.soldMinor)}</small>
-          </article>
-          <article>
-            <span>Digital share (90 days)</span>
-            <strong>{commandCentre.mix.digitalSharePercent == null ? "No data" : `${commandCentre.mix.digitalSharePercent}%`}</strong>
-            <small>{formatMoney(commandCentre.mix.digitalMinor)} of {formatMoney(commandCentre.mix.soldMinor)}</small>
-          </article>
-        </div>
-        <p>{commandCentre.definitionsNote}</p>
-        <h3>Why deals were lost</h3>
-        {commandCentre.lostReasons.length === 0 ? <p>No lost deals recorded.</p> : (
-          <div className="franchise-list">
-            {commandCentre.lostReasons.map((entry) => (
-              <div key={entry.reason}><strong>{entry.reason}</strong><span>{entry.count}</span></div>
+      <Panel eyebrow="Benchmarking" title="Area performance">
+        {commandCentre.territoryBenchmarks.length === 0 ? (
+          <EmptyState title="Nothing to compare yet">Area figures appear once advertisers have been booked.</EmptyState>
+        ) : (
+          <RecordList>
+            {commandCentre.territoryBenchmarks.map((territory) => (
+              <RecordCard
+                key={territory.territoryId}
+                title={displayName(territory.territoryName, "Territory not named yet")}
+                lines={[
+                  `${formatCount(territory.advertisers, "advertiser")} · ${formatMoney(territory.bookedValueMinor)} booked · ${territory.retentionRate}% retained`,
+                  `Average sale ${formatMoney(territory.averageSaleValueMinor)} · Overdue ${formatMoney(territory.overdueDebtMinor)} · ${formatCount(territory.openRenewals, "open renewal")}`
+                ]}
+              />
             ))}
-          </div>
+          </RecordList>
         )}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Attention</p>
-        <h2>Commercial exceptions</h2>
-        <div className="franchise-facts">
-          <div>
-            <dt>Overdue debt</dt>
-            <dd>{commandCentre.attention.overdueDebtAdvertiserIds.length}</dd>
-          </div>
-          <div>
-            <dt>Artwork outstanding</dt>
-            <dd>{commandCentre.attention.artworkAdvertiserIds.length}</dd>
-          </div>
-          <div>
-            <dt>Fulfilment outstanding</dt>
-            <dd>{commandCentre.attention.fulfilmentAdvertiserIds.length}</dd>
-          </div>
-          <div>
-            <dt>Renewal follow-up</dt>
-            <dd>{commandCentre.attention.renewalAdvertiserIds.length}</dd>
-          </div>
-        </div>
-      </section>
+      <Panel eyebrow="Retention and mix" title="Churn and what is being sold" intro={commandCentre.definitionsNote}>
+        <Metrics
+          items={[
+            {
+              label: "Churn (12 months)",
+              value: percent(commandCentre.churn.ratePercent),
+              detail: `${commandCentre.churn.lost} of ${commandCentre.churn.baseAYearAgo} advertisers lost`,
+              tone: commandCentre.churn.lost > 0 ? "warning" : "neutral"
+            },
+            {
+              label: "Package share (90 days)",
+              value: percent(commandCentre.mix.packageSharePercent),
+              detail: `${formatMoney(commandCentre.mix.packageMinor)} of ${formatMoney(commandCentre.mix.soldMinor)}`
+            },
+            {
+              label: "Digital share (90 days)",
+              value: percent(commandCentre.mix.digitalSharePercent),
+              detail: `${formatMoney(commandCentre.mix.digitalMinor)} of ${formatMoney(commandCentre.mix.soldMinor)}`
+            }
+          ]}
+        />
+      </Panel>
+
+      <Panel eyebrow="Lost deals" title="Why deals were lost">
+        {commandCentre.lostReasons.length === 0 ? (
+          <EmptyState title="No lost deals recorded">Reasons are captured when an opportunity is moved to a lost stage.</EmptyState>
+        ) : (
+          <FactList items={commandCentre.lostReasons.map((entry) => ({ label: entry.reason, value: formatCount(entry.count, "deal") }))} />
+        )}
+      </Panel>
+
+      <Panel eyebrow="Attention" title="Advertisers needing a chase">
+        <Metrics
+          items={[
+            { label: "Overdue debt", value: attention.overdueDebtAdvertiserIds.length, tone: attention.overdueDebtAdvertiserIds.length > 0 ? "danger" : "success" },
+            { label: "Artwork outstanding", value: attention.artworkAdvertiserIds.length, tone: attention.artworkAdvertiserIds.length > 0 ? "warning" : "success" },
+            { label: "Fulfilment outstanding", value: attention.fulfilmentAdvertiserIds.length, tone: attention.fulfilmentAdvertiserIds.length > 0 ? "warning" : "success" },
+            { label: "Renewal follow-up", value: attention.renewalAdvertiserIds.length, tone: attention.renewalAdvertiserIds.length > 0 ? "warning" : "success" }
+          ]}
+        />
+      </Panel>
       {debt ? <DebtAssistantPanel request={request} panel={debt} resultCode={resultCode} /> : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -168,20 +154,4 @@ function formatMoney(valueMinor: number) {
     currency: "GBP",
     maximumFractionDigits: 0
   }).format(valueMinor / 100);
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

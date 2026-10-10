@@ -355,7 +355,7 @@ describe("@raring2go/public magazine", () => {
     const magazine = await getPublicMagazine(db, defaultPublicTerritorySlug);
 
     expect(magazine?.edition).toBeUndefined();
-    expect(magazine?.emptyState).toContain("not public yet");
+    expect(magazine?.emptyState).toContain("as soon as it is published");
   });
 
   it("exposes only published generated digital output", async () => {

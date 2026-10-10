@@ -10,10 +10,10 @@ type PageProps = { params: Promise<{ territorySlug: string; editionSlug: string 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { territorySlug, editionSlug } = await params;
   const view = await readPublicMagazineEdition(territorySlug, editionSlug);
-  if (!view) return { title: "Not found | Raring2go!", robots: { index: false } };
+  if (!view) return { title: { absolute: "Not found | Raring2go!" }, robots: { index: false } };
 
   return {
-    title: `${view.edition.title} | Raring2go! ${view.territory.name}`,
+    title: { absolute: `${view.edition.title} | Raring2go! ${view.territory.name}` },
     description: `Read ${view.edition.title}, the Raring2go digital magazine for ${view.territory.name}.`,
     alternates: { canonical: `${siteUrl()}/areas/${view.territory.slug}/magazine/${view.edition.slug}` }
   };

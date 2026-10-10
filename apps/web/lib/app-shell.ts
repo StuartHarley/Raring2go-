@@ -27,6 +27,13 @@ export type RequestedShellContext = {
   sessionToken?: string;
   organisationId?: string;
   territoryId?: string;
+  /**
+   * Where the organisation/territory came from. A context the person typed into a link ("query")
+   * must be honoured or refused as asked; a context remembered from last time ("stored") may be
+   * stale (another person signed in on this browser, a membership ended) and falls back to the
+   * person's default context instead of failing.
+   */
+  contextSource?: "query" | "stored";
 };
 
 export type ShellCapability = {
@@ -95,17 +102,8 @@ export const shellNavigation: NavigationDescriptor[] = [
     contextLevel: "territory",
     group: "franchise"
   },
-  {
-    id: "territory",
-    label: "Territory Dashboard",
-    href: "/app/territory",
-    capability: {
-      module: "territory",
-      action: "view"
-    },
-    contextLevel: "territory",
-    group: "today"
-  },
+  // "/app/territory" is deliberately not a destination: My Today is the territory view, and the
+  // route only redirects there. It returns to the nav when it has its own content to show.
   {
     id: "search",
     label: "Search",
@@ -130,7 +128,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "portal",
-    label: "My Campaigns",
+    label: "My campaigns",
     href: "/app/portal",
     capability: {
       module: "portal.advertiser",
@@ -141,7 +139,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "tasks",
-    label: "Tasks & Approvals",
+    label: "Tasks & approvals",
     href: "/app/tasks",
     capability: {
       module: "automation.task",
@@ -229,7 +227,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "marketing-analytics",
-    label: "Marketing Analytics",
+    label: "Marketing analytics",
     href: "/app/marketing-analytics",
     capability: {
       module: "marketing.analytics",
@@ -240,7 +238,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "marketing-command",
-    label: "Marketing Command",
+    label: "Marketing overview",
     href: "/app/marketing-command",
     capability: {
       module: "marketing.analytics",
@@ -262,7 +260,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "event-discovery",
-    label: "Event Discovery",
+    label: "Event discovery",
     href: "/app/content/events",
     capability: {
       module: "content.event_suggestion",
@@ -273,7 +271,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "social",
-    label: "Social Queue",
+    label: "Social queue",
     href: "/app/social",
     capability: {
       module: "social",
@@ -284,7 +282,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "commercial-command",
-    label: "Commercial Command",
+    label: "Commercial health",
     href: "/app/advertisers/command-centre",
     capability: {
       module: "advertiser.analytics",
@@ -317,7 +315,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "roles",
-    label: "Roles & Permissions",
+    label: "Roles & permissions",
     href: "/app/roles",
     capability: {
       module: "roles",
@@ -350,7 +348,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "ai-runs",
-    label: "AI Runs",
+    label: "AI runs",
     href: "/app/system/ai",
     capability: {
       module: "ai.run",
@@ -372,7 +370,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "scorecard",
-    label: "Scorecard",
+    label: "Franchise scorecard",
     href: "/app/analytics",
     capability: {
       module: "analytics.scorecard",
@@ -383,7 +381,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "privacy",
-    label: "Privacy Requests",
+    label: "Privacy requests",
     href: "/app/privacy",
     capability: {
       module: "privacy.request",
@@ -394,7 +392,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "jobs",
-    label: "Job Console",
+    label: "Background jobs",
     href: "/app/system/jobs",
     capability: {
       module: "system.jobs",
@@ -405,7 +403,7 @@ export const shellNavigation: NavigationDescriptor[] = [
   },
   {
     id: "activity",
-    label: "Audit Activity",
+    label: "Audit trail",
     href: "/app/activity",
     capability: {
       module: "system",
@@ -482,10 +480,11 @@ async function resolveShellWith(request: RequestedShellContext, repository: Auth
   }
 
   try {
-    const context = await resolveWorkingContext(repository, {
-      session,
-      organisationId,
-      territoryId
+    const context = await resolveWorkingContext(repository, { session, organisationId, territoryId }).catch(async (error: unknown) => {
+      // A remembered context that no longer fits this person is dropped silently in favour of their default.
+      const stale = request.contextSource === "stored" && request.organisationId && defaultContext?.organisationId;
+      if (!stale || (defaultContext.organisationId === organisationId && (defaultContext.territoryId ?? undefined) === territoryId)) throw error;
+      return resolveWorkingContext(repository, { session, organisationId: defaultContext.organisationId, territoryId: defaultContext.territoryId });
     });
 
     const decisions = Object.fromEntries(

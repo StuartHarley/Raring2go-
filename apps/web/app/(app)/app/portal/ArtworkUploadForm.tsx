@@ -56,7 +56,7 @@ export function ArtworkUploadForm({ requirementId, queryString }: { requirementI
         <input name="notes" maxLength={500} />
       </label>
       <div className="franchise-actions">
-        <button type="submit" disabled={pending}>{pending ? "Sending…" : "Send artwork"}</button>
+        <button type="submit" className="r2-button r2-button--primary" disabled={pending}>{pending ? "Sending…" : "Send artwork"}</button>
       </div>
     </form>
   );

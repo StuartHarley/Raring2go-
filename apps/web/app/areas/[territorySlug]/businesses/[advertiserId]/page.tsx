@@ -10,10 +10,10 @@ type PageProps = { params: Promise<{ territorySlug: string; advertiserId: string
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { territorySlug, advertiserId } = await params;
   const found = await readPublicBusiness(territorySlug, advertiserId, siteUrl());
-  if (!found) return { title: "Not found | Raring2go!", robots: { index: false } };
+  if (!found) return { title: { absolute: "Not found | Raring2go!" }, robots: { index: false } };
 
   return {
-    title: `${found.business.title} | Raring2go! ${found.territory.name}`,
+    title: { absolute: `${found.business.title} | Raring2go! ${found.territory.name}` },
     description: found.business.summary,
     alternates: { canonical: `${siteUrl()}${found.business.href}` }
   };

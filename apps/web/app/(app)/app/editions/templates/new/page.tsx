@@ -1,11 +1,14 @@
 import type { Route } from "next";
-import { ShellAccessError, requireShellPermission } from "../../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../../lib/app-shell";
 import { templateSpecErrorText } from "@raring2go/publishing";
+import { Notice, PageHeader, Panel } from "../../../../../../lib/page-ui";
 import { Breadcrumbs } from "../../../../../../lib/workflow-ui";
-import { AppShell } from "../../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../../page";
 import { createTemplateAction } from "../actions";
 import { TemplateForm } from "../template-form";
+import { protectedOutcome } from "../../../../../../lib/protected-outcome";
+
+export const metadata = { title: "New template" };
 
 export default async function NewTemplatePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const search = await searchParams;
@@ -14,19 +17,21 @@ export default async function NewTemplatePage({ searchParams }: { searchParams: 
   try {
     await requireShellPermission(request, { module: "edition.template", action: "create" });
   } catch (error) {
-    if (error instanceof ShellAccessError) return <main className={`app-outcome app-outcome-${error.kind}`}><section><h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1><p>{error.message}</p></section></main>;
-    throw error;
+    return protectedOutcome(error);
   }
   const message = code ? (templateSpecErrorText as Record<string, string>)[code] : undefined;
   return (
-    <AppShell request={request}>
-      <Breadcrumbs items={[{ label: "Edition Factory", href: "/app/editions" }, { label: "Template library", href: "/app/editions/templates" as Route }, { label: "New template" }]} />
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Template library</p>
-        <h2>New template</h2>
-        {message ? <p role="alert">{message}</p> : null}
+    <>
+      <Breadcrumbs items={[{ label: "Edition Factory", href: "/app/editions" as Route }, { label: "Template library", href: "/app/editions/templates" as Route }, { label: "New template" }]} />
+      <PageHeader
+        eyebrow="Template library"
+        title="New template"
+        intro="Set the page geometry, lock the brand furniture and mark the zones local editors can fill. It is saved as a draft to approve and publish later."
+      />
+      <Panel>
+        {message ? <Notice tone="error">{message}</Notice> : null}
         <TemplateForm action={createTemplateAction.bind(null, request)} withIdentity submitLabel="Create draft" />
-      </section>
-    </AppShell>
+      </Panel>
+    </>
   );
 }

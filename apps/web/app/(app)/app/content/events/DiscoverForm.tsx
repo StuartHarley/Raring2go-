@@ -48,7 +48,7 @@ export function DiscoverForm({
         Suggestions go to the queue below for a person to approve. Past events, events without a source link and duplicates are filtered out automatically.
       </p>
       <div className="franchise-actions">
-        <button type="submit" disabled={pending}>{pending ? "Searching…" : "Find events"}</button>
+        <button type="submit" className="r2-button r2-button--primary" disabled={pending}>{pending ? "Searching…" : "Find events"}</button>
       </div>
     </form>
   );

@@ -7,6 +7,7 @@ import { sessionCookieName } from "../../../../lib/auth-runtime";
 import { readParentAccount } from "../../../../lib/parent-runtime";
 import { territoryFromSlug } from "../../../../lib/public-runtime";
 import { savePreferencesAction, setEmailOptOutAction, setEmailSubscriptionAction } from "./actions";
+import { PublicNav } from "../_components/PublicNav";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -31,7 +32,7 @@ const frequencyLabels: Record<(typeof newsletterFrequencies)[number], string> = 
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const territory = territoryFromSlug((await params).territorySlug);
-  return { title: territory ? `My preferences | Raring2go! ${territory.name}` : "My preferences | Raring2go!", robots: { index: false } };
+  return { title: { absolute: territory ? `My preferences | Raring2go! ${territory.name}` : "My preferences | Raring2go!" }, robots: { index: false } };
 }
 
 export default async function ParentPreferencesPage({ params, searchParams }: PageProps) {
@@ -47,14 +48,7 @@ export default async function ParentPreferencesPage({ params, searchParams }: Pa
 
   return (
     <main className="public-site public-season-autumn">
-      <header className="public-nav">
-        <Link href={`/areas/${territorySlug}` as Route} className="public-logo">Raring2go!</Link>
-        <nav aria-label="Public navigation">
-          <Link href={`/areas/${territorySlug}/whats-on` as Route}>What&apos;s On</Link>
-          <Link href={`/areas/${territorySlug}/saved` as Route}>Saved</Link>
-          <Link href={`/areas/${territorySlug}/preferences` as Route}>Preferences</Link>
-        </nav>
-      </header>
+      <PublicNav slug={territorySlug} current="preferences" />
 
       <section className="public-hero public-hero-compact">
         <div>

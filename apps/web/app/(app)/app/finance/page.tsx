@@ -1,4 +1,6 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import type { Route } from "next";
+import { requireShellPermission } from "../../../../lib/app-shell";
+import { getDirectory } from "../../../../lib/directory";
 import { listFranchiseSummaries } from "../../../../lib/franchise-runtime";
 import {
   readActiveRoyaltyRules,
@@ -6,8 +8,9 @@ import {
   readOwnFranchiseRoyaltyStatements
 } from "../../../../lib/finance-runtime";
 import { readRoyaltyPanel } from "../../../../lib/assistants-finance";
+import { displayName, formatDate, formatLabel } from "../../../../lib/format";
+import { Actions, EmptyState, LinkButton, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { RoyaltyReviewPanel } from "./RoyaltyReviewPanel";
-import { AppShell } from "../../layout";
 import { requestFromSearchParamsAndCookies } from "../page";
 import {
   addAdjustmentAction,
@@ -17,10 +20,15 @@ import {
   submitStatementAction
 } from "./actions";
 import type { RoyaltyRule, RoyaltyStatement } from "@raring2go/finance";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Royalties" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type TerritoryNames = Map<string, string | undefined>;
 
 export default async function FinancePage({ searchParams }: PageProps) {
   const search = await searchParams;
@@ -32,48 +40,60 @@ export default async function FinancePage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, isNetworkView, franchises, rules, networkStatements, ownFranchise, ownStatements } = result;
+  const { context, isNetworkView, franchises, territoryNames, rules, networkStatements, ownFranchise, ownStatements } = result;
   const sessionQuery = request.sessionKey ? `?session=${encodeURIComponent(request.sessionKey)}` : "";
+  const nameOf = (franchiseId: string) => franchiseName(franchises, territoryNames, franchiseId);
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Finance</p>
-        <h2>Franchise Royalties</h2>
-        <p>
-          Royalty statements are calculated from booked advertiser revenue and are reproducible from the
-          underlying invoices and payments. Adjustments always carry a recorded reason.
-        </p>
-        <a href={`/app/finance/payments${sessionQuery}`} className="app-link-button">Online payments</a>
-        {isNetworkView ? <a href={`/app/finance/accounting${sessionQuery}`} className="app-link-button">Tax rates and accounting hand-off</a> : null}
-      </section>
+    <>
+      <PageHeader
+        eyebrow="Finance"
+        title="Royalties"
+        intro="Royalty statements worked out from booked advertiser revenue. Every figure traces back to the invoices and payments behind it, and every adjustment carries a reason."
+        actions={
+          <>
+            <LinkButton href={`/app/finance/payments${sessionQuery}` as Route}>Online payments</LinkButton>
+            {isNetworkView ? (
+              <LinkButton href={`/app/finance/accounting${sessionQuery}` as Route} variant="secondary">
+                Tax rates and accounting
+              </LinkButton>
+            ) : null}
+          </>
+        }
+      />
 
       {isNetworkView && result.royaltyReview ? <RoyaltyReviewPanel request={request} panel={result.royaltyReview} resultCode={resultCode} sessionQuery={sessionQuery} /> : null}
 
       {isNetworkView ? (
         <>
-          <section className="app-panel franchise-panel">
-            <p className="eyebrow">Royalty rules</p>
-            <h2>Active rules</h2>
-            <div className="franchise-list">
-              {rules.map((rule) => (
-                <div key={rule.id}>
-                  <strong>{franchiseName(franchises, rule.franchiseId)}</strong>
-                  <span>
-                    {(rule.rateBps / 100).toFixed(2)}% of {rule.revenueBasis} revenue, from {rule.effectiveFrom}
-                  </span>
-                  {rule.minimumDueMinor > 0 ? <span>Minimum due {formatMinor(rule.minimumDueMinor)}</span> : null}
-                </div>
-              ))}
-              {rules.length === 0 ? <p>No active royalty rules yet.</p> : null}
-            </div>
+          <Panel eyebrow="Royalty rules" title="Active rules" intro="How each franchise's royalty is worked out: the rate, what it applies to and when it started.">
+            {rules.length === 0 ? (
+              <EmptyState title="No royalty rules yet">Add the first rule below to set how each franchise royalty is worked out.</EmptyState>
+            ) : (
+              <RecordList>
+                {rules.map((rule) => (
+                  <RecordCard
+                    key={rule.id}
+                    title={nameOf(rule.franchiseId)}
+                    status={rule.status}
+                    lines={[
+                      `${(rule.rateBps / 100).toFixed(2)}% of ${formatLabel(rule.revenueBasis).toLowerCase()} revenue, from ${formatDate(rule.effectiveFrom)}`,
+                      rule.minimumDueMinor > 0 ? `Minimum due ${formatMinor(rule.minimumDueMinor)}` : null
+                    ]}
+                  />
+                ))}
+              </RecordList>
+            )}
+          </Panel>
+
+          <Panel eyebrow="New rule" title="Add a royalty rule" id="new-rule">
             <form action={createRoyaltyRuleAction.bind(null, context)} className="franchise-form">
               <label>
                 Franchise
                 <select name="franchiseId" required>
                   {franchises.map((franchise) => (
                     <option key={franchise.id} value={franchise.id}>
-                      {franchise.primaryTerritoryId}
+                      {nameOf(franchise.id)}
                     </option>
                   ))}
                 </select>
@@ -101,23 +121,20 @@ export default async function FinancePage({ searchParams }: PageProps) {
                 Notes
                 <input type="text" name="notes" placeholder="Agreement fee schedule reference" />
               </label>
-              <button type="submit">Save rule</button>
+              <button type="submit" className="r2-button r2-button--primary">
+                Save rule
+              </button>
             </form>
-          </section>
+          </Panel>
 
-          <section className="app-panel franchise-panel">
-            <p className="eyebrow">Generate</p>
-            <h2>Generate a royalty statement</h2>
-            <form
-              action={generateStatementAction.bind(null, context)}
-              className="franchise-form"
-            >
+          <Panel eyebrow="Generate" title="Generate a royalty statement" id="generate">
+            <form action={generateStatementAction.bind(null, context)} className="franchise-form">
               <label>
                 Franchise
                 <select name="franchiseId" required>
                   {franchises.map((franchise) => (
                     <option key={franchise.id} value={franchise.id}>
-                      {franchise.primaryTerritoryId}
+                      {nameOf(franchise.id)}
                     </option>
                   ))}
                 </select>
@@ -130,47 +147,46 @@ export default async function FinancePage({ searchParams }: PageProps) {
                 Period end
                 <input type="date" name="periodEnd" required />
               </label>
-              <button type="submit">Generate statement</button>
+              <button type="submit" className="r2-button r2-button--primary">
+                Generate statement
+              </button>
             </form>
-          </section>
+          </Panel>
 
-          <section className="app-panel franchise-panel">
-            <p className="eyebrow">Network</p>
-            <h2>Royalty statements</h2>
-            <div className="franchise-list">
-              {networkStatements.map((statement) => (
-                <StatementRow
-                  key={statement.id}
-                  statement={statement}
-                  franchiseLabel={franchiseName(franchises, statement.franchiseId)}
-                  context={context}
-                />
-              ))}
-              {networkStatements.length === 0 ? <p>No royalty statements yet.</p> : null}
-            </div>
-          </section>
+          <Panel eyebrow="Network" title="Royalty statements" id="statements">
+            {networkStatements.length === 0 ? (
+              <EmptyState title="No royalty statements yet">Generate the first one above for a franchise with an active rule.</EmptyState>
+            ) : (
+              <RecordList>
+                {networkStatements.map((statement) => (
+                  <StatementRow key={statement.id} statement={statement} franchiseLabel={nameOf(statement.franchiseId)} context={context} />
+                ))}
+              </RecordList>
+            )}
+          </Panel>
         </>
       ) : (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">{ownFranchise?.primaryTerritoryId ?? "Territory"}</p>
-          <h2>My royalty statements</h2>
-          <div className="franchise-list">
-            {ownStatements.map((statement) => (
-              <div key={statement.id}>
-                <strong>
-                  {statement.periodStart} to {statement.periodEnd}
-                </strong>
-                <span>{statement.statementNumber} - {statement.status}</span>
-                <span>
-                  Revenue {formatMinor(statement.grossRevenueMinor)}, royalty due {formatMinor(statement.totalDueMinor)}
-                </span>
-              </div>
-            ))}
-            {ownStatements.length === 0 ? <p>No royalty statements have been issued yet.</p> : null}
-          </div>
-        </section>
+        <Panel eyebrow={displayName(ownFranchise ? territoryNames.get(ownFranchise.primaryTerritoryId) : undefined, "Territory")} title="Your royalty statements" id="statements">
+          {ownStatements.length === 0 ? (
+            <EmptyState title="No royalty statements yet">Head Office issues statements from your booked advertiser revenue; they appear here once generated.</EmptyState>
+          ) : (
+            <RecordList>
+              {ownStatements.map((statement) => (
+                <RecordCard
+                  key={statement.id}
+                  title={`${formatDate(statement.periodStart)} to ${formatDate(statement.periodEnd)}`}
+                  status={statement.status}
+                  lines={[
+                    statement.statementNumber,
+                    `Revenue ${formatMinor(statement.grossRevenueMinor)} · royalty due ${formatMinor(statement.totalDueMinor)}`
+                  ]}
+                />
+              ))}
+            </RecordList>
+          )}
+        </Panel>
       )}
-    </AppShell>
+    </>
   );
 }
 
@@ -188,15 +204,14 @@ function StatementRow({
   const adjust = addAdjustmentAction.bind(null, context, statement.id);
 
   return (
-    <div>
-      <strong>{franchiseLabel}</strong>
-      <span>
-        {statement.statementNumber} · {statement.periodStart} to {statement.periodEnd} · {statement.status}
-      </span>
-      <span>
-        Revenue {formatMinor(statement.grossRevenueMinor)}, royalty {formatMinor(statement.calculatedRoyaltyMinor)},
-        adjustments {formatMinor(statement.adjustmentsMinor)}, total due {formatMinor(statement.totalDueMinor)}
-      </span>
+    <RecordCard
+      title={franchiseLabel}
+      status={statement.status}
+      lines={[
+        `${statement.statementNumber} · ${formatDate(statement.periodStart)} to ${formatDate(statement.periodEnd)}`,
+        `Revenue ${formatMinor(statement.grossRevenueMinor)} · royalty ${formatMinor(statement.calculatedRoyaltyMinor)} · adjustments ${formatMinor(statement.adjustmentsMinor)} · total due ${formatMinor(statement.totalDueMinor)}`
+      ]}
+    >
       {statement.status === "draft" || statement.status === "pending_approval" ? (
         <form action={adjust} className="franchise-form">
           <label>
@@ -207,25 +222,36 @@ function StatementRow({
             Reason
             <input type="text" name="reason" required />
           </label>
-          <button type="submit">Add adjustment</button>
+          <button type="submit" className="r2-button r2-button--secondary">
+            Add adjustment
+          </button>
         </form>
       ) : null}
       {statement.status === "draft" ? (
-        <form action={submit}>
-          <button type="submit">Submit for approval</button>
-        </form>
+        <Actions>
+          <form action={submit}>
+            <button type="submit" className="r2-button r2-button--primary">
+              Submit for approval
+            </button>
+          </form>
+        </Actions>
       ) : null}
       {statement.status === "pending_approval" ? (
-        <form action={approve}>
-          <button type="submit">Approve</button>
-        </form>
+        <Actions>
+          <form action={approve}>
+            <button type="submit" className="r2-button r2-button--primary">
+              Approve
+            </button>
+          </form>
+        </Actions>
       ) : null}
-    </div>
+    </RecordCard>
   );
 }
 
-function franchiseName(franchises: Array<{ id: string; primaryTerritoryId: string }>, franchiseId: string) {
-  return franchises.find((franchise) => franchise.id === franchiseId)?.primaryTerritoryId ?? franchiseId;
+function franchiseName(franchises: Array<{ id: string; primaryTerritoryId: string }>, territoryNames: TerritoryNames, franchiseId: string) {
+  const territoryId = franchises.find((franchise) => franchise.id === franchiseId)?.primaryTerritoryId;
+  return displayName(territoryId ? territoryNames.get(territoryId) : undefined, "Territory not named yet");
 }
 
 function formatMinor(minor: number) {
@@ -245,6 +271,7 @@ async function loadFinance(request: Awaited<ReturnType<typeof requestFromSearchP
     };
     const isNetworkView = !context.territoryId;
     const franchises = await listFranchiseSummaries(context);
+    const territoryNames = await territoryNamesFor(franchises);
 
     if (isNetworkView) {
       const [rules, networkStatements] = await Promise.all([
@@ -259,6 +286,7 @@ async function loadFinance(request: Awaited<ReturnType<typeof requestFromSearchP
         context,
         isNetworkView,
         franchises,
+        territoryNames,
         rules,
         networkStatements,
         royaltyReview,
@@ -273,6 +301,7 @@ async function loadFinance(request: Awaited<ReturnType<typeof requestFromSearchP
       context,
       isNetworkView,
       franchises,
+      territoryNames,
       royaltyReview: undefined,
       rules: [] as RoyaltyRule[],
       networkStatements: [] as RoyaltyStatement[],
@@ -284,18 +313,9 @@ async function loadFinance(request: Awaited<ReturnType<typeof requestFromSearchP
   }
 }
 
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
+/** Territory names for the franchises on screen, so a franchise is never labelled by its territory id. */
+async function territoryNamesFor(franchises: Array<{ primaryTerritoryId: string }>): Promise<TerritoryNames> {
+  const directory = getDirectory();
+  const ids = [...new Set(franchises.map((franchise) => franchise.primaryTerritoryId))];
+  return new Map(await Promise.all(ids.map(async (id) => [id, await directory.territoryName(id).catch(() => undefined)] as const)));
 }

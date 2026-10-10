@@ -1,12 +1,20 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
-import { readMarketingCommandCentre } from "../../../../lib/marketing-runtime";
+import type { Route } from "next";
+import { requireShellPermission } from "../../../../lib/app-shell";
+import { listNetworkTerritories, readMarketingCommandCentre } from "../../../../lib/marketing-runtime";
 import { readMarketingExtras } from "../../../../lib/marketing-insights";
-import { AppShell } from "../../layout";
+import { displayName, formatCount, formatLabel } from "../../../../lib/format";
+import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList, Table } from "../../../../lib/page-ui";
+import type { Tone } from "../../../../lib/page-ui";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Marketing overview" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const SEVERITY_TONE: Record<string, Tone> = { critical: "danger", warning: "warning", info: "info" };
 
 export default async function MarketingCommandPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(await searchParams);
@@ -16,133 +24,169 @@ export default async function MarketingCommandPage({ searchParams }: PageProps) 
     return protectedOutcome(result.error);
   }
 
-  const command = result.command;
-  const extras = result.extras;
+  const { command, extras, territories } = result;
+  const areaName = (territoryId: string | null | undefined) =>
+    territoryId ? displayName(territories.find((territory) => territory.id === territoryId)?.name, "Area not named yet") : "Whole network";
 
   return (
-    <AppShell request={request}>
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Marketing command centre</p>
-        <h2>Network operating view</h2>
-        <p>
-          Audience, newsletter, journey and social health in one place, scoped
-          by the active organisation and territory context.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Subscribers</span>
-            <strong>{command.analytics.audience.activeSubscribers}</strong>
-          </article>
-          <article>
-            <span>Actions</span>
-            <strong>{command.actionItems.length}</strong>
-          </article>
-          <article>
-            <span>Territories</span>
-            <strong>{command.territoryHealth.length}</strong>
-          </article>
-          <article>
-            <span>Failed runs</span>
-            <strong>{command.analytics.journeys.failed}</strong>
-          </article>
-        </div>
-      </section>
+    <>
+      <PageHeader
+        eyebrow="Marketing"
+        title="Marketing overview"
+        intro="How audience, newsletters, journeys and social are doing across the areas you look after, and what needs attention first."
+        actions={
+          <>
+            <LinkButton href={"/app/marketing-analytics" as Route}>Open analytics</LinkButton>
+            <LinkButton href={"/app/newsletters" as Route} variant="secondary">
+              Newsletters
+            </LinkButton>
+            <LinkButton href={"/app/journeys" as Route} variant="secondary">
+              Journeys
+            </LinkButton>
+          </>
+        }
+      />
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Action queue</p>
-        <h2>Territories needing attention</h2>
-        <div className="franchise-list">
-          {command.actionItems.length === 0 ? (
-            <div>
-              <strong>No marketing exceptions</strong>
-              <span>Known channel and automation records are healthy.</span>
-            </div>
-          ) : (
-            command.actionItems.map((item) => (
-              <div key={item.id}>
-                <strong>{item.title}</strong>
-                <span>{item.severity} - {item.source} - {item.territoryId ?? "network"}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <Panel>
+        <Metrics
+          items={[
+            { label: "Subscribers", value: command.analytics.audience.activeSubscribers },
+            { label: "Needs attention", value: command.actionItems.length, tone: command.actionItems.length > 0 ? "warning" : "success" },
+            { label: "Areas", value: command.territoryHealth.length },
+            { label: "Failed journey runs", value: command.analytics.journeys.failed, tone: command.analytics.journeys.failed > 0 ? "danger" : "success" }
+          ]}
+        />
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Territory health</p>
-        <h2>Coverage</h2>
-        <div className="franchise-list">
-          {command.territoryHealth.map((territory) => (
-            <div key={territory.territoryId}>
-              <strong>{territory.territoryId}</strong>
-              <span>
-                {territory.subscribers} subscribers - {territory.upcomingNewsletterSends} newsletter sends -{" "}
-                {territory.activeJourneys} active journeys - {territory.scheduledSocial} social posts
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <Panel eyebrow="Action queue" title="What needs attention" id="actions">
+        {command.actionItems.length === 0 ? (
+          <EmptyState title="Nothing needs attention">Audience, newsletter, journey and social records are all healthy.</EmptyState>
+        ) : (
+          <RecordList>
+            {command.actionItems.map((item) => (
+              <RecordCard
+                key={item.id}
+                title={item.title}
+                status={item.severity}
+                tone={SEVERITY_TONE[item.severity]}
+                lines={[`${formatLabel(item.source)} · ${areaName(item.territoryId)}`]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Send exceptions</p>
-        <h2>Newsletters that need attention</h2>
-        {extras.sendExceptions.length === 0 ? <p>No failed, overdue or bouncing sends.</p> : (
-          <div className="franchise-list">
+      <Panel eyebrow="Area health" title="Coverage by area" id="coverage">
+        {command.territoryHealth.length === 0 ? (
+          <EmptyState title="No areas in scope">Area health appears here once a territory has audience or marketing activity.</EmptyState>
+        ) : (
+          <Table caption="Audience and marketing activity by area">
+            <thead>
+              <tr>
+                <th scope="col">Area</th>
+                <th scope="col">Subscribers</th>
+                <th scope="col">Upcoming newsletter sends</th>
+                <th scope="col">Active journeys</th>
+                <th scope="col">Failed journey runs</th>
+                <th scope="col">Scheduled social posts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {command.territoryHealth.map((territory) => (
+                <tr key={territory.territoryId}>
+                  <th scope="row">{areaName(territory.territoryId)}</th>
+                  <td>{territory.subscribers}</td>
+                  <td>{territory.upcomingNewsletterSends}</td>
+                  <td>{territory.activeJourneys}</td>
+                  <td>{territory.failedJourneyRuns}</td>
+                  <td>{territory.scheduledSocial}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </Panel>
+
+      <Panel eyebrow="Send exceptions" title="Newsletters that need attention" id="send-exceptions">
+        {extras.sendExceptions.length === 0 ? (
+          <EmptyState title="No send problems">No newsletter has failed, missed its scheduled time or bounced heavily.</EmptyState>
+        ) : (
+          <RecordList>
             {extras.sendExceptions.map((item) => (
-              <div key={item.campaignId}><strong>{item.title}</strong><span>{item.problem} - {item.territoryId ?? "network"}</span></div>
+              <RecordCard key={item.campaignId} title={item.title} lines={[item.problem, areaName(item.territoryId)]} />
             ))}
-          </div>
+          </RecordList>
         )}
-      </section>
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Content</p>
-        <h2>Gaps and top content</h2>
-        {extras.contentGaps.length === 0 ? <p>Every territory has published in the last 30 days.</p> : (
-          <div className="franchise-list">
+      <Panel eyebrow="Content" title="Areas with nothing published recently" id="content-gaps">
+        {extras.contentGaps.length === 0 ? (
+          <EmptyState title="Every area has published in the last 30 days" />
+        ) : (
+          <RecordList>
             {extras.contentGaps.map((gap) => (
-              <div key={gap.territoryId}><strong>{gap.territoryName}</strong><span>Nothing published in the last 30 days</span></div>
+              <RecordCard key={gap.territoryId} title={displayName(gap.territoryName, "Area not named yet")} lines={["Nothing published in the last 30 days"]} />
             ))}
-          </div>
+          </RecordList>
         )}
-        <h3>Top content (30 days)</h3>
-        {extras.topContent.length === 0 ? <p>No content activity recorded yet.</p> : (
-          <div className="franchise-list">
+      </Panel>
+
+      <Panel eyebrow="Content" title="Top content in the last 30 days" id="top-content">
+        {extras.topContent.length === 0 ? (
+          <EmptyState title="No content activity recorded yet">Views and clicks appear here once families start reading published content.</EmptyState>
+        ) : (
+          <RecordList>
             {extras.topContent.map((item) => (
-              <div key={item.contentId}><strong>{item.title}</strong><span>{item.views} views - {item.clicks} clicks</span></div>
+              <RecordCard key={item.contentId} title={item.title} lines={[`${formatCount(item.views, "view")} · ${formatCount(item.clicks, "click")}`]} />
             ))}
-          </div>
+          </RecordList>
         )}
-      </section>
+      </Panel>
 
       {extras.advertiserObligations ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Advertiser obligations</p>
-          <h2>Booked work still to deliver</h2>
-          {extras.advertiserObligations.length === 0 ? <p>No outstanding artwork or fulfilment.</p> : (
-            <div className="franchise-list">
-              {extras.advertiserObligations.map((row) => (
-                <div key={row.territoryId}><strong>{row.territoryName}</strong><span>{row.artworkOutstanding} artwork outstanding - {row.fulfilmentOutstanding} fulfilments open</span></div>
-              ))}
-            </div>
+        <Panel eyebrow="Advertisers" title="Booked work still to deliver" id="obligations">
+          {extras.advertiserObligations.length === 0 ? (
+            <EmptyState title="Nothing outstanding">No artwork or fulfilment is waiting on any area.</EmptyState>
+          ) : (
+            <Table caption="Outstanding advertiser work by area">
+              <thead>
+                <tr>
+                  <th scope="col">Area</th>
+                  <th scope="col">Artwork outstanding</th>
+                  <th scope="col">Fulfilments open</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extras.advertiserObligations.map((row) => (
+                  <tr key={row.territoryId}>
+                    <th scope="row">{displayName(row.territoryName, "Area not named yet")}</th>
+                    <td>{row.artworkOutstanding}</td>
+                    <td>{row.fulfilmentOutstanding}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
           )}
-        </section>
+        </Panel>
       ) : null}
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Optimisation opportunities</p>
-        <h2>Suggestions, not actions</h2>
-        <p>These come from the gaps above. Nothing is generated or published until a person starts it and approves the result.</p>
-        {extras.aiOpportunities.length === 0 ? <p>No opportunities right now.</p> : (
-          <div className="franchise-list">
+      <Panel
+        eyebrow="Suggestions"
+        title="Things worth doing next"
+        intro="These come from the gaps above. Nothing is generated or published until a person starts it and approves the result."
+        id="opportunities"
+      >
+        {extras.aiOpportunities.length === 0 ? (
+          <EmptyState title="No suggestions right now" />
+        ) : (
+          <RecordList>
             {extras.aiOpportunities.map((item) => (
-              <div key={item.id}><strong>{item.title}</strong><span>{item.reason}</span></div>
+              <RecordCard key={item.id} title={item.title} lines={[item.reason]} />
             ))}
-          </div>
+          </RecordList>
         )}
-      </section>
-    </AppShell>
+      </Panel>
+    </>
   );
 }
 
@@ -164,24 +208,10 @@ async function loadCommandCentre(request: Awaited<ReturnType<typeof requestFromS
       territoryId: shell.activeContext.territoryId
     });
 
-    return { command, extras };
+    const territories = await listNetworkTerritories();
+
+    return { command, extras, territories };
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
 }

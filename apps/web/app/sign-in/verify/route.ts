@@ -3,6 +3,7 @@ import { rateLimitRules } from "@raring2go/security";
 import { NextResponse } from "next/server";
 import { clientIp, firstRateLimitRefusal } from "../../../lib/rate-limit-runtime";
 import { safeReturnTo, sessionCookieName, verifySignIn } from "../../../lib/auth-runtime";
+import { workingContextCookieName } from "../../../lib/working-context";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
     });
 
     const response = NextResponse.redirect(new URL(returnTo, url));
+    response.cookies.delete(workingContextCookieName);
     response.cookies.set(sessionCookieName, sessionToken, {
       httpOnly: true,
       sameSite: "lax",

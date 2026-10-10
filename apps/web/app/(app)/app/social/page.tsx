@@ -1,10 +1,13 @@
-import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../lib/app-shell";
 import { readSocialQueue } from "../../../../lib/publishing-runtime";
-import { formatLondon } from "../../../../lib/london-time";
-import { AppShell } from "../../layout";
+import { formatDateTime, formatLabel, formatLabels } from "../../../../lib/format";
+import { Actions, EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { approveSocialAction, cancelSocialAction, queueSocialAction, resolveSocialAction, retrySocialAction, scheduleSocialAction } from "./actions";
 import type { SocialResult } from "./actions";
 import { requestFromSearchParamsAndCookies } from "../page";
+import { protectedOutcome } from "../../../../lib/protected-outcome";
+
+export const metadata = { title: "Social queue" };
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -26,45 +29,32 @@ export default async function SocialQueuePage({ searchParams }: PageProps) {
   const gaps = result.gaps.filter((gap) => gap.signals.length > 0).length;
 
   return (
-    <AppShell request={request}>
+    <>
       <SocialBanner result={resultCode} />
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Social scheduling</p>
-        <h2>Publishing queue</h2>
-        <p>
-          Territory-specific social activity created from approved canonical
-          content variants, with provider-neutral publishing jobs.
-        </p>
-        <div className="franchise-metrics">
-          <article>
-            <span>Queue items</span>
-            <strong>{result.queue.length}</strong>
-          </article>
-          <article>
-            <span>Scheduled</span>
-            <strong>{scheduled}</strong>
-          </article>
-          <article>
-            <span>Published</span>
-            <strong>{published}</strong>
-          </article>
-          <article>
-            <span>Failed</span>
-            <strong>{failed}</strong>
-          </article>
-          <article>
-            <span>Gaps</span>
-            <strong>{gaps}</strong>
-          </article>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Social"
+        title="Social queue"
+        intro="Posts for each area's Facebook, Instagram and LinkedIn pages: what is queued, what went out and what failed."
+      />
+
+      <Panel>
+        <Metrics
+          items={[
+            { label: "In the queue", value: result.queue.length },
+            { label: "Scheduled", value: scheduled, tone: scheduled > 0 ? "info" : "neutral" },
+            { label: "Published", value: published, tone: published > 0 ? "success" : "neutral" },
+            { label: "Failed", value: failed, tone: failed > 0 ? "danger" : "success" },
+            { label: "Areas with gaps", value: gaps, tone: gaps > 0 ? "warning" : "success" }
+          ]}
+        />
+      </Panel>
 
       {result.access.create ? (
-        <section className="app-panel franchise-panel">
-          <p className="eyebrow">Queue</p>
-          <h2>Queue an approved post</h2>
+        <Panel eyebrow="Queue" title="Queue an approved post">
           {result.queueable.length === 0 ? (
-            <p>No approved social posts are waiting. Approve a Facebook, Instagram or LinkedIn version in Content Studio first, and make sure the area has a connected account.</p>
+            <EmptyState title="No approved social posts are waiting">
+              Approve a Facebook, Instagram or LinkedIn version in Content Studio first, and make sure the area has a connected account.
+            </EmptyState>
           ) : (
             <form action={queueSocialAction.bind(null, request)} className="franchise-form">
               <label>
@@ -73,7 +63,7 @@ export default async function SocialQueuePage({ searchParams }: PageProps) {
                   {result.queueable.flatMap((variant) =>
                     variant.accounts.map((account) => (
                       <option key={`${variant.variantId}|${account.id}`} value={`${variant.variantId}|${account.id}`}>
-                        {variant.title} ({variant.channel}) to {account.displayName}
+                        {variant.title} ({formatLabel(variant.channel)}) to {account.displayName}
                       </option>
                     ))
                   )}
@@ -81,82 +71,125 @@ export default async function SocialQueuePage({ searchParams }: PageProps) {
               </label>
               <label>Link (optional, https only)<input name="linkUrl" type="url" maxLength={300} placeholder="https://" /></label>
               <label>Call to action (optional)<input name="cta" maxLength={80} /></label>
-              <button type="submit">Add to the queue</button>
+              <Actions>
+                <button type="submit" className="r2-button r2-button--primary">
+                  Add to the queue
+                </button>
+              </Actions>
             </form>
           )}
-        </section>
+        </Panel>
       ) : null}
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Queue</p>
-        <h2>Upcoming and published posts</h2>
-        <div className="franchise-list">
-          {result.queue.length === 0 ? (
-            <div>
-              <strong>No social posts queued</strong>
-              <span>Approved social variants can be queued above.</span>
-            </div>
-          ) : (
-            result.queue.map((item) => {
+      <Panel eyebrow="Queue" title="Upcoming and published posts">
+        {result.queue.length === 0 ? (
+          <EmptyState title="No social posts queued">Approved social versions can be added to the queue above.</EmptyState>
+        ) : (
+          <RecordList>
+            {result.queue.map((item) => {
               const publication = item.publication;
               const failure = publication.failureMetadata as { reason?: string };
               const unknown = publication.publishState === "failed" && failure.reason === "outcome_unknown";
               const retrying = publication.publishState === "scheduled" && publication.retryCount > 0;
               return (
-                <div key={publication.id}>
-                  <strong>{item.content?.title ?? "Untitled content"}</strong>
-                  <span>{publication.channel} - {label(publication.publishState)} - {item.account?.displayName ?? "unknown account"}</span>
-                  <span>{formatLondon(publication.scheduledAt)}{retrying && item.job ? ` - retrying after ${formatLondon(item.job.runAfter)} (attempt ${item.job.attempts} of ${item.job.maxAttempts})` : ""}</span>
-                  {publication.publishState === "published" ? <span>Posted{publication.publishedExternalReference ? ` (${publication.publishedExternalReference})` : ""} {formatLondon(publication.publishedAt)}</span> : null}
-                  {publication.publishState === "failed" ? <span role="alert">{unknown ? "We could not confirm whether this was posted. Check the page before doing anything." : `Failed: ${label(failure.reason ?? "provider failure")}.`}</span> : null}
-                  <span>{item.warnings.length === 0 ? "No warnings" : item.warnings.map(label).join(", ")}</span>
-
+                <RecordCard
+                  key={publication.id}
+                  title={item.content?.title ?? "Untitled content"}
+                  status={publication.publishState}
+                  lines={[
+                    `${formatLabel(publication.channel)} · ${item.account?.displayName ?? "Account not connected"}`,
+                    `Scheduled for ${formatDateTime(publication.scheduledAt, "a time not set yet")}${retrying && item.job ? ` · retrying after ${formatDateTime(item.job.runAfter)} (attempt ${item.job.attempts} of ${item.job.maxAttempts})` : ""}`,
+                    publication.publishState === "published"
+                      ? `Posted ${formatDateTime(publication.publishedAt)}${publication.publishedExternalReference ? ` (${publication.publishedExternalReference})` : ""}`
+                      : null,
+                    publication.publishState === "failed" ? (
+                      <span role="alert">
+                        {unknown ? "We could not confirm whether this was posted. Check the page before doing anything." : `Failed: ${formatLabel(failure.reason, "Provider failure")}.`}
+                      </span>
+                    ) : null,
+                    item.warnings.length === 0 ? "No warnings" : `Warnings: ${formatLabels(item.warnings)}`
+                  ]}
+                >
                   {result.access.approve && ["draft", "needs_review"].includes(publication.publishState) ? (
-                    <form action={approveSocialAction.bind(null, request, publication.id)}><button type="submit">Approve</button></form>
+                    <form action={approveSocialAction.bind(null, request, publication.id)}>
+                      <Actions>
+                        <button type="submit" className="r2-button r2-button--secondary">
+                          Approve
+                        </button>
+                      </Actions>
+                    </form>
                   ) : null}
                   {result.access.schedule && ["approved", "scheduled"].includes(publication.publishState) ? (
                     <form action={scheduleSocialAction.bind(null, request, publication.id)} className="franchise-form">
                       <label>Publish at (UK time)<input name="when" type="datetime-local" required /></label>
-                      <button type="submit">{publication.publishState === "scheduled" ? "Reschedule" : "Schedule"}</button>
+                      <Actions>
+                        <button type="submit" className="r2-button r2-button--secondary">
+                          {publication.publishState === "scheduled" ? "Reschedule" : "Schedule"}
+                        </button>
+                      </Actions>
                     </form>
                   ) : null}
                   {result.access.schedule && publication.publishState === "failed" && !unknown ? (
-                    <form action={retrySocialAction.bind(null, request, publication.id)}><button type="submit">Try again</button></form>
+                    <form action={retrySocialAction.bind(null, request, publication.id)}>
+                      <Actions>
+                        <button type="submit" className="r2-button r2-button--secondary">
+                          Try again
+                        </button>
+                      </Actions>
+                    </form>
                   ) : null}
                   {result.access.publish && unknown ? (
                     <>
                       <form action={resolveSocialAction.bind(null, request, publication.id, true)} className="franchise-form">
                         <label>It did go out. Post link or id (optional)<input name="reference" maxLength={200} /></label>
-                        <button type="submit">Mark as posted</button>
+                        <Actions>
+                          <button type="submit" className="r2-button r2-button--secondary">
+                            Mark as posted
+                          </button>
+                        </Actions>
                       </form>
                       <form action={resolveSocialAction.bind(null, request, publication.id, false)}>
-                        <button type="submit">It did not go out - queue it again</button>
+                        <Actions>
+                          <button type="submit" className="r2-button r2-button--secondary">
+                            It did not go out: queue it again
+                          </button>
+                        </Actions>
                       </form>
                     </>
                   ) : null}
                   {result.access.cancel && !["published", "cancelled", "publishing"].includes(publication.publishState) ? (
-                    <form action={cancelSocialAction.bind(null, request, publication.id)}><button type="submit">Cancel</button></form>
+                    <form action={cancelSocialAction.bind(null, request, publication.id)}>
+                      <Actions>
+                        <button type="submit" className="r2-button r2-button--danger">
+                          Cancel
+                        </button>
+                      </Actions>
+                    </form>
                   ) : null}
-                </div>
+                </RecordCard>
               );
-            })
-          )}
-        </div>
-      </section>
+            })}
+          </RecordList>
+        )}
+      </Panel>
 
-      <section className="app-panel franchise-panel">
-        <p className="eyebrow">Calendar health</p>
-        <h2>Content gaps</h2>
-        <div className="franchise-list">
-          {result.gaps.map((gap) => (
-            <div key={gap.territoryId}>
-              <strong>{gap.territoryName}</strong>
-              <span>{gap.signals.length === 0 ? "Scheduled activity present" : gap.signals.join(", ")}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-    </AppShell>
+      <Panel eyebrow="Calendar health" title="Content gaps" intro="Areas with nothing scheduled in the next seven days, failed posts, or approved versions not yet queued.">
+        {result.gaps.length === 0 ? (
+          <EmptyState title="No active areas to check" />
+        ) : (
+          <RecordList>
+            {result.gaps.map((gap) => (
+              <RecordCard
+                key={gap.territoryId}
+                title={gap.territoryName}
+                status={gap.signals.length === 0 ? "clear" : "watch"}
+                lines={[gap.signals.length === 0 ? "Scheduled activity in the next seven days" : formatLabels(gap.signals)]}
+              />
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -178,24 +211,6 @@ async function loadSocial(request: Awaited<ReturnType<typeof requestFromSearchPa
   }
 }
 
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  throw error;
-}
-
-const label = (value: string) => value.replaceAll("_", " ");
-
 const messages: Record<SocialResult, string> = {
   created: "Added to the queue.",
   saved: "Saved.",
@@ -212,5 +227,5 @@ function SocialBanner({ result }: { result?: string }) {
   const message = result && Object.hasOwn(messages, result) ? messages[result as SocialResult] : undefined;
   if (!message) return null;
   const good = result === "created" || result === "saved";
-  return <p className={good ? "notice notice--success" : "notice notice--error"} role={good ? "status" : "alert"}>{message}</p>;
+  return <Notice tone={good ? "success" : "error"}>{message}</Notice>;
 }

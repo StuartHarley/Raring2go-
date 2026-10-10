@@ -1,7 +1,9 @@
-import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
+import { requireShellPermission } from "../../../../../lib/app-shell";
 import { canEditFranchise, readFranchise360 } from "../../../../../lib/franchise-runtime";
+import { displayName, formatCount, formatDate, formatDateTime, formatLabel, formatLabels } from "../../../../../lib/format";
+import { Actions, EmptyState, FactList, Metrics, PageHeader, Panel, RecordCard, RecordList, StatusBadge } from "../../../../../lib/page-ui";
+import type { Tone } from "../../../../../lib/page-ui";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
-import { AppShell } from "../../../layout";
 import { readFranchisePanel } from "../../../../../lib/assistants-franchise";
 import { FranchiseAssistantPanel } from "./FranchiseAssistantPanel";
 import { DocumentUploadForm } from "./DocumentUploadForm";
@@ -37,11 +39,17 @@ import {
   voidAgreementAction
 } from "../actions";
 import { getPermissionData } from "../../../../../lib/permission-source";
+import { recordOutcome } from "../../../../../lib/protected-outcome";
+
+export const metadata = { title: "Franchisee" };
 
 type PageProps = {
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const severityTone: Record<string, Tone> = { critical: "danger", warning: "warning", info: "info" };
+const readinessTone: Record<string, Tone> = { not_ready: "danger", at_risk: "warning", ready: "success", approved: "success", launched: "success" };
 
 export default async function Franchisee360Page({ params, searchParams }: PageProps) {
   const { id } = await params;
@@ -51,7 +59,7 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
   const result = await loadFranchise360(request, id);
 
   if ("error" in result) {
-    return protectedOutcome(result.error);
+    return recordOutcome(result.error);
   }
 
   // The session is carried by cookie; these only repeat any explicit context the page was opened with.
@@ -82,365 +90,315 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
     assistant
   } = result;
 
+  const territoryName = displayName(view.territory.name, "Territory not named yet");
+  const openActions = view.complianceActions.filter((action) => action.status === "open");
+  const firstPolicy = view.insurancePolicies[0];
+
   return (
-    <AppShell request={request}>
-      <Breadcrumbs items={[
-        { label: "Franchise", href: "/app/franchisees" },
-        { label: "Franchisee 360", href: "/app/franchisees" },
-        { label: view.organisation.name }
-      ]} />
-      <article className="franchise-360">
-        <header className="franchise-hero">
-          <p className="eyebrow">Franchisee 360</p>
-          <h2>{view.organisation.name}</h2>
-          <p>{view.territory.name} ({view.territory.code})</p>
-        </header>
-        <nav className="franchise-tabs" aria-label="Franchisee 360 sections">
-          {[
-            "Overview",
-            "Performance",
-            "Agreement",
-            "Compliance",
-            "Onboarding",
-            "Training",
-            "Support",
-            "Documents",
-            "Activity"
-          ].map((label) => (
-            <a key={label} href={`#${label.toLowerCase()}`}>
-              {label}
-            </a>
-          ))}
-        </nav>
-        <RelatedRecords
-          title="Franchise operating journey"
-          records={[
-            {
-              label: "Agreement",
-              title: view.agreement ? view.agreement.status : "No current agreement",
-              description: "Agreement generation, approval and execution history",
-              href: "#agreement"
-            },
-            {
-              label: "Compliance",
-              title: `${view.complianceActions.filter((action) => action.status === "open").length} open action(s)`,
-              description: "Required evidence, insurance and HQ verification",
-              href: "#compliance"
-            },
-            {
-              label: "Onboarding",
-              title: view.onboarding.programme?.status ?? "Not started",
-              description: "Launch milestones, blockers and readiness",
-              href: "#onboarding"
-            },
-            {
-              label: "Territory",
-              title: view.territory.name,
-              description: "Operational territory context for publishing and commercial activity",
-              href: "/app/territory"
-            }
+    <>
+      <Breadcrumbs items={[{ label: "Franchisees", href: "/app/franchisees" }, { label: territoryName }]} />
+      <PageHeader
+        eyebrow="Franchisee"
+        title={displayName(view.organisation.name, "Franchise not named yet")}
+        intro={`${territoryName} (${view.territory.code}). The agreement, compliance, onboarding, documents and activity for this franchise in one place.`}
+      />
+
+      <RelatedRecords
+        title="Where this franchise stands"
+        records={[
+          {
+            label: "Agreement",
+            title: view.agreement ? formatLabel(view.agreement.status) : "No current agreement",
+            description: "Drafting, approval, signing and execution",
+            href: "#agreement"
+          },
+          {
+            label: "Compliance",
+            title: formatCount(openActions.length, "open action"),
+            description: "Required evidence, insurance and Head Office verification",
+            href: "#compliance"
+          },
+          {
+            label: "Onboarding",
+            title: view.onboarding.programme ? formatLabel(view.onboarding.programme.status) : "Not started",
+            description: "Launch milestones, blockers and readiness",
+            href: "#onboarding"
+          },
+          {
+            label: "Documents",
+            title: formatCount(view.documents.length, "active document"),
+            description: "Agreements, certificates and supporting files",
+            href: "#documents"
+          },
+          {
+            label: "Territory",
+            title: territoryName,
+            description: "Where this franchise publishes and sells",
+            href: "/app/territory"
+          }
+        ]}
+      />
+
+      {assistant ? <FranchiseAssistantPanel request={request} franchiseId={id} panel={assistant} resultCode={resultCode} /> : null}
+
+      <Panel id="overview" eyebrow="Overview" title="At a glance">
+        <Metrics
+          items={[
+            { label: "Compliance complete", value: `${view.compliance.completeCount} of ${view.compliance.totalCount}`, tone: view.compliance.actionsRequired > 0 ? "warning" : "success" },
+            { label: "Open compliance actions", value: openActions.length, tone: openActions.length > 0 ? "danger" : "success" },
+            { label: "Launch progress", value: `${view.onboarding.progress}%`, detail: formatLabel(view.onboarding.readiness), tone: readinessTone[view.onboarding.readiness] },
+            { label: "Documents", value: view.documents.length, detail: "active in the vault" }
           ]}
         />
-        {assistant ? <FranchiseAssistantPanel request={request} franchiseId={id} panel={assistant} resultCode={resultCode} /> : null}
-        <section id="overview" className="app-panel">
-          <p className="eyebrow">Overview</p>
-          <dl className="franchise-facts">
-            <div>
-              <dt>Status</dt>
-              <dd>{view.franchise.status}</dd>
-            </div>
-            <div>
-              <dt>Lifecycle</dt>
-              <dd>{view.franchise.lifecycleStage}</dd>
-            </div>
-            <div>
-              <dt>Owner</dt>
-              <dd>{view.owner?.displayName ?? "Unassigned"}</dd>
-            </div>
-            <div>
-              <dt>Launch</dt>
-              <dd>{view.franchise.launchDate ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt>Renewal</dt>
-              <dd>{view.franchise.renewalDate ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt>Onboarding</dt>
-              <dd>{view.franchise.onboardingStatus}</dd>
-            </div>
-            <div>
-              <dt>Agreement</dt>
-              <dd>{view.agreement?.status ?? "Not generated"}</dd>
-            </div>
-            <div>
-              <dt>Signing</dt>
-              <dd>{view.agreement?.signatureRequest?.status ?? "Not sent"}</dd>
-            </div>
-            <div>
-              <dt>Documents</dt>
-              <dd>{view.documents.length} active</dd>
-            </div>
-            <div>
-              <dt>Insurance</dt>
-              <dd>{view.insurancePolicies[0]?.coverEndDate ?? "Missing"}</dd>
-            </div>
-            <div>
-              <dt>Compliance</dt>
-              <dd>{view.compliance.completeCount}/{view.compliance.totalCount} complete</dd>
-            </div>
-            <div>
-              <dt>Actions required</dt>
-              <dd>{view.compliance.actionsRequired}</dd>
-            </div>
-            <div>
-              <dt>Open actions</dt>
-              <dd>{view.complianceActions.filter((action) => action.status === "open").length}</dd>
-            </div>
-            <div>
-              <dt>Launch target</dt>
-              <dd>{view.onboarding.programme?.targetLaunchDate ?? "Not started"}</dd>
-            </div>
-            <div>
-              <dt>Launch progress</dt>
-              <dd>{view.onboarding.progress}%</dd>
-            </div>
-            <div>
-              <dt>Launch readiness</dt>
-              <dd>{view.onboarding.readiness}</dd>
-            </div>
-          </dl>
-          {canEdit ? (
-            <form action={update} className="franchise-form">
-              <label>
-                Lifecycle
-                <select name="lifecycleStage" defaultValue={view.franchise.lifecycleStage}>
-                  <option value="onboarding">Onboarding</option>
-                  <option value="trading">Trading</option>
-                  <option value="renewal">Renewal</option>
-                  <option value="exit">Exit</option>
-                </select>
-              </label>
-              <label>
-                Onboarding
-                <input name="onboardingStatus" defaultValue={view.franchise.onboardingStatus} />
-              </label>
-              <label>
-                Support
-                <input name="supportStatus" defaultValue={view.franchise.supportStatus} />
-              </label>
-              <label>
-                Renewal date
-                <input name="renewalDate" type="date" defaultValue={view.franchise.renewalDate ?? ""} />
-              </label>
-              <button type="submit">Save overview</button>
-            </form>
-          ) : (
-            <p className="franchise-readonly">This record is read-only in the current context.</p>
-          )}
-        </section>
-        <section className="app-panel">
-          <p className="eyebrow">Contacts</p>
-          <div className="franchise-list">
+        <FactList
+          items={[
+            { label: "Status", value: <StatusBadge status={view.franchise.status} /> },
+            { label: "Lifecycle", value: formatLabel(view.franchise.lifecycleStage) },
+            { label: "Owner", value: view.owner?.displayName ?? "Unassigned" },
+            { label: "Launch", value: formatDate(view.franchise.launchDate) },
+            { label: "Renewal", value: formatDate(view.franchise.renewalDate) },
+            { label: "Onboarding", value: formatLabel(view.franchise.onboardingStatus) },
+            { label: "Agreement", value: view.agreement ? <StatusBadge status={view.agreement.status} /> : "Not generated" },
+            { label: "Signing", value: view.agreement?.signatureRequest ? <StatusBadge status={view.agreement.signatureRequest.status} /> : "Not sent" },
+            { label: "Insurance cover ends", value: firstPolicy ? formatDate(firstPolicy.coverEndDate) : "No policy recorded" },
+            { label: "Launch target", value: view.onboarding.programme ? formatDate(view.onboarding.programme.targetLaunchDate) : "Not started" }
+          ]}
+        />
+        {canEdit ? (
+          <form action={update} className="franchise-form">
+            <label>
+              Lifecycle
+              <select name="lifecycleStage" defaultValue={view.franchise.lifecycleStage}>
+                <option value="onboarding">Onboarding</option>
+                <option value="trading">Trading</option>
+                <option value="renewal">Renewal</option>
+                <option value="exit">Exit</option>
+              </select>
+            </label>
+            <label>
+              Onboarding
+              <input name="onboardingStatus" defaultValue={view.franchise.onboardingStatus} />
+            </label>
+            <label>
+              Support
+              <input name="supportStatus" defaultValue={view.franchise.supportStatus} />
+            </label>
+            <label>
+              Renewal date
+              <input name="renewalDate" type="date" defaultValue={view.franchise.renewalDate ?? ""} />
+            </label>
+            <button type="submit" className="r2-button r2-button--primary">Save overview</button>
+          </form>
+        ) : (
+          <p className="muted">This record is read-only in the current context.</p>
+        )}
+      </Panel>
+
+      <Panel eyebrow="Contacts" title="Who to contact">
+        {view.contacts.length === 0 ? (
+          <EmptyState title="No contacts recorded">Contacts are added when the franchise is set up or its owner changes.</EmptyState>
+        ) : (
+          <RecordList>
             {view.contacts.map((contact) => (
-              <div key={contact.id}>
-                <strong>{contact.label}</strong>
-                <span>{contact.user?.displayName ?? contact.name ?? "External contact"}</span>
-                <span>{contact.user?.email ?? contact.email ?? "No email"}</span>
-              </div>
+              <RecordCard
+                key={contact.id}
+                title={contact.user?.displayName ?? contact.name ?? "External contact"}
+                lines={[formatLabel(contact.label), contact.user?.email ?? contact.email ?? "No email"]}
+              />
             ))}
-          </div>
-        </section>
-        <section id="agreement" className="app-panel">
-          <p className="eyebrow">Agreement</p>
-          {view.agreement ? (
-            <div className="franchise-agreement">
-              <h3>{view.agreement.template.name}</h3>
-              <dl className="franchise-facts">
-                <div>
-                  <dt>Status</dt>
-                  <dd>{view.agreement.status}</dd>
-                </div>
-                <div>
-                  <dt>Template version</dt>
-                  <dd>{view.agreement.version.version}</dd>
-                </div>
-                <div>
-                  <dt>Submitted</dt>
-                  <dd>{view.agreement.submittedAt ?? "Not submitted"}</dd>
-                </div>
-                <div>
-                  <dt>Approved</dt>
-                  <dd>{view.agreement.approvedAt ?? "Not approved"}</dd>
-                </div>
-                <div>
-                  <dt>Signing</dt>
-                  <dd>{view.agreement.signatureRequest?.status ?? "Not sent"}</dd>
-                </div>
-                <div>
-                  <dt>Executed</dt>
-                  <dd>{view.agreement.executedAt ?? "Not executed"}</dd>
-                </div>
-              </dl>
-              {view.agreement.signers.length > 0 ? (
-                <ol className="franchise-activity">
-                  {view.agreement.signers.map((signer) => (
-                    <li key={signer.id}>
-                      <strong>{signer.signingOrder}. {signer.role}</strong>
-                      <span>{signer.name} - {signer.status}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
-              <details>
-                <summary>Merge variable snapshot</summary>
-                <pre>{JSON.stringify(view.agreement.mergeVariables, null, 2)}</pre>
-              </details>
-              {canEdit ? (
-                <div className="franchise-actions">
-                  <form action={submit}><button type="submit">Submit for approval</button></form>
-                  <form action={approve}><button type="submit">Approve</button></form>
-                  <form action={sendSignature}><button type="submit">Send for signature</button></form>
-                  <form action={resendSignature}><button type="submit">Resend</button></form>
-                  <form action={completeNextSigner}><button type="submit">Complete next signer</button></form>
-                  <form action={completeSigning}><button type="submit">Complete signing</button></form>
-                  <form action={declineSigning}><button type="submit">Decline</button></form>
-                  <form action={cancelSignature}><button type="submit">Cancel signing</button></form>
-                  <form action={voidCurrent}><button type="submit">Void</button></form>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="franchise-empty">
-              <h3>No agreement generated yet</h3>
-              <p>Generate a controlled agreement draft from the latest approved template version.</p>
-              {canEdit ? (
+          </RecordList>
+        )}
+      </Panel>
+
+      <Panel id="agreement" eyebrow="Agreement" title={view.agreement ? view.agreement.template.name : "Franchise agreement"}>
+        {view.agreement ? (
+          <>
+            <FactList
+              items={[
+                { label: "Status", value: <StatusBadge status={view.agreement.status} /> },
+                { label: "Template version", value: view.agreement.version.version },
+                { label: "Submitted", value: formatDate(view.agreement.submittedAt, "Not submitted") },
+                { label: "Approved", value: formatDate(view.agreement.approvedAt, "Not approved") },
+                { label: "Signing", value: view.agreement.signatureRequest ? <StatusBadge status={view.agreement.signatureRequest.status} /> : "Not sent" },
+                { label: "Executed", value: formatDate(view.agreement.executedAt, "Not executed") }
+              ]}
+            />
+            {view.agreement.signers.length > 0 ? (
+              <ol className="franchise-activity">
+                {view.agreement.signers.map((signer) => (
+                  <li key={signer.id}>
+                    <strong>
+                      {signer.signingOrder}. {formatLabel(signer.role)}
+                    </strong>
+                    <span>
+                      {signer.name} · {formatLabel(signer.status)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+            <details>
+              <summary>Merge variable snapshot</summary>
+              <pre className="code-block">{JSON.stringify(view.agreement.mergeVariables, null, 2)}</pre>
+            </details>
+            {canEdit ? (
+              <Actions>
+                <form action={submit}><button type="submit" className="r2-button r2-button--primary">Submit for approval</button></form>
+                <form action={approve}><button type="submit" className="r2-button r2-button--secondary">Approve</button></form>
+                <form action={sendSignature}><button type="submit" className="r2-button r2-button--secondary">Send for signature</button></form>
+                <form action={resendSignature}><button type="submit" className="r2-button r2-button--secondary">Resend</button></form>
+                <form action={completeNextSigner}><button type="submit" className="r2-button r2-button--secondary">Complete next signer</button></form>
+                <form action={completeSigning}><button type="submit" className="r2-button r2-button--secondary">Complete signing</button></form>
+                <form action={declineSigning}><button type="submit" className="r2-button r2-button--danger">Decline</button></form>
+                <form action={cancelSignature}><button type="submit" className="r2-button r2-button--danger">Cancel signing</button></form>
+                <form action={voidCurrent}><button type="submit" className="r2-button r2-button--danger">Void</button></form>
+              </Actions>
+            ) : null}
+          </>
+        ) : (
+          <EmptyState
+            title="No agreement generated yet"
+            action={
+              canEdit ? (
                 <form action={generate}>
-                  <button type="submit">Generate agreement draft</button>
+                  <button type="submit" className="r2-button r2-button--primary">Generate agreement draft</button>
                 </form>
-              ) : null}
-            </div>
-          )}
-        </section>
-        <section id="documents" className="app-panel">
-          <p className="eyebrow">Documents</p>
-          <h3>Franchise document vault</h3>
-          {view.documents.length > 0 ? (
-            <div className="franchise-list">
-              {view.documents.map((document) => (
-                <div key={document.id}>
-                  <strong>{document.title}</strong>
-                  <span>{document.category} - {document.documentType}</span>
-                  <span>
-                    Version {document.currentVersion?.versionNumber ?? "-"} -
-                    {document.expiryDate ? ` expires ${document.expiryDate}` : " no expiry"}
-                  </span>
-                  <span>{document.artifact?.providerMetadata && "fileName" in document.artifact.providerMetadata ? String(document.artifact.providerMetadata.fileName) : "No file stored"}</span>
-                  {document.versions.map((version) => (
+              ) : undefined
+            }
+          >
+            A draft is generated from the latest approved template version, then submitted, approved and sent for signature.
+          </EmptyState>
+        )}
+      </Panel>
+
+      <Panel id="documents" eyebrow="Documents" title="Document vault">
+        {view.documents.length > 0 ? (
+          <RecordList>
+            {view.documents.map((document) => (
+              <RecordCard
+                key={document.id}
+                title={document.title}
+                status={document.status}
+                lines={[
+                  `${formatLabel(document.category)} · ${formatLabel(document.documentType)}`,
+                  `Version ${document.currentVersion?.versionNumber ?? "-"} · ${document.expiryDate ? `expires ${formatDate(document.expiryDate)}` : "no expiry"}`,
+                  document.artifact?.providerMetadata && "fileName" in document.artifact.providerMetadata ? String(document.artifact.providerMetadata.fileName) : "No file stored",
+                  ...document.versions.map((version) => (
                     <span key={version.id}>
-                      v{version.versionNumber} - {version.uploadedAt ?? "date unknown"} -{" "}
+                      Version {version.versionNumber} · uploaded {formatDateTime(version.uploadedAt, "date unknown")} ·{" "}
                       <a href={`/app/franchisees/${id}/documents/${document.id}/download?version=${version.versionNumber}${downloadQuery}`}>Download</a>
                     </span>
-                  ))}
-                  {canEdit ? (
-                    <>
-                      <DocumentUploadForm franchiseId={id} documentId={document.id} queryString={uploadQuery} label="Upload a new version" />
-                      <div className="franchise-actions">
-                        <form action={documentActions[document.id]?.archive}>
-                          <button type="submit">Archive</button>
-                        </form>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="franchise-empty">
-              <h3>No documents yet</h3>
-              <p>Upload franchise documents, agreement references and supporting files.</p>
-            </div>
-          )}
-          {canEdit ? <DocumentUploadForm franchiseId={id} queryString={uploadQuery} label="Upload document" /> : null}
-        </section>
-        <section id="compliance" className="app-panel">
-          <p className="eyebrow">Compliance</p>
-          <h3>Insurance and requirements</h3>
-          <dl className="franchise-facts">
-            <div>
-              <dt>Status</dt>
-              <dd>{view.compliance.status}</dd>
-            </div>
-            <div>
-              <dt>Complete</dt>
-              <dd>{view.compliance.completeCount}/{view.compliance.totalCount}</dd>
-            </div>
-            <div>
-              <dt>Actions required</dt>
-              <dd>{view.compliance.actionsRequired}</dd>
-            </div>
-          </dl>
-          <div className="franchise-list">
-            {view.complianceActions
-              .filter((action) => action.status === "open")
-              .map((action) => (
-                <div key={action.id}>
-                  <strong>{action.title}</strong>
-                  <span>{action.severity} - due {action.dueDate ?? "not set"}</span>
-                  <span>{view.complianceReminders.filter((reminder) => reminder.complianceActionId === action.id).length} reminder(s)</span>
-                  {canEdit ? (
-                    <form action={complianceActions.actions[action.id]?.resolve}>
-                      <button type="submit">Resolve action</button>
-                    </form>
-                  ) : null}
-                </div>
-              ))}
-          </div>
-          {canEdit ? (
-            <form action={complianceActions.ensureActions}>
-              <button type="submit">Refresh compliance actions</button>
-            </form>
-          ) : null}
-          <div className="franchise-list">
-            {view.insurancePolicies.map((policy) => (
-              <div key={policy.id}>
-                <strong>{policy.provider}</strong>
-                <span>{policy.policyNumber} - {policy.verificationStatus}</span>
-                <span>{policy.coverTypes.join(", ")} until {policy.coverEndDate}</span>
+                  ))
+                ]}
+              >
                 {canEdit ? (
-                  <div className="franchise-actions">
+                  <>
+                    <DocumentUploadForm franchiseId={id} documentId={document.id} queryString={uploadQuery} label="Upload a new version" />
+                    <Actions>
+                      <form action={documentActions[document.id]?.archive}>
+                        <button type="submit" className="r2-button r2-button--danger">Archive</button>
+                      </form>
+                    </Actions>
+                  </>
+                ) : null}
+              </RecordCard>
+            ))}
+          </RecordList>
+        ) : (
+          <EmptyState title="No documents yet">Upload the agreement, insurance certificates and any supporting files here.</EmptyState>
+        )}
+        {canEdit ? <DocumentUploadForm franchiseId={id} queryString={uploadQuery} label="Upload document" /> : null}
+      </Panel>
+
+      <Panel id="compliance" eyebrow="Compliance" title="Insurance and requirements">
+        <FactList
+          items={[
+            { label: "Status", value: <StatusBadge status={view.compliance.status} /> },
+            { label: "Complete", value: `${view.compliance.completeCount} of ${view.compliance.totalCount}` },
+            { label: "Actions required", value: view.compliance.actionsRequired }
+          ]}
+        />
+        {openActions.length === 0 ? (
+          <EmptyState title="No open compliance actions" />
+        ) : (
+          <RecordList>
+            {openActions.map((action) => (
+              <RecordCard
+                key={action.id}
+                title={action.title}
+                status={action.severity}
+                tone={severityTone[action.severity]}
+                lines={[
+                  `Due ${formatDate(action.dueDate)}`,
+                  formatCount(view.complianceReminders.filter((reminder) => reminder.complianceActionId === action.id).length, "reminder sent", "reminders sent")
+                ]}
+              >
+                {canEdit ? (
+                  <form action={complianceActions.actions[action.id]?.resolve}>
+                    <button type="submit" className="r2-button r2-button--secondary">Resolve action</button>
+                  </form>
+                ) : null}
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+        {canEdit ? (
+          <form action={complianceActions.ensureActions}>
+            <button type="submit" className="r2-button r2-button--secondary">Refresh compliance actions</button>
+          </form>
+        ) : null}
+        {view.insurancePolicies.length > 0 ? (
+          <RecordList>
+            {view.insurancePolicies.map((policy) => (
+              <RecordCard
+                key={policy.id}
+                title={policy.provider}
+                status={policy.verificationStatus}
+                lines={[`Policy ${policy.policyNumber}`, `${formatLabels(policy.coverTypes)} until ${formatDate(policy.coverEndDate)}`]}
+              >
+                {canEdit ? (
+                  <Actions>
                     <form action={complianceActions.insurance[policy.id]?.verify}>
-                      <button type="submit">Verify insurance</button>
+                      <button type="submit" className="r2-button r2-button--secondary">Verify insurance</button>
                     </form>
                     <form action={complianceActions.insurance[policy.id]?.reject}>
-                      <button type="submit">Reject insurance</button>
+                      <button type="submit" className="r2-button r2-button--danger">Reject insurance</button>
                     </form>
-                  </div>
+                  </Actions>
                 ) : null}
-              </div>
+              </RecordCard>
             ))}
-          </div>
-          <div className="franchise-list">
+          </RecordList>
+        ) : null}
+        {view.compliance.requirements.length === 0 ? (
+          <EmptyState title="No compliance requirements configured" />
+        ) : (
+          <RecordList>
             {view.compliance.requirements.map((requirement) => (
-              <div key={requirement.id}>
-                <strong>{requirement.name}</strong>
-                <span>{requirement.record?.status ?? "missing"}</span>
-                <span>{requirement.record?.expiresAt ? `Expires ${requirement.record.expiresAt}` : "No expiry recorded"}</span>
-                <span>{requirement.evidence?.title ?? "No evidence linked"}</span>
+              <RecordCard
+                key={requirement.id}
+                title={requirement.name}
+                status={requirement.record?.status ?? "missing"}
+                tone={requirement.record ? undefined : "danger"}
+                lines={[
+                  requirement.record?.expiresAt ? `Expires ${formatDate(requirement.record.expiresAt)}` : "No expiry recorded",
+                  requirement.evidence?.title ?? "No evidence linked"
+                ]}
+              >
                 {canEdit && requirement.record ? (
-                  <div className="franchise-actions">
+                  <Actions>
                     <form action={complianceActions.records[requirement.record.id]?.verify}>
-                      <button type="submit">Verify evidence</button>
+                      <button type="submit" className="r2-button r2-button--secondary">Verify evidence</button>
                     </form>
                     <form action={complianceActions.records[requirement.record.id]?.reject}>
-                      <button type="submit">Reject evidence</button>
+                      <button type="submit" className="r2-button r2-button--danger">Reject evidence</button>
                     </form>
-                  </div>
+                  </Actions>
                 ) : null}
                 <form action={complianceActions.requirements[requirement.id]?.submit} className="franchise-form">
                   <input type="hidden" name="recordId" value={requirement.record?.id ?? ""} />
                   <label>
-                    Evidence document ID
+                    Evidence document
                     <select name="evidenceDocumentId" defaultValue={requirement.record?.evidenceDocumentId ?? ""}>
                       <option value="">No document selected</option>
                       {view.documents.map((document) => (
@@ -452,108 +410,106 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
                     Expires
                     <input name="expiresAt" type="date" defaultValue={requirement.record?.expiresAt ?? ""} />
                   </label>
-                  <button type="submit">Submit evidence</button>
+                  <button type="submit" className="r2-button r2-button--primary">Submit evidence</button>
                 </form>
-              </div>
+              </RecordCard>
             ))}
-          </div>
-          {canEdit ? (
-            <form action={complianceActions.upsertInsurance} className="franchise-form">
-              <input type="hidden" name="policyId" value={view.insurancePolicies[0]?.id ?? ""} />
-              <label>
-                Provider
-                <input name="provider" defaultValue={view.insurancePolicies[0]?.provider ?? "Seed Mutual"} />
-              </label>
-              <label>
-                Policy number
-                <input name="policyNumber" defaultValue={view.insurancePolicies[0]?.policyNumber ?? ""} />
-              </label>
-              <label>
-                Cover types
-                <input name="coverTypes" defaultValue={view.insurancePolicies[0]?.coverTypes.join(", ") ?? "public_liability"} />
-              </label>
-              <label>
-                Cover starts
-                <input name="coverStartDate" type="date" defaultValue={view.insurancePolicies[0]?.coverStartDate ?? ""} />
-              </label>
-              <label>
-                Cover ends
-                <input name="coverEndDate" type="date" defaultValue={view.insurancePolicies[0]?.coverEndDate ?? ""} />
-              </label>
-              <label>
-                Evidence
-                <select name="evidenceDocumentId" defaultValue={view.insurancePolicies[0]?.evidenceDocumentId ?? ""}>
-                  <option value="">No document selected</option>
-                  {view.documents.map((document) => (
-                    <option key={document.id} value={document.id}>{document.title}</option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit">Save insurance</button>
-            </form>
-          ) : null}
-        </section>
-        <section id="onboarding" className="app-panel">
-          <p className="eyebrow">Onboarding</p>
-          <h3>Launch command centre</h3>
-          {view.onboarding.programme ? (
-            <>
-              <dl className="franchise-facts">
-                <div>
-                  <dt>Progress</dt>
-                  <dd>{view.onboarding.progress}%</dd>
-                </div>
-                <div>
-                  <dt>Target launch</dt>
-                  <dd>{view.onboarding.programme.targetLaunchDate}</dd>
-                </div>
-                <div>
-                  <dt>Readiness</dt>
-                  <dd>{view.onboarding.readiness}</dd>
-                </div>
-                <div>
-                  <dt>Current phase</dt>
-                  <dd>{view.onboarding.currentPhase ?? "Complete"}</dd>
-                </div>
-                <div>
-                  <dt>Overdue</dt>
-                  <dd>{view.onboarding.overdueTasks}</dd>
-                </div>
-                <div>
-                  <dt>Blocked</dt>
-                  <dd>{view.onboarding.blockedTasks}</dd>
-                </div>
-              </dl>
-              {canEdit ? (
-                <div className="franchise-actions">
-                  <form action={onboardingActions.changeTarget} className="franchise-form">
-                    <label>
-                      Target launch
-                      <input name="targetLaunchDate" type="date" defaultValue={view.onboarding.programme.targetLaunchDate} />
-                    </label>
-                    <button type="submit">Update target</button>
-                  </form>
-                  <form action={onboardingActions.approveLaunch}><button type="submit">Approve launch</button></form>
-                  <form action={onboardingActions.markLaunched}><button type="submit">Mark launched</button></form>
-                </div>
-              ) : null}
-              <div className="franchise-list">
+          </RecordList>
+        )}
+        {canEdit ? (
+          <form action={complianceActions.upsertInsurance} className="franchise-form">
+            <input type="hidden" name="policyId" value={firstPolicy?.id ?? ""} />
+            <label>
+              Provider
+              <input name="provider" defaultValue={firstPolicy?.provider ?? "Seed Mutual"} />
+            </label>
+            <label>
+              Policy number
+              <input name="policyNumber" defaultValue={firstPolicy?.policyNumber ?? ""} />
+            </label>
+            <label>
+              Cover types
+              <input name="coverTypes" defaultValue={firstPolicy?.coverTypes.join(", ") ?? "public_liability"} />
+            </label>
+            <label>
+              Cover starts
+              <input name="coverStartDate" type="date" defaultValue={firstPolicy?.coverStartDate ?? ""} />
+            </label>
+            <label>
+              Cover ends
+              <input name="coverEndDate" type="date" defaultValue={firstPolicy?.coverEndDate ?? ""} />
+            </label>
+            <label>
+              Evidence
+              <select name="evidenceDocumentId" defaultValue={firstPolicy?.evidenceDocumentId ?? ""}>
+                <option value="">No document selected</option>
+                {view.documents.map((document) => (
+                  <option key={document.id} value={document.id}>{document.title}</option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="r2-button r2-button--primary">Save insurance</button>
+          </form>
+        ) : null}
+      </Panel>
+
+      <Panel id="onboarding" eyebrow="Onboarding" title="Launch plan">
+        {view.onboarding.programme ? (
+          <>
+            <Metrics
+              items={[
+                { label: "Progress", value: `${view.onboarding.progress}%`, detail: `Target launch ${formatDate(view.onboarding.programme.targetLaunchDate)}` },
+                { label: "Overdue tasks", value: view.onboarding.overdueTasks, tone: view.onboarding.overdueTasks > 0 ? "danger" : "success" },
+                { label: "Blocked tasks", value: view.onboarding.blockedTasks, tone: view.onboarding.blockedTasks > 0 ? "danger" : "success" }
+              ]}
+            />
+            <FactList
+              items={[
+                { label: "Readiness", value: <StatusBadge status={view.onboarding.readiness} tone={readinessTone[view.onboarding.readiness]} /> },
+                { label: "Programme", value: <StatusBadge status={view.onboarding.programme.status} /> },
+                { label: "Current phase", value: view.onboarding.currentPhase ?? "Complete" }
+              ]}
+            />
+            {canEdit ? (
+              <>
+                <form action={onboardingActions.changeTarget} className="franchise-form">
+                  <label>
+                    Target launch
+                    <input name="targetLaunchDate" type="date" defaultValue={view.onboarding.programme.targetLaunchDate} />
+                  </label>
+                  <button type="submit" className="r2-button r2-button--secondary">Update target</button>
+                </form>
+                <Actions>
+                  <form action={onboardingActions.approveLaunch}><button type="submit" className="r2-button r2-button--primary">Approve launch</button></form>
+                  <form action={onboardingActions.markLaunched}><button type="submit" className="r2-button r2-button--secondary">Mark launched</button></form>
+                </Actions>
+              </>
+            ) : null}
+            {view.onboarding.tasks.length === 0 ? (
+              <EmptyState title="No launch tasks yet" />
+            ) : (
+              <RecordList>
                 {view.onboarding.tasks.map((task) => (
-                  <div key={task.id}>
-                    <strong>{task.phaseName}: {task.title}</strong>
-                    <span>{task.status} - {task.ownerType}</span>
-                    <span>{task.dueDate ? `Due ${task.dueDate}` : "No due date"}</span>
-                    {task.status === "blocked" ? <span>Blocked by dependency</span> : null}
-                    <div className="franchise-actions">
+                  <RecordCard
+                    key={task.id}
+                    title={`${task.phaseName}: ${task.title}`}
+                    status={task.status}
+                    lines={[
+                      `Owner: ${formatLabel(task.ownerType)}`,
+                      task.dueDate ? `Due ${formatDate(task.dueDate)}` : "No due date",
+                      task.status === "blocked" ? "Blocked by a dependency" : null
+                    ]}
+                  >
+                    <Actions>
                       <form action={onboardingActions.tasks[task.id]?.complete}>
-                        <button type="submit">Complete</button>
+                        <button type="submit" className="r2-button r2-button--primary">Complete</button>
                       </form>
                       {canEdit ? (
                         <form action={onboardingActions.tasks[task.id]?.approve}>
-                          <button type="submit">Approve</button>
+                          <button type="submit" className="r2-button r2-button--secondary">Approve</button>
                         </form>
                       ) : null}
-                    </div>
+                    </Actions>
                     {canEdit ? (
                       <form action={onboardingActions.tasks[task.id]?.raiseBlocker} className="franchise-form">
                         <label>
@@ -564,72 +520,62 @@ export default async function Franchisee360Page({ params, searchParams }: PagePr
                           Notes
                           <input name="notes" />
                         </label>
-                        <button type="submit">Raise blocker</button>
+                        <button type="submit" className="r2-button r2-button--secondary">Raise blocker</button>
                       </form>
                     ) : null}
-                  </div>
+                  </RecordCard>
                 ))}
-              </div>
-              {view.onboarding.blockers.length > 0 ? (
-                <div className="franchise-list">
-                  {view.onboarding.blockers.map((blocker) => (
-                    <div key={blocker.id}>
-                      <strong>{blocker.title}</strong>
-                      <span>{blocker.status}</span>
-                      <span>{blocker.notes ?? "No notes"}</span>
-                      {canEdit && blocker.status === "open" ? (
-                        <form action={onboardingActions.blockers[blocker.id]?.resolve}>
-                          <button type="submit">Resolve blocker</button>
-                        </form>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <div className="franchise-empty">
-              <h3>No onboarding programme yet</h3>
-              <p>Start a guided launch plan from the executed agreement or create one manually.</p>
-              {canEdit ? (
-                <form action={onboardingActions.start} className="franchise-form">
-                  <label>
-                    Target launch
-                    <input name="targetLaunchDate" type="date" defaultValue="2026-11-01" />
-                  </label>
-                  <button type="submit">Start onboarding</button>
-                </form>
-              ) : null}
-            </div>
-          )}
-        </section>
-        {Object.entries(view.placeholders).map(([key]) => (
-          <section key={key} id={key} className="app-panel">
-            <p className="eyebrow">{key}</p>
-            <h3>{title(key)} is deferred</h3>
-            <p>
-              This Franchisee 360 section is reserved for a later ticket and does
-              not depend on premature domain tables.
-            </p>
-          </section>
-        ))}
-        <section id="activity" className="app-panel">
-          <p className="eyebrow">Activity</p>
-          {view.activity.length > 0 ? (
-            <ol className="franchise-activity">
-              {view.activity.map((event) => (
-                <li key={event.id}>
-                  <strong>{event.action}</strong>
-                  <span>{event.createdAt.toISOString()}</span>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p>No audited franchise activity yet.</p>
-          )}
-        </section>
-      </article>
-    </AppShell>
+              </RecordList>
+            )}
+            {view.onboarding.blockers.length > 0 ? (
+              <RecordList>
+                {view.onboarding.blockers.map((blocker) => (
+                  <RecordCard key={blocker.id} title={blocker.title} status={blocker.status} tone={blocker.status === "open" ? "danger" : "success"} lines={[blocker.notes ?? "No notes"]}>
+                    {canEdit && blocker.status === "open" ? (
+                      <form action={onboardingActions.blockers[blocker.id]?.resolve}>
+                        <button type="submit" className="r2-button r2-button--secondary">Resolve blocker</button>
+                      </form>
+                    ) : null}
+                  </RecordCard>
+                ))}
+              </RecordList>
+            ) : null}
+          </>
+        ) : (
+          <EmptyState title="No onboarding programme yet">
+            Start a guided launch plan from the executed agreement, or create one by hand with a target launch date.
+          </EmptyState>
+        )}
+        {!view.onboarding.programme && canEdit ? (
+          <form action={onboardingActions.start} className="franchise-form">
+            <label>
+              Target launch
+              <input name="targetLaunchDate" type="date" defaultValue="2026-11-01" />
+            </label>
+            <button type="submit" className="r2-button r2-button--primary">Start onboarding</button>
+          </form>
+        ) : null}
+      </Panel>
+
+      {Object.keys(view.placeholders).map((key) => (
+        <Panel key={key} id={key} eyebrow={formatLabel(key)} title={`${formatLabel(key)} is coming later`} intro="This part of the franchise record is planned for a later release." />
+      ))}
+
+      <Panel id="activity" eyebrow="Activity" title="Recent activity">
+        {view.activity.length > 0 ? (
+          <ol className="franchise-activity">
+            {view.activity.map((event) => (
+              <li key={event.id}>
+                <strong>{formatLabel(event.action)}</strong>
+                <span>{formatDateTime(event.createdAt)}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <EmptyState title="No activity yet">Changes to this franchise are recorded here as they happen.</EmptyState>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -764,32 +710,4 @@ async function loadFranchise360(
   } catch (error) {
     return { error };
   }
-}
-
-function protectedOutcome(error: unknown) {
-  if (error instanceof ShellAccessError) {
-    return (
-      <main className={`app-outcome app-outcome-${error.kind}`}>
-        <section>
-          <p className="eyebrow">{error.kind.replace("_", " ")}</p>
-          <h1>{error.kind === "unauthenticated" ? "Sign in required" : "Access denied"}</h1>
-          <p>{error.message}</p>
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className="app-outcome app-outcome-unauthorised">
-      <section>
-        <p className="eyebrow">Access denied</p>
-        <h1>Franchise not available</h1>
-        <p>{error instanceof Error ? error.message : "This franchise is not available."}</p>
-      </section>
-    </main>
-  );
-}
-
-function title(value: string) {
-  return value.slice(0, 1).toUpperCase() + value.slice(1);
 }

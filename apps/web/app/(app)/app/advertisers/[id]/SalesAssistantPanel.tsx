@@ -2,9 +2,11 @@ import type { SalesPanel } from "../../../../../lib/assistants-sales";
 import { assessRenewalRisk, nextBestActions, packageIdeas } from "@raring2go/assistants";
 import { AiPreparedNote, AssistantBanner } from "../../../../../lib/assistant-ui";
 import type { RequestedShellContext } from "../../../../../lib/app-shell";
+import { Actions, Panel, RecordCard, RecordList, type Tone } from "../../../../../lib/page-ui";
 import { decideDraftAction, draftOutreachAction, generateBriefAction } from "./assistant-actions";
 
 const riskLabels = { low: "Low risk", medium: "Medium risk", high: "High risk" } as const;
+const riskTones: Record<keyof typeof riskLabels, Tone> = { low: "success", medium: "warning", high: "danger" };
 const purposeLabels = { intro: "Introduction", follow_up: "Follow-up", renewal: "Renewal", objection_reply: "Reply to an objection", thank_you: "Thank you" } as const;
 
 /**
@@ -19,24 +21,23 @@ export function SalesAssistantPanel({ request, advertiserId, panel, canAssist, s
   const { brief, draft } = panel;
 
   return (
-    <section id="sales-assistant" className="app-panel franchise-panel" aria-label="Sales assistant">
-      <p className="eyebrow">Sales assistant</p>
-      <h2>What to do next with {panel.facts.advertiserName}</h2>
+    <Panel
+      id="sales-assistant"
+      eyebrow="Sales assistant"
+      title={`What to do next with ${panel.facts.advertiserName}`}
+      intro="Calculated from this advertiser's record. The score and the actions are rules, not an AI opinion."
+    >
       <AssistantBanner code={resultCode} />
 
-      <div className="franchise-list" aria-label="Calculated analysis">
-        <div>
-          <strong>
-            Renewal: {riskLabels[risk.level]} <span className="muted">({risk.score}/100)</span>
-          </strong>
+      <RecordList>
+        <RecordCard title={`Renewal: ${riskLabels[risk.level]}`} status={`${risk.score} out of 100`} tone={riskTones[risk.level]}>
           <ul>
             {risk.reasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
           </ul>
-        </div>
-        <div>
-          <strong>Next best actions</strong>
+        </RecordCard>
+        <RecordCard title="Next best actions">
           <ol>
             {actions.map((action) => (
               <li key={action.action}>
@@ -45,10 +46,9 @@ export function SalesAssistantPanel({ request, advertiserId, panel, canAssist, s
               </li>
             ))}
           </ol>
-        </div>
+        </RecordCard>
         {ideas.length > 0 ? (
-          <div>
-            <strong>Package ideas</strong>
+          <RecordCard title="Package ideas">
             <ul>
               {ideas.map((idea) => (
                 <li key={idea.key}>
@@ -57,26 +57,28 @@ export function SalesAssistantPanel({ request, advertiserId, panel, canAssist, s
                 </li>
               ))}
             </ul>
-          </div>
+          </RecordCard>
         ) : null}
-        <p className="muted">Calculated from this advertiser&apos;s record. The score and the actions are rules, not an AI opinion.</p>
-      </div>
+      </RecordList>
 
       {canAssist ? (
         panel.aiConfigured ? (
           <>
             {brief ? (
-              <div className="franchise-list" aria-label="AI brief">
-                <div>
-                  <strong>AI brief</strong>
-                  <span>{brief.output.summary}</span>
-                  <span>
-                    {brief.output.nextBestAction.action} <span className="muted">— {brief.output.nextBestAction.why}</span>
-                  </span>
-                  <span className="muted">{brief.output.renewalRisk.explanation}</span>
-                </div>
-                <div>
-                  <strong>Likely objections</strong>
+              <RecordList>
+                <RecordCard
+                  title="AI brief"
+                  lines={[
+                    brief.output.summary,
+                    <>
+                      {brief.output.nextBestAction.action} <span className="muted">— {brief.output.nextBestAction.why}</span>
+                    </>,
+                    brief.output.renewalRisk.explanation
+                  ]}
+                >
+                  <AiPreparedNote run={{ id: brief.runId, createdAt: brief.createdAt, providerKey: "", approvalState: "not_required" }} />
+                </RecordCard>
+                <RecordCard title="Likely objections">
                   <ul>
                     {brief.output.objections.map((entry) => (
                       <li key={entry.objection}>
@@ -84,12 +86,11 @@ export function SalesAssistantPanel({ request, advertiserId, panel, canAssist, s
                       </li>
                     ))}
                   </ul>
-                </div>
-                <AiPreparedNote run={{ id: brief.runId, createdAt: brief.createdAt, providerKey: "", approvalState: "not_required" }} />
-              </div>
+                </RecordCard>
+              </RecordList>
             ) : null}
             <form action={generateBriefAction.bind(null, request, advertiserId)}>
-              <button type="submit">{brief ? "Refresh AI brief" : "Add an AI brief"}</button>
+              <button type="submit" className="r2-button r2-button--secondary">{brief ? "Refresh AI brief" : "Add an AI brief"}</button>
             </form>
 
             <form action={draftOutreachAction.bind(null, request, advertiserId)} className="franchise-form">
@@ -113,41 +114,44 @@ export function SalesAssistantPanel({ request, advertiserId, panel, canAssist, s
                 What you want to say (optional)
                 <textarea name="talkingPoints" rows={3} maxLength={1200} />
               </label>
-              <div className="franchise-actions">
-                <button type="submit">Draft email</button>
-              </div>
+              <Actions>
+                <button type="submit" className="r2-button r2-button--primary">Draft email</button>
+              </Actions>
             </form>
 
             {draft ? (
-              <div className="franchise-list" aria-label="Email draft">
-                <div>
-                  <strong>
-                    Email draft <span className="muted">({draft.approvalState === "pending" ? "awaiting your review" : draft.approvalState === "approved" ? "reviewed" : "discarded"})</span>
-                  </strong>
-                  <span>
-                    <strong>Subject:</strong> {draft.output.subject}
-                  </span>
+              <RecordList>
+                <RecordCard
+                  title="Email draft"
+                  status={draft.approvalState === "pending" ? "awaiting your review" : draft.approvalState === "approved" ? "reviewed" : "discarded"}
+                  tone={draft.approvalState === "pending" ? "warning" : draft.approvalState === "approved" ? "success" : "neutral"}
+                  lines={[
+                    <>
+                      <strong>Subject:</strong> {draft.output.subject}
+                    </>
+                  ]}
+                >
                   <pre className="code-block">{draft.output.body}</pre>
-                  {draft.output.notes ? <span className="muted">Check before sending: {draft.output.notes}</span> : null}
+                  {draft.output.notes ? <p className="muted">Check before sending: {draft.output.notes}</p> : null}
                   <AiPreparedNote run={{ id: draft.runId, createdAt: draft.createdAt, providerKey: "", approvalState: draft.approvalState as "pending" }} />
-                </div>
-                {draft.approvalState === "pending" ? (
-                  <div className="franchise-actions">
-                    <form action={decideDraftAction.bind(null, request, advertiserId, draft.runId, "approved")}>
-                      <button type="submit">Mark as reviewed</button>
-                    </form>
-                    <form action={decideDraftAction.bind(null, request, advertiserId, draft.runId, "rejected")}>
-                      <button type="submit">Discard</button>
-                    </form>
-                  </div>
-                ) : null}
-              </div>
+                  {draft.approvalState === "pending" ? (
+                    <Actions>
+                      <form action={decideDraftAction.bind(null, request, advertiserId, draft.runId, "approved")}>
+                        <button type="submit" className="r2-button r2-button--secondary">Mark as reviewed</button>
+                      </form>
+                      <form action={decideDraftAction.bind(null, request, advertiserId, draft.runId, "rejected")}>
+                        <button type="submit" className="r2-button r2-button--danger">Discard</button>
+                      </form>
+                    </Actions>
+                  ) : null}
+                </RecordCard>
+              </RecordList>
             ) : null}
           </>
         ) : (
           <p className="muted">AI briefs and email drafts are not switched on for this environment. The analysis above does not need them.</p>
         )
       ) : null}
-    </section>
+    </Panel>
   );
 }

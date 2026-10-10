@@ -55,7 +55,7 @@ export function ContentDraftForm({
         AI writes a first draft only. It will not invent dates, prices, venues or links, and you review it before anything is saved.
       </p>
       <div className="franchise-actions">
-        <button type="submit" disabled={pending}>{pending ? "Drafting…" : revising ? "Draft a revision" : "Draft with AI"}</button>
+        <button type="submit" className="r2-button r2-button--primary" disabled={pending}>{pending ? "Drafting…" : revising ? "Draft a revision" : "Draft with AI"}</button>
       </div>
     </form>
   );

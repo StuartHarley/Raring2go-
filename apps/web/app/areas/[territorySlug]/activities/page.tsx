@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { TrackedLink } from "../_components/TrackedLink";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import type { Route } from "next";
 import { toggleSavedContentAction } from "../preferences/actions";
 import { readPublicDiscovery, territoryFromSlug } from "../../../../lib/public-runtime";
+import { PublicNav } from "../_components/PublicNav";
+import { formatCount } from "../../../../lib/format";
 
 type PageProps = {
   params: Promise<{ territorySlug: string }>;
@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const territory = territoryFromSlug((await params).territorySlug);
 
   return {
-    title: territory ? `Activities in ${territory.name} | Raring2go!` : "Activities | Raring2go!",
+    title: { absolute: territory ? `Activities in ${territory.name} | Raring2go!` : "Activities | Raring2go!" },
     description: territory
       ? `Family activities, ideas and local inspiration around ${territory.name}.`
       : "Family activities, ideas and local inspiration from Raring2go!"
@@ -37,21 +37,13 @@ export default async function ActivitiesPage({ params, searchParams }: PageProps
 
   return (
     <main className="public-site public-season-autumn">
-      <header className="public-nav">
-        <Link href={`/areas/${discovery.territory.slug}` as Route} className="public-logo">Raring2go!</Link>
-        <nav aria-label="Public navigation">
-          <Link href={`/areas/${discovery.territory.slug}/whats-on` as Route}>What&apos;s On</Link>
-          <Link href={`/areas/${discovery.territory.slug}/activities` as Route}>Activities</Link>
-          <Link href={`/areas/${discovery.territory.slug}/offers` as Route}>Offers</Link>
-          <Link href={`/areas/${discovery.territory.slug}/magazine` as Route}>Magazine</Link>
-        </nav>
-      </header>
+      <PublicNav slug={discovery.territory.slug} current="activities" />
 
       <section className="public-hero public-hero-compact">
         <div>
           <p className="public-kicker">Raring2go! {discovery.territory.name}</p>
           <h1>{discovery.heading}</h1>
-          <p>Browse approved family ideas, guides and things to do from the local Raring2go editorial workflow.</p>
+          <p>Ideas, guides and things to do with the kids, chosen by your local Raring2go! team.</p>
         </div>
       </section>
 
@@ -73,7 +65,7 @@ export default async function ActivitiesPage({ params, searchParams }: PageProps
       <section className="public-section">
         <div className="public-section-heading">
           <p className="public-kicker">Family inspiration</p>
-          <h2>{discovery.items.length} public activities</h2>
+          <h2>{formatCount(discovery.items.length, "activity", "activities")}</h2>
         </div>
         <div className="public-card-grid">
           {discovery.emptyState ? <p className="public-empty">{discovery.emptyState}</p> : null}
