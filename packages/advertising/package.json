@@ -16,7 +16,8 @@
     "@raring2go/audit": "workspace:*",
     "@raring2go/db": "workspace:*",
     "@raring2go/permissions": "workspace:*",
-    "drizzle-orm": "0.45.2"
+    "drizzle-orm": "0.45.2",
+    "@raring2go/marketing": "workspace:*"
   },
   "devDependencies": {
     "vitest": "4.1.10"

@@ -38,6 +38,7 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
           Territory-scoped advertiser relationships, contacts and commercial
           health foundations before pipeline, booking and invoicing workflows.
         </p>
+        {result.canImport ? <p><Link href={"/app/advertisers/import" as Route}>Import a list of advertisers</Link></p> : null}
         <Link href={"/app/advertisers/pipeline" as Route} className="app-link-button">
           Open pipeline
         </Link>
@@ -123,7 +124,12 @@ async function loadAdvertisers(request: Awaited<ReturnType<typeof requestFromSea
       ? (await directory.listTerritories()).filter((territory) => territory.id === shell.activeContext.territoryId)
       : await directory.listTerritories();
 
-    return { advertisers, territories };
+    const canImport = await requireShellPermission(request, { module: "advertiser.import", action: "manage" }).then(() => true, (error) => {
+      if (error instanceof ShellAccessError) return false;
+      throw error;
+    });
+
+    return { advertisers, territories, canImport };
   } catch (error) {
     return { error };
   }

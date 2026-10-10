@@ -55,4 +55,4 @@ Gaps inside it, stated plainly:
 1. Fix what UAT finds in the Edition Factory screens.
 2. Upload-library images in the studio; creep, gripper margin and press-sheet imposition once the printer's spec is known.
 3. Instagram and LinkedIn adapters; sponsored-campaign journeys (need advertiser campaign events first).
-4. Data rehearsal tooling for franchise, advertiser and publishing imports (UAT-003).
+4. Data rehearsal tooling for franchise and publishing imports (UAT-003); audience and advertiser imports are built (`AUDIENCE_IMPORT.md`, `ADVERTISER_IMPORT.md`).
