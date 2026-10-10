@@ -1,9 +1,9 @@
 import type { Route } from "next";
-import { requireShellPermission } from "../../../../lib/app-shell";
+import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { getDirectory } from "../../../../lib/directory";
 import { displayName, formatCount, formatDate, formatLabel } from "../../../../lib/format";
 import { listComplianceOverview, listFranchiseSummaries } from "../../../../lib/franchise-runtime";
-import { EmptyState, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
+import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 import { requestFromSearchParamsAndCookies } from "../page";
 
@@ -31,6 +31,7 @@ export default async function FranchiseesPage({ searchParams }: PageProps) {
         eyebrow="Franchise"
         title="Franchisees"
         intro="Every franchise in the network: who runs each territory, whether they are trading, and where their compliance stands."
+        actions={result.canImport ? <LinkButton href={"/app/franchisees/import" as Route} variant="secondary">Import franchises</LinkButton> : undefined}
       />
 
       <Panel>
@@ -108,7 +109,12 @@ async function loadFranchisees(request: Awaited<ReturnType<typeof requestFromSea
       await Promise.all([...territoryIds].map(async (id) => [id, await directory.territoryName(id).catch(() => undefined)] as const))
     );
 
-    return { franchises, complianceOverview, territoryNames };
+    const canImport = await requireShellPermission(request, { module: "franchise.import", action: "manage" }).then(() => true, (error) => {
+      if (error instanceof ShellAccessError) return false;
+      throw error;
+    });
+
+    return { franchises, complianceOverview, territoryNames, canImport };
   } catch (error) {
     return { error };
   }

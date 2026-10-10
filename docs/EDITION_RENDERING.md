@@ -54,7 +54,7 @@ Everything above is unit and integration tested with the browser and Ghostscript
 
 ## Page studio and page preflight
 
-Editors fill a page's zones in the page studio (`/app/editions/[id]/pages/[pageId]`): text zones, lists and images (https link, description, pixel size). It autosaves after a pause, keeping one revision per editing run; Save and Submit work without script. Saving lays the page out with what was saved and records the warnings (copy over its limit, too many list items, a missing required image), and a page with warnings cannot be submitted. HQ then approves the page or returns it with a comment.
+Editors fill a page's zones in the page studio (`/app/editions/[id]/pages/[pageId]`): text zones, lists and images (chosen from the territory's uploads or uploaded there, with the pixel size read from the file; an https link with a typed size remains as a fallback). It autosaves after a pause, keeping one revision per editing run; Save and Submit work without script. Saving lays the page out with what was saved and records the warnings (copy over its limit, too many list items, a missing required image), and a page with warnings cannot be submitted. HQ then approves the page or returns it with a comment.
 
 Page preflight derives its facts from the layout, not from a guess: colour is CMYK because the print pipeline converts every file to it; bleed is present because the renderer runs any zone touching the trim edge into the bleed; resolution is computed from each image's pixel width and its zone size. An image with no recorded pixel size **fails** preflight as unverified resolution (it is never assumed fine), and a low-resolution image fails and cannot be fixed automatically.
 
