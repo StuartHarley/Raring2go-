@@ -38,87 +38,11 @@ export default async function TerritoryHomepage({ params }: PageProps) {
       <JsonLd data={publicTerritoryStructuredData(homepage, process.env.NEXT_PUBLIC_SITE_URL) as Record<string, unknown>} />
       <PublicNav slug={slug} />
 
-      <section className="public-hero">
-        <div>
-          <p className="public-kicker">Raring2go! {homepage.territory.name}</p>
-          <h1>{homepage.hero?.title ?? "Your local family guide"}</h1>
-          <p>{homepage.hero?.summary ?? homepage.territory.strapline}</p>
-          <div className="public-actions">
-            <Link href={areaRoute(slug, "whats-on")}>Find What&apos;s On</Link>
-            <Link href={areaRoute(slug, "magazine")}>Read the magazine</Link>
-          </div>
-        </div>
-      </section>
-
-      <PublicSection
-        title="Latest local stories"
-        count={homepage.stories.length}
-        empty={emptyFor(homepage, "stories") ?? "Local stories are on their way. Check back soon."}
-        more={{ href: areaRoute(slug, "activities"), label: "Browse activities" }}
-      >
-        {homepage.stories.map((story) => (
-          <PublicCard key={story.id} card={story} territorySlug={slug} />
+      {homepage.template.slots
+        .filter((slot) => slot.visible)
+        .map((slot) => (
+          <HomepageSlot key={slot.id} slot={slot} homepage={homepage} />
         ))}
-      </PublicSection>
-
-      <PublicSection
-        title="What's on near you"
-        count={homepage.whatsOn.length}
-        empty="No events listed for the coming days yet. The What's On page has everything we know about."
-        more={{ href: areaRoute(slug, "whats-on"), label: "See all events" }}
-      >
-        {homepage.whatsOn.map((story) => (
-          <PublicCard key={story.id} card={story} territorySlug={slug} />
-        ))}
-      </PublicSection>
-
-      <PublicSection
-        title="Things to do"
-        count={homepage.thingsToDo.length}
-        empty="Ideas and guides for days out are being written. In the meantime, the magazine is full of them."
-        more={{ href: areaRoute(slug, "activities"), label: "All things to do" }}
-      >
-        {homepage.thingsToDo.map((story) => (
-          <PublicCard key={story.id} card={story} territorySlug={slug} />
-        ))}
-      </PublicSection>
-
-      <section className="public-band">
-        <div>
-          <p className="public-kicker">Digital magazine</p>
-          <h2>{homepage.magazine?.title ?? "The next edition is on its way"}</h2>
-          <p>
-            {homepage.magazine
-              ? `Out ${formatDate(homepage.magazine.issueDate, "soon")}. Read it online, page by page.`
-              : "We will put the next magazine here as soon as it is published. Until then, the latest stories are above."}
-          </p>
-        </div>
-        <Link href={areaRoute(slug, "magazine")}>{homepage.magazine ? "Open the magazine" : "See past editions"}</Link>
-      </section>
-
-      <PublicSection
-        title="Recommended local businesses"
-        count={homepage.placements.length}
-        empty={emptyFor(homepage, "advertisers") ?? "Local businesses recommended by Raring2go! will appear here soon."}
-        more={{ href: areaRoute(slug, "businesses"), label: "All local businesses" }}
-      >
-        {homepage.placements.map((placement) => (
-          <article key={placement.id} className="public-card public-sponsored">
-            <span>{placement.label}</span>
-            <h3>{placement.title}</h3>
-            <p>{placement.summary}</p>
-          </article>
-        ))}
-      </PublicSection>
-
-      <section className="public-newsletter">
-        <div>
-          <p className="public-kicker">Newsletter</p>
-          <h2>{homepage.newsletter.heading}</h2>
-          <p>{homepage.newsletter.consentText}</p>
-        </div>
-        <NewsletterSignup territorySlug={slug} territoryId={homepage.newsletter.territoryId} action={requestSignInAction} />
-      </section>
     </main>
   );
 }
@@ -128,7 +52,9 @@ type Homepage = NonNullable<Awaited<ReturnType<typeof readPublicHomepage>>>;
 /** One section of the homepage, drawn from the live layout HQ controls: its order, heading and item count come from the template. */
 function HomepageSlot({ slot, homepage }: { slot: Homepage["template"]["slots"][number]; homepage: Homepage }) {
   const slug = homepage.territory.slug;
-  const cards = (items: Homepage["stories"], sponsored = false) => items.map((card) => <PublicCard key={card.id} card={card} territorySlug={slug} sponsored={sponsored} />);
+  const cards = (items: Homepage["stories"], sponsored = false) =>
+    items.map((card) => <PublicCard key={card.id} card={card} territorySlug={slug} sponsored={sponsored} />);
+
   switch (slot.kind) {
     case "hero":
       return (
@@ -145,18 +71,71 @@ function HomepageSlot({ slot, homepage }: { slot: Homepage["template"]["slots"][
         </section>
       );
     case "stories":
-      return <PublicSection title={slot.heading} empty={emptyFor(homepage, "stories")}>{cards(homepage.stories)}</PublicSection>;
+      return (
+        <PublicSection
+          title={slot.heading}
+          count={homepage.stories.length}
+          empty={emptyFor(homepage, "stories") ?? "Local stories are on their way. Check back soon."}
+          more={{ href: areaRoute(slug, "activities"), label: "Browse activities" }}
+        >
+          {cards(homepage.stories)}
+        </PublicSection>
+      );
     case "whats_on":
-      return <PublicSection title={slot.heading}>{cards(homepage.whatsOn)}</PublicSection>;
+      return (
+        <PublicSection
+          title={slot.heading}
+          count={homepage.whatsOn.length}
+          empty="No events listed for the coming days yet. The What's On page has everything we know about."
+          more={{ href: areaRoute(slug, "whats-on"), label: "See all events" }}
+        >
+          {cards(homepage.whatsOn)}
+        </PublicSection>
+      );
     case "things_to_do":
-      return <PublicSection title={slot.heading}>{cards(homepage.thingsToDo)}</PublicSection>;
+      return (
+        <PublicSection
+          title={slot.heading}
+          count={homepage.thingsToDo.length}
+          empty="Ideas and guides for days out are being written. In the meantime, the magazine is full of them."
+          more={{ href: areaRoute(slug, "activities"), label: "All things to do" }}
+        >
+          {cards(homepage.thingsToDo)}
+        </PublicSection>
+      );
     case "offers":
-      return <PublicSection title={slot.heading} kicker="Sponsored" empty={emptyFor(homepage, "offers")}>{cards(homepage.offers, true)}</PublicSection>;
+      return (
+        <PublicSection
+          title={slot.heading}
+          kicker="Sponsored"
+          count={homepage.offers.length}
+          empty={emptyFor(homepage, "offers") ?? "Offers from local businesses will appear here as soon as they go live."}
+          more={{ href: areaRoute(slug, "offers"), label: "All offers" }}
+        >
+          {cards(homepage.offers, true)}
+        </PublicSection>
+      );
     case "competitions":
-      return <PublicSection title={slot.heading} kicker="Sponsored" empty={emptyFor(homepage, "competitions")}>{cards(homepage.competitions, true)}</PublicSection>;
+      return (
+        <PublicSection
+          title={slot.heading}
+          kicker="Sponsored"
+          count={homepage.competitions.length}
+          empty={emptyFor(homepage, "competitions") ?? "New competitions will appear here as soon as they open."}
+          more={{ href: areaRoute(slug, "competitions"), label: "All competitions" }}
+        >
+          {cards(homepage.competitions, true)}
+        </PublicSection>
+      );
     case "advertisers":
       return (
-        <PublicSection title={slot.heading} kicker="Sponsored" empty={emptyFor(homepage, "advertisers")}>
+        <PublicSection
+          title={slot.heading}
+          kicker="Sponsored"
+          count={homepage.placements.length}
+          empty={emptyFor(homepage, "advertisers") ?? "Local businesses recommended by Raring2go! will appear here soon."}
+          more={{ href: areaRoute(slug, "businesses"), label: "All local businesses" }}
+        >
           {homepage.placements.map((placement) => (
             <article key={placement.id} className="public-card public-sponsored">
               <span>{placement.label}</span>
@@ -171,14 +150,14 @@ function HomepageSlot({ slot, homepage }: { slot: Homepage["template"]["slots"][
         <section className="public-band">
           <div>
             <p className="public-kicker">{slot.heading}</p>
-            <h2>{homepage.magazine?.title ?? "The next local edition is being prepared"}</h2>
+            <h2>{homepage.magazine?.title ?? "The next edition is on its way"}</h2>
             <p>
               {homepage.magazine
-                ? `Issue date ${homepage.magazine.issueDate ?? "to be confirmed"}.`
-                : "Published digital editions will appear here when production output is ready for public release."}
+                ? `Out ${formatDate(homepage.magazine.issueDate, "soon")}. Read it online, page by page.`
+                : "We will put the next magazine here as soon as it is published. Until then, the latest stories are above."}
             </p>
           </div>
-          <Link href={areaRoute(slug, "magazine")}>Open magazine</Link>
+          <Link href={areaRoute(slug, "magazine")}>{homepage.magazine ? "Open the magazine" : "See past editions"}</Link>
         </section>
       );
     case "newsletter":
@@ -200,12 +179,14 @@ function HomepageSlot({ slot, homepage }: { slot: Homepage["template"]["slots"][
 
 function PublicSection({
   title,
+  kicker = "Local discovery",
   count,
   empty,
   more,
   children
 }: {
   title: string;
+  kicker?: string;
   count: number;
   empty: string;
   more?: { href: Route; label: string };
@@ -215,7 +196,7 @@ function PublicSection({
     <section className="public-section">
       <div className="public-section-heading">
         <div>
-          <p className="public-kicker">Local discovery</p>
+          <p className="public-kicker">{kicker}</p>
           <h2>{title}</h2>
         </div>
         {more && count > 0 ? (
@@ -245,16 +226,17 @@ function PublicCard({
   territorySlug: string;
   sponsored?: boolean;
 }) {
+  const label = sponsored ? "Sponsored" : card.source === "network" ? `${formatLabel(card.type)} · From Raring2go!` : formatLabel(card.type);
   return (
     <TrackedLink territorySlug={territorySlug} path={`/areas/${territorySlug}`} eventType="discovery_item_clicked" entityType="content" entityId={card.id} component="homepage_card" href={card.href} className="public-card">
-      <span>{card.source === "network" ? `${formatLabel(card.type)} · From Raring2go!` : formatLabel(card.type)}</span>
+      <span>{label}</span>
       <h3>{card.title}</h3>
       <p>{card.summary}</p>
     </TrackedLink>
   );
 }
 
-function emptyFor(homepage: NonNullable<Awaited<ReturnType<typeof readPublicHomepage>>>, slot: string) {
+function emptyFor(homepage: Homepage, slot: string) {
   return homepage.emptyStates.find((state) => state.slot === slot)?.message;
 }
 

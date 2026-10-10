@@ -36,6 +36,11 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
 
   const overdue = result.pipeline.overdueFollowUps.length;
   const closingSoon = result.pipeline.closingSoon.length;
+  // The ten opportunities most worth a call today: highest score first, then the biggest value among equals.
+  const ranked = result.pipeline.stages
+    .flatMap((stage) => stage.opportunities)
+    .sort((a, b) => (b.score?.score ?? -1) - (a.score?.score ?? -1) || b.opportunity.estimatedValueMinor - a.opportunity.estimatedValueMinor)
+    .slice(0, 10);
 
   return (
     <>
@@ -106,21 +111,23 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
         )}
       </Panel>
 
-      <section id="priorities" className="app-panel franchise-panel" aria-label="Priorities">
-        <p className="eyebrow">Priorities</p>
-        <h2>Where to spend today</h2>
-        <p>Open opportunities ranked by score. Open a score to see exactly what is behind it.</p>
-        <div className="franchise-list">
-          {ranked.length === 0 ? <p>No open opportunities.</p> : null}
-          {ranked.map((view) => (
-            <div key={view.opportunity.id}>
-              <strong>{view.opportunity.title}</strong>
-              <span>{view.organisation.name} - {formatMoney(view.opportunity.estimatedValueMinor)} - {view.stage.name}</span>
-              <ScoreBadge score={view.score} />
-            </div>
-          ))}
-        </div>
-      </section>
+      <Panel eyebrow="Priorities" title="Where to spend today" intro="Open opportunities ranked by score. Open a score to see exactly what is behind it." id="priorities">
+        {ranked.length === 0 ? (
+          <EmptyState title="No open opportunities">Add one above and it will be scored and ranked here.</EmptyState>
+        ) : (
+          <RecordList>
+            {ranked.map((view) => (
+              <RecordCard
+                key={view.opportunity.id}
+                title={view.opportunity.title}
+                lines={[`${view.organisation.name} · ${formatMoney(view.opportunity.estimatedValueMinor)} · ${view.stage.name}`]}
+              >
+                <ScoreBadge score={view.score} />
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+      </Panel>
 
       {result.pipeline.stages.map((stage) => (
         <Panel key={stage.stage.id} eyebrow="Stage" title={stage.stage.name} intro={formatCount(stage.opportunities.length, "open opportunity", "open opportunities")}>
@@ -139,6 +146,7 @@ export default async function AdvertiserPipelinePage({ searchParams }: PageProps
                     `Next: ${view.opportunity.nextAction ?? "none set"}${view.opportunity.nextActionDate ? ` (${formatDate(view.opportunity.nextActionDate)})` : ""}`
                   ]}
                 >
+                  <ScoreBadge score={view.score} />
                   <form action={moveOpportunityStageAction.bind(null, request, view.opportunity.id)} className="franchise-form">
                     <label>
                       Move to

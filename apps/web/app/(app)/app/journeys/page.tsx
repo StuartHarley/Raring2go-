@@ -5,9 +5,11 @@ import { formatCount } from "../../../../lib/format";
 import { Actions, EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordCard, RecordList } from "../../../../lib/page-ui";
 import { requestFromSearchParamsAndCookies } from "../page";
 import { JourneyBuilderFields } from "./JourneyBuilderFields";
-import { activateJourneyAction, createJourneyAction, pauseJourneyAction } from "./actions";
+import { journeyTemplates } from "@raring2go/marketing";
+import { activateJourneyAction, createJourneyAction, createJourneyFromTemplateAction, pauseJourneyAction } from "./actions";
 import type { MarketingActorContext } from "@raring2go/marketing";
 import { getPermissionData } from "../../../../lib/permission-source";
+import { evaluatePermission } from "@raring2go/permissions";
 import { protectedOutcome } from "../../../../lib/protected-outcome";
 
 export const metadata = { title: "Journeys" };
@@ -15,6 +17,9 @@ export const metadata = { title: "Journeys" };
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+/** A template's frequency-cap window in words: "30d" → "in 30 days". */
+const capWindow: Record<string, string> = { lifetime: "ever", "24h": "in 24 hours", "7d": "in 7 days", "30d": "in 30 days" };
 
 export default async function JourneysPage({ searchParams }: PageProps) {
   const request = await requestFromSearchParamsAndCookies(await searchParams);
@@ -24,7 +29,7 @@ export default async function JourneysPage({ searchParams }: PageProps) {
     return protectedOutcome(result.error);
   }
 
-  const { context, overview, territoryOptions, canCreate, canActivate, canPause } = result;
+  const { context, overview, territoryOptions, canCreate, canActivate, canPause, canHolidays } = result;
   const entries = overview.journeys.reduce((total, journey) => total + journey.entries, 0);
   const activeRuns = overview.journeys.reduce((total, journey) => total + journey.activeExecutions, 0);
 
@@ -34,7 +39,18 @@ export default async function JourneysPage({ searchParams }: PageProps) {
         eyebrow="Marketing"
         title="Journeys"
         intro="Automated email sequences for families who have opted in. Each version is approved before it runs, and you can see where runs are getting stuck."
-        actions={canCreate ? <LinkButton href={"#new" as Route}>Create a journey</LinkButton> : undefined}
+        actions={
+          canCreate || canHolidays ? (
+            <>
+              {canCreate ? <LinkButton href={"#new" as Route}>Create a journey</LinkButton> : null}
+              {canHolidays ? (
+                <LinkButton href={"/app/journeys/holidays" as Route} variant="secondary">
+                  School holiday calendar
+                </LinkButton>
+              ) : null}
+            </>
+          ) : undefined
+        }
       />
 
       <Panel>
@@ -65,6 +81,43 @@ export default async function JourneysPage({ searchParams }: PageProps) {
               Create journey
             </button>
           </form>
+        </Panel>
+      ) : null}
+
+      {canCreate ? (
+        <Panel
+          eyebrow="Ready-made"
+          title="Start from a ready-made journey"
+          intro="Reviewed copy, timing and email caps. A new one is a draft: you still review, approve and activate it before anyone is emailed."
+          id="templates"
+        >
+          <RecordList>
+            {journeyTemplates.map((template) => (
+              <RecordCard
+                key={template.key}
+                title={template.name}
+                lines={[
+                  template.description,
+                  `At most ${formatCount(template.frequencyCap.maxPerContact, "email")} per person ${capWindow[template.frequencyCap.window] ?? `in ${template.frequencyCap.window}`}.`
+                ]}
+              >
+                <form action={createJourneyFromTemplateAction.bind(null, context, template.key)} className="franchise-form">
+                  <label>
+                    Area
+                    <select name="territoryId" defaultValue={context.territoryId ?? ""}>
+                      {territoryOptions.length > 0 && !context.territoryId ? <option value="">Every area</option> : null}
+                      {territoryOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{option.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="submit" className="r2-button r2-button--secondary">
+                    Create draft
+                  </button>
+                </form>
+              </RecordCard>
+            ))}
+          </RecordList>
         </Panel>
       ) : null}
 

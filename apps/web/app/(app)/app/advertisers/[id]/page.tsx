@@ -175,7 +175,9 @@ export default async function Advertiser360Page({ params, searchParams }: PagePr
                 status={view.attention}
                 tone={attentionTone[view.attention]}
                 lines={[`${view.stage.name} · ${formatMoney(view.opportunity.estimatedValueMinor)}`]}
-              />
+              >
+                <ScoreBadge score={view.score} />
+              </RecordCard>
             ))}
           </RecordList>
         )}

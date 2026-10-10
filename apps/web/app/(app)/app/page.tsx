@@ -101,7 +101,8 @@ export async function requestFromSearchParamsAndCookies(
     sessionToken: request.sessionToken ?? cookieStore.get(sessionCookieName)?.value,
     // Query parameters win (deep links); otherwise the context the person chose last time.
     organisationId: request.organisationId ?? stored.organisationId,
-    territoryId: request.organisationId ? request.territoryId : stored.territoryId
+    territoryId: request.organisationId ? request.territoryId : stored.territoryId,
+    contextSource: request.organisationId ? "query" : stored.organisationId ? "stored" : undefined
   };
 }
 

@@ -134,7 +134,10 @@ export default async function MarketingAnalyticsPage({ searchParams }: PageProps
             { label: "Content views", value: show(engagement.tracked.views, engagement.totals.contentViews) },
             { label: "Content clicks", value: show(engagement.tracked.clicks, engagement.totals.contentClicks) },
             { label: "Sponsored clicks", value: show(engagement.tracked.clicks, engagement.totals.placementClicks) },
-            { label: "Newsletter sign-ups", value: show(engagement.tracked.signups, engagement.totals.signupsCompleted) }
+            { label: "Newsletter sign-ups", value: show(engagement.tracked.signups, engagement.totals.signupsCompleted) },
+            { label: "Items saved", value: show(engagement.tracked.saves, engagement.totals.saves) },
+            { label: "Magazine opens", value: show(engagement.tracked.magazine, engagement.totals.magazineOpens) },
+            { label: "Magazine page turns", value: show(engagement.tracked.magazine, engagement.totals.magazinePageTurns) }
           ]}
         />
       </Panel>

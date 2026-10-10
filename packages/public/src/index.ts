@@ -703,19 +703,10 @@ export async function getPublicHomepage(db: PublicDb, slug: string): Promise<Pub
   const emptyStates: PublicHomepage["emptyStates"] = [];
   const empty = (kind: PublicHomepageSlot["kind"], message: string) => emptyStates.push({ slot: kind, message });
 
-  if (stories.length === 0) {
-    emptyStates.push({
-      slot: "stories",
-      message: "Local stories are on their way. Check back soon, or pick up the latest magazine."
-    });
-  }
-
-  if (placements.length === 0) {
-    emptyStates.push({
-      slot: "advertisers",
-      message: "Local businesses recommended by Raring2go! will appear here soon."
-    });
-  }
+  if (shown("stories") && stories.length === 0) empty("stories", "Local stories are on their way. Check back soon, or pick up the latest magazine.");
+  if (advertisersSlot && placements.length === 0) empty("advertisers", "Local businesses recommended by Raring2go! will appear here soon.");
+  if (shown("offers") && offers.length === 0) empty("offers", "Offers from local businesses will appear here as soon as they go live.");
+  if (shown("competitions") && competitions.length === 0) empty("competitions", "New competitions will appear here as soon as they open.");
 
   return {
     territory,

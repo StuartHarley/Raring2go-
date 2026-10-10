@@ -1,5 +1,5 @@
 import type { Route } from "next";
-import { requireShellPermission } from "../../../../lib/app-shell";
+import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { formatCount, formatLabel, formatLabels } from "../../../../lib/format";
 import { EmptyState, LinkButton, Metrics, PageHeader, Panel, RecordLink, RecordList } from "../../../../lib/page-ui";
 import { hasContentAiCapability, listContentLibraryItems } from "../../../../lib/publishing-runtime";
@@ -31,7 +31,16 @@ export default async function ContentLibraryPage({ searchParams }: PageProps) {
         eyebrow="Publishing"
         title="Content Studio"
         intro="Write a story once, then localise it, repurpose it for each channel and review the variants, with the original always traceable."
-        actions={result.canUseAi ? <LinkButton href={"/app/content/new" as Route}>Draft with AI</LinkButton> : undefined}
+        actions={
+          <>
+            {result.canUseAi ? <LinkButton href={"/app/content/new" as Route}>Draft with AI</LinkButton> : null}
+            {result.canHomepage ? (
+              <LinkButton href={"/app/content/homepage" as Route} variant="secondary">
+                Website homepage layout
+              </LinkButton>
+            ) : null}
+          </>
+        }
       />
 
       <Panel>

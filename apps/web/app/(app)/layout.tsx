@@ -29,7 +29,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const shell = await resolveShell({
     sessionToken: cookieStore.get(sessionCookieName)?.value,
     sessionKey: headerStore.get("x-r2-session-key") ?? undefined,
-    ...context
+    ...context,
+    contextSource: context.organisationId ? "stored" : undefined
   });
 
   if (shell.kind === "unauthenticated") {

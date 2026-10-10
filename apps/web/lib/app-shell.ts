@@ -27,6 +27,13 @@ export type RequestedShellContext = {
   sessionToken?: string;
   organisationId?: string;
   territoryId?: string;
+  /**
+   * Where the organisation/territory came from. A context the person typed into a link ("query")
+   * must be honoured or refused as asked; a context remembered from last time ("stored") may be
+   * stale (another person signed in on this browser, a membership ended) and falls back to the
+   * person's default context instead of failing.
+   */
+  contextSource?: "query" | "stored";
 };
 
 export type ShellCapability = {
@@ -473,10 +480,11 @@ async function resolveShellWith(request: RequestedShellContext, repository: Auth
   }
 
   try {
-    const context = await resolveWorkingContext(repository, {
-      session,
-      organisationId,
-      territoryId
+    const context = await resolveWorkingContext(repository, { session, organisationId, territoryId }).catch(async (error: unknown) => {
+      // A remembered context that no longer fits this person is dropped silently in favour of their default.
+      const stale = request.contextSource === "stored" && request.organisationId && defaultContext?.organisationId;
+      if (!stale || (defaultContext.organisationId === organisationId && (defaultContext.territoryId ?? undefined) === territoryId)) throw error;
+      return resolveWorkingContext(repository, { session, organisationId: defaultContext.organisationId, territoryId: defaultContext.territoryId });
     });
 
     const decisions = Object.fromEntries(

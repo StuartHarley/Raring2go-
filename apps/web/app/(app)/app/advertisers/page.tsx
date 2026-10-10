@@ -1,5 +1,5 @@
 import type { Route } from "next";
-import { requireShellPermission } from "../../../../lib/app-shell";
+import { ShellAccessError, requireShellPermission } from "../../../../lib/app-shell";
 import { listAdvertiser360Rows } from "../../../../lib/advertising-runtime";
 import { getDirectory } from "../../../../lib/directory";
 import { displayName } from "../../../../lib/format";
@@ -47,6 +47,11 @@ export default async function AdvertisersPage({ searchParams }: PageProps) {
             <LinkButton href={"/app/advertisers/command-centre" as Route} variant="secondary">
               Commercial command
             </LinkButton>
+            {result.canImport ? (
+              <LinkButton href={"/app/advertisers/import" as Route} variant="secondary">
+                Import a list
+              </LinkButton>
+            ) : null}
           </>
         }
       />

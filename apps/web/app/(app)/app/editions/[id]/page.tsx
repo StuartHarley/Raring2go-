@@ -1,11 +1,11 @@
 import type { Route } from "next";
-import { requireShellPermission } from "../../../../../lib/app-shell";
+import { ShellAccessError, requireShellPermission } from "../../../../../lib/app-shell";
 import { readPreflightPanel, readTerritoryEdition } from "../../../../../lib/publishing-runtime";
 import { AiPreparedNote, AssistantBanner, fixabilityLabels } from "../../../../../lib/assistant-ui";
 import { explainPreflightAction, generateOutputAction, lifecycleAction } from "./actions";
 import { readOutputReadiness } from "../../../../../lib/edition-output";
 import { formatCount, formatDate, formatLabel } from "../../../../../lib/format";
-import { EmptyState, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList } from "../../../../../lib/page-ui";
+import { Actions, EmptyState, LinkButton, Metrics, Notice, PageHeader, Panel, RecordCard, RecordList, StatusBadge } from "../../../../../lib/page-ui";
 import { Breadcrumbs, RelatedRecords } from "../../../../../lib/workflow-ui";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { protectedOutcome } from "../../../../../lib/protected-outcome";
@@ -29,10 +29,23 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
   }
 
   const pagesNeedingAttention = result.pages.filter((page) => page.readiness !== "ready").length;
+  const edition = result.row.territoryEdition;
+  const status = edition.status;
+  const lifecycleResult = resultCode?.startsWith("edition_") ? (resultCode.endsWith("_refused") ? "refused" : "done") : undefined;
   const outputQuery = new URLSearchParams();
   if (request.sessionKey) outputQuery.set("session", request.sessionKey);
   if (request.organisationId) outputQuery.set("organisationId", request.organisationId);
   if (request.territoryId) outputQuery.set("territoryId", request.territoryId);
+  const imposedQuery = new URLSearchParams([...outputQuery.entries(), ["file", "imposed"]]).toString();
+  const steps = {
+    flatplan: result.pages.length === 0 && result.can.flatplan,
+    submit: ["draft", "localising"].includes(status) && result.pages.length > 0 && result.can.submit,
+    approve: status === "review" && result.can.approve,
+    reopen: ["review", "approved"].includes(status) && result.can.approve,
+    release: status === "approved" && result.can.release
+  };
+  const hasStep = Object.values(steps).some(Boolean);
+  const statusTone = status === "published" ? "success" : status === "review" ? "warning" : undefined;
 
   return (
     <>
@@ -44,12 +57,20 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
         eyebrow="Edition"
         title={result.row.territoryEdition.title}
         intro="The flatplan and readiness of this territory edition: the one record that drives its print and digital output."
+        actions={
+          result.pages.length > 0 ? (
+            <LinkButton href={`/app/editions/${id}/flatplan` as Route} variant="primary">
+              Edit the flatplan
+            </LinkButton>
+          ) : undefined
+        }
       />
 
       <Panel>
         <Metrics
           items={[
             { label: "Season", value: result.row.season.name },
+            { label: "Status", value: formatLabel(status), tone: statusTone },
             { label: "Readiness", value: `${result.row.completionPercent}%`, tone: result.row.completionPercent === 100 ? "success" : undefined },
             { label: "Print", value: formatLabel(result.row.printStatus), tone: result.row.printStatus === "generated" ? "success" : undefined },
             { label: "Digital", value: formatLabel(result.row.digitalStatus), tone: result.row.digitalStatus === "generated" ? "success" : undefined }
@@ -87,6 +108,69 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
           }
         ]}
       />
+
+      <Panel
+        id="lifecycle"
+        eyebrow="Lifecycle"
+        title={
+          <>
+            Status: <StatusBadge status={status} tone={statusTone} />
+          </>
+        }
+        intro="Draft, then flatplan, review, approval, digital output, publication. Approval needs every page ready; publication needs a generated digital edition. A published edition is public and cannot be reopened."
+      >
+        {lifecycleResult === "refused" ? <Notice tone="error">That step is not available yet: check the requirements below.</Notice> : null}
+        {lifecycleResult === "done" ? <Notice tone="success">Done.</Notice> : null}
+        {!hasStep ? (
+          <EmptyState title={status === "published" ? "This edition is published" : "Nothing for you to do at this step"}>
+            {status === "published" ? "It is public and cannot be reopened." : "The next step belongs to someone else, or this edition is waiting on its pages."}
+          </EmptyState>
+        ) : (
+          <>
+            <Actions>
+              {steps.flatplan ? (
+                <form action={lifecycleAction.bind(null, request, id, "flatplan")}>
+                  <button type="submit" className="r2-button r2-button--primary">
+                    Create flatplan ({formatCount(edition.pageCount, "page")})
+                  </button>
+                </form>
+              ) : null}
+              {steps.submit ? (
+                <form action={lifecycleAction.bind(null, request, id, "submit")}>
+                  <button type="submit" className="r2-button r2-button--primary">
+                    Submit for review
+                  </button>
+                </form>
+              ) : null}
+              {steps.approve ? (
+                <form action={lifecycleAction.bind(null, request, id, "approve")}>
+                  <button type="submit" className="r2-button r2-button--primary">
+                    Approve edition
+                  </button>
+                </form>
+              ) : null}
+              {steps.release ? (
+                <form action={lifecycleAction.bind(null, request, id, "release")}>
+                  <button type="submit" className="r2-button r2-button--primary">
+                    Publish edition
+                  </button>
+                </form>
+              ) : null}
+            </Actions>
+            {steps.reopen ? (
+              <form action={lifecycleAction.bind(null, request, id, "reopen")} className="franchise-form">
+                <label>
+                  Reason for reopening
+                  <input name="reason" required maxLength={500} />
+                </label>
+                <button type="submit" className="r2-button r2-button--secondary">
+                  Reopen for changes
+                </button>
+              </form>
+            ) : null}
+          </>
+        )}
+      </Panel>
 
       <Panel eyebrow="Flatplan" title="Page assembly">
         {result.pages.length === 0 ? (
@@ -208,6 +292,9 @@ export default async function EditionStudioPage({ params, searchParams }: PagePr
                   {hasFile ? (
                     <a href={`/app/editions/${id}/outputs/${output.id}${outputQuery.size ? `?${outputQuery.toString()}` : ""}`}>Download PDF</a>
                   ) : null}
+                  {typeof (output.artifact.imposed as { fileId?: unknown } | undefined)?.fileId === "string" ? (
+                    <a href={`/app/editions/${id}/outputs/${output.id}?${imposedQuery}`}>Download imposed booklet (press sheets)</a>
+                  ) : null}
                 </RecordCard>
               );
             })}
@@ -233,4 +320,12 @@ async function loadEdition(
   } catch (error) {
     return { error };
   }
+}
+
+async function lifecycleCan(request: Awaited<ReturnType<typeof requestFromSearchParamsAndCookies>>) {
+  const check = (module: string, action: string) => requireShellPermission(request, { module, action }).then(() => true, (error) => {
+    if (error instanceof ShellAccessError) return false;
+    throw error;
+  });
+  return { flatplan: await check("edition.page", "edit"), submit: await check("edition", "edit"), approve: await check("edition", "approve"), release: await check("edition", "release") };
 }
