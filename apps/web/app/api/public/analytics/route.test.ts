@@ -12,6 +12,12 @@ describe("public analytics endpoint input handling", () => {
     expect((await post({ eventType: "not_an_event", territorySlug: "sutton-coldfield", path: "/x" })).status).toBe(400);
     expect((await post({ territorySlug: "sutton-coldfield" })).status).toBe(400);
   });
+
+  it("refuses events only the server may record, so a visitor cannot invent saves or sign-ups", async () => {
+    for (const eventType of ["content_saved", "newsletter_signup_completed"]) {
+      expect((await post({ eventType, territorySlug: "sutton-coldfield", path: "/areas/sutton-coldfield" })).status).toBe(400);
+    }
+  });
 });
 
 /** Real database: an accepted event must actually be stored. `RUN_DB_TESTS=1 pnpm --filter @raring2go/web test` */

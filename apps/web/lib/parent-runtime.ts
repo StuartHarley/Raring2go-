@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { audienceContacts, audienceSavedContent, createDb } from "@raring2go/db";
+import { recordServerPublicEvent } from "./public-events";
 import { and, eq, isNull } from "drizzle-orm";
 import { hashToken, normalizeEmail } from "@raring2go/auth";
 import { withIdentity } from "./auth-runtime";
@@ -96,8 +97,19 @@ export async function readParentAccount(sessionToken?: string | null) {
 export const saveParentPreferences = (sessionToken: string | null | undefined, input: ParentPreferenceInput) =>
   asParent(sessionToken, (db, parent) => updateParentPreferences(db, parent, input));
 
-export const changeParentEmailSubscription = (sessionToken: string | null | undefined, input: { territoryId: string; subscribed: boolean }) =>
-  asParent(sessionToken, (db, parent) => setEmailSubscription(db, parent, input));
+export const changeParentEmailSubscription = async (sessionToken: string | null | undefined, input: { territoryId: string; subscribed: boolean }) => {
+  const result = await asParent(sessionToken, (db, parent) => setEmailSubscription(db, parent, input));
+  // The parent pressed "email me" and the subscription really changed: that is the completed signup. No contact is recorded with it.
+  if (input.subscribed && (result as { changed?: boolean } | undefined)?.changed !== false) {
+    const { db, sql } = createDb();
+    try {
+      await recordServerPublicEvent(db, sql, input.territoryId, { eventType: "newsletter_signup_completed", path: "/areas/{slug}/preferences", entityType: "newsletter" });
+    } finally {
+      await sql.end();
+    }
+  }
+  return result;
+};
 
 export const changeParentEmailOptOut = (sessionToken: string | null | undefined, optOut: boolean) =>
   asParent(sessionToken, (db, parent) => setEmailOptOut(db, parent, optOut));
@@ -186,6 +198,7 @@ export async function savePublicContentForParent(input: {
       savedAt: new Date(),
       metadata: { source: "public_parent_account" }
     });
+    await recordServerPublicEvent(db, sql, territory.id, { eventType: "content_saved", path: `/areas/${territory.slug}/saved`, entityType: "content", entityId: visibleContent.id, metadata: { contentType: visibleContent.type } });
     return { saved: true, id };
   } finally {
     await sql.end();

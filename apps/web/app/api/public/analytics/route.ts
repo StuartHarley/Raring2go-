@@ -2,14 +2,14 @@ import { createDb } from "@raring2go/db";
 import { createPublicAnalyticsEventForDb, type PublicAnalyticsEventType } from "@raring2go/public";
 import { rateLimitRules } from "@raring2go/security";
 import { NextResponse } from "next/server";
+import { insertPublicAnalyticsEvent } from "../../../../lib/public-events";
 import { clientIp, firstRateLimitRefusal, tooManyRequestsResponse } from "../../../../lib/rate-limit-runtime";
 
+// Only what a browser can honestly observe. A save and a confirmed subscription are recorded by the server, so they cannot be forged here.
 const allowedEventTypes = new Set<PublicAnalyticsEventType>([
   "territory_viewed",
   "content_viewed",
   "newsletter_signup_started",
-  "newsletter_signup_completed",
-  "content_saved",
   "discovery_item_clicked",
   "magazine_opened",
   "magazine_page_interaction",
@@ -39,34 +39,7 @@ export async function POST(request: Request) {
       sessionId: body.sessionId,
       metadata: body.metadata
     });
-    await sql`
-      insert into public_analytics_events (
-        event_type,
-        territory_id,
-        path,
-        entity_type,
-        entity_id,
-        session_id,
-        attribution,
-        metadata,
-        privacy,
-        occurred_at,
-        retain_until
-      )
-      values (
-        ${event.eventType},
-        ${event.territoryId},
-        ${event.path},
-        ${event.entityType ?? null},
-        ${event.entityId ?? null},
-        ${event.sessionId ?? null},
-        ${JSON.stringify(event.attribution)}::jsonb,
-        ${JSON.stringify(event.metadata)}::jsonb,
-        ${JSON.stringify(event.privacy)}::jsonb,
-        ${event.occurredAt}::timestamptz,
-        ${event.retainUntil}::timestamptz
-      )
-    `;
+    await insertPublicAnalyticsEvent(sql, event);
   } catch (error) {
     // A rejected event (unknown area, unsafe path) is the caller's fault; anything else is ours and must be visible.
     if (event === undefined && error instanceof Error && /^(Unknown public territory|Public analytics path)/.test(error.message)) {

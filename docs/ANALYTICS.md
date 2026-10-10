@@ -95,3 +95,23 @@ before that date; until snapshots have accumulated it simply shows no change fig
 - Cohort for benchmarking is every non-deleted territory (including non-franchise contexts such as UAT); filter by franchise status if that is not what you want once real data exists.
 - Metrics that need external provider data (social reach, ad spend outside the platform) are not in the catalogue until those sources are connected.
 - Health scoring thresholds and default anchors are starting points to tune with real network data.
+
+## Public site events (PUB-008)
+
+| Event | Recorded by | When | Entity |
+| --- | --- | --- | --- |
+| `territory_viewed`, `content_viewed`, `magazine_opened` | browser | a page view | territory / content, advertiser or edition |
+| `newsletter_signup_started` | browser | the sign-up form is submitted | newsletter |
+| `discovery_item_clicked`, `commercial_placement_clicked` | browser | a tracked link is clicked | content / advertiser |
+| `magazine_page_interaction` | browser | previous or next page in the reader is clicked | edition |
+| `content_saved` | **server** | a signed-in parent saves public content (a repeat save is not counted again) | content |
+| `newsletter_signup_completed` | **server** | the parent presses "email me" and the subscription really changed (a repeat or an unsubscribe is not counted) | newsletter |
+| `public_conversion` | not emitted | defined for a future real conversion step (an enquiry or booking); the public site has none today | |
+
+Privacy: no event stores an IP address, a user agent, a contact, a user or a session. Server-recorded events carry only what happened, where, and to which content. The intake endpoint **refuses** `content_saved` and `newsletter_signup_completed`, so a visitor cannot invent saves or sign-ups. A failure to record an event never breaks the action the person took.
+
+Not tracked: impressions (so no click-through rate), email opens and clicks where the provider does not report them, social reach, print reach.
+
+### Proof pack evidence
+
+When a proof pack is created, its metrics are the advertiser's own tracked events in their territory from the day the campaign was fulfilled to now: `businessPageViews` (views of their business page) and `placementClicks` (clicks on their sponsored placement). They are tied to the advertiser's id, never spread across advertisers, and cover this site only. The advertiser sees them in their portal.

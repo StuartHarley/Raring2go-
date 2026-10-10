@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 type TrackEvent = {
-  eventType: "territory_viewed" | "content_viewed" | "magazine_opened" | "newsletter_signup_started" | "commercial_placement_clicked" | "discovery_item_clicked";
+  eventType: "territory_viewed" | "content_viewed" | "magazine_opened" | "newsletter_signup_started" | "commercial_placement_clicked" | "discovery_item_clicked" | "magazine_page_interaction";
   territorySlug: string;
   path: string;
   entityType?: "content" | "advertiser" | "edition" | "newsletter";

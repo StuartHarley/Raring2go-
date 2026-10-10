@@ -125,6 +125,9 @@ export default async function MarketingAnalyticsPage({ searchParams }: PageProps
           <article><span>Content clicks</span><strong>{show(engagement.tracked.clicks, engagement.totals.contentClicks)}</strong></article>
           <article><span>Sponsored clicks</span><strong>{show(engagement.tracked.clicks, engagement.totals.placementClicks)}</strong></article>
           <article><span>Newsletter sign-ups</span><strong>{show(engagement.tracked.signups, engagement.totals.signupsCompleted)}</strong></article>
+          <article><span>Items saved</span><strong>{show(engagement.tracked.saves, engagement.totals.saves)}</strong></article>
+          <article><span>Magazine opens</span><strong>{show(engagement.tracked.magazine, engagement.totals.magazineOpens)}</strong></article>
+          <article><span>Magazine page turns</span><strong>{show(engagement.tracked.magazine, engagement.totals.magazinePageTurns)}</strong></article>
         </div>
         <h3>Top content</h3>
         {engagement.topContent.length === 0 ? <p>No content activity recorded yet.</p> : (

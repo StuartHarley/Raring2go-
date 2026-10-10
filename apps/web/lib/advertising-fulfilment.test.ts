@@ -5,7 +5,7 @@ import {
   opportunities, organisations, proofPacks, publicationOutputs, renewalPrompts, seasons, territoryEditions
 } from "@raring2go/db";
 import { loadAdvertisingData } from "@raring2go/advertising";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql as rawSql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAdvertiserRecord } from "./advertising-mutations";
 import { createProposalRecord, bookProposalRecord, sendProposalRecord } from "./advertising-sales";
@@ -151,8 +151,25 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("advertiser production, fulfilment an
     expect(fulfilment?.placementReference).toMatchObject({ publishedOutputId: ids.output });
     expect(requirement.id).toBeTruthy();
 
-    const pack = await createProofPackRecord(sutton, fulfilment!.id, { deliver: true });
-    expect(pack).toMatchObject({ status: "delivered" });
+    // What the public site recorded for this advertiser since delivery is the proof pack's evidence: theirs only, this territory only, nothing before delivery.
+    const eventPath = `/areas/sutton-coldfield/proof-${tag}`;
+    const event = (type: string, entityId: string, occurred: string, territory: string = fixtureIds.territories.suttonColdfield) =>
+      db.execute(rawSql`insert into public_analytics_events (event_type, territory_id, path, entity_type, entity_id, attribution, metadata, privacy, occurred_at, retain_until)
+        values (${type}, ${territory}, ${eventPath}, 'advertiser', ${entityId}, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, ${occurred}::timestamptz, now() + interval '30 days')`);
+    const now = new Date().toISOString();
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    for (let i = 0; i < 3; i += 1) await event("content_viewed", advertiser.id, now);
+    for (let i = 0; i < 2; i += 1) await event("commercial_placement_clicked", advertiser.id, now);
+    await event("commercial_placement_clicked", advertiser.id, twoDaysAgo);
+    await event("commercial_placement_clicked", randomUUID(), now);
+    await event("commercial_placement_clicked", advertiser.id, now, fixtureIds.territories.solihull);
+    try {
+      const pack = await createProofPackRecord(sutton, fulfilment!.id, { deliver: true });
+      expect(pack).toMatchObject({ status: "delivered" });
+      expect(pack.metricsSnapshot).toMatchObject({ businessPageViews: 3, placementClicks: 2, source: "raring2go_public_site" });
+    } finally {
+      await db.execute(rawSql`delete from public_analytics_events where path = ${eventPath}`);
+    }
     await expect(createProofPackRecord(sutton, fulfilment!.id, { deliver: false })).rejects.toThrow(/already has a proof pack/);
     expect(advertiser.id).toBeTruthy();
 

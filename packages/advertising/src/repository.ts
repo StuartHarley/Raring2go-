@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 import {
   advertiserActivityEvents,
   advertiserContacts,
@@ -9,6 +9,7 @@ import {
   advertiserInvoiceSequences,
   advertiserTaxRates,
   editionPages,
+  publicAnalyticsEvents,
   publicationOutputs,
   territoryEditions,
   advertiserInvoices,
@@ -290,4 +291,29 @@ export async function loadEditionPageReadiness(anyDb: unknown, editionPageId: st
   const db = anyDb as WhereDb;
   const [page] = await db.select({ readiness: editionPages.readiness }).from(editionPages).where(eq(editionPages.id, editionPageId));
   return page?.readiness ?? null;
+}
+
+/**
+ * What the public site recorded for an advertiser between two dates: views of their business page and clicks on their
+ * sponsored placement. These are real events tied to the advertiser's own id (nothing is inferred or spread across
+ * advertisers), and they only cover this site: no impressions, print reach or email opens.
+ */
+export async function loadPlacementPerformance(
+  anyDb: unknown,
+  input: { advertiserId: string; territoryId: string; from: Date; to: Date }
+): Promise<{ businessPageViews: number; placementClicks: number }> {
+  const db = anyDb as { select(columns?: unknown): { from(table: unknown): { where(condition: unknown): { groupBy(column: unknown): PromiseLike<Array<{ eventType: string; n: number }>> } } } };
+  const rows = await db
+    .select({ eventType: publicAnalyticsEvents.eventType, n: sql<number>`count(*)::int` })
+    .from(publicAnalyticsEvents)
+    .where(and(
+      eq(publicAnalyticsEvents.entityType, "advertiser"),
+      eq(publicAnalyticsEvents.entityId, input.advertiserId),
+      eq(publicAnalyticsEvents.territoryId, input.territoryId),
+      gte(publicAnalyticsEvents.occurredAt, input.from),
+      lt(publicAnalyticsEvents.occurredAt, input.to)
+    ))
+    .groupBy(publicAnalyticsEvents.eventType);
+  const count = (type: string) => Number(rows.find((row) => row.eventType === type)?.n ?? 0);
+  return { businessPageViews: count("content_viewed"), placementClicks: count("commercial_placement_clicked") };
 }

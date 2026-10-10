@@ -4,6 +4,7 @@ import {
   createProofPack,
   dismissRenewalPrompt,
   loadEditionPageReadiness,
+  loadPlacementPerformance,
   loadPublishedPlacementEvidence,
   recordCampaignFulfilment,
   updateArtworkStatus
@@ -96,10 +97,14 @@ export async function recordFulfilmentRecord(
 }
 
 export async function createProofPackRecord(context: AdvertisingActorContext, fulfilmentId: string, input: { deliver: boolean }) {
-  return mutate((_tx, data, audit, permissions) => {
+  return mutate(async (tx, data, audit, permissions) => {
     const fulfilment = data.campaignFulfilments.find((candidate) => candidate.id === fulfilmentId && !candidate.deletedAt);
     if (!fulfilment) throw new Error("Fulfilment was not found.");
     if (fulfilment.status !== "fulfilled") throw new Error("A proof pack needs a fulfilled campaign.");
+    // Real evidence from the public site from the day the campaign was fulfilled to now. Only what was tracked is reported.
+    const from = new Date(`${fulfilment.fulfilledOn ?? todayIso()}T00:00:00Z`);
+    const to = new Date();
+    const performance = await loadPlacementPerformance(tx, { advertiserId: fulfilment.advertiserId, territoryId: fulfilment.territoryId, from, to });
     return createProofPack(
       context,
       permissions,
@@ -114,7 +119,7 @@ export async function createProofPackRecord(context: AdvertisingActorContext, fu
         issuedAt: todayIso(),
         deliveredAt: input.deliver ? todayIso() : null,
         artefactReference: {},
-        metricsSnapshot: {},
+        metricsSnapshot: { ...performance, source: "raring2go_public_site", measuredFrom: from.toISOString().slice(0, 10), measuredTo: to.toISOString().slice(0, 10) } as never,
         renewalPromptId: null
       },
       randomUUID()
