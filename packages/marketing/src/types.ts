@@ -420,7 +420,11 @@ export type JourneyTrigger =
   /** A subscribed contact with no email engagement for `days`: the re-engagement journey. Found by the daily scan. */
   | { type: "contact_inactive"; days: number }
   /** A territory's digital magazine has just been published. Found by the daily scan, once per edition. */
-  | { type: "digital_edition_published" };
+  | { type: "digital_edition_published" }
+  /** A school holiday in the HQ calendar starts within `daysBefore` days. Found by the daily scan, once per holiday per subscriber. */
+  | { type: "school_holiday_approaching"; daysBefore: number }
+  /** Each week, on `weekday` (0 Sunday to 6 Saturday, UTC), to subscribers of an area that has local events coming up. Once per subscriber per week. */
+  | { type: "weekly_digest"; weekday: number };
 
 /**
  * Reused directly from segment-rules.ts rather than a parallel type -

@@ -2,7 +2,7 @@ import { isRecord, validateBlocks } from "./blocks";
 import { looksLikeCondition } from "./segment-rules";
 import type { JourneyCondition, JourneyStep, JourneyTrigger } from "./types";
 
-const JOURNEY_TRIGGER_TYPES = new Set(["contact_subscribed_to_territory", "contact_inactive", "digital_edition_published"]);
+const JOURNEY_TRIGGER_TYPES = new Set(["contact_subscribed_to_territory", "contact_inactive", "digital_edition_published", "school_holiday_approaching", "weekly_digest"]);
 const JOURNEY_STEP_ACTION_TYPES = new Set(["send_email"]);
 
 /**
@@ -19,6 +19,20 @@ export function validateJourneyTrigger(raw: unknown): JourneyTrigger {
       throw new Error("A re-engagement trigger needs a whole number of days between 14 and 365.");
     }
     return { type: "contact_inactive", days };
+  }
+  if (raw.type === "school_holiday_approaching") {
+    const daysBefore = raw.daysBefore;
+    if (typeof daysBefore !== "number" || !Number.isInteger(daysBefore) || daysBefore < 1 || daysBefore > 60) {
+      throw new Error("A school-holiday trigger needs a whole number of days before the holiday, between 1 and 60.");
+    }
+    return { type: "school_holiday_approaching", daysBefore };
+  }
+  if (raw.type === "weekly_digest") {
+    const weekday = raw.weekday;
+    if (typeof weekday !== "number" || !Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+      throw new Error("A weekly digest needs a weekday from 0 (Sunday) to 6 (Saturday).");
+    }
+    return { type: "weekly_digest", weekday };
   }
   return { type: raw.type } as JourneyTrigger;
 }

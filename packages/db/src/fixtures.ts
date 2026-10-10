@@ -119,6 +119,7 @@ export const fixtureIds = {
     paymentRequest: "00000000-0000-4000-8000-000000000577",
     inventoryManage: "00000000-0000-4000-8000-000000000578",
     homepageManage: "00000000-0000-4000-8000-000000000579",
+    calendarManage: "00000000-0000-4000-8000-000000000580",
     franchiseTeamView: "00000000-0000-4000-8000-000000000575",
     franchiseTeamManage: "00000000-0000-4000-8000-000000000576",
     emailView: "00000000-0000-4000-8000-000000000492",
@@ -1060,6 +1061,12 @@ export const foundationSeed = {
       module: "marketing.segment",
       action: "manage",
       description: "Create and manage audience segment definitions."
+    },
+    {
+      id: fixtureIds.permissions.calendarManage,
+      module: "marketing.calendar",
+      action: "manage",
+      description: "Maintain the school-holiday calendar that the holiday countdown emails run from."
     },
     {
       id: fixtureIds.permissions.homepageManage,
@@ -3052,6 +3059,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     fixtureIds.permissions.inventoryReserve,
     fixtureIds.permissions.inventoryManage,
     fixtureIds.permissions.homepageManage,
+    fixtureIds.permissions.calendarManage,
     fixtureIds.permissions.proposalView,
     fixtureIds.permissions.proposalCreate,
     fixtureIds.permissions.bookingAccept,

@@ -26,7 +26,7 @@ As of 10 October 2026, from the repository (`main`), `docs/BUILD_SPEC.md`, `docs
 | **Edition Factory** | **Built (this week)**; print not yet run on real tooling | Template library, seasons and masters, territory edition generation, lifecycle (submit, approve, publish), flatplan editor, page studio with autosave, page preflight, print (Chromium + Ghostscript PDF/X-1a) and digital output as durable jobs, Control Room with filters and bulk actions. See `EDITION_FACTORY.md` and `EDITION_RENDERING.md`. |
 | Audience, native email, newsletters | Built; email live run pending | Postmark adapter and webhook; consent, suppression, newsletter factory. |
 | Social | Partial | Facebook pages live in code (queue, approve, schedule, retry, crash handling). Instagram and LinkedIn have no adapter and fail closed. |
-| Journeys and automation | Partial | Engine, caps and suppression built; welcome, re-engagement and digital-magazine journeys defined; the rest not. Automation builder built. |
+| Journeys and automation | Partial | Engine, caps and suppression built; welcome, re-engagement, digital-magazine, school-holiday countdown and weekly local digest journeys built and startable from the UI. Competition follow-up and sponsored campaigns need triggers that do not exist. Automation builder built. |
 | Public site and parent experience | Built, two gaps | Territory sites, discovery, magazine reader, SEO, parent accounts, and conversion analytics (clicks, saves, confirmed sign-ups, magazine page turns, proof pack evidence; see `ANALYTICS.md`). The homepage layout is HQ-editable with versioning (`WEBSITE_PUBLISHING.md`). |
 | Finance, royalties, benchmarks, health score | Built; accounting live run pending | Royalty statements, scorecard, benchmarks, health score, Xero. |
 | AI | Built; live model checks pending | Gateway with audit, content GPT and events GPT adapters, repurposing, suggest-only rules. |
@@ -54,5 +54,5 @@ Gaps inside it, stated plainly:
 
 1. Fix what UAT finds in the Edition Factory screens.
 2. Upload-library images in the studio; creep, gripper margin and press-sheet imposition once the printer's spec is known.
-3. Instagram and LinkedIn adapters; remaining journeys.
+3. Instagram and LinkedIn adapters; competition follow-up and sponsored-campaign journeys (need competition entries and advertiser campaign events first).
 4. Data rehearsal tooling for franchise, advertiser and publishing imports (UAT-003).

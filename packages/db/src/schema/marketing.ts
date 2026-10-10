@@ -557,3 +557,26 @@ export const marketingJourneyStepExecutions = pgTable(
     index("marketing_journey_step_exec_status_idx").on(table.status)
   ]
 );
+
+/**
+ * The school-holiday calendar HQ maintains. A period with no territory applies to every area; one with a territory only to that area.
+ * It is what the school-holiday countdown journey is triggered by.
+ */
+export const schoolHolidayPeriods = pgTable(
+  "school_holiday_periods",
+  {
+    id,
+    territoryId: uuid("territory_id").references(() => territories.id),
+    name: text("name").notNull(),
+    startsOn: date("starts_on", { mode: "date" }).notNull(),
+    endsOn: date("ends_on", { mode: "date" }).notNull(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    ...timestamps,
+    ...softDelete
+  },
+  (table) => [
+    uniqueIndex("school_holiday_periods_scope_name_start_uidx").on(table.territoryId, table.name, table.startsOn),
+    index("school_holiday_periods_starts_on_idx").on(table.startsOn),
+    index("school_holiday_periods_deleted_at_idx").on(table.deletedAt)
+  ]
+);

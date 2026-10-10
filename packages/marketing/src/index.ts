@@ -11,3 +11,5 @@ export type * from "./types";
 export * from "./journey-templates";
 export * from "./audience-import";
 export * from "./audience-import-store";
+export * from "./journey-content";
+export * from "./holiday-calendar";
