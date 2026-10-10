@@ -356,7 +356,7 @@ export async function createPublicAnalyticsEventForTerritoryId(
 }
 
 /** Events only the server may record: a client cannot claim someone saved something or confirmed a subscription. */
-export const serverOnlyAnalyticsEventTypes: PublicAnalyticsEventType[] = ["content_saved", "newsletter_signup_completed"];
+export const serverOnlyAnalyticsEventTypes: PublicAnalyticsEventType[] = ["content_saved", "newsletter_signup_completed", "public_conversion"];
 
 function createPublicAnalyticsEventForTerritory(
   input: PublicAnalyticsInput,

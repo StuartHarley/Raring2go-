@@ -37,6 +37,7 @@ export type SubjectDataBundle = {
   consentEvents: Array<Record<string, unknown>>;
   suppressions: Array<Record<string, unknown>>;
   savedContent: Array<Record<string, unknown>>;
+  competitionEntries: Array<Record<string, unknown>>;
   activity: Array<Record<string, unknown>>;
   segmentMemberships: Array<Record<string, unknown>>;
   emailDeliveries: Array<Record<string, unknown>>;

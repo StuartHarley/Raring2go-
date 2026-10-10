@@ -21,7 +21,7 @@ function fakeStore(contacts: Record<string, string> = { "sam@example.com": "cont
   const requests: PrivacyRequestRecord[] = [];
   const erased: string[] = [];
   const bundle = (contactId: string): SubjectDataBundle => ({
-    generatedAt: now.toISOString(), subject: { contactId }, contact: { id: contactId }, subscriptions: [{}, {}], preferences: null, consentEvents: [{}], suppressions: [], savedContent: [], activity: [{}, {}, {}], segmentMemberships: [], emailDeliveries: []
+    generatedAt: now.toISOString(), subject: { contactId }, contact: { id: contactId }, subscriptions: [{}, {}], preferences: null, consentEvents: [{}], suppressions: [], savedContent: [], competitionEntries: [], activity: [{}, {}, {}], segmentMemberships: [], emailDeliveries: []
   });
   const store: PrivacyStore = {
     findContactByEmail: async (email) => (contacts[email] ? { id: contacts[email]! } : undefined),

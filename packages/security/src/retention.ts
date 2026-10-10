@@ -1,6 +1,6 @@
-import { authInvitations, authSessions, authVerificationTokens, publicAnalyticsEvents, rateLimitBuckets, webhookEventClaims } from "@raring2go/db";
+import { authInvitations, competitionEntries, authSessions, authVerificationTokens, publicAnalyticsEvents, rateLimitBuckets, webhookEventClaims } from "@raring2go/db";
 import type { createDb } from "@raring2go/db";
-import { and, isNotNull, lt, or } from "drizzle-orm";
+import { and, eq, isNotNull, lt, or } from "drizzle-orm";
 
 type Db = ReturnType<typeof createDb>["db"];
 
@@ -27,6 +27,7 @@ export const retentionPolicies: RetentionPolicy[] = [
   { key: "rate_limit_buckets", data: "Rate limit counters (hashed keys)", keep: "2 days", basis: "Operational only", enforced: true },
   { key: "webhook_event_claims", data: "Provider webhook idempotency claims", keep: "90 days", basis: "Longer than any provider's retry window; only the provider event id is held", enforced: true },
   { key: "jobs", data: "Completed background job history", keep: "30 days", basis: "Operations; enforced by the job-history prune job (OPS-001)", enforced: true },
+  { key: "competition_entries", data: "Entries to public competitions", keep: "Entries that did not win: 90 days after entry. Winning entries: 12 months after the draw", basis: "Running the draw and resolving disputes; the entry holds only who entered, when, and whether they won", enforced: true },
   { key: "audit_events", data: "Audit trail", keep: "Indefinitely (append-only)", basis: "Accountability; personal data inside events is redacted at write time", enforced: false },
   { key: "privacy_requests", data: "Data-subject request records", keep: "6 years", basis: "Evidence of compliance; holds only a hash of the subject's email", enforced: false },
   { key: "email_delivery_records", data: "Per-recipient email delivery outcomes", keep: "Decision owed by the data controller", basis: "Needed for suppression and complaint handling; anonymised on erasure", enforced: false },
@@ -76,6 +77,14 @@ export async function enforceRetention(db: Db, now: Date = new Date()): Promise<
   result.rate_limit_buckets = (await db.delete(rateLimitBuckets).where(lt(rateLimitBuckets.windowStart, ago(2))).returning({ key: rateLimitBuckets.key })).length;
 
   result.webhook_event_claims = (await db.delete(webhookEventClaims).where(lt(webhookEventClaims.claimedAt, ago(90))).returning({ id: webhookEventClaims.id })).length;
+
+  // Entries that did not win go after 90 days; winners are kept 12 months from the draw in case a prize is disputed.
+  result.competition_entries = (
+    await db
+      .delete(competitionEntries)
+      .where(or(and(eq(competitionEntries.outcome, "entered"), lt(competitionEntries.enteredAt, ago(90))), and(eq(competitionEntries.outcome, "winner"), lt(competitionEntries.drawnAt, ago(365)))))
+      .returning({ id: competitionEntries.id })
+  ).length;
 
   return result;
 }

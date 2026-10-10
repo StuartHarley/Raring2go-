@@ -95,6 +95,7 @@ export const auditActions = {
   advertiserTaskManage: "advertiser.task.manage",
   publicHomepageTemplateChange: "public.homepage.template.change",
   marketingHolidayCalendarChange: "marketing.holiday_calendar.change",
+  contentCompetitionDraw: "content.competition.draw",
   advertiserOpportunityCreate: "advertiser.opportunity.create",
   advertiserOpportunityUpdate: "advertiser.opportunity.update",
   advertiserOpportunityStageChange: "advertiser.opportunity.stage.change",

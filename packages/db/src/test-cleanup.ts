@@ -1,6 +1,6 @@
 import { inArray } from "drizzle-orm";
 import {
-  audienceActivityEvents, audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions,
+  audienceActivityEvents, competitionEntries, audienceConsentEvents, audienceContacts, audiencePreferenceProfiles, audienceSavedContent, audienceSuppressions, audienceTerritorySubscriptions,
   marketingJourneyAudienceEntries, marketingJourneyExecutions, marketingJourneyStepExecutions
 } from "./schema";
 
@@ -24,6 +24,7 @@ export async function deleteAudienceContactsForTests(db: Db, contactIds: string[
     await db.delete(marketingJourneyExecutions).where(inArray(marketingJourneyExecutions.entryId, entryIds));
     await db.delete(marketingJourneyAudienceEntries).where(inArray(marketingJourneyAudienceEntries.id, entryIds));
   }
+  await db.delete(competitionEntries).where(inArray(competitionEntries.contactId, contactIds));
   await db.delete(audienceConsentEvents).where(inArray(audienceConsentEvents.contactId, contactIds));
   await db.delete(audienceSavedContent).where(inArray(audienceSavedContent.contactId, contactIds));
   await db.delete(audiencePreferenceProfiles).where(inArray(audiencePreferenceProfiles.contactId, contactIds));

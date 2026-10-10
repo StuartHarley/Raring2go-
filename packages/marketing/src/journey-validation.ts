@@ -2,7 +2,7 @@ import { isRecord, validateBlocks } from "./blocks";
 import { looksLikeCondition } from "./segment-rules";
 import type { JourneyCondition, JourneyStep, JourneyTrigger } from "./types";
 
-const JOURNEY_TRIGGER_TYPES = new Set(["contact_subscribed_to_territory", "contact_inactive", "digital_edition_published", "school_holiday_approaching", "weekly_digest"]);
+const JOURNEY_TRIGGER_TYPES = new Set(["contact_subscribed_to_territory", "contact_inactive", "digital_edition_published", "school_holiday_approaching", "weekly_digest", "competition_closed"]);
 const JOURNEY_STEP_ACTION_TYPES = new Set(["send_email"]);
 
 /**

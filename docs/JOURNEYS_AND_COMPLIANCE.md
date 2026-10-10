@@ -15,6 +15,7 @@ The old `/api/jobs/journey-execute` route stays for operators and runs the same 
 | `contact_inactive` (days) | subscribed contacts with no activity and no subscription within the window | once per 180 days |
 | `digital_edition_published` | a digital edition published in the last 14 days | once per edition per contact |
 | `school_holiday_approaching` (days before, 1 to 60) | a holiday in the HQ calendar that has not started and starts within that many days, for the subscriber's area | once per holiday per subscriber per area |
+| `competition_closed` | a competition that closed in the last 14 days; each entrant who also subscribes to the area | once per competition per entrant |
 | `weekly_digest` (weekday, 0 Sunday to 6 Saturday, UTC) | on that weekday, each area that has approved public events in the next 14 days | once per subscriber per area per ISO week; an area with no events gets no entries at all |
 
 A journey's **conditions** are evaluated at entry; someone who does not meet them is not entered. Suppressed or unsubscribed
@@ -36,15 +37,14 @@ Counts come from recipient snapshots (what was actually queued), ignoring sends 
 ### Named journeys
 
 `journeyTemplates` defines the starting drafts: **welcome**, **re-engagement** (two emails a week apart) and **digital magazine**.
-Two more are defined: **school holiday countdown** and **weekly local events digest**. Start any of them from Journeys, "Start from a ready-made
-journey"; a template is only a draft and still goes through approval and activation. Competition follow-up and sponsored campaigns are
-**not** defined because their triggers (competition entries, advertiser campaign events) do not exist yet.
+Three more are defined: **school holiday countdown**, **weekly local events digest** and **competition follow-up**. Start any of them from Journeys, "Start from a ready-made
+journey"; a template is only a draft and still goes through approval and activation. Sponsored campaigns are **not** defined because their trigger (advertiser campaign events) does not exist yet.
 
 ### Content that changes: `[[tokens]]`
 
 A journey whose message depends on what is happening fills in values when someone enters it. A step writes `[[holiday_name]]`,
 `[[holiday_starts]]`, `[[holiday_ends]]`, `[[days_until]]`, `[[area_name]]` (school-holiday trigger) or `[[area_name]]`,
-`[[local_events|html]]` (weekly digest) in its subject, headings and text blocks. Rules:
+`[[local_events|html]]` (weekly digest) or `[[competition_title]]`, `[[area_name]]` (competition follow-up) in its subject, headings and text blocks. Rules:
 - each trigger provides only its own tokens; a journey using any other is refused when it is created (the builder and the templates both check);
 - plain values are escaped as they are filled in; the events list is built by our code and sanitised;
 - each variant (this holiday in this area, this week's events in this area) gets its own campaign, so two holidays never share wording;

@@ -120,6 +120,7 @@ export const fixtureIds = {
     inventoryManage: "00000000-0000-4000-8000-000000000578",
     homepageManage: "00000000-0000-4000-8000-000000000579",
     calendarManage: "00000000-0000-4000-8000-000000000580",
+    competitionDraw: "00000000-0000-4000-8000-000000000581",
     franchiseTeamView: "00000000-0000-4000-8000-000000000575",
     franchiseTeamManage: "00000000-0000-4000-8000-000000000576",
     emailView: "00000000-0000-4000-8000-000000000492",
@@ -1061,6 +1062,12 @@ export const foundationSeed = {
       module: "marketing.segment",
       action: "manage",
       description: "Create and manage audience segment definitions."
+    },
+    {
+      id: fixtureIds.permissions.competitionDraw,
+      module: "content.competition",
+      action: "draw",
+      description: "Draw the winners of a competition once it has closed."
     },
     {
       id: fixtureIds.permissions.calendarManage,
@@ -3060,6 +3067,7 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
     fixtureIds.permissions.inventoryManage,
     fixtureIds.permissions.homepageManage,
     fixtureIds.permissions.calendarManage,
+    fixtureIds.permissions.competitionDraw,
     fixtureIds.permissions.proposalView,
     fixtureIds.permissions.proposalCreate,
     fixtureIds.permissions.bookingAccept,
@@ -3365,6 +3373,12 @@ export const fixtureRolePermissions: Array<{ roleId: string; permissionId: strin
   {
     roleId: fixtureIds.roles.franchisee,
     permissionId: fixtureIds.permissions.inventoryManage,
+    scope: "own_territory",
+    constraints: {}
+  },
+  {
+    roleId: fixtureIds.roles.franchisee,
+    permissionId: fixtureIds.permissions.competitionDraw,
     scope: "own_territory",
     constraints: {}
   },

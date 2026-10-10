@@ -1,5 +1,6 @@
 import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "./common";
+import { contentItems } from "./publishing";
 import { providerConnections } from "./integrations";
 import { users } from "./identity";
 import { territories } from "./tenancy";
@@ -578,5 +579,31 @@ export const schoolHolidayPeriods = pgTable(
     uniqueIndex("school_holiday_periods_scope_name_start_uidx").on(table.territoryId, table.name, table.startsOn),
     index("school_holiday_periods_starts_on_idx").on(table.startsOn),
     index("school_holiday_periods_deleted_at_idx").on(table.deletedAt)
+  ]
+);
+
+/**
+ * A parent's entry to a public competition. One per person per competition. It holds who entered and when, and (after the draw)
+ * whether they won: nothing else. Non-winning entries are deleted after 90 days and winning ones after 12 months (retention
+ * policy), and every entry is included in a subscriber's data export and removed on erasure.
+ */
+export const competitionEntries = pgTable(
+  "competition_entries",
+  {
+    id,
+    contentItemId: uuid("content_item_id").notNull().references(() => contentItems.id),
+    territoryId: uuid("territory_id").notNull().references(() => territories.id),
+    contactId: uuid("contact_id").notNull().references(() => audienceContacts.id),
+    outcome: text("outcome").notNull().default("entered"),
+    enteredAt: timestamp("entered_at", { withTimezone: true }).notNull(),
+    drawnAt: timestamp("drawn_at", { withTimezone: true }),
+    drawnByUserId: uuid("drawn_by_user_id").references(() => users.id),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("competition_entries_competition_contact_uidx").on(table.contentItemId, table.contactId),
+    index("competition_entries_contact_id_idx").on(table.contactId),
+    index("competition_entries_territory_id_idx").on(table.territoryId),
+    index("competition_entries_outcome_idx").on(table.outcome)
   ]
 );

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  contentChannelVariantVersions, contentChannelVariants, contentItems, schoolHolidayPeriods, audienceActivityEvents, audienceContacts, deleteAudienceContactsForTests, territories, audienceSuppressions, audienceTerritorySubscriptions, createDb, emailCampaignVersions, emailCampaigns, emailRecipientSnapshots, emailSendJobs, fixtureIds,
+  competitionEntries, contentChannelVariantVersions, contentChannelVariants, contentItems, schoolHolidayPeriods, audienceActivityEvents, audienceContacts, deleteAudienceContactsForTests, territories, audienceSuppressions, audienceTerritorySubscriptions, createDb, emailCampaignVersions, emailCampaigns, emailRecipientSnapshots, emailSendJobs, fixtureIds,
   marketingJourneyAudienceEntries, marketingJourneyExecutions, marketingJourneyStepExecutions, marketingJourneyVersions, marketingJourneys
 } from "@raring2go/db";
 import { findJourneyTemplate, validateJourneyTemplate } from "@raring2go/marketing";
@@ -19,6 +19,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("journey engine (postgres)", () => {
   const journeyIds: string[] = [];
   const contactIds: string[] = [];
   const periodIds: string[] = [];
+  const competitionIds: string[] = [];
   const eventIds = { item: randomUUID(), variant: randomUUID(), version: randomUUID() };
   const handler = createRunJourneysHandler() as unknown as { handle: (context: { now: () => Date }) => Promise<Record<string, number>> };
   const run = () => handler.handle({ now: () => new Date() });
@@ -43,7 +44,7 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("journey engine (postgres)", () => {
     return id;
   }
 
-  async function activate(templateKey: "welcome" | "re_engagement" | "school_holiday_countdown" | "weekly_digest", overrides: { frequencyCap?: Record<string, unknown>; steps?: ReturnType<typeof validateJourneyTemplate>["steps"]; trigger?: ReturnType<typeof validateJourneyTemplate>["trigger"]; territoryId?: string } = {}) {
+  async function activate(templateKey: "welcome" | "re_engagement" | "school_holiday_countdown" | "weekly_digest" | "competition_follow_up", overrides: { frequencyCap?: Record<string, unknown>; steps?: ReturnType<typeof validateJourneyTemplate>["steps"]; trigger?: ReturnType<typeof validateJourneyTemplate>["trigger"]; territoryId?: string } = {}) {
     const template = findJourneyTemplate(templateKey)!;
     const parsed = validateJourneyTemplate(template);
     const journeyId = randomUUID();
@@ -75,6 +76,10 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("journey engine (postgres)", () => {
       }
       await db.delete(marketingJourneyVersions).where(inArray(marketingJourneyVersions.journeyId, journeyIds));
       await db.delete(marketingJourneys).where(inArray(marketingJourneys.id, journeyIds));
+    }
+    if (competitionIds.length) {
+      await db.delete(competitionEntries).where(inArray(competitionEntries.contentItemId, competitionIds));
+      await db.delete(contentItems).where(inArray(contentItems.id, competitionIds));
     }
     if (periodIds.length) await db.delete(schoolHolidayPeriods).where(inArray(schoolHolidayPeriods.id, periodIds));
     await db.delete(contentChannelVariantVersions).where(eq(contentChannelVariantVersions.id, eventIds.version));
@@ -221,6 +226,39 @@ describe.skipIf(!process.env.RUN_DB_TESTS)("journey engine (postgres)", () => {
     await db.insert(audienceTerritorySubscriptions).values({ id: randomUUID(), contactId: later[0]!.id, territoryId: fixtureIds.territories.suttonColdfield, status: "subscribed", source: "test", preferences: {}, subscribedAt: new Date(Date.now() - 30 * 86_400_000) });
     await run();
     expect(await entriesFor(later[0]!.id, journeyId)).toHaveLength(0);
+  });
+
+  it("follows up each entrant of a recently closed competition who also subscribes, once, and leaves out people who only entered", async () => {
+    const insertCompetition = async (title: string, endDate: string) => {
+      const id = randomUUID();
+      await db.insert(contentItems).values({ id, title: `${title} ${tag}`, contentType: "competition", ownerLevel: "territory", territoryId: sutton, categories: [], tags: [], provenance: {}, status: "published", relevantDates: { endDate } });
+      competitionIds.push(id);
+      return id;
+    };
+    const closed = await insertCompetition("Closed comp", day(-3));
+    const stillOpen = await insertCompetition("Open comp", day(5));
+    const longGone = await insertCompetition("Long gone comp", day(-40));
+    const { journeyId } = await activate("competition_follow_up");
+    const subscribed = await contact("entrant");
+    const onlyEntered = randomUUID();
+    await db.insert(audienceContacts).values({ id: onlyEntered, email: `only-${tag}@example.test`, emailNormalised: `only-${tag}@example.test`, emailStatus: "subscribed", tags: [], metadata: {} });
+    contactIds.push(onlyEntered);
+    for (const [competitionId, contactId] of [[closed, subscribed], [stillOpen, subscribed], [longGone, subscribed], [closed, onlyEntered]] as const) {
+      await db.insert(competitionEntries).values({ id: randomUUID(), contentItemId: competitionId, territoryId: sutton, contactId, enteredAt: new Date() });
+    }
+
+    await run();
+    await run();
+    await Promise.all([run(), run()]);
+
+    const entries = await entriesFor(subscribed, journeyId);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ sourceEventType: "competition.closed", sourceEventId: closed });
+    expect(await entriesFor(onlyEntered, journeyId)).toHaveLength(0);
+    const campaigns = await campaignsOf(journeyId);
+    expect(campaigns).toHaveLength(1);
+    expect(campaigns[0]!.subject).toBe(`Thanks for entering Closed comp ${tag}`);
+    expect(await snapshotOf(campaigns[0]!.id)).not.toContain("[[");
   });
 
   it("only registers real, validated journeys (every template is created through the normal validated flow)", async () => {

@@ -7,6 +7,7 @@ import { AppShell } from "../../../layout";
 import { requestFromSearchParamsAndCookies } from "../../page";
 import { approveVariantAction, generateContentDraftAction, repurposeContentAction } from "../actions";
 import { RepurposeForm } from "../RepurposeForm";
+import { CompetitionPanel } from "./CompetitionPanel";
 import { ContentDraftForm } from "../ContentDraftForm";
 import { getPermissionData } from "../../../../../lib/permission-source";
 
@@ -18,7 +19,9 @@ type PageProps = {
 };
 
 export default async function ContentWorkspacePage({ params, searchParams }: PageProps) {
-  const request = await requestFromSearchParamsAndCookies(await searchParams);
+  const search = await searchParams;
+  const request = await requestFromSearchParamsAndCookies(search);
+  const resultCode = Array.isArray(search.result) ? search.result[0] : search.result;
   const { id } = await params;
   const result = await loadWorkspace(request, id);
 
@@ -58,6 +61,8 @@ export default async function ContentWorkspacePage({ params, searchParams }: Pag
           </article>
         </div>
       </section>
+
+      {libraryItem.item.contentType === "competition" ? <CompetitionPanel request={request} contentId={libraryItem.item.id} resultCode={resultCode} /> : null}
 
       {libraryItem.item.status === "draft" && result.canUseAi ? (
         <section className="app-panel franchise-panel" aria-label="Revise with AI">
